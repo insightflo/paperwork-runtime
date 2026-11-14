@@ -14,7 +14,7 @@ import { knowledgePatternEntitiesSchema } from "@paperclipai/shared/validators/k
 import { knowledgePatternsService } from "../services/knowledge-patterns.js";
 import { retire } from "../services/knowledge-pattern-lifecycle.js";
 import { formatKnowledgePatternBriefs } from "../services/knowledge-pattern-brief.js";
-import { selectRelatedKnowledgePatterns } from "../services/knowledge-pattern-relevance.js";
+import { explainRelatedKnowledgePatterns, selectRelatedKnowledgePatterns } from "../services/knowledge-pattern-relevance.js";
 import { assertBoard, assertCompanyAccess } from "./authz.js";
 import { badRequest, conflict, notFound, unprocessable } from "../errors.js";
 import { validate } from "../middleware/index.js";
@@ -105,6 +105,18 @@ export function knowledgePatternsRoutes(db: Db) {
       return;
     }
     res.json({ patterns });
+  });
+
+  // GET /api/companies/:companyId/knowledge-patterns/explain?q=&files=&symbols= — [T3] 보드 전용
+  //   읽기 전용 진단: 가시 집합 전체의 점수 근거(영역·IDF·via·가드). ILIKE 축소 없음(관측용 — 규칙 8).
+  router.get("/companies/:companyId/knowledge-patterns/explain", async (req, res) => {
+    assertBoard(req);
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const q = typeof req.query.q === "string" ? req.query.q : "";
+    const contextTexts = [q, ...(readQueryList(req.query.files) ?? []), ...(readQueryList(req.query.symbols) ?? [])].filter((text) => text.trim() !== "");
+    const patterns = await svc.search({ companyId, includeDrafts: req.query.includeDrafts !== "false", includeSuperseded: req.query.includeSuperseded === "true", limit: 200 });
+    res.json({ explanations: explainRelatedKnowledgePatterns(patterns, contextTexts) });
   });
 
   // POST /api/companies/:companyId/knowledge-patterns
