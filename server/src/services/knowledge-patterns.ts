@@ -12,6 +12,7 @@
 //   - [T1c] files/symbols/coupled/errorSignatures는 공유 Zod 계약으로 정규화해 저장한다.
 // [게이트 보존 — PR #729] create는 (1) assertEvidenceExists(근거 실재 검증) 후
 //   (2) db.transaction으로 삽입+supersede 가드 체인을 원자적으로 묶는다. 이 구조는 변경 금지.
+//   [T2b] applyEvidenceGate(얕은 에이전트 → draft 강등)·assertNoDuplicateSignature(서명 중복 충돌) 추가.
 // [소비] 미션 오너 진단/기획 검색, 자기개선 근거 참조. draft 초안은 검색 기본 제외(승인 전 무측).
 //   실행 프롬프트 주입은 별도 계약(관련도+게이트+측정 롤아웃 — knowledge-pattern-injection)으로만.
 
@@ -19,7 +20,13 @@ import { and, eq, isNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { activityLog, companyKnowledgePatterns } from "@paperclipai/db";
 import type { AdoptionAssetRegistryEntry } from "./self-improvement-adoption-planner.js";
-import { selectRelatedKnowledgePatterns, type RelatedKnowledgePattern } from "./knowledge-pattern-relevance.js";
+import type { RelatedKnowledgePattern } from "./knowledge-pattern-relevance.js";
+import {
+  applyEvidenceGate,
+  assertNoDuplicateSignature,
+  DEFECT_SIGNATURE_MAX,
+  findSimilarKnowledgePatternCards,
+} from "./knowledge-pattern-evidence-gate.js";
 import {
   assertEvidenceExists,
   KINDS,
@@ -56,21 +63,9 @@ export function knowledgePatternAdoptionRegistryEntries(
 
 export function knowledgePatternsService(db: Db) {
   return {
-    /** [중복 힌트 — EvoHarness compaction 교훈] 새 카드와 유사한 기존 카드 상위 3건.
-     *  supersede 대상 후보 제안용 비차단 힌트(superseded 제외 풀에서 스코프태그+토큰 중복). */
-    findSimilar: async (input: {
-      companyId: string;
-      title: string;
-      symptoms?: string | null;
-      rootCause?: string | null;
-      scopeTags?: readonly string[];
-    }): Promise<RelatedKnowledgePattern[]> => {
-      const cards = await searchKnowledgePatterns(db, { companyId: input.companyId, limit: 50 });
-      return selectRelatedKnowledgePatterns(
-        cards,
-        [input.title, input.symptoms ?? "", input.rootCause ?? "", ...(input.scopeTags ?? [])],
-      );
-    },
+    /** [중복 힌트 — EvoHarness] 유사 기존 카드 비차단 힌트 — 구현은 evidence-gate.ts(T2b 통합). */
+    findSimilar: (input: Parameters<typeof findSimilarKnowledgePatternCards>[1]): Promise<RelatedKnowledgePattern[]> =>
+      findSimilarKnowledgePatternCards(db, input),
     /** append-only 생성. supersedeId가 있으면 같은 회사의 기존 카드를 대체 체인으로 연결한다.
      *  [T1c] files/symbols/coupled/errorSignatures를 공유 Zod로 정규화해 저장(누락 시 빈 배열). */
     create: async (input: {
@@ -87,6 +82,7 @@ export function knowledgePatternsService(db: Db) {
       symbols?: unknown;
       coupled?: unknown;
       errorSignatures?: unknown;
+      defectSignature?: unknown;
       source: unknown;
       createdByAgentId?: string | null;
       supersedeId?: string | null;
@@ -103,6 +99,9 @@ export function knowledgePatternsService(db: Db) {
       const whatWorked = readTrimmed(input.whatWorked, "whatWorked", TEXT_MAX, false);
       const scopeTags = readTags(input.scopeTags);
       const { files, symbols, coupled, errorSignatures } = readEntities(input);
+      const defectSignature = readTrimmed(input.defectSignature, "defectSignature", DEFECT_SIGNATURE_MAX, false);
+      // [T2b 쓰기 게이트] 얕은 에이전트 제출은 거부 대신 draft 강등 — status만 변경, 데이터 불변.
+      const status = applyEvidenceGate({ evidence, rootCause, whatWorked }, source);
 
       // [근거 실재성 ⓑ] 위조 근거가 즉시 active 카드가 되는 것을 쓰기 시점에 차단한다.
       await assertEvidenceExists(db, evidence);
@@ -124,6 +123,9 @@ export function knowledgePatternsService(db: Db) {
           }
         }
 
+        // [T2b 서명 중복 — 명시 충돌] 사람·에이전트 제출은 onConflictDoNothing 대신 409 신호.
+        if (defectSignature) await assertNoDuplicateSignature(tx, { companyId: input.companyId, defectSignature });
+
         const [created] = await tx
           .insert(companyKnowledgePatterns)
           .values({
@@ -141,6 +143,7 @@ export function knowledgePatternsService(db: Db) {
             coupled,
             errorSignatures,
             source,
+            status, defectSignature,
             createdByAgentId: input.createdByAgentId ?? null,
             supersededById: null,
           })
@@ -164,7 +167,7 @@ export function knowledgePatternsService(db: Db) {
           action: "knowledge_pattern.created",
           entityType: "knowledge_pattern",
           entityId: created.id,
-          details: { kind, title, source, supersededId: input.supersedeId ?? null },
+          details: { kind, title, source, status, supersededId: input.supersedeId ?? null },
         });
         return created;
       });
