@@ -12,6 +12,9 @@ import { workflowRuns, workflowStepRuns } from "@paperclipai/db";
 import type { Db } from "@paperclipai/db";
 import { knowledgePatternEntitiesSchema } from "@paperclipai/shared/validators/knowledge-pattern";
 import { knowledgePatternsService } from "../services/knowledge-patterns.js";
+import { retire } from "../services/knowledge-pattern-lifecycle.js";
+import { formatKnowledgePatternBriefs } from "../services/knowledge-pattern-brief.js";
+import { selectRelatedKnowledgePatterns } from "../services/knowledge-pattern-relevance.js";
 import { assertBoard, assertCompanyAccess } from "./authz.js";
 import { badRequest, conflict, notFound, unprocessable } from "../errors.js";
 import { validate } from "../middleware/index.js";
@@ -43,6 +46,8 @@ const createKnowledgePatternSchema = z.object({
   coupled: knowledgePatternEntitiesSchema.shape.coupled,
   errorSignatures: knowledgePatternEntitiesSchema.shape.errorSignatures,
   source: z.enum(["mission_owner_compile", "agent_candidate", "operator", "auto_rework_draft"]).optional(),
+  // [T2b] 중복 서명 — QA 기계 서명은 sha256 hex(64자). 동일 회사 기존 카드와 겹치면 409.
+  defectSignature: z.string().trim().min(1).max(200).optional(),
   supersedeId: z.string().trim().min(1).optional(),
 });
 
@@ -65,6 +70,7 @@ export function knowledgePatternsRoutes(db: Db) {
   // GET /api/companies/:companyId/knowledge-patterns?kind=&tags=a,b&q=&includeSuperseded=&includeDrafts=&files=&symbols=
   //   draft 초안은 보드(승인 주체)에만 기본 노출. 에이전트 키는 active 카드만 본다(승인 전 무측).
   //   files/symbols 질의 시 관련도 엔진이 결과를 재정렬한다(T1c — 응답 형태는 불변, 신규 필드 포함).
+  //   [T2b] format=brief — 초압축 브리핑 문자열 배열(카드당 ≤280자·최대 2장+초과 요약 행).
   router.get("/companies/:companyId/knowledge-patterns", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
@@ -73,16 +79,31 @@ export function knowledgePatternsRoutes(db: Db) {
       : null;
     const isBoard = req.actor.type !== "agent";
     const includeDrafts = isBoard && req.query.includeDrafts !== "false";
+    const q = typeof req.query.q === "string" ? req.query.q : null;
+    const files = readQueryList(req.query.files);
+    const symbols = readQueryList(req.query.symbols);
     const patterns = await svc.search({
       companyId,
       kind: typeof req.query.kind === "string" ? req.query.kind : null,
       tags,
-      q: typeof req.query.q === "string" ? req.query.q : null,
-      files: readQueryList(req.query.files),
-      symbols: readQueryList(req.query.symbols),
+      q,
+      files,
+      symbols,
       includeSuperseded: req.query.includeSuperseded === "true",
       includeDrafts,
     });
+    if (req.query.format === "brief") {
+      // via 라벨은 검색 행위 자체가 버리므로 같은 문맥으로 엔진을 한 번 더 돌려 경유 표시만 회수한다
+      //   (순수 함수·행 수 상한 내 — 점수 재정렬에는 쓰지 않고 via 맵만 읽는다).
+      const contextTexts = [q ?? "", ...(files ?? []), ...(symbols ?? [])].filter((text) => text.trim() !== "");
+      const viaById = new Map(
+        selectRelatedKnowledgePatterns(patterns, contextTexts, Math.max(1, patterns.length))
+          .filter((entry) => entry.via)
+          .map((entry) => [entry.id, entry.via!]),
+      );
+      res.json({ briefs: formatKnowledgePatternBriefs(patterns, { contextTexts, viaById }) });
+      return;
+    }
     res.json({ patterns });
   });
 
@@ -122,12 +143,17 @@ export function knowledgePatternsRoutes(db: Db) {
         coupled: req.body?.coupled,
         errorSignatures: req.body?.errorSignatures,
         source: bodySource,
+        defectSignature: req.body?.defectSignature,
         createdByAgentId: actor.type === "agent" ? actor.agentId ?? null : null,
         supersedeId,
       });
     } catch (error) {
       // 서비스 계약 오류를 복구 불가 500이 아니라 재시도 가능한 4xx로 매핑(감독 루프 보호).
       const message = error instanceof Error ? error.message : String(error);
+      if (message.startsWith("knowledge pattern defect signature")) {
+        next(conflict(message));
+        return;
+      }
       if (message.includes("was superseded concurrently") || message.includes("already superseded")) {
         next(conflict("Supersede target was replaced by another card; re-read and supersede the new head"));
         return;
@@ -147,7 +173,8 @@ export function knowledgePatternsRoutes(db: Db) {
       next(error);
       return;
     }
-    res.status(201).json({ ...card, similarExisting });
+    // [T2b 게이트 강등] draft로 강등된 에이전트 제출도 성공 — 200 + status 필드로 강등을 전달한다.
+    res.status(card.status === "draft" ? 200 : 201).json({ ...card, similarExisting });
   });
 
   // POST /api/companies/:companyId/knowledge-patterns/:patternId/approve — 보드 전용.
@@ -165,6 +192,30 @@ export function knowledgePatternsRoutes(db: Db) {
       // 서비스가 "초안 없음(이미 active/타회사)"을 일반 Error로 던진다 → 404 매핑.
       if (error instanceof Error && error.message.includes("draft not found")) {
         next(notFound("Knowledge pattern draft not found"));
+        return;
+      }
+      next(error);
+    }
+  });
+
+  // POST /api/companies/:companyId/knowledge-patterns/:patternId/retire — 보드 전용.
+  //   [T2b 라이프사이클] 쓸모없어진 카드를 삭제 대신 retired 말단으로 보낸다(내용 불변).
+  //   사유 필수 — superseded·retired·타회사 카드는 404로 거부(approve와 동일 매핑 규약).
+  router.post("/companies/:companyId/knowledge-patterns/:patternId/retire", async (req, res, next) => {
+    try {
+      assertBoard(req);
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      if (!reason) {
+        next(badRequest("reason is required"));
+        return;
+      }
+      const card = await retire(db, { companyId, id: req.params.patternId as string, reason });
+      res.json({ card });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("cannot be retired")) {
+        next(notFound("Knowledge pattern cannot be retired"));
         return;
       }
       next(error);

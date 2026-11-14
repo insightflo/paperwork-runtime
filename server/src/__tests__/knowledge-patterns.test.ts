@@ -9,6 +9,7 @@ import {
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
 import { knowledgePatternsService } from "../services/knowledge-patterns.js";
+import { formatKnowledgePatternBriefs, BRIEF_MAX_CHARS } from "../services/knowledge-pattern-brief.js";
 import { knowledgePatternsRoutes } from "../routes/knowledge-patterns.js";
 import { errorHandler } from "../middleware/index.js";
 
@@ -497,6 +498,179 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
     agentApp.use(errorHandler);
     const agentCurate = await request(agentApp).post(`/api/companies/${companyId}/knowledge-patterns/${created.id}/audience`).send({ audience: "agent" });
     expect(agentCurate.status).toBe(403);
+  });
+
+  // [T2b 쓰기 게이트 — mistology 후보③] 에이전트 계열 제출이 근거·분석 모두 얕으면
+  //   거부 대신 draft로 강등한다. 사람(operator) 제출은 같은 내용이라도 강등 없이 통과.
+  it("evidence gate downgrades thin agent submissions to draft while operator cards stay active", async () => {
+    const svc = knowledgePatternsService(db);
+    const thin = await svc.create(sampleCard({ title: "얕은 에이전트 카드", evidence: [], rootCause: null, whatWorked: null }));
+    expect(thin.status).toBe("draft");
+    // 강등된 draft는 검색 기본 제외 — 승인 전 무측.
+    expect((await svc.search({ companyId })).some((c) => c.id === thin.id)).toBe(false);
+    expect((await svc.search({ companyId, includeDrafts: true })).some((c) => c.id === thin.id)).toBe(true);
+
+    // 근거+분석을 갖춘 같은 출처 제출은 active로 통과한다.
+    const rich = await svc.create(sampleCard({ title: "충분한 에이전트 카드" }));
+    expect(rich.status).toBe("active");
+
+    // 사람(operator) 제출은 내용이 얕아도 강등하지 않는다 — 게이트가 사람을 막는 것 금지.
+    const human = await svc.create(sampleCard({
+      title: "얕은 사람 카드", evidence: [], rootCause: null, whatWorked: null, source: "operator", createdByAgentId: null,
+    }));
+    expect(human.status).toBe("active");
+  });
+
+  it("routes: thin agent submission is accepted but downgraded (200 + status=draft)", async () => {
+    const agentApp = express();
+    agentApp.use(express.json());
+    agentApp.use((req, _res, next) => {
+      (req as typeof req & { actor: unknown }).actor = { type: "agent", companyId, agentId: ownerAgentId, runId: null };
+      next();
+    });
+    agentApp.use("/api", knowledgePatternsRoutes(db));
+    agentApp.use(errorHandler);
+    const res = await request(agentApp)
+      .post(`/api/companies/${companyId}/knowledge-patterns`)
+      .send({ kind: "failure_mode", title: "얕은 에이전트 라우트 카드", summary: "근거·분석 없는 제출.", evidence: [] });
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("draft");
+  });
+
+  // [T2b 서명 중복 — 후보⑤] 첫 등록은 성공, 같은 회사 동일 서명 재등록은 명시적 충돌.
+  it("duplicate defect signature rejects inside the transaction and maps to 409 on the route", async () => {
+    const svc = knowledgePatternsService(db);
+    const signature = `sig-${randomUUID()}`;
+    const first = await svc.create(sampleCard({ title: "서명 원본 카드", defectSignature: signature }));
+    expect(first.defectSignature).toBe(signature);
+    await expect(svc.create(sampleCard({ title: "서명 중복 카드", defectSignature: signature })))
+      .rejects.toThrow(/defect signature/);
+
+    const boardApp = express();
+    boardApp.use(express.json());
+    boardApp.use((req, _res, next) => {
+      (req as typeof req & { actor: unknown }).actor = {
+        type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
+        actorId: "board-user", agentId: null,
+      };
+      next();
+    });
+    boardApp.use("/api", knowledgePatternsRoutes(db));
+    boardApp.use(errorHandler);
+    const res = await request(boardApp)
+      .post(`/api/companies/${companyId}/knowledge-patterns`)
+      .send({ kind: "failure_mode", title: "라우트 서명 중복 카드", summary: "같은 서명 재제출.", evidence: [], defectSignature: signature });
+    expect(res.status).toBe(409);
+  });
+
+  // [T2b 초압축 브리핑] 카드당 ≤280자·최대 2장 — vN(via) 머리·피할 오답·동시변경 행·초과 요약.
+  it("formats ultra-compact briefs: ≤280 chars, vN(via) head, pitfalls, coupled line, overflow summary", async () => {
+    const base = {
+      kind: "failure_mode", versionNumber: 1, pitfalls: [] as string[], whatWorked: null as string | null,
+      coupled: [] as string[], files: [] as string[], symbols: [] as string[],
+    };
+    const viaCard = {
+      ...base,
+      id: randomUUID(),
+      title: "결합 경유 브리핑 카드",
+      versionNumber: 3,
+      pitfalls: ["구 토큰과 신 토큰을 문자열 비교하면 안 된다"],
+      whatWorked: "세대 토큰 CAS로 재큐한다. 이후 문장은 표시하지 않는다.",
+      coupled: ["packages/shared/src/validators/knowledge-pattern.ts"],
+      files: ["server/src/services/knowledge-patterns.ts"],
+    };
+    const briefs = formatKnowledgePatternBriefs(
+      [viaCard, { ...base, id: randomUUID(), title: "두 번째 카드" },
+        { ...base, id: randomUUID(), title: "세 번째" }, { ...base, id: randomUUID(), title: "네 번째" }],
+      {
+        contextTexts: ["server/src/services/knowledge-patterns.ts 변경 사고"],
+        viaById: new Map([[viaCard.id, ["server/src/services/knowledge-patterns.ts"]]]),
+      },
+    );
+    expect(briefs).toHaveLength(3); // 본문 2장 + 초과 요약 1행
+    for (const brief of briefs) expect(brief.length).toBeLessThanOrEqual(BRIEF_MAX_CHARS);
+    expect(briefs[0]).toContain("v3(via server/src/services/knowledge-patterns.ts) [failure_mode] 결합 경유 브리핑 카드");
+    expect(briefs[0]).toContain("피할 오답: 구 토큰과 신 토큰을 문자열 비교하면 안 된다");
+    expect(briefs[0]).toContain("최우선 대처: 세대 토큰 CAS로 재큐한다.");
+    expect(briefs[0]).toContain("→ 동시변경: packages/shared/src/validators/knowledge-pattern.ts");
+    expect(briefs[0]).not.toContain("이후 문장은 표시하지 않는다");
+    expect(briefs[1]).not.toContain("(via ");
+    expect(briefs[2]).toContain("외 2장 유사(세 번째, 네 번째)");
+  });
+
+  it("routes: GET ?format=brief returns compact briefing strings instead of full cards", async () => {
+    const svc = knowledgePatternsService(db);
+    await svc.create(sampleCard({
+      title: "브리핑 라우트 카드", source: "operator", createdByAgentId: null, whatWorked: "게이트 재큐가 통했다.",
+    }));
+    const boardApp = express();
+    boardApp.use(express.json());
+    boardApp.use((req, _res, next) => {
+      (req as typeof req & { actor: unknown }).actor = {
+        type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
+        actorId: "board-user", agentId: null,
+      };
+      next();
+    });
+    boardApp.use("/api", knowledgePatternsRoutes(db));
+    boardApp.use(errorHandler);
+    const res = await request(boardApp)
+      .get(`/api/companies/${companyId}/knowledge-patterns?format=brief&q=${encodeURIComponent("브리핑 라우트")}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.briefs)).toBe(true);
+    expect(res.body.briefs.length).toBeGreaterThanOrEqual(1);
+    for (const brief of res.body.briefs as string[]) expect(brief.length).toBeLessThanOrEqual(BRIEF_MAX_CHARS);
+    expect(res.body.briefs[0]).toContain("[failure_mode] 브리핑 라우트 카드");
+  });
+
+  // [T2b retire 라우트] 보드 전용 — 사유 필수, superseded 카드는 거부(404).
+  it("routes: board retires a card with a reason; superseded target is rejected", async () => {
+    const svc = knowledgePatternsService(db);
+    const card = await svc.create(sampleCard({ title: "은퇴 라우트 대상 카드" }));
+    const old = await svc.create(sampleCard({ title: "대체될 카드" }));
+    await svc.create(sampleCard({ title: "대체 카드", supersedeId: old.id }));
+
+    const boardApp = express();
+    boardApp.use(express.json());
+    boardApp.use((req, _res, next) => {
+      (req as typeof req & { actor: unknown }).actor = {
+        type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
+        actorId: "board-user", agentId: null,
+      };
+      next();
+    });
+    boardApp.use("/api", knowledgePatternsRoutes(db));
+    boardApp.use(errorHandler);
+
+    const ok = await request(boardApp)
+      .post(`/api/companies/${companyId}/knowledge-patterns/${card.id}/retire`)
+      .send({ reason: "조직 관행 변경으로 폐기" });
+    expect(ok.status).toBe(200);
+    expect(ok.body.card.status).toBe("retired");
+    expect(ok.body.card.supersedeReason).toBe("조직 관행 변경으로 폐기");
+
+    const superseded = await request(boardApp)
+      .post(`/api/companies/${companyId}/knowledge-patterns/${old.id}/retire`)
+      .send({ reason: "대체된 카드 은퇴 시도" });
+    expect(superseded.status).toBe(404);
+
+    const noReason = await request(boardApp)
+      .post(`/api/companies/${companyId}/knowledge-patterns/${card.id}/retire`)
+      .send({});
+    expect(noReason.status).toBe(400);
+
+    const agentApp = express();
+    agentApp.use(express.json());
+    agentApp.use((req, _res, next) => {
+      (req as typeof req & { actor: unknown }).actor = { type: "agent", companyId, agentId: ownerAgentId, runId: null };
+      next();
+    });
+    agentApp.use("/api", knowledgePatternsRoutes(db));
+    agentApp.use(errorHandler);
+    const agentRetire = await request(agentApp)
+      .post(`/api/companies/${companyId}/knowledge-patterns/${card.id}/retire`)
+      .send({ reason: "에이전트 은퇴 시도" });
+    expect(agentRetire.status).toBe(403);
   });
 });
 
