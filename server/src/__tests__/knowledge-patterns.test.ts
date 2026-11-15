@@ -3,12 +3,13 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import express from "express";
 import request from "supertest";
 import { eq } from "drizzle-orm";
-import { activityLog, agents, companies, companyKnowledgePatterns, createDb, workflowDefinitions, workflowRuns } from "@paperclipai/db";
+import { activityLog, agents, companies, companyKnowledgePatterns, createDb, workflowDefinitions, workflowRuns, workflowTransitionEvents } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
 import { knowledgePatternsService } from "../services/knowledge-patterns.js";
+import { KnowledgePatternDuplicateSignatureError } from "../services/knowledge-pattern-evidence-gate.js";
 import { formatKnowledgePatternBriefs, BRIEF_MAX_CHARS } from "../services/knowledge-pattern-brief.js";
 import { knowledgePatternsRoutes } from "../routes/knowledge-patterns.js";
 import { errorHandler } from "../middleware/index.js";
@@ -65,6 +66,24 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
     await tempDb?.cleanup();
   });
 
+  function buildApp(actor: unknown) {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      (req as typeof req & { actor: unknown }).actor = actor;
+      next();
+    });
+    app.use("/api", knowledgePatternsRoutes(db));
+    app.use(errorHandler);
+    return app;
+  }
+
+  const boardActor = () => ({
+    type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
+    actorId: "board-user", agentId: null,
+  });
+  const agentActor = () => ({ type: "agent", companyId, agentId: ownerAgentId, runId: null });
+
   function sampleCard(overrides: Record<string, unknown> = {}) {
     return {
       companyId,
@@ -113,7 +132,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
     await svc.create(sampleCard());
     const otherSearch = await svc.search({ companyId: otherCompanyId });
     expect(otherSearch).toHaveLength(0);
-    const foreign = await svc.create(sampleCard({ companyId: otherCompanyId, createdByAgentId: null }));
+    const foreign = await svc.create(sampleCard({ companyId: otherCompanyId, evidence: [], source: "operator", createdByAgentId: null }));
     await expect(svc.create(sampleCard({ supersedeId: foreign.id }))).rejects.toThrow();
   });
 
@@ -195,17 +214,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
 
   // [T1c 라우트 계약] 잘못된 엔티티 메타데이터는 진입 검증에서 422로 차단된다(500 금지).
   it("routes: POST rejects malformed entity metadata with 422 instead of a 500", async () => {
-    const app = express();
-    app.use(express.json());
-    app.use((req, _res, next) => {
-      (req as typeof req & { actor: unknown }).actor = {
-        type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
-        actorId: "board-user", agentId: null,
-      };
-      next();
-    });
-    app.use("/api", knowledgePatternsRoutes(db));
-    app.use(errorHandler);
+    const app = buildApp(boardActor());
 
     const bad = await request(app)
       .post(`/api/companies/${companyId}/knowledge-patterns`)
@@ -236,11 +245,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
   });
 
   it("routes: nonexistent evidence maps to 422, not 500 [defect-b]", async () => {
-    const app = express();
-    app.use(express.json());
-    app.use((req, _res, next) => { req.actor = { type: "board", userId: "u1", source: "session", isInstanceAdmin: false, companyIds: [companyId] }; next(); });
-    app.use("/api", knowledgePatternsRoutes(db));
-    app.use(errorHandler);
+    const app = buildApp({ type: "board", userId: "u1", source: "session", isInstanceAdmin: false, companyIds: [companyId] });
     const res = await request(app)
       .post(`/api/companies/${companyId}/knowledge-patterns`)
       .send({ kind: "failure_mode", title: "위조 근거 카드", summary: "존재하지 않는 미션 참조", evidence: [{ type: "mission", id: randomUUID() }] });
@@ -281,17 +286,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
   });
 
   it("routes: POST returns non-blocking similarExisting hints for near-duplicate cards and skips them for supersede", async () => {
-    const app = express();
-    app.use(express.json());
-    app.use((req, _res, next) => {
-      (req as typeof req & { actor: unknown }).actor = {
-        type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
-        actorId: "board-user", agentId: null,
-      };
-      next();
-    });
-    app.use("/api", knowledgePatternsRoutes(db));
-    app.use(errorHandler);
+    const app = buildApp(boardActor());
 
     const first = await request(app)
       .post(`/api/companies/${companyId}/knowledge-patterns`)
@@ -337,17 +332,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
   });
 
   it("routes: board actor can create/search; cross-company agent is forbidden", async () => {
-    const app = express();
-    app.use(express.json());
-    app.use((req, _res, next) => {
-      (req as typeof req & { actor: unknown }).actor = {
-        type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
-        actorId: "board-user", agentId: null,
-      };
-      next();
-    });
-    app.use("/api", knowledgePatternsRoutes(db));
-    app.use(errorHandler);
+    const app = buildApp(boardActor());
 
     const created = await request(app)
       .post(`/api/companies/${companyId}/knowledge-patterns`)
@@ -376,17 +361,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
   //   감독 루프가 회복 불가 오류로 오인하지 않게 하기 위함. 서비스 throw는 직접 호출자
   //   방어용으로 유지된다.
   it("routes: POST rejects non-string symptoms with 422 instead of a 500", async () => {
-    const app = express();
-    app.use(express.json());
-    app.use((req, _res, next) => {
-      (req as typeof req & { actor: unknown }).actor = {
-        type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
-        actorId: "board-user", agentId: null,
-      };
-      next();
-    });
-    app.use("/api", knowledgePatternsRoutes(db));
-    app.use(errorHandler);
+    const app = buildApp(boardActor());
 
     const bad = await request(app)
       .post(`/api/companies/${companyId}/knowledge-patterns`)
@@ -412,16 +387,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
     });
     expect(card).not.toBeNull();
 
-    const agentApp = express();
-    agentApp.use(express.json());
-    agentApp.use((req, _res, next) => {
-      (req as typeof req & { actor: unknown }).actor = {
-        type: "agent", companyId, agentId: ownerAgentId, runId: null,
-      };
-      next();
-    });
-    agentApp.use("/api", knowledgePatternsRoutes(db));
-    agentApp.use(errorHandler);
+    const agentApp = buildApp(agentActor());
 
     const agentList = await request(agentApp).get(`/api/companies/${companyId}/knowledge-patterns`);
     expect(agentList.status).toBe(200);
@@ -430,17 +396,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
     const agentApprove = await request(agentApp).post(`/api/companies/${companyId}/knowledge-patterns/${card!.id}/approve`);
     expect(agentApprove.status).toBe(403);
 
-    const boardApp = express();
-    boardApp.use(express.json());
-    boardApp.use((req, _res, next) => {
-      (req as typeof req & { actor: unknown }).actor = {
-        type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
-        actorId: "board-user", agentId: null,
-      };
-      next();
-    });
-    boardApp.use("/api", knowledgePatternsRoutes(db));
-    boardApp.use(errorHandler);
+    const boardApp = buildApp(boardActor());
 
     const boardList = await request(boardApp).get(`/api/companies/${companyId}/knowledge-patterns`);
     expect(boardList.status).toBe(200);
@@ -462,17 +418,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
       evidence: [], scopeTags: [], source: "operator",
     });
 
-    const boardApp = express();
-    boardApp.use(express.json());
-    boardApp.use((req, _res, next) => {
-      (req as typeof req & { actor: unknown }).actor = {
-        type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
-        actorId: "board-user", agentId: null,
-      };
-      next();
-    });
-    boardApp.use("/api", knowledgePatternsRoutes(db));
-    boardApp.use(errorHandler);
+    const boardApp = buildApp(boardActor());
 
     const allow = await request(boardApp).post(`/api/companies/${companyId}/knowledge-patterns/${created.id}/audience`).send({ audience: "agent" });
     expect(allow.status).toBe(200);
@@ -488,14 +434,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
     const missing = await request(boardApp).post(`/api/companies/${companyId}/knowledge-patterns/${randomUUID()}/audience`).send({ audience: "agent" });
     expect(missing.status).toBe(404);
 
-    const agentApp = express();
-    agentApp.use(express.json());
-    agentApp.use((req, _res, next) => {
-      (req as typeof req & { actor: unknown }).actor = { type: "agent", companyId, agentId: ownerAgentId, runId: null };
-      next();
-    });
-    agentApp.use("/api", knowledgePatternsRoutes(db));
-    agentApp.use(errorHandler);
+    const agentApp = buildApp(agentActor());
     const agentCurate = await request(agentApp).post(`/api/companies/${companyId}/knowledge-patterns/${created.id}/audience`).send({ audience: "agent" });
     expect(agentCurate.status).toBe(403);
   });
@@ -522,14 +461,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
   });
 
   it("routes: thin agent submission is accepted but downgraded (200 + status=draft)", async () => {
-    const agentApp = express();
-    agentApp.use(express.json());
-    agentApp.use((req, _res, next) => {
-      (req as typeof req & { actor: unknown }).actor = { type: "agent", companyId, agentId: ownerAgentId, runId: null };
-      next();
-    });
-    agentApp.use("/api", knowledgePatternsRoutes(db));
-    agentApp.use(errorHandler);
+    const agentApp = buildApp(agentActor());
     const res = await request(agentApp)
       .post(`/api/companies/${companyId}/knowledge-patterns`)
       .send({ kind: "failure_mode", title: "얕은 에이전트 라우트 카드", summary: "근거·분석 없는 제출.", evidence: [] });
@@ -546,17 +478,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
     await expect(svc.create(sampleCard({ title: "서명 중복 카드", defectSignature: signature })))
       .rejects.toThrow(/defect signature/);
 
-    const boardApp = express();
-    boardApp.use(express.json());
-    boardApp.use((req, _res, next) => {
-      (req as typeof req & { actor: unknown }).actor = {
-        type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
-        actorId: "board-user", agentId: null,
-      };
-      next();
-    });
-    boardApp.use("/api", knowledgePatternsRoutes(db));
-    boardApp.use(errorHandler);
+    const boardApp = buildApp(boardActor());
     const res = await request(boardApp)
       .post(`/api/companies/${companyId}/knowledge-patterns`)
       .send({ kind: "failure_mode", title: "라우트 서명 중복 카드", summary: "같은 서명 재제출.", evidence: [], defectSignature: signature });
@@ -603,17 +525,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
     await svc.create(sampleCard({
       title: "브리핑 라우트 카드", source: "operator", createdByAgentId: null, whatWorked: "게이트 재큐가 통했다.",
     }));
-    const boardApp = express();
-    boardApp.use(express.json());
-    boardApp.use((req, _res, next) => {
-      (req as typeof req & { actor: unknown }).actor = {
-        type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
-        actorId: "board-user", agentId: null,
-      };
-      next();
-    });
-    boardApp.use("/api", knowledgePatternsRoutes(db));
-    boardApp.use(errorHandler);
+    const boardApp = buildApp(boardActor());
     const res = await request(boardApp)
       .get(`/api/companies/${companyId}/knowledge-patterns?format=brief&q=${encodeURIComponent("브리핑 라우트")}`);
     expect(res.status).toBe(200);
@@ -630,17 +542,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
     const old = await svc.create(sampleCard({ title: "대체될 카드" }));
     await svc.create(sampleCard({ title: "대체 카드", supersedeId: old.id }));
 
-    const boardApp = express();
-    boardApp.use(express.json());
-    boardApp.use((req, _res, next) => {
-      (req as typeof req & { actor: unknown }).actor = {
-        type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
-        actorId: "board-user", agentId: null,
-      };
-      next();
-    });
-    boardApp.use("/api", knowledgePatternsRoutes(db));
-    boardApp.use(errorHandler);
+    const boardApp = buildApp(boardActor());
 
     const ok = await request(boardApp)
       .post(`/api/companies/${companyId}/knowledge-patterns/${card.id}/retire`)
@@ -659,18 +561,82 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
       .send({});
     expect(noReason.status).toBe(400);
 
-    const agentApp = express();
-    agentApp.use(express.json());
-    agentApp.use((req, _res, next) => {
-      (req as typeof req & { actor: unknown }).actor = { type: "agent", companyId, agentId: ownerAgentId, runId: null };
-      next();
-    });
-    agentApp.use("/api", knowledgePatternsRoutes(db));
-    agentApp.use(errorHandler);
+    const agentApp = buildApp(agentActor());
     const agentRetire = await request(agentApp)
       .post(`/api/companies/${companyId}/knowledge-patterns/${card.id}/retire`)
       .send({ reason: "에이전트 은퇴 시도" });
     expect(agentRetire.status).toBe(403);
+  });
+
+  // [F1a] 타회사 evidence(workflow_run·transition_event) 참조는 서비스와 라우트(422)에서 차단한다.
+  it("rejects cross-company evidence refs (workflow_run, transition_event) with 422", async () => {
+    const svc = knowledgePatternsService(db);
+    const foreignDefId = randomUUID();
+    const foreignRunId = randomUUID();
+    const foreignEventId = randomUUID();
+    await db.insert(workflowDefinitions).values({ id: foreignDefId, companyId: otherCompanyId, name: "foreign-def", stepsJson: [] });
+    await db.insert(workflowRuns).values({ id: foreignRunId, workflowId: foreignDefId, companyId: otherCompanyId, status: "completed", triggeredBy: "test" });
+    await db.insert(workflowTransitionEvents).values({ id: foreignEventId, companyId: otherCompanyId, eventType: "step_completed", layer: "workflow" });
+
+    await expect(svc.create(sampleCard({ evidence: [{ type: "workflow_run", id: foreignRunId }] }))).rejects.toThrow(/does not exist/);
+    await expect(svc.create(sampleCard({ evidence: [{ type: "transition_event", id: foreignEventId }] }))).rejects.toThrow(/does not exist/);
+
+    const app = buildApp(boardActor());
+    for (const ref of [{ type: "workflow_run", id: foreignRunId }, { type: "transition_event", id: foreignEventId }]) {
+      const res = await request(app).post(`/api/companies/${companyId}/knowledge-patterns`).send({
+        kind: "failure_mode", title: "타회사 근거 차단", summary: "다른 회사 엔티티 참조 거부.", evidence: [ref], source: "operator",
+      });
+      expect(res.status).toBe(422);
+    }
+  });
+
+  // [F1a] retire reason 500자 초과·공백만 입력은 422로 거절한다(500 누출 방지).
+  it("routes: retire rejects over-long (>500) or blank reason with 422", async () => {
+    const card = await knowledgePatternsService(db).create(sampleCard({ title: "사유 길이 검증 대상" }));
+    const app = buildApp(boardActor());
+    const tooLong = await request(app).post(`/api/companies/${companyId}/knowledge-patterns/${card.id}/retire`).send({ reason: "가".repeat(501) });
+    expect(tooLong.status).toBe(422);
+    const blank = await request(app).post(`/api/companies/${companyId}/knowledge-patterns/${card.id}/retire`).send({ reason: "   " });
+    expect(blank.status).toBe(422);
+  });
+
+  // [F1a] GET files/symbols 상한(12개) 초과 시 422로 거절한다.
+  it("routes: GET rejects files or symbols exceeding 12 items with 422", async () => {
+    const app = buildApp(boardActor());
+    const twelveFiles = Array.from({ length: 12 }, (_, i) => `server/src/f${i}.ts`).join(",");
+    const thirteenFiles = Array.from({ length: 13 }, (_, i) => `server/src/f${i}.ts`).join(",");
+    const thirteenSymbols = Array.from({ length: 13 }, (_, i) => `sym${i}`).join(",");
+    expect((await request(app).get(`/api/companies/${companyId}/knowledge-patterns?files=${encodeURIComponent(twelveFiles)}`)).status).toBe(200);
+    expect((await request(app).get(`/api/companies/${companyId}/knowledge-patterns?files=${encodeURIComponent(thirteenFiles)}`)).status).toBe(422);
+    expect((await request(app).get(`/api/companies/${companyId}/knowledge-patterns?symbols=${encodeURIComponent(thirteenSymbols)}`)).status).toBe(422);
+  });
+
+  // [F1a] retired 카드는 체인 말단이므로 create() supersede 대상으로 거부(422)한다.
+  it("rejects superseding a retired card in create() and maps to 422 on the route", async () => {
+    const svc = knowledgePatternsService(db);
+    const card = await svc.create(sampleCard({ title: "은퇴 후 대체 차단 대상" }));
+    const app = buildApp(boardActor());
+    expect((await request(app).post(`/api/companies/${companyId}/knowledge-patterns/${card.id}/retire`).send({ reason: "폐기" })).status).toBe(200);
+
+    await expect(svc.create(sampleCard({ title: "은퇴 카드 부활 시도", supersedeId: card.id }))).rejects.toThrow(/retired/);
+    const routeRes = await request(app).post(`/api/companies/${companyId}/knowledge-patterns`).send({
+      kind: "failure_mode", title: "라우트 은퇴 대체", summary: "은퇴 카드 대체 거부.", evidence: [], source: "operator", supersedeId: card.id,
+    });
+    expect(routeRes.status).toBe(422);
+  });
+
+  // [F1a] 동시 중복 defectSignature 경합에서 Postgres 23505가 KnowledgePatternDuplicateSignatureError(409)로 변환된다.
+  it("concurrent duplicate defect signature race maps 23505 to 409 without leaking 500", async () => {
+    const app = buildApp(boardActor());
+    const signature = `race-sig-${randomUUID()}`;
+    const payload = { kind: "failure_mode", title: "동시 서명 경합", summary: "23505 경합 시 409 매핑.", evidence: [], defectSignature: signature };
+    const [a, b] = await Promise.all([
+      request(app).post(`/api/companies/${companyId}/knowledge-patterns`).send(payload),
+      request(app).post(`/api/companies/${companyId}/knowledge-patterns`).send(payload),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([201, 409]);
+    const errWithNull = new KnowledgePatternDuplicateSignatureError(null);
+    expect(errWithNull.existingCardId).toBeNull();
   });
 });
 
