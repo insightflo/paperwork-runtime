@@ -119,7 +119,7 @@ async function qaWorld(options: { findings: Array<{ id: string; summary: string;
   const row = async (stepRunId: string) => (await db.select().from(workflowStepRuns).where(eq(workflowStepRuns.id, stepRunId)))[0]!;
   const getResult = (actionId: string) => getMissionOwnerActionResult({ db, companyId, agentId: ownerAgentId, heartbeatRunId }, { schemaVersion: 1, missionId, actionId });
   return { companyId, ownerAgentId, qaAgentId, missionId, workflowRunId, definitionId: definition!.id, collectorStepRunId,
-    producerStepRunId, producerIssueId, qaIssueId, heartbeatRunId, seedArtifact, seedBytes, seedProduct: seedProduct!, verdictEventId: verdictEvent!.id, call, row, getResult, producerTarget: { kind: "issue_step" as const, workflowRunId, stepRunId: producerStepRunId, issueId: producerIssueId,
+    producerStepRunId, producerIssueId, qaIssueId, qaStepRunId, heartbeatRunId, seedArtifact, seedBytes, seedProduct: seedProduct!, verdictEventId: verdictEvent!.id, call, row, getResult, producerTarget: { kind: "issue_step" as const, workflowRunId, stepRunId: producerStepRunId, issueId: producerIssueId,
       expectedAuthorityVersion: 0, expectedExecutionGeneration: 0, failedDispatchRequestId: null } };
 }
 
