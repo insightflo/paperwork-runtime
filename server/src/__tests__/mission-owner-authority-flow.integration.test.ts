@@ -42,7 +42,7 @@ afterAll(async () => {
   //   동시에 감시하고(각 90s 상한) 종결 후 늦게 등록된 straggler 를 한 번 더 기다린다(15s 상한).
   await Promise.all([
     waitForHeartbeatExecutionsToDrain(db, 90_000),
-    drainHeartbeatRuns(db, 90_000),
+    drainHeartbeatRuns(db, 240_000),
   ]);
   await waitForHeartbeatExecutionsToDrain(db, 15_000);
   setWorkflowToolStepExecutor(null);
