@@ -5,7 +5,8 @@
 //   supersedeWithLineage는 대체 발행 시 기존 카드의 whatWorked/pitfalls를 새 카드에
 //   병합 보존하고 versionNumber(체인 깊이)+supersedeReason(대체 사유)를 기록해
 //   폐기된 오답의 교훈이 사라지지 않게 한다. retire는 쓸모없어진 카드를 active/draft에서
-//   retired로 전이한다(내용 불변·status+supersede_reason만) — superseded와 달리 체인 말단.
+//   retired로 전이한다(내용 불변·status만 — supersede_reason은 건드리지 않는다. 은퇴
+//   사유는 activity log에만 남아 대체 사유와 섞이지 않는다) — superseded와 달리 체인 말단.
 // [불변식]
 //   - 회사 스코프 필수(규칙 1). 대체·은퇴 대상은 같은 회사 카드만.
 //   - 쓰기 게이트는 create()와 동일 계열을 재사용한다(readTrimmed/readEvidence/readTags/
@@ -24,6 +25,7 @@ import {
   DEFECT_SIGNATURE_MAX,
   isDuplicateSignaturePgError,
   KnowledgePatternDuplicateSignatureError,
+  SOURCES,
 } from "./knowledge-pattern-evidence-gate.js";
 import {
   assertEvidenceExists,
@@ -42,17 +44,17 @@ import type { KnowledgePattern } from "./knowledge-patterns.js";
 
 export const KNOWLEDGE_PATTERN_STATUS_RETIRED = "retired";
 
-// knowledge-patterns.ts의 SOURCES와 동일 목록 — 해당 파일은 이 과업의 파일 범위 밖이라
-// export를 추가할 수 없어 같은 계약을 여기에 둔다(create()의 source 게이트와 동일 검증).
-const SOURCES: readonly string[] = ["mission_owner_compile", "agent_candidate", "operator", "auto_rework_draft"];
-
 const PITFALL_MAX_ITEMS = 20;
 const PITFALL_MAX_LENGTH = 500;
 const REASON_MAX = 500;
+/** 계보 병합 후 pitfalls 상한 — 무상한 누적은 체인이 깊어질수록 행·브리핑 표시를 부풀리므로
+ *  상한을 둔다. 초과 시 가장 오래된(배열 앞쪽 = 구 카드 계승분) 항목부터 버려 최근 교훈을
+ *  유지한다 — 입력 단건 상한(PITFALL_MAX_ITEMS)과 별개 정책. */
+const PITFALL_MERGED_MAX = 60;
 
 /** pitfalls 입력 판독 — readTags와 동일 계열: 문자열 배열, trim, 빈 값 제거, 중복 제거.
- *  계보 병합 시 기존 pitfalls와 합쳐지므로 입력 자체만 상한을 둔다(병합 결과는 무상한 —
- *  폐기된 교훈을 상한으로 버리면 라이프사이클의 존재 목적이 훼손된다). */
+ *  계보 병합 시 기존 pitfalls와 합쳐지므로 입력 자체에만 상한을 두고, 병합 결과의 상한은
+ *  병합 지점의 PITFALL_MERGED_MAX(최근 항목 유지)가 담당한다. */
 function readPitfalls(value: unknown): string[] {
   if (value == null) return [];
   if (!Array.isArray(value) || value.length > PITFALL_MAX_ITEMS) {
@@ -101,7 +103,7 @@ export async function supersedeWithLineage(
   const kind = String(next.kind ?? "");
   if (!KINDS.includes(kind)) throw new Error(`knowledge pattern kind must be one of ${KINDS.join(", ")}`);
   const source = String(next.source ?? "");
-  if (!SOURCES.includes(source)) throw new Error(`knowledge pattern source must be one of ${SOURCES.join(", ")}`);
+  if (!(SOURCES as readonly string[]).includes(source)) throw new Error(`knowledge pattern source must be one of ${SOURCES.join(", ")}`);
   const title = readTrimmed(next.title, "title", TITLE_MAX, true)!;
   const summary = readTrimmed(next.summary, "summary", SUMMARY_MAX, true)!;
   const evidence = readEvidence(next.evidence);
@@ -133,9 +135,10 @@ export async function supersedeWithLineage(
       throw new Error("knowledge pattern supersede target is retired (chain terminal)");
     }
 
-    // 계보 롤업: 기존 pitfalls를 앞에 두고 새 입력을 뒤에 병합(순서 보존 중복 제거).
+    // 계보 롤업: 기존 pitfalls를 앞에 두고 새 입력을 뒤에 병합(순서 보존 중복 제거) 후
+    // PITFALL_MERGED_MAX로 자른다 — 앞쪽(구 계승분)부터 버려 최근 교훈을 유지한다.
     // whatWorked·defectSignature는 새 입력이 있으면 그것을, 없으면 기존 값을 계승한다.
-    const pitfalls = Array.from(new Set([...existing.pitfalls, ...nextPitfalls]));
+    const pitfalls = Array.from(new Set([...existing.pitfalls, ...nextPitfalls])).slice(-PITFALL_MERGED_MAX);
     const whatWorked = nextWhatWorked ?? existing.whatWorked;
     const defectSignature = explicitSignature ?? existing.defectSignature ?? null;
 
@@ -221,7 +224,10 @@ export async function supersedeWithLineage(
 
 /** 은퇴 — active/draft 카드를 retired로 전이한다(삭제 대신 체인 말단으로 보존).
  *  이미 superseded이거나 retired인 카드, 다른 회사 카드는 거부한다 — 가드 UPDATE가
- *  0행을 반환하면 throw. supersedeReason에 은퇴 사유를 기록한다. */
+ *  0행을 반환하면 throw. status만 바꾸고 supersedeReason은 건드리지 않는다 — 그 필드는
+ *  "이 버전이 왜 만들어졌는지"의 대체 사유라 은퇴 사유로 덮어쓰면 계보가 훼손된다.
+ *  은퇴 사유는 activity log details에만 기록한다. 가드 UPDATE와 로그 삽입을 단일
+ *  트랜잭션으로 묶어 은퇴와 기록이 갈라지지 않게 한다. */
 export async function retire(
   db: Db,
   input: { companyId: string; id: string; reason: unknown },
@@ -230,27 +236,29 @@ export async function retire(
     throw new Error("knowledge pattern cannot be retired (companyId is required)");
   }
   const reason = readTrimmed(input.reason, "reason", REASON_MAX, true)!;
-  const [updated] = await db
-    .update(companyKnowledgePatterns)
-    .set({ status: KNOWLEDGE_PATTERN_STATUS_RETIRED, supersedeReason: reason })
-    .where(and(
-      eq(companyKnowledgePatterns.id, input.id),
-      eq(companyKnowledgePatterns.companyId, input.companyId),
-      isNull(companyKnowledgePatterns.supersededById),
-      inArray(companyKnowledgePatterns.status, [KNOWLEDGE_PATTERN_STATUS_ACTIVE, KNOWLEDGE_PATTERN_STATUS_DRAFT]),
-    ))
-    .returning();
-  if (!updated) {
-    throw new Error("knowledge pattern cannot be retired (missing, belongs to another company, already superseded, or not active/draft)");
-  }
-  await db.insert(activityLog).values({
-    companyId: input.companyId,
-    actorType: "system",
-    actorId: "knowledge-patterns",
-    action: "knowledge_pattern.retired",
-    entityType: "knowledge_pattern",
-    entityId: updated.id,
-    details: { kind: updated.kind, title: updated.title, reason },
+  return await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(companyKnowledgePatterns)
+      .set({ status: KNOWLEDGE_PATTERN_STATUS_RETIRED })
+      .where(and(
+        eq(companyKnowledgePatterns.id, input.id),
+        eq(companyKnowledgePatterns.companyId, input.companyId),
+        isNull(companyKnowledgePatterns.supersededById),
+        inArray(companyKnowledgePatterns.status, [KNOWLEDGE_PATTERN_STATUS_ACTIVE, KNOWLEDGE_PATTERN_STATUS_DRAFT]),
+      ))
+      .returning();
+    if (!updated) {
+      throw new Error("knowledge pattern cannot be retired (missing, belongs to another company, already superseded, or not active/draft)");
+    }
+    await tx.insert(activityLog).values({
+      companyId: input.companyId,
+      actorType: "system",
+      actorId: "knowledge-patterns",
+      action: "knowledge_pattern.retired",
+      entityType: "knowledge_pattern",
+      entityId: updated.id,
+      details: { kind: updated.kind, title: updated.title, reason },
+    });
+    return updated;
   });
-  return updated;
 }

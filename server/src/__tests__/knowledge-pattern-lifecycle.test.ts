@@ -104,7 +104,8 @@ describeEP("knowledge pattern lifecycle (supersede lineage + retire)", () => {
     const card = await seedCard({ title: "은퇴 대상 카드" });
     const retired = await retire(db, { companyId, id: card.id, reason: "더 이상 유효하지 않은 조직 관행" });
     expect(retired.status).toBe("retired");
-    expect(retired.supersedeReason).toBe("더 이상 유효하지 않은 조직 관행");
+    // [B2] retire는 supersedeReason을 덮어쓰지 않는다 — 은퇴 사유는 activity log에만 남는다.
+    expect(retired.supersedeReason).toBeNull();
     expect(retired.supersededById).toBeNull();
 
     // 현재 search 필터: includeDrafts 미지정 시 status='active' 고정 → retired는 기본 제외.
@@ -115,7 +116,52 @@ describeEP("knowledge pattern lifecycle (supersede lineage + retire)", () => {
     expect(withDrafts.some((c) => c.id === card.id && c.status === "retired")).toBe(true);
 
     const logs = await db.select().from(activityLog);
-    expect(logs.some((row) => row.action === "knowledge_pattern.retired" && row.entityId === card.id)).toBe(true);
+    const retireLog = logs.find((row) => row.action === "knowledge_pattern.retired" && row.entityId === card.id);
+    expect(retireLog).toBeTruthy();
+    expect((retireLog!.details as { reason?: string }).reason).toBe("더 이상 유효하지 않은 조직 관행");
+  });
+
+  // [B2] 체인 헤드가 이미 대체 사유를 갖고 있어도 은퇴가 그것을 덮어쓰지 않는다 —
+  //   supersedeReason은 "이 버전이 왜 만들어졌는지"의 계보라 은퇴 사유와 다른 계약이다.
+  it("retire preserves an existing supersedeReason — the retire reason lives only in the activity log", async () => {
+    const root = await seedCard({ title: "보존 체인 루트" });
+    const head = await supersedeWithLineage(db, {
+      companyId, existingId: root.id, reason: "v1 판정이 틀렸다", next: nextCard({ title: "보존 체인 헤드" }),
+    });
+    expect(head.supersedeReason).toBe("v1 판정이 틀렸다");
+
+    const retired = await retire(db, { companyId, id: head.id, reason: "말단 폐기" });
+    expect(retired.status).toBe("retired");
+    expect(retired.supersedeReason).toBe("v1 판정이 틀렸다");
+    const [row] = await db.select().from(companyKnowledgePatterns).where(eq(companyKnowledgePatterns.id, head.id));
+    expect(row!.supersedeReason).toBe("v1 판정이 틀렸다");
+
+    const logs = await db.select().from(activityLog);
+    const retireLog = logs.find((entry) => entry.action === "knowledge_pattern.retired" && entry.entityId === head.id);
+    expect((retireLog!.details as { reason?: string }).reason).toBe("말단 폐기");
+  });
+
+  // [B2] pitfalls 계보 병합 상한(60) — 무상한 누적 방지. 초과 시 배열 앞쪽(구 카드
+  //   계승분 = 가장 오래된 교훈)부터 잘라 최근 입력을 유지한다.
+  it("caps merged pitfalls at 60, dropping the oldest lineage entries and keeping recent ones", async () => {
+    const existing = Array.from({ length: 55 }, (_, i) => `기존 교훈 ${i}`);
+    const [seeded] = await db.insert(companyKnowledgePatterns).values({
+      companyId,
+      kind: "failure_mode",
+      title: "pitfalls 상한 시드",
+      summary: "병합 상한 검증용 — 55개 계승분을 직접 심는다.",
+      source: "operator",
+      pitfalls: existing,
+    }).returning();
+
+    const incoming = Array.from({ length: 10 }, (_, i) => `새 교훈 ${i}`);
+    const v2 = await supersedeWithLineage(db, {
+      companyId, existingId: seeded.id, reason: "상한 검증",
+      next: nextCard({ title: "상한 v2", pitfalls: incoming }),
+    });
+    expect(v2.pitfalls).toHaveLength(60);
+    expect(v2.pitfalls[0]).toBe("기존 교훈 5"); // 가장 오래된 5개(0~4)는 잘린다
+    expect(v2.pitfalls[59]).toBe("새 교훈 9"); // 최근 입력 10개는 전부 유지
   });
 
   it("rejects retiring superseded/retired cards and superseding a retired (chain-terminal) card", async () => {

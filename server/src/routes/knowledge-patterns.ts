@@ -12,7 +12,7 @@ import { workflowRuns, workflowStepRuns } from "@paperclipai/db";
 import type { Db } from "@paperclipai/db";
 import { knowledgePatternEntitiesSchema } from "@paperclipai/shared/validators/knowledge-pattern";
 import { knowledgePatternsService } from "../services/knowledge-patterns.js";
-import { KnowledgePatternDuplicateSignatureError } from "../services/knowledge-pattern-evidence-gate.js";
+import { KNOWLEDGE_PATTERN_SEARCH_LIMIT_MAX, KnowledgePatternDuplicateSignatureError, SOURCES } from "../services/knowledge-pattern-evidence-gate.js";
 import { readQueryEntityList } from "../services/knowledge-pattern-read.js";
 import { retire } from "../services/knowledge-pattern-lifecycle.js";
 import { formatKnowledgePatternBriefs } from "../services/knowledge-pattern-brief.js";
@@ -47,9 +47,9 @@ const createKnowledgePatternSchema = z.object({
   symbols: knowledgePatternEntitiesSchema.shape.symbols,
   coupled: knowledgePatternEntitiesSchema.shape.coupled,
   errorSignatures: knowledgePatternEntitiesSchema.shape.errorSignatures,
-  source: z.enum(["mission_owner_compile", "agent_candidate", "operator", "auto_rework_draft"]).optional(),
-  // [T2b] 중복 서명 — QA 기계 서명은 sha256 hex(64자). 동일 회사 기존 카드와 겹치면 409.
-  defectSignature: z.string().trim().min(1).max(200).optional(),
+  source: z.enum(SOURCES).optional(),
+  // [T2b] 중복 서명 — sha256 hex(64자)만 허용(선택 필드). 형식 위반 422, 동일 서명은 서비스에서 409.
+  defectSignature: z.string().trim().regex(/^[0-9a-f]{64}$/).optional(),
   supersedeId: z.string().trim().min(1).optional(),
 });
 
@@ -61,6 +61,10 @@ function parseQueryEntities(value: unknown, field: "files" | "symbols"): string[
     throw unprocessable(error instanceof Error ? error.message : String(error));
   }
 }
+
+// search-brief·explain 공용 — 같은 조립(q+files+symbols, 빈 문자열 제외)이 같은 랭킹 입력을 보장한다.
+const buildQueryContextTexts = (q: string | null, files: readonly string[] | null, symbols: readonly string[] | null): string[] =>
+  [q ?? "", ...(files ?? []), ...(symbols ?? [])].filter((text) => text.trim() !== "");
 
 export function knowledgePatternsRoutes(db: Db) {
   const router = Router();
@@ -94,7 +98,7 @@ export function knowledgePatternsRoutes(db: Db) {
     if (req.query.format === "brief") {
       // via 라벨은 검색 행위 자체가 버리므로 같은 문맥으로 엔진을 한 번 더 돌려 경유 표시만 회수한다
       //   (순수 함수·행 수 상한 내 — 점수 재정렬에는 쓰지 않고 via 맵만 읽는다).
-      const contextTexts = [q ?? "", ...(files ?? []), ...(symbols ?? [])].filter((text) => text.trim() !== "");
+      const contextTexts = buildQueryContextTexts(q, files, symbols);
       const viaById = new Map(
         selectRelatedKnowledgePatterns(patterns, contextTexts, Math.max(1, patterns.length))
           .filter((entry) => entry.via)
@@ -112,9 +116,9 @@ export function knowledgePatternsRoutes(db: Db) {
     assertBoard(req);
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
-    const q = typeof req.query.q === "string" ? req.query.q : "";
-    const contextTexts = [q, ...(parseQueryEntities(req.query.files, "files") ?? []), ...(parseQueryEntities(req.query.symbols, "symbols") ?? [])].filter((text) => text.trim() !== "");
-    const patterns = await svc.search({ companyId, includeDrafts: req.query.includeDrafts !== "false", includeSuperseded: req.query.includeSuperseded === "true", limit: 200 });
+    const q = typeof req.query.q === "string" ? req.query.q : null;
+    const contextTexts = buildQueryContextTexts(q, parseQueryEntities(req.query.files, "files"), parseQueryEntities(req.query.symbols, "symbols"));
+    const patterns = await svc.search({ companyId, includeDrafts: req.query.includeDrafts !== "false", includeSuperseded: req.query.includeSuperseded === "true", limit: KNOWLEDGE_PATTERN_SEARCH_LIMIT_MAX });
     res.json({ explanations: explainRelatedKnowledgePatterns(patterns, contextTexts) });
   });
 
@@ -160,8 +164,9 @@ export function knowledgePatternsRoutes(db: Db) {
       });
     } catch (error) {
       // 서비스 계약 오류를 복구 불가 500이 아니라 재시도 가능한 4xx로 매핑(감독 루프 보호).
+      //   서명 중복은 서비스의 typed error로 instanceof 분류 — 나머지는 일반 Error 문자열 계약 유지(최소 변경).
       const message = error instanceof Error ? error.message : String(error);
-      if (error instanceof KnowledgePatternDuplicateSignatureError || message.startsWith("knowledge pattern defect signature")) {
+      if (error instanceof KnowledgePatternDuplicateSignatureError) {
         next(conflict(message));
         return;
       }
@@ -169,12 +174,7 @@ export function knowledgePatternsRoutes(db: Db) {
         next(conflict("Supersede target was replaced by another card; re-read and supersede the new head"));
         return;
       }
-      if (
-        message.startsWith("knowledge pattern evidence")
-        || message.startsWith("knowledge pattern entity")
-        || message.includes("supersede target must exist in the same company")
-        || message.includes("is retired")
-      ) {
+      if (message.startsWith("knowledge pattern evidence") || message.startsWith("knowledge pattern entity") || message.includes("supersede target must exist in the same company") || message.includes("is retired")) {
         next(unprocessable(message));
         return;
       }

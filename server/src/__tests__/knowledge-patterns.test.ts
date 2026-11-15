@@ -10,6 +10,7 @@ import {
 } from "./helpers/embedded-postgres.js";
 import { knowledgePatternsService } from "../services/knowledge-patterns.js";
 import { KnowledgePatternDuplicateSignatureError } from "../services/knowledge-pattern-evidence-gate.js";
+import { supersedeWithLineage } from "../services/knowledge-pattern-lifecycle.js";
 import { formatKnowledgePatternBriefs, BRIEF_MAX_CHARS } from "../services/knowledge-pattern-brief.js";
 import { knowledgePatternsRoutes } from "../routes/knowledge-patterns.js";
 import { errorHandler } from "../middleware/index.js";
@@ -472,7 +473,8 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
   // [T2b 서명 중복 — 후보⑤] 첫 등록은 성공, 같은 회사 동일 서명 재등록은 명시적 충돌.
   it("duplicate defect signature rejects inside the transaction and maps to 409 on the route", async () => {
     const svc = knowledgePatternsService(db);
-    const signature = `sig-${randomUUID()}`;
+    // [B2] 라우트는 sha256 hex(64자)만 통과시키므로 라우트 경유 경합도 64-hex로 맞춘다.
+    const signature = randomUUID().replace(/-/g, "").repeat(2);
     const first = await svc.create(sampleCard({ title: "서명 원본 카드", defectSignature: signature }));
     expect(first.defectSignature).toBe(signature);
     await expect(svc.create(sampleCard({ title: "서명 중복 카드", defectSignature: signature })))
@@ -549,7 +551,8 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
       .send({ reason: "조직 관행 변경으로 폐기" });
     expect(ok.status).toBe(200);
     expect(ok.body.card.status).toBe("retired");
-    expect(ok.body.card.supersedeReason).toBe("조직 관행 변경으로 폐기");
+    // [B2] retire는 supersedeReason을 덮어쓰지 않는다 — 신규 카드는 null 유지, 사유는 activity log에만.
+    expect(ok.body.card.supersedeReason).toBeNull();
 
     const superseded = await request(boardApp)
       .post(`/api/companies/${companyId}/knowledge-patterns/${old.id}/retire`)
@@ -628,7 +631,8 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
   // [F1a] 동시 중복 defectSignature 경합에서 Postgres 23505가 KnowledgePatternDuplicateSignatureError(409)로 변환된다.
   it("concurrent duplicate defect signature race maps 23505 to 409 without leaking 500", async () => {
     const app = buildApp(boardActor());
-    const signature = `race-sig-${randomUUID()}`;
+    // [B2] 라우트 진입 검증이 sha256 hex(64자)를 요구하므로 경합 페이로드도 그 형식으로.
+    const signature = randomUUID().replace(/-/g, "").repeat(2);
     const payload = { kind: "failure_mode", title: "동시 서명 경합", summary: "23505 경합 시 409 매핑.", evidence: [], defectSignature: signature };
     const [a, b] = await Promise.all([
       request(app).post(`/api/companies/${companyId}/knowledge-patterns`).send(payload),
@@ -637,6 +641,132 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
     expect([a.status, b.status].sort()).toEqual([201, 409]);
     const errWithNull = new KnowledgePatternDuplicateSignatureError(null);
     expect(errWithNull.existingCardId).toBeNull();
+  });
+
+  // [B2] defectSignature 형식 검증 — 선택 필드지만 제출 시 sha256 hex(64자)만 허용.
+  //   짧은 값·비hex 문자·대문자 hex는 진입 검증에서 422(500 금지), 정상 64자는 통과.
+  it("routes: defectSignature must be sha256 hex — malformed values get 422, valid 64-hex passes", async () => {
+    const app = buildApp(boardActor());
+    const base = {
+      kind: "failure_mode",
+      title: "서명 형식 검증 카드",
+      summary: "defectSignature 형식이 계약(sha256 hex 64자)과 다르면 422.",
+      evidence: [],
+      source: "operator",
+    };
+    for (const bad of ["sig-123", `${"ab".repeat(31)}gg`, "AB".repeat(32), "ab".repeat(31)]) {
+      const res = await request(app).post(`/api/companies/${companyId}/knowledge-patterns`).send({ ...base, defectSignature: bad });
+      expect(res.status).toBe(422);
+    }
+    const signature = "ab".repeat(32);
+    const ok = await request(app)
+      .post(`/api/companies/${companyId}/knowledge-patterns`)
+      .send({ ...base, title: "서명 정상 카드", defectSignature: signature });
+    expect(ok.status).toBe(201);
+    expect(ok.body.defectSignature).toBe(signature);
+  });
+
+  // [B2] 409 메시지 — 실제 계약 안내: 동일 서명 재등록 불가이며 supersede가 슬롯을
+  //   해제하지 않는다(체인 헤드가 서명을 계승). "supersede하라"는 오안내를 제거했다.
+  it("routes: duplicate signature 409 message explains the real contract (no slot release via supersede)", async () => {
+    const svc = knowledgePatternsService(db);
+    const signature = randomUUID().replace(/-/g, "").repeat(2);
+    await svc.create(sampleCard({ title: "서명 점유 원본", defectSignature: signature }));
+    const app = buildApp(boardActor());
+    const res = await request(app)
+      .post(`/api/companies/${companyId}/knowledge-patterns`)
+      .send({ kind: "failure_mode", title: "서명 재등록 시도", summary: "중복 서명 409 메시지 검증.", evidence: [], defectSignature: signature });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain("already registered");
+    expect(res.body.error).toContain("supersede does not free the signature slot");
+    expect(res.body.error).not.toContain("supersede that card instead");
+  });
+
+  // [B2] retire supersedeReason 보존 — 라우트 경유 은퇴도 대체 사유를 덮어쓰지 않고,
+  //   은퇴 사유는 activity log details에만 기록된다.
+  it("routes: retire preserves an existing supersedeReason and records the reason only in the activity log", async () => {
+    const svc = knowledgePatternsService(db);
+    const base = await svc.create(sampleCard({ title: "보존 체인 원본" }));
+    const head = await supersedeWithLineage(db, {
+      companyId, existingId: base.id, reason: "체인 생성 사유",
+      next: {
+        kind: "failure_mode", title: "보존 체인 헤드", summary: "라우트 은퇴 보존 검증.",
+        evidence: [{ type: "workflow_run", id: evidenceWorkflowRunId }], source: "mission_owner_compile",
+      },
+    });
+    expect(head.supersedeReason).toBe("체인 생성 사유");
+
+    const boardApp = buildApp(boardActor());
+    const res = await request(boardApp)
+      .post(`/api/companies/${companyId}/knowledge-patterns/${head.id}/retire`)
+      .send({ reason: "운영 폐기" });
+    expect(res.status).toBe(200);
+    expect(res.body.card.status).toBe("retired");
+    expect(res.body.card.supersedeReason).toBe("체인 생성 사유");
+
+    const [row] = await db.select().from(companyKnowledgePatterns).where(eq(companyKnowledgePatterns.id, head.id));
+    expect(row!.supersedeReason).toBe("체인 생성 사유");
+    const logs = await db.select().from(activityLog);
+    const retireLog = logs.find((entry) => entry.action === "knowledge_pattern.retired" && entry.entityId === head.id);
+    expect((retireLog!.details as { reason?: string }).reason).toBe("운영 폐기");
+  });
+
+  // [B2] search-brief·explain 랭킹 입력 일치 — 같은 질의(q+files+symbols)는 같은
+  //   contextTexts로 조립되므로 두 경로가 같은 상위 카드를 보여야 한다.
+  it("routes: search-brief and explain share the same ranking input — same query surfaces the same top card", async () => {
+    const svc = knowledgePatternsService(db);
+    const top = await svc.create(sampleCard({
+      title: "B2 랭킹 정점 카드",
+      summary: "search-brief와 explain의 랭킹 입력 일치 검증.",
+      symbols: ["b2RankingProbeSymbol"],
+    }));
+    await svc.create(sampleCard({ title: "B2 무관 카드", summary: "질의와 무관한 카드.", source: "operator", createdByAgentId: null }));
+
+    const app = buildApp(boardActor());
+    const query = `q=${encodeURIComponent("랭킹")}&symbols=${encodeURIComponent("b2RankingProbeSymbol")}`;
+    const brief = await request(app).get(`/api/companies/${companyId}/knowledge-patterns?format=brief&${query}`);
+    expect(brief.status).toBe(200);
+    expect(brief.body.briefs[0]).toContain("[failure_mode] B2 랭킹 정점 카드");
+
+    const explain = await request(app).get(`/api/companies/${companyId}/knowledge-patterns/explain?${query}`);
+    expect(explain.status).toBe(200);
+    expect(explain.body.explanations[0].id).toBe(top.id);
+    expect(explain.body.explanations[0].title).toBe("B2 랭킹 정점 카드");
+  });
+
+  // [B1] 브리핑 절단 서로게이트 안전 — UTF-16 상한 절단이 쌍 중간을 끊지 않는다.
+  //   고서로게이트가 경계에 오면 1유닛 더 빼고, 온전한 쌍은 살린다.
+  it("brief truncation never splits a surrogate pair at field or whole-brief boundaries", async () => {
+    const loneSurrogate = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    const base = {
+      kind: "failure_mode" as const, versionNumber: 1, pitfalls: [] as string[],
+      whatWorked: null as string | null, coupled: [] as string[], files: [] as string[], symbols: [] as string[],
+    };
+    // 필드 절단 경계 — 88문자 + 이모지는 89유닛 경계가 쌍 중간 → 고서로게이트를 버리고,
+    //   87문자 + 이모지는 쌍이 온전히 들어오면 그대로 살린다.
+    const midPair = { ...base, id: randomUUID(), title: `${"T".repeat(88)}😀꼬리` };
+    const wholePair = { ...base, id: randomUUID(), title: `${"T".repeat(87)}😀꼬리` };
+    const pairBriefs = formatKnowledgePatternBriefs([midPair, wholePair]);
+    expect(pairBriefs[0]).toContain(`${"T".repeat(88)}…`);
+    expect(pairBriefs[1]).toContain(`${"T".repeat(87)}😀…`);
+    for (const brief of pairBriefs) expect(brief).not.toMatch(loneSurrogate);
+
+    // 브리핑 전체 절단(BRIEF_MAX_CHARS) 경로 — 조립 결과가 상한을 넘을 때 최종 절단이
+    //   coupled 필드 안의 이모지 쌍 중간에 걸리도록 필드 길이를 맞췄다(결정적 경계).
+    const boundary = {
+      ...base, id: randomUUID(),
+      title: "t".repeat(60),
+      pitfalls: ["p".repeat(43)],
+      whatWorked: "w".repeat(55),
+      coupled: [`${"c".repeat(8)}😀${"c".repeat(50)}`],
+    };
+    const [whole] = formatKnowledgePatternBriefs([boundary], {
+      contextTexts: ["ctx"],
+      viaById: new Map([[boundary.id, ["v".repeat(80)]]]),
+    });
+    expect(whole.length).toBeLessThanOrEqual(BRIEF_MAX_CHARS);
+    expect(whole).not.toMatch(loneSurrogate);
+    expect(whole.endsWith("c…")).toBe(true);
   });
 });
 
