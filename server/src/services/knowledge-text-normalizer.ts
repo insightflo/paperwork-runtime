@@ -28,11 +28,13 @@ export function uniqueFileName(pathRef: string): string {
   return segments[segments.length - 1] ?? pathRef;
 }
 
-/** `@/` 별칭 해석 — 입력받은 별칭 맵에서 긴 키부터 접두사 치환(하드코딩 금지). */
+/** `@/` 별칭 해석 — 입력받은 별칭 맵에서 긴 키부터 접두사 치환(하드코딩 금지).
+ *  별칭 값도 공유 경로 규칙으로 정규화해 `ref === key`(값 그대로 반환)와 접두사
+ *  치환(정규화 통과) 두 경로의 canonical form을 맞춘다. 키는 리터럴 접두사라 그대로 둔다. */
 export function resolvePathAlias(ref: string, aliasMap: Readonly<Record<string, string>>): string {
   const keys = Object.keys(aliasMap).sort((left, right) => right.length - left.length);
   for (const key of keys) {
-    const root = aliasMap[key]!.replace(/\/+$/, "");
+    const root = normalizeKnowledgePatternEntityPath(aliasMap[key]!).replace(/\/+$/, "");
     if (ref === key) return root;
     if (ref.startsWith(`${key}/`)) {
       return normalizeKnowledgePatternEntityPath(`${root}/${ref.slice(key.length + 1)}`);
@@ -60,12 +62,14 @@ export function stemKoreanParticle(word: string): string {
   return word;
 }
 
-/** 서브워드 분리 — camelCase/PascalCase/약어 경계(HTTPServer→http+server)·snake_case·한영 경계. */
+/** 서브워드 분리 — camelCase/PascalCase/약어 경계(HTTPServer→http+server)·snake_case·
+ *  kebab-case(하이픈 복합어)·한영 경계. 하이픈 포함 고유명은 여기서 부분만 반환하며
+ *  원형 전체 토큰은 normalizeKnowledgeTokens이 별도로 함께 색인한다(둘 다 매칭 가능). */
 export function splitSubWords(token: string): string[] {
   const spaced = token
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-    .replace(/_+/gu, " ")
+    .replace(/[_-]+/gu, " ")
     .replace(/(\p{Script=Hangul}+)([A-Za-z0-9]+)/gu, "$1 $2")
     .replace(/([A-Za-z0-9]+)(\p{Script=Hangul}+)/gu, "$1 $2");
   return spaced
@@ -91,7 +95,26 @@ export function isKnowledgeStopword(token: string): boolean {
   return STOPWORDS.has(token.toLowerCase());
 }
 
-/** 텍스트 → 정규화 토큰(중복 제거·등장순) — 문장부호 제거→서브워드→조사→불용어·길이 필터. */
+/** 이 길이 미만의 엔티티 키는 부분문자열 대신 토큰 경계 매칭을 요구한다. */
+export const MIN_SUBSTRING_ENTITY_KEY_LENGTH = 8;
+
+/** 엔티티 키↔문맥 매칭 — 짧은 키는 공백 분리 부분이 모두 문맥 토큰 집합에 있어야 히트
+ *  ("get"⊄"target", "503"⊄"15034" 같은 단어 경계 오탐 차단 — 한국어 토큰엔 \b가 없어
+ *  정규식 경계 대신 토큰 집합 정확 일치). 긴 고유 문자열(오류 서명 등)은 부분매칭 오탐
+ *  위험이 적고 recall에 필요해 기존 부분문자열을 유지한다. */
+export function corpusHasEntityKey(
+  key: string,
+  contextCorpus: string,
+  contextTokens: ReadonlySet<string>,
+): boolean {
+  return key.length >= MIN_SUBSTRING_ENTITY_KEY_LENGTH
+    ? contextCorpus.includes(key)
+    : key.split(" ").every((part) => contextTokens.has(part));
+}
+
+/** 텍스트 → 정규화 토큰(중복 제거·등장순) — 문장부호 제거→정크 가드(문자·숫자 없는
+ *  "---"/"___" 같은 장식 토큰 폐기)→서브워드→조사→불용어·길이 필터. 하이픈 토큰은
+ *  원형도 함께 색인한다(x-y → "x-y"+"x"+"y" — 복합어 고유명 매칭과 부분 recall을 둘 다 보존). */
 export function normalizeKnowledgeTokens(text: string): string[] {
   const rawTokens = text
     .replace(/[^\p{L}\p{N}\s_-]+/gu, " ")
@@ -100,6 +123,14 @@ export function normalizeKnowledgeTokens(text: string): string[] {
   const seen = new Set<string>();
   const tokens: string[] = [];
   for (const rawToken of rawTokens) {
+    if (!/[\p{L}\p{N}]/u.test(rawToken)) continue;
+    if (rawToken.includes("-")) {
+      const whole = rawToken.replace(/^-+|-+$/g, "").toLowerCase();
+      if (whole.length >= 2 && !isKnowledgeStopword(whole) && !seen.has(whole)) {
+        seen.add(whole);
+        tokens.push(whole);
+      }
+    }
     for (const part of splitSubWords(rawToken)) {
       const stemmed = stemKoreanParticle(part);
       if (stemmed.length < 2 || isKnowledgeStopword(stemmed)) continue;

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  knowledgePatternEntitiesSchema,
+  normalizeKnowledgePatternEntityPath,
+} from "@paperclipai/shared/validators/knowledge-pattern";
+import {
   isKnowledgeStopword,
   normalizeCodePathRef,
   normalizeKnowledgeTokens,
@@ -10,7 +14,10 @@ import {
   uniqueFileName,
 } from "../services/knowledge-text-normalizer.js";
 import { propagateCoupledPatterns } from "../services/knowledge-pattern-graph.js";
-import { selectRelatedKnowledgePatterns } from "../services/knowledge-pattern-relevance.js";
+import {
+  explainRelatedKnowledgePatterns,
+  selectRelatedKnowledgePatterns,
+} from "../services/knowledge-pattern-relevance.js";
 
 // [T1b — mistology 흡수 관련도 엔진] 순수 함수 단위 테스트(DB 기동 없음, ms 단위).
 //   normalizer: 스택트레이스/diff 경로 정규화·한국어 조사 스테밍·서브워드 분리·불용어.
@@ -64,6 +71,42 @@ describe("knowledge-text-normalizer", () => {
     expect(tokens).not.toContain("the");
     expect(tokens).not.toContain("함수");
   });
+
+  it("splits hyphenated compounds while indexing the whole token too, and drops decoration-only tokens", () => {
+    expect(splitSubWords("plugin-webhook-receipt")).toEqual(["plugin", "webhook", "receipt"]);
+    const tokens = normalizeKnowledgeTokens("plugin-webhook-receipt 전달 --- ---");
+    expect(tokens).toContain("plugin-webhook-receipt"); // 하이픈 고유명 원형도 색인
+    expect(tokens).toEqual(expect.arrayContaining(["plugin", "webhook", "receipt"]));
+    expect(tokens).not.toContain("---"); // 마크다운 수평선 장식은 정크 가드가 폐기
+    expect(tokens).not.toContain("-");
+  });
+});
+
+describe("shared entity-path normalization (F2 precision)", () => {
+  it("strips ./ before the diff prefix so './a/x.ts' and 'a/x.ts' canonicalize identically", () => {
+    expect(normalizeKnowledgePatternEntityPath("./a/server/src/x.ts")).toBe("server/src/x.ts");
+    expect(normalizeKnowledgePatternEntityPath("a/server/src/x.ts")).toBe("server/src/x.ts");
+    expect(normalizeKnowledgePatternEntityPath("  ./a/server/src/x.ts  ")).toBe("server/src/x.ts"); // trim 흡수
+    expect(normalizeKnowledgePatternEntityPath("a/./x.ts")).toBe("x.ts"); // 접두사 제거 후 남은 ./도 제거
+    expect(normalizeCodePathRef("./a/server/src/x.ts")).toBe("server/src/x.ts");
+    expect(normalizeCodePathRef("b/./x//y.ts")).toBe("x/y.ts"); // 기존 계약 회귀 없음
+  });
+
+  it("rejects junk refs with no meaningful segment and dedupes files/coupled case-insensitively", () => {
+    for (const junk of [".", "..", "/", "./", "//"]) {
+      const parsed = knowledgePatternEntitiesSchema.safeParse({ files: [junk] });
+      expect(parsed.success, `junk ref ${junk} should be rejected`).toBe(false);
+    }
+    const parsed = knowledgePatternEntitiesSchema.parse({
+      files: ["Server/src/A.ts", "server/src/a.ts"],
+      symbols: ["Sym", "sym"], // 심볼은 대소문자 구분 dedupe 유지
+      coupled: ["./UI/App.tsx", "ui/app.tsx"],
+      errorSignatures: [],
+    });
+    expect(parsed.files).toEqual(["Server/src/A.ts"]); // 첫 등장 표기 보존
+    expect(parsed.symbols).toEqual(["Sym", "sym"]);
+    expect(parsed.coupled).toEqual(["UI/App.tsx"]);
+  });
 });
 
 describe("knowledge-pattern-graph (files→coupled 1-hop propagation)", () => {
@@ -101,6 +144,13 @@ describe("knowledge-pattern-graph (files→coupled 1-hop propagation)", () => {
     const cards = [row("a", ["server/src/a.ts"], []), row("b", ["b.ts"], ["server/src/a.ts"])];
     const propagation = propagateCoupledPatterns(cards, ["a/server\\src\\a.ts:10:2"]);
     expect(propagation.get("b")?.via).toEqual(["server/src/a.ts"]);
+  });
+
+  it("never propagates a card to itself when it anchors and couples the same entity", () => {
+    const cards = [row("self", ["x.ts"], ["x.ts"]), row("other", ["y.ts"], ["x.ts"])];
+    const propagation = propagateCoupledPatterns(cards, ["x.ts"]);
+    expect(propagation.has("self")).toBe(false); // 자기 files 앵커 → 자기 coupled 전파 금지
+    expect(propagation.get("other")?.via).toEqual(["x.ts"]); // 외부 결합 전파는 유지
   });
 });
 
@@ -206,5 +256,39 @@ describe("selectRelatedKnowledgePatterns (entity zones + guards)", () => {
     );
     expect(withAlias.map((entry) => entry.id)).toEqual(["c1"]);
     expect(selectRelatedKnowledgePatterns(cards, ["@/services/foo.ts 수정"])).toEqual([]);
+  });
+
+  it("matches short entity keys only on token boundaries — 'get' ⊄ 'target', '503' ⊄ '15034'", () => {
+    const cards = [
+      entityCard("sym-get", { symbols: ["get"], title: "무관 카드", symptoms: null }),
+      entityCard("sig-503", { errorSignatures: ["503"], title: "무관 카드", symptoms: null }),
+    ];
+    expect(selectRelatedKnowledgePatterns(cards, ["target fetch 실패"])).toEqual([]);
+    expect(selectRelatedKnowledgePatterns(cards, ["error 15034 발생"])).toEqual([]);
+    // 단어 경계에선 짧은 키도 정상 히트한다(토큰 정확 일치).
+    const bounded = selectRelatedKnowledgePatterns(cards, ["get 요청 503 응답"]);
+    expect(bounded.map((entry) => entry.id).sort()).toEqual(["sig-503", "sym-get"]);
+    // 긴 키(≥8자, 서명 등)는 기존 부분문자열 계약 유지.
+    const long = selectRelatedKnowledgePatterns(
+      [entityCard("sig-long", { errorSignatures: ["econnreset"], title: "무관", symptoms: null })],
+      ["prefixeconnreset 중 발생"],
+    );
+    expect(long.map((entry) => entry.id)).toEqual(["sig-long"]);
+  });
+
+  it("omits via labels for propagated entities that are strictly shadowed by direct hits", () => {
+    const cards = [
+      entityCard("hub", { files: ["x.ts", "a.ts", "b.ts", "c.ts"], title: "허브 앵커", symptoms: null }),
+      entityCard("tight", { files: ["y.ts"], title: "타이트 앵커", symptoms: null }),
+      entityCard("shadowed", { coupled: ["x.ts"], title: "감쇠 결합 카드", symptoms: null }),
+      entityCard("lit", { coupled: ["y.ts"], title: "정상 결합 카드", symptoms: null }),
+    ];
+    const explained = explainRelatedKnowledgePatterns(cards, ["x.ts y.ts 문맥"]);
+    // hub가 유일 x.ts 앵커(files 4개 → 감쇠 0.25)라 전파 0.25 < 직접 coupled 1 → 0기여 → via 생략.
+    expect(explained.find((entry) => entry.id === "shadowed")?.via).toBeUndefined();
+    // tight 앵커 전파 1 = 직접 coupled 1 → 전파 엣지가 살아 있으므로 via 유지.
+    expect(explained.find((entry) => entry.id === "lit")?.via).toEqual(["y.ts"]);
+    // hub 자신에게는 어떤 전파도 가지 않는다(coupled 비어 있음 + 자기전파 금지).
+    expect(explained.find((entry) => entry.id === "hub")?.via).toBeUndefined();
   });
 });
