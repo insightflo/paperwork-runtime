@@ -36,7 +36,7 @@ function gate() { let resolve!: () => void; const promise = new Promise<void>((d
 async function turn() { await new Promise<void>((resolve) => setImmediate(resolve)); }
 async function waitUntil(check: () => Promise<boolean> | boolean) {
   // [2026-11-15 CI 느린 러너 대응] 턴 수 상한만으로는 CPU 굶주림에서 조기 만료된다 —
-  //   최소 시간 하한(10초)을 둬야 setImmediate 턴이 느리게 소진되는 환경에서도 기고리고,
+  //   최소 시간 하한(10초)을 둬야 setImmediate 턴이 느리게 소진되는 환경에서도 기다리고,
   //   절대 상한(30초)으로 영구 대기는 막는다. 빠른 환경은 통상 수십 ms 내 통과해 비용 0.
   const startedAt = Date.now();
   let polls = 0;
