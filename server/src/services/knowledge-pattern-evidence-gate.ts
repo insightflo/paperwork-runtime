@@ -32,6 +32,16 @@ import { selectRelatedKnowledgePatterns, type RelatedKnowledgePattern } from "./
 export const DEFECT_SIGNATURE_MAX = 200;
 export const KNOWLEDGE_PATTERN_SIGNATURE_UNIQUE_INDEX = "company_knowledge_patterns_company_signature_uq";
 
+/** 카드 출처 열거의 단일 원본 — create() 입력 게이트·라우트 Zod 검증·lifecycle의
+ *  supersede 입력 게이트가 같은 목록을 봐야 drift하지 않는다(세 곳 복제에서 통합).
+ *  services/knowledge-patterns.ts의 private 사본은 과업 파일 범위 밖이라 남는다 — 이
+ *  상수와 같은 리터럴을 유지하는 게 계약이다(어긋나면 라우트 통과 입력이 서비스에서 거부). */
+export const SOURCES = ["mission_owner_compile", "agent_candidate", "operator", "auto_rework_draft"] as const;
+
+/** explain 라우트가 요청하는 검색 상한 — searchKnowledgePatterns의 limit 캡(read.ts)과
+ *  동일 값. 진단이 가시 집합 전체를 대상으로 하므로 허용 최대치를 명시 상수로 둔다. */
+export const KNOWLEDGE_PATTERN_SEARCH_LIMIT_MAX = 200;
+
 /** 동일 회사의 defect_signature 중복 충돌 — 사전 조회와 INSERT 23505 경합 모두 이 타입으로 수렴(409). */
 export class KnowledgePatternDuplicateSignatureError extends Error {
   readonly existingCardId: string | null;
@@ -40,7 +50,7 @@ export class KnowledgePatternDuplicateSignatureError extends Error {
     const location = existingCardId
       ? `on card ${existingCardId}${status ? ` (status=${status})` : ""}`
       : "on an existing card";
-    super(`knowledge pattern defect signature already registered ${location}; supersede that card instead of duplicating`);
+    super(`knowledge pattern defect signature already registered ${location}; supersede does not free the signature slot (the chain head keeps it) — submit a different defectSignature or omit it`);
     this.name = "KnowledgePatternDuplicateSignatureError";
     this.existingCardId = existingCardId;
   }
