@@ -186,6 +186,8 @@ it("[①GREEN] artifact finding reworks the real producer and resolves only via 
   expect(resolved).toMatchObject({ state: "resolved", operation: "delegate_fix" });
   expect(resolved.evidence).toContainEqual(expect.objectContaining({ kind: "qa" }));
   expect(resolved.evidence).toContainEqual(expect.objectContaining({ kind: "artifact" }));
+  // [진단 — 느린 CI 틈 강제] 최종 동기화 직전 25초 대기로 미해결 비동기 작업 노출 시도.
+  await new Promise((r) => setTimeout(r, 25_000));
   await syncWorkflowRunState(db, w.workflowRunId);
   const [finishedRun] = await db.select().from(workflowRuns).where(eq(workflowRuns.id, w.workflowRunId));
   try {
