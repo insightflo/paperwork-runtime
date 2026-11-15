@@ -14,13 +14,7 @@
 // [비고] knowledge-patterns.ts와 서로 import하지 않는다(순환 방지).
 
 import type { KnowledgePattern } from "./knowledge-patterns.js";
-import {
-  corpusHasEntityKey,
-  extractFileRefs,
-  normalizeCodePathRef,
-  normalizeKnowledgeTokens,
-  resolvePathAlias,
-} from "./knowledge-text-normalizer.js";
+import { corpusHasEntityKey, extractFileRefs, normalizeCodePathRef, normalizeKnowledgeTokens, resolvePathAlias } from "./knowledge-text-normalizer.js";
 import { propagateCoupledPatterns } from "./knowledge-pattern-graph.js";
 
 export const DEFAULT_RELEVANCE_SCORE_LIMIT = 3;
@@ -44,6 +38,8 @@ export type RelatedKnowledgePattern = {
 export type RelevanceOptions = {
   /** 경로 별칭 맵(예: { "@": "server/src" }) — 제공될 때만 질의·카드 경로에 적용. */
   aliasMap?: Readonly<Record<string, string>>;
+  /** files 질의 값(정규식 추출 우회 — 확장자 없는 경로도 정확 매칭 대상이 되도록 직접 추가). */
+  fileRefs?: readonly string[];
 };
 
 type RelevanceCard = Pick<KnowledgePattern, "id" | "title" | "symptoms" | "rootCause" | "scopeTags"> &
@@ -85,6 +81,9 @@ const asArray = (value: readonly string[] | undefined): string[] => [...(value ?
 
 const collapseKey = (value: string): string => value.trim().toLowerCase().replace(/\s+/g, " ");
 
+/** 엔티티 히트 키의 영역 접두사(`sig:`·`sym:`·`file:`) 제거 — 첫 ':' 이후가 엔티티 원문. */
+const entityKey = (key: string): string => key.slice(key.indexOf(":") + 1);
+
 /** TF-IDF 부스트 — log2(1 + N/df)를 [1, IDF_CEILING]로 클램프(희소 상승·고빈도 붕괴 방어). */
 function idfBoost(documentFrequency: number, corpusSize: number): number {
   if (corpusSize <= 1 || documentFrequency <= 0) return 1;
@@ -93,24 +92,22 @@ function idfBoost(documentFrequency: number, corpusSize: number): number {
 
 function mergeHit(hits: Map<string, EntityHit>, key: string, hit: EntityHit): void {
   const previous = hits.get(key);
-  if (!previous) {
-    hits.set(key, hit);
-    return;
-  }
-  hits.set(key, {
-    weight: Math.max(previous.weight, hit.weight),
-    boostable: previous.boostable || hit.boostable,
-    strong: previous.strong || hit.strong,
-    zone: hit.weight > previous.weight ? hit.zone : previous.zone,
-  });
+  hits.set(key, previous
+    ? {
+        weight: Math.max(previous.weight, hit.weight),
+        boostable: previous.boostable || hit.boostable,
+        strong: previous.strong || hit.strong,
+        zone: hit.weight > previous.weight ? hit.zone : previous.zone,
+      }
+    : hit);
 }
 
 type PreparedRelevanceContext = {
   contextTokens: ReadonlySet<string>; contextCorpus: string; fileRefSet: ReadonlySet<string>;
   fileRefsByCard: ReadonlyMap<string, string[]>; symbolKeysByCard: ReadonlyMap<string, string[]>;
   fileDf: ReadonlyMap<string, number>; symbolDf: ReadonlyMap<string, number>;
-  propagation: ReturnType<typeof propagateCoupledPatterns>;
-  aliasMap: Readonly<Record<string, string>>; corpusSize: number;
+  propagation: ReturnType<typeof propagateCoupledPatterns>; aliasMap: Readonly<Record<string, string>>;
+  corpusSize: number;
 };
 
 /** 질의·코퍼스 전처리 — select/explain 공통 단일 소스. 토큰·파일 참조가 모두 없으면 null(매칭 불가). */
@@ -123,8 +120,10 @@ function prepareRelevanceContext(
   const contextTokens = new Set(normalizeKnowledgeTokens(contextText));
   const contextCorpus = collapseKey(contextText);
   const aliasMap = options.aliasMap ?? {};
+  // files 질의 값은 extractFileRefs(확장자 있는 경로만 추출)를 우회해 직접 합류시킨다 —
+  //   확장자 없는 경로(src/api/foo)도 정확 매칭 대상. 정규화·별칭 해석은 같은 파이프라인.
   const fileRefSet = new Set(
-    extractFileRefs(contextTexts)
+    [...extractFileRefs(contextTexts), ...(options.fileRefs ?? [])]
       .map((ref) => resolvePathAlias(normalizeCodePathRef(ref), aliasMap))
       .filter((ref) => ref.length > 0),
   );
@@ -154,15 +153,15 @@ function prepareRelevanceContext(
   return { contextTokens, contextCorpus, fileRefSet, fileRefsByCard, symbolKeysByCard, fileDf, symbolDf, propagation, aliasMap, corpusSize: cards.length };
 }
 
-/** 카드 1장 점수 + 근거 수집 — select는 근거를 버리고 explain은 그대로 반환한다(로직 단일 소스). */
+type ScoredCard = Omit<KnowledgePatternScoreExplanation, "id" | "title" | "passesMinScore" | "via"> & { via: string[] };
+
+/** 카드 1장 점수 + 근거 수집 — select는 근거를 버리고 explain은 그대로 반환한다(로직 단일 소스).
+ *  collectDiagnostics=false(핫패스 select)면 tagMatches/bodyTokenMatches/entities 수집·정렬을 건너뛴다. */
 function scoreKnowledgePatternCard(
   card: RelevanceCard,
   context: PreparedRelevanceContext,
-): {
-  score: number; via: string[]; tagMatches: string[]; bodyTokenMatches: string[];
-  entities: KnowledgePatternEntityContribution[];
-  requireMultiBody: KnowledgePatternScoreExplanation["requireMultiBody"];
-} {
+  collectDiagnostics: boolean,
+): ScoredCard {
   // 기존 계약 유지: 본문 토큰 세트에 스코프태그(소문자)를 포함한다(태그 단어 토큰 중복 +1).
   const bodyTokens = new Set([
     ...normalizeKnowledgeTokens(`${card.title ?? ""} ${card.symptoms ?? ""} ${card.rootCause ?? ""}`),
@@ -171,17 +170,21 @@ function scoreKnowledgePatternCard(
   ]);
   let score = 0;
   const tagMatches: string[] = [];
+  let tagHitCount = 0;
   for (const tag of card.scopeTags ?? []) {
     if (context.contextTokens.has(tag.toLowerCase())) {
       score += TAG_MATCH_SCORE;
-      tagMatches.push(tag);
+      tagHitCount += 1;
+      if (collectDiagnostics) tagMatches.push(tag);
     }
   }
   const bodyTokenMatches: string[] = [];
+  let bodyHitCount = 0;
   for (const token of bodyTokens) {
     if (token.length >= 2 && context.contextTokens.has(token)) {
       score += 1;
-      bodyTokenMatches.push(token);
+      bodyHitCount += 1;
+      if (collectDiagnostics) bodyTokenMatches.push(token);
     }
   }
 
@@ -189,14 +192,12 @@ function scoreKnowledgePatternCard(
   const hits = new Map<string, EntityHit>();
   for (const signature of asArray(card.errorSignatures)) {
     const key = collapseKey(signature);
-    if (key.length >= MIN_ENTITY_KEY_LENGTH && corpusHasEntityKey(key, context.contextCorpus, context.contextTokens)) {
+    if (key.length >= MIN_ENTITY_KEY_LENGTH && corpusHasEntityKey(key, context.contextCorpus, context.contextTokens))
       mergeHit(hits, `sig:${key}`, { weight: SIGNATURE_WEIGHT, boostable: false, strong: true, zone: "signature" });
-    }
   }
   for (const symbol of context.symbolKeysByCard.get(card.id) ?? []) {
-    if (symbol.length >= MIN_ENTITY_KEY_LENGTH && corpusHasEntityKey(symbol, context.contextCorpus, context.contextTokens)) {
+    if (symbol.length >= MIN_ENTITY_KEY_LENGTH && corpusHasEntityKey(symbol, context.contextCorpus, context.contextTokens))
       mergeHit(hits, `sym:${symbol}`, { weight: SYMBOL_WEIGHT, boostable: true, strong: true, zone: "symbol" });
-    }
   }
   for (const ref of context.fileRefsByCard.get(card.id) ?? []) {
     if (context.fileRefSet.has(ref)) mergeHit(hits, `file:${ref}`, { weight: FILE_WEIGHT, boostable: true, strong: true, zone: "file" });
@@ -224,27 +225,30 @@ function scoreKnowledgePatternCard(
   const entities: KnowledgePatternEntityContribution[] = [];
   for (const [key, hit] of hits) {
     if (hit.strong) hasStrongEntity = true;
-    const idf = hit.boostable
-      ? key.startsWith("sym:")
-        ? idfBoost(context.symbolDf.get(key.slice(4)) ?? 1, context.corpusSize)
-        : idfBoost(context.fileDf.get(key.slice(5)) ?? 1, context.corpusSize)
-      : 1;
+    const entity = entityKey(key);
+    let idf = 1;
+    if (hit.boostable) {
+      const df = key.startsWith("sym:") ? context.symbolDf.get(entity) : context.fileDf.get(entity);
+      idf = idfBoost(df ?? 1, context.corpusSize);
+    }
     const contribution = hit.weight * idf;
     score += contribution;
-    entities.push({ zone: hit.zone, entity: key.slice(key.indexOf(":") + 1), weight: hit.weight, idf, contribution });
+    if (collectDiagnostics) entities.push({ zone: hit.zone, entity, weight: hit.weight, idf, contribution });
   }
-  entities.sort((left, right) => right.contribution - left.contribution);
+  if (collectDiagnostics) entities.sort((left, right) => right.contribution - left.contribution);
 
   // requireMultiBody: 본문 토큰 1개만 겹치고 태그·강한 엔티티 근거가 없으면 우연 일치로 0점.
-  const suppressed = bodyTokenMatches.length === 1 && tagMatches.length === 0 && !hasStrongEntity;
+  const suppressed = bodyHitCount === 1 && tagHitCount === 0 && !hasStrongEntity;
   if (suppressed) score = 0;
   return {
     score, via, tagMatches, bodyTokenMatches, entities,
-    requireMultiBody: { bodyHits: bodyTokenMatches.length, tagHits: tagMatches.length, strongEntity: hasStrongEntity, suppressed },
+    requireMultiBody: { bodyHits: bodyHitCount, tagHits: tagHitCount, strongEntity: hasStrongEntity, suppressed },
   };
 }
 
-/** 결정론적 관련도: 스코프태그 직접命中 + 정규화 토큰 중복 + 구조화 엔티티 가중치 + 1-hop 전파. */
+/** 결정론적 관련도: 스코프태그 직접命中 + 정규화 토큰 중복 + 구조화 엔티티 가중치 + 1-hop 전파.
+ *  동점 결정 규칙: Array.sort는 안정 정렬이므로 점수가 같으면 입력 코퍼스 순서를 유지한다
+ *  (검색 경로는 createdAt desc로 넘기므로 동점 시 최신 카드가 앞선다). */
 export function selectRelatedKnowledgePatterns(
   cards: readonly RelevanceCard[],
   contextTexts: readonly string[],
@@ -255,7 +259,7 @@ export function selectRelatedKnowledgePatterns(
   if (!context) return [];
   return cards
     .map((card) => {
-      const scored = scoreKnowledgePatternCard(card, context);
+      const scored = scoreKnowledgePatternCard(card, context, false);
       const entry: RelatedKnowledgePattern = { id: card.id, title: card.title, score: scored.score };
       if (scored.via.length > 0 && scored.score > 0) entry.via = scored.via;
       return entry;
@@ -266,8 +270,9 @@ export function selectRelatedKnowledgePatterns(
 }
 
 /** [T3 explain] 랭킹과 동일 파이프라인의 카드별 점수 근거 — 임계 미달·억제 카드까지 모두
- *  점수 내림차순으로 반환한다("왜 안 떴는가" 진단이 목적이므로 잘라내지 않는다).
- *  읽기 전용 — select와 점수가 완전히 일치하도록 scoreKnowledgePatternCard를 공유한다. */
+ *  점수 내림차순(진단이 목적이라 자르지 않는다). select와 점수 일치를 위해 같은 스코어러 공유.
+ *  전제: select·explain은 동일 코퍼스(전체 후보 집합)를 받아야 한다 — IDF 문서빈도와
+ *  1-hop 전파는 후보 집합에 의존하므로 부분 집합을 주면 두 경로의 점수가 어긋난다. */
 export function explainRelatedKnowledgePatterns(
   cards: readonly RelevanceCard[],
   contextTexts: readonly string[],
@@ -277,18 +282,15 @@ export function explainRelatedKnowledgePatterns(
   if (!context) return [];
   return cards
     .map((card) => {
-      const scored = scoreKnowledgePatternCard(card, context);
+      const { score, via, ...diag } = scoreKnowledgePatternCard(card, context, true);
       const explanation: KnowledgePatternScoreExplanation = {
         id: card.id,
         title: card.title,
-        score: scored.score,
-        passesMinScore: scored.score >= MIN_RELEVANCE_SCORE,
-        tagMatches: scored.tagMatches,
-        bodyTokenMatches: scored.bodyTokenMatches,
-        entities: scored.entities,
-        requireMultiBody: scored.requireMultiBody,
+        score,
+        passesMinScore: score >= MIN_RELEVANCE_SCORE,
+        ...diag,
       };
-      if (scored.via.length > 0 && scored.score > 0) explanation.via = scored.via;
+      if (via.length > 0 && score > 0) explanation.via = via;
       return explanation;
     })
     .sort((left, right) => right.score - left.score);

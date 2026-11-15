@@ -5,13 +5,13 @@ import {
   normalizeKnowledgePatternEntityPath,
 } from "@paperclipai/shared/validators/knowledge-pattern";
 import {
+  extractFileRefs,
   isKnowledgeStopword,
   normalizeCodePathRef,
   normalizeKnowledgeTokens,
   resolvePathAlias,
   splitSubWords,
   stemKoreanParticle,
-  uniqueFileName,
 } from "../services/knowledge-text-normalizer.js";
 import { propagateCoupledPatterns } from "../services/knowledge-pattern-graph.js";
 import {
@@ -33,13 +33,25 @@ describe("knowledge-text-normalizer", () => {
     expect(normalizeCodePathRef("b/./x//y.ts")).toBe("x/y.ts");
   });
 
-  it("derives unique file names and resolves aliases only from the provided map", () => {
-    expect(uniqueFileName("server/src/services/foo.ts")).toBe("foo.ts");
+  it("resolves aliases only from the provided map, normalizing keys/values symmetrically", () => {
     expect(resolvePathAlias("@/svc/foo.ts", { "@": "server/src" })).toBe("server/src/svc/foo.ts");
     expect(resolvePathAlias("@/services/foo.ts", { "@/services": "server/src/services" })).toBe(
       "server/src/services/foo.ts",
     );
     expect(resolvePathAlias("@/svc/foo.ts", {})).toBe("@/svc/foo.ts");
+    // 후행 슬래시 별칭 키·값도 같은 canonical form으로 정규화한다(정확일치·접두사 치환 모두).
+    expect(resolvePathAlias("@/services/foo.ts", { "@/services/": "server/src/services/" })).toBe(
+      "server/src/services/foo.ts",
+    );
+    expect(resolvePathAlias("@/services", { "@/services/": "server/src/services/" })).toBe(
+      "server/src/services",
+    );
+  });
+
+  it("rejects version strings and URL fragments as file refs", () => {
+    expect(extractFileRefs(["2.4.1", "v1.2 패치"])).toEqual([]);
+    expect(extractFileRefs(["https://example.com/x.ts 참조", "http://a/b.ts"])).toEqual([]);
+    expect(extractFileRefs(["src/api/foo.ts 수정"])).toEqual(["src/api/foo.ts"]);
   });
 
   it("stems Korean particles by suffix walk without eating short nouns", () => {
@@ -244,6 +256,36 @@ describe("selectRelatedKnowledgePatterns (entity zones + guards)", () => {
     const far = selected.find((entry) => entry.id === "far");
     expect(far?.via).toEqual(["server/src/a.ts"]);
     expect(far?.score).toBeGreaterThanOrEqual(4); // 태그 3 + 본문 1 + 전파 1 = 5
+  });
+
+  it("matches extension-less query file refs exactly via options.fileRefs", () => {
+    const cards = [entityCard("c1", { files: ["src/api/foo"], title: "무관 카드", symptoms: null })];
+    // 정규식 추출(extractFileRefs)은 확장자 없는 경로를 fileRefSet에 넣지 못한다 — 직접 전달 없이는 미매칭.
+    expect(selectRelatedKnowledgePatterns(cards, ["src/api/foo 변경"])).toEqual([]);
+    const selected = selectRelatedKnowledgePatterns(cards, ["src/api/foo 변경"], 3, {
+      fileRefs: ["src/api/foo"],
+    });
+    expect(selected.map((entry) => entry.id)).toEqual(["c1"]);
+    expect(selected[0]!.score).toBe(3); // file 영역 기본 가중치
+  });
+
+  it("gates diagnostics: select entries carry no contribution/match fields that explain collects", () => {
+    const cards = [
+      entityCard("c1", { symbols: ["rareSymbol"], scopeTags: ["gate"], title: "gate rareSymbol 카드" }),
+    ];
+    const selected = selectRelatedKnowledgePatterns(cards, ["gate rareSymbol"]);
+    expect(selected).toHaveLength(1);
+    for (const entry of selected) {
+      expect(entry).not.toHaveProperty("entities");
+      expect(entry).not.toHaveProperty("tagMatches");
+      expect(entry).not.toHaveProperty("bodyTokenMatches");
+      expect(entry).not.toHaveProperty("requireMultiBody");
+    }
+    const explained = explainRelatedKnowledgePatterns(cards, ["gate rareSymbol"]);
+    expect(explained[0]!.entities).toEqual(
+      expect.arrayContaining([expect.objectContaining({ zone: "symbol", entity: "raresymbol" })]),
+    );
+    expect(explained[0]!.tagMatches).toContain("gate");
   });
 
   it("resolves query file aliases only when an alias map is provided", () => {
