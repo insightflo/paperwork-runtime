@@ -168,6 +168,9 @@ it("[①GREEN] artifact finding reworks the real producer and resolves only via 
   await completeWorkflowIssue({ db, issue: currentProducerIssue!,
     actor: { actorType: "agent", actorId: w.ownerAgentId, agentId: w.ownerAgentId, runId: producerHeartbeat }, data: {} });
   await syncWorkflowRunState(db, w.workflowRunId); // 생산자 재완료 동기화 → QA 재발화
+  // [진단2 — 느린 CI 틈 강제] QA 재발사 직후 25초 대기: 재발사 후속 비동기 작업이 수동 QA 판정과 경합하는지 시험.
+  await new Promise((r) => setTimeout(r, 25_000));
+  console.error("FLAKE_DIAG_QA_STEP_AFTER_SYNC1", JSON.stringify(await w.row(w.qaStepRunId)));
   expect((await w.row(w.producerStepRunId)).status).toBe("completed");
   const selected = await selectSameRunWorkProduct(db, { companyId: w.companyId, workflowRunId: w.workflowRunId,
     stepId: "produce", selector: { type: "document", title: "content.json" } });
@@ -186,8 +189,6 @@ it("[①GREEN] artifact finding reworks the real producer and resolves only via 
   expect(resolved).toMatchObject({ state: "resolved", operation: "delegate_fix" });
   expect(resolved.evidence).toContainEqual(expect.objectContaining({ kind: "qa" }));
   expect(resolved.evidence).toContainEqual(expect.objectContaining({ kind: "artifact" }));
-  // [진단 — 느린 CI 틈 강제] 최종 동기화 직전 25초 대기로 미해결 비동기 작업 노출 시도.
-  await new Promise((r) => setTimeout(r, 25_000));
   await syncWorkflowRunState(db, w.workflowRunId);
   const [finishedRun] = await db.select().from(workflowRuns).where(eq(workflowRuns.id, w.workflowRunId));
   try {
