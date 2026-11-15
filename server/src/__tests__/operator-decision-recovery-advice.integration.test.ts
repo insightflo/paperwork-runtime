@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   activityLog, agentWakeupRequests, agents, companies, createDb, heartbeatRuns, issueComments, issueWorkProducts, issues, missions,
@@ -163,19 +163,6 @@ describeDb("operator decision recovery advice projection (PostgreSQL)", () => {
       card: hashMismatchRow!, ...adviceFacts.get(hashMismatchId)! }).disposition)
       .toBe("unproven_restart_hold");
 
-    const before = {
-      decisions: await db.select().from(operatorDecisions).where(inArray(operatorDecisions.id, [...pendingIds, ...terminalIds])),
-      events: await db.select().from(workflowTransitionEvents).where(eq(workflowTransitionEvents.companyId, companyId)),
-      activity: await db.select().from(activityLog).where(eq(activityLog.companyId, companyId)),
-      comments: await db.select().from(issueComments).where(eq(issueComments.companyId, companyId)),
-      runs: await db.select().from(workflowRuns).where(eq(workflowRuns.companyId, companyId)),
-      steps: await db.select().from(workflowStepRuns).where(inArray(workflowStepRuns.workflowRunId, [runId])),
-      issues: await db.select().from(issues).where(eq(issues.companyId, companyId)),
-      invocations: await db.select().from(workflowStepInvocations).where(eq(workflowStepInvocations.companyId, companyId)),
-      products: await db.select().from(issueWorkProducts).where(eq(issueWorkProducts.companyId, companyId)),
-      continuations: await db.select().from(operatorDecisionContinuations),
-      wakeups: await db.select().from(agentWakeupRequests),
-    };
     const batchRows = await db.select().from(operatorDecisions).where(inArray(operatorDecisions.id, pendingIds));
     const terminalRows = await db.select().from(operatorDecisions).where(inArray(operatorDecisions.id, terminalIds));
     const selectSpy = vi.spyOn(db, "select");
@@ -238,11 +225,39 @@ describeDb("operator decision recovery advice projection (PostgreSQL)", () => {
     expect(restart(cancelledId).recommended).toBe(true);
 
     const restartSelection = { actionId: "approve", selectedOptionIds: [WORKFLOW_RESTART_FROM_START_OPTION_ID], comment: "reviewed" };
-    for (const decisionId of [historicalId, currentId, hashMismatchId]) {
-      await expect(writer.resolve(decisionId, restartSelection, "board-user")).rejects.toMatchObject({
-        status: 409, details: { code: "recovery_restart_scope_unproven", operatorDecisionId: decisionId },
-      });
-    }
+    // [B4 2026-11-15] 현행 수명바인딩 카드(current)의 재시작 선택은 이제 실행된다 — 해시로 잠긴
+    //   범위 + 사람의 명시적 옵션 선택을 권한 원본으로 인정(#457 이후 보드 카드 생산자 부재로
+    //   모든 UI 재시작이 409였던 회귀 복원). 소스 런·이슈 상태는 보존 검증이 지킨다.
+    const currentResolved = await writer.resolve(currentId, restartSelection, "board-user");
+    expect(currentResolved.applied).toBe(true);
+    expect(currentResolved.decision.status).toBe("resolved");
+    const replacements = await db.select().from(workflowRuns).where(and(
+      eq(workflowRuns.companyId, companyId), ne(workflowRuns.id, runId), isNull(workflowRuns.parentRunId)));
+    expect(replacements).toHaveLength(1);
+    expect(replacements[0]!.metadata).toMatchObject({ operatorDecisionRestart: {
+      operatorDecisionId: currentId, sourceWorkflowRunId: runId } });
+
+    const before = {
+      decisions: await db.select().from(operatorDecisions).where(inArray(operatorDecisions.id, [...pendingIds, ...terminalIds])),
+      events: await db.select().from(workflowTransitionEvents).where(eq(workflowTransitionEvents.companyId, companyId)),
+      activity: await db.select().from(activityLog).where(eq(activityLog.companyId, companyId)),
+      comments: await db.select().from(issueComments).where(eq(issueComments.companyId, companyId)),
+      runs: await db.select().from(workflowRuns).where(eq(workflowRuns.companyId, companyId)),
+      steps: await db.select().from(workflowStepRuns).where(inArray(workflowStepRuns.workflowRunId, [runId])),
+      issues: await db.select().from(issues).where(eq(issues.companyId, companyId)),
+      invocations: await db.select().from(workflowStepInvocations).where(eq(workflowStepInvocations.companyId, companyId)),
+      products: await db.select().from(issueWorkProducts).where(eq(issueWorkProducts.companyId, companyId)),
+      continuations: await db.select().from(operatorDecisionContinuations),
+      wakeups: await db.select().from(agentWakeupRequests),
+    };
+    // 변조행(원본·해시 불일치)은 여전히 홀드되고, 타 미션 런에 묶인 레거시 카드는
+    // 소스 검증에서 닫힌다 — 어느 쪽도 상태를 바꾸지 않는다.
+    await expect(writer.resolve(hashMismatchId, restartSelection, "board-user")).rejects.toMatchObject({
+      status: 409, details: { code: "recovery_restart_scope_unproven", operatorDecisionId: hashMismatchId },
+    });
+    await expect(writer.resolve(historicalId, restartSelection, "board-user")).rejects.toMatchObject({
+      status: 409, message: "workflow_restart_source_not_failed",
+    });
     expect((await writer.resolve(resolvedId, restartSelection, "board-user")).applied).toBe(false);
     await expect(writer.resolve(resolvedId, { ...restartSelection, comment: "approved" }, "board-user"))
       .rejects.toMatchObject({ status: 409 });
