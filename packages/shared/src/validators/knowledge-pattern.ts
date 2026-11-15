@@ -4,24 +4,30 @@ import { z } from "zod";
 //   메타데이터(files/symbols/coupled/errorSignatures) 공유 Zod 계약 —
 //   2026-11-14 mistology 흡수 T1a. DB·엔진(T1b)·검색 랭킹(T1c)이 동일한 정규화
 //   규칙을 공유하도록 순수 함수로만 구성한다(DB/서버 import 금지).
-// [정규화 규칙] 파일 경로(files/coupled): 백슬래시→슬래시, git diff 접두사(a/, b/)
-//   제거, 선행 ./ 제거, 중복 슬래시 축약. 모든 배열은 정규화·trim 후 중복 제거하고
-//   그 결과에 개수 상한을 적용한다(정규화 후 동일 값은 1개만 유지).
+// [정규화 규칙] 파일 경로(files/coupled): trim → 백슬래시→슬래시 → 선행 ./ 제거 →
+//   git diff 접두사(a/, b/) 제거 → 다시 선행 ./ 제거 → 중복 슬래시 축약(./a/x·a/./x
+//   모두 x와 같은 canonical form). 모든 배열은 정규화·trim 후 중복 제거하고 그 결과에
+//   개수 상한을 적용한다(정규화 후 동일 값은 1개만 유지 — files/coupled는 대소문자
+//   무시 dedupe로 Windows 경로 가정과 정합, 첫 등장 표기를 보존).
 
 const MAX_ENTITY_ITEMS = 12;
 const MAX_ERROR_SIGNATURES = 6;
 const MAX_ERROR_SIGNATURE_LENGTH = 200;
 
-/** 파일 경로 정규화 — 순수 함수(T1b normalizer도 같은 규칙으로 재사용). */
+/** 파일 경로 정규화 — 순수 함수(T1b normalizer도 같은 규칙으로 재사용).
+ *  trim을 첫 단계에 흡수해 단독 호출도 스키마 파이프라인과 같은 canonical form을 만든다. */
 export function normalizeKnowledgePatternEntityPath(raw: string): string {
   return raw
+    .trim()
     .replace(/\\/g, "/")
+    .replace(/^(?:\.\/)+/, "")
     .replace(/^(?:a|b)\//, "")
     .replace(/^(?:\.\/)+/, "")
     .replace(/\/{2,}/g, "/");
 }
 
-// 단일 엔티티 참조: trim 후 빈 값 거부 → 경로 정규화 → 정규화 결과가 빈 값이면 거부.
+// 단일 엔티티 참조: trim 후 빈 값 거부 → 경로 정규화 → 정규화 결과가 빈 값이거나
+// 의미 있는 세그먼트가 하나도 없으면 거부("."/".."/"/" 같은 정크 참조 차단).
 export const knowledgePatternEntityRefSchema = z
   .string()
   .trim()
@@ -29,14 +35,29 @@ export const knowledgePatternEntityRefSchema = z
   .transform(normalizeKnowledgePatternEntityPath)
   .refine((value) => value.length > 0, {
     message: "entity ref is empty after path normalization",
-  });
+  })
+  .refine(
+    (value) => value.split("/").some((segment) => segment !== "" && segment !== "." && segment !== ".."),
+    { message: "entity ref has no meaningful path segment" },
+  );
 
 const dedupe = (items: string[]): string[] => Array.from(new Set(items));
 
-/** 정규화 후 중복 제거 → 개수 상한(중복 제거 결과 기준). */
+/** 대소문자 무시 dedupe — 첫 등장 값의 표기를 보존한다(files/coupled 전용). */
+const dedupeCaseInsensitive = (items: string[]): string[] => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = item.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+/** 정규화 후 대소문자 무시 중복 제거 → 개수 상한(중복 제거 결과 기준). */
 const filesField = z
   .array(knowledgePatternEntityRefSchema)
-  .transform(dedupe)
+  .transform(dedupeCaseInsensitive)
   .refine((items) => items.length <= MAX_ENTITY_ITEMS, {
     message: `at most ${MAX_ENTITY_ITEMS} files after dedupe`,
   })
@@ -50,10 +71,10 @@ const symbolsField = z
   })
   .default([]);
 
-/** coupled는 files와 동일 경로 정규화를 적용한다(결합 엔티티도 파일/모듈 경로). */
+/** coupled는 files와 동일 경로 정규화·대소문자 무시 dedupe를 적용한다(결합 엔티티도 파일/모듈 경로). */
 const coupledField = z
   .array(knowledgePatternEntityRefSchema)
-  .transform(dedupe)
+  .transform(dedupeCaseInsensitive)
   .refine((items) => items.length <= MAX_ENTITY_ITEMS, {
     message: `at most ${MAX_ENTITY_ITEMS} coupled entities after dedupe`,
   })

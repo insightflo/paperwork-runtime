@@ -8,6 +8,8 @@
 //   - 허브 감쇠: 앵커 카드의 files가 3개 이상이면 그 경유 전파는 ×0.25 — 0으로 차단하지는
 //     않는다(카드 수가 적은 현 운영에서 감쇠가 실용적). tight 앵커(files ≤2)가 하나라도
 //     있으면 감쇠 없음.
+//   - 자기전파 금지: 어떤 카드의 files와 coupled가 같은 엔티티를 공유하면 그 엔티티로
+//     자기 자신에게 전파하지 않는다(자체 엔티티 재확인은 외부 결합 신호가 아니며 via 오염원).
 //   - 2-hop 금지: 전파 결과를 다시 질의로 재사용하지 않는다(계층 확장은 별도 검증 단계).
 // [소비] knowledge-pattern-relevance(점수 합산). via 라벨은 T1c 주입 브리핑·T3 explain이 쓴다.
 
@@ -62,10 +64,13 @@ export function propagateCoupledPatterns(
   const anchorFactorByEntity = new Map<string, number>();
   // 엔티티 → coupled에 그 엔티티를 가진 카드들.
   const coupledCardsByEntity = new Map<string, string[]>();
+  // 카드 → 자신의 files 앵커 엔티티 — 자기전파 제외 판정용.
+  const anchorEntitiesByCard = new Map<string, Set<string>>();
 
   for (const card of cards) {
     const files = normalizeRefs(card.files ?? [], aliasMap);
     const coupled = normalizeRefs(card.coupled ?? [], aliasMap);
+    anchorEntitiesByCard.set(card.id, new Set(files));
     const factor = files.length <= TIGHT_FILE_LIMIT ? 1 : HUB_DECAY;
     for (const entity of files) {
       const previous = anchorFactorByEntity.get(entity);
@@ -83,6 +88,7 @@ export function propagateCoupledPatterns(
     const factor = anchorFactorByEntity.get(entity);
     if (factor === undefined) continue; // files 측 앵커 없는 질의 파일은 전파 근거가 없다(1-hop 불변식)
     for (const cardId of coupledCardsByEntity.get(entity) ?? []) {
+      if (anchorEntitiesByCard.get(cardId)?.has(entity)) continue; // 자기 카드가 앵커인 전파 금지
       const entry = result.get(cardId) ?? { cardId, via: [], strength: 0, perEntity: new Map<string, number>() };
       if (!entry.via.includes(entity)) {
         entry.via.push(entity);

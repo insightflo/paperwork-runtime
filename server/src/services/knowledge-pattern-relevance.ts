@@ -15,6 +15,7 @@
 
 import type { KnowledgePattern } from "./knowledge-patterns.js";
 import {
+  corpusHasEntityKey,
   extractFileRefs,
   normalizeCodePathRef,
   normalizeKnowledgeTokens,
@@ -188,12 +189,12 @@ function scoreKnowledgePatternCard(
   const hits = new Map<string, EntityHit>();
   for (const signature of asArray(card.errorSignatures)) {
     const key = collapseKey(signature);
-    if (key.length >= MIN_ENTITY_KEY_LENGTH && context.contextCorpus.includes(key)) {
+    if (key.length >= MIN_ENTITY_KEY_LENGTH && corpusHasEntityKey(key, context.contextCorpus, context.contextTokens)) {
       mergeHit(hits, `sig:${key}`, { weight: SIGNATURE_WEIGHT, boostable: false, strong: true, zone: "signature" });
     }
   }
   for (const symbol of context.symbolKeysByCard.get(card.id) ?? []) {
-    if (symbol.length >= MIN_ENTITY_KEY_LENGTH && context.contextCorpus.includes(symbol)) {
+    if (symbol.length >= MIN_ENTITY_KEY_LENGTH && corpusHasEntityKey(symbol, context.contextCorpus, context.contextTokens)) {
       mergeHit(hits, `sym:${symbol}`, { weight: SYMBOL_WEIGHT, boostable: true, strong: true, zone: "symbol" });
     }
   }
@@ -207,12 +208,15 @@ function scoreKnowledgePatternCard(
   }
 
   // 1-hop 전파 병합: 엔티티별 직접 가중치와 전파 강도(×coupled 가중치)의 최댓값.
+  // via는 전파 엣지가 직접 히트(files 3/coupled 1)에 엄밀히 뒤지지 않는 엔티티만 싣는다 —
+  //   직접 히트가 더 강한 엔티티는 전파 기여가 0이라 라벨 오염만 한다.
   const via: string[] = [];
   const propagated = context.propagation.get(card.id);
   if (propagated) {
     for (const [entity, factor] of propagated.perEntity) {
-      if (factor > 0) via.push(entity);
-      mergeHit(hits, `file:${entity}`, { weight: factor * COUPLED_WEIGHT, boostable: false, strong: false, zone: "propagated" });
+      const weight = factor * COUPLED_WEIGHT;
+      if (weight >= (hits.get(`file:${entity}`)?.weight ?? 0)) via.push(entity);
+      mergeHit(hits, `file:${entity}`, { weight, boostable: false, strong: false, zone: "propagated" });
     }
   }
 
