@@ -16,7 +16,7 @@
 // [소비] 미션 오너 진단/기획 검색, 자기개선 근거 참조. draft 초안은 검색 기본 제외(승인 전 무측).
 //   실행 프롬프트 주입은 별도 계약(관련도+게이트+측정 롤아웃 — knowledge-pattern-injection)으로만.
 
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { activityLog, companyKnowledgePatterns } from "@paperclipai/db";
 import type { AdoptionAssetRegistryEntry } from "./self-improvement-adoption-planner.js";
@@ -26,6 +26,8 @@ import {
   assertNoDuplicateSignature,
   DEFECT_SIGNATURE_MAX,
   findSimilarKnowledgePatternCards,
+  isDuplicateSignaturePgError,
+  KnowledgePatternDuplicateSignatureError,
 } from "./knowledge-pattern-evidence-gate.js";
 import {
   assertEvidenceExists,
@@ -40,6 +42,7 @@ import {
   SUMMARY_MAX,
   TEXT_MAX,
   TITLE_MAX,
+  type CreateKnowledgePatternInput,
   type KnowledgePatternSearchInput,
 } from "./knowledge-pattern-read.js";
 
@@ -61,6 +64,21 @@ export function knowledgePatternAdoptionRegistryEntries(
   return cards.map((card) => ({ assetType: "knowledge_pattern", assetRef: card.id, resolvedRef: card.id }));
 }
 
+async function logPatternActivity(
+  writer: Pick<Db, "insert">,
+  input: { companyId: string; actorId?: string | null; action: string; entityId: string; details: Record<string, unknown> },
+): Promise<void> {
+  await writer.insert(activityLog).values({
+    companyId: input.companyId,
+    actorType: "system",
+    actorId: input.actorId ?? "knowledge-patterns",
+    action: input.action,
+    entityType: "knowledge_pattern",
+    entityId: input.entityId,
+    details: input.details,
+  });
+}
+
 export function knowledgePatternsService(db: Db) {
   return {
     /** [중복 힌트 — EvoHarness] 유사 기존 카드 비차단 힌트 — 구현은 evidence-gate.ts(T2b 통합). */
@@ -68,25 +86,7 @@ export function knowledgePatternsService(db: Db) {
       findSimilarKnowledgePatternCards(db, input),
     /** append-only 생성. supersedeId가 있으면 같은 회사의 기존 카드를 대체 체인으로 연결한다.
      *  [T1c] files/symbols/coupled/errorSignatures를 공유 Zod로 정규화해 저장(누락 시 빈 배열). */
-    create: async (input: {
-      companyId: string;
-      kind: unknown;
-      title: unknown;
-      summary: unknown;
-      evidence?: unknown;
-      symptoms?: unknown;
-      rootCause?: unknown;
-      whatWorked?: unknown;
-      scopeTags?: unknown;
-      files?: unknown;
-      symbols?: unknown;
-      coupled?: unknown;
-      errorSignatures?: unknown;
-      defectSignature?: unknown;
-      source: unknown;
-      createdByAgentId?: string | null;
-      supersedeId?: string | null;
-    }): Promise<KnowledgePattern> => {
+    create: async (input: CreateKnowledgePatternInput): Promise<KnowledgePattern> => {
       const kind = String(input.kind ?? "");
       if (!KINDS.includes(kind)) throw new Error(`knowledge pattern kind must be one of ${KINDS.join(", ")}`);
       const source = String(input.source ?? "");
@@ -103,17 +103,18 @@ export function knowledgePatternsService(db: Db) {
       // [T2b 쓰기 게이트] 얕은 에이전트 제출은 거부 대신 draft 강등 — status만 변경, 데이터 불변.
       const status = applyEvidenceGate({ evidence, rootCause, whatWorked }, source);
 
-      // [근거 실재성 ⓑ] 위조 근거가 즉시 active 카드가 되는 것을 쓰기 시점에 차단한다.
-      await assertEvidenceExists(db, evidence);
+      // [근거 실재성 ⓑ] 위조·타회사 근거가 즉시 active 카드가 되는 것을 쓰기 시점에 차단한다.
+      await assertEvidenceExists(db, evidence, input.companyId);
 
       // [supersede 원자성 ⓐ] 삽입+체인 연결을 단일 트랜잭션으로 묶고, 가드 UPDATE가
       // 0행이면(동시 대체 패배) 롤백한다 — 패배 쪽 고아 active 카드 잔존을 원천 차단.
       const card = await db.transaction(async (tx) => {
         if (input.supersedeId) {
           const [existing] = await tx
-            .select({ id: companyKnowledgePatterns.id, companyId: companyKnowledgePatterns.companyId, supersededById: companyKnowledgePatterns.supersededById })
+            .select({ id: companyKnowledgePatterns.id, companyId: companyKnowledgePatterns.companyId, supersededById: companyKnowledgePatterns.supersededById, status: companyKnowledgePatterns.status })
             .from(companyKnowledgePatterns)
             .where(eq(companyKnowledgePatterns.id, input.supersedeId))
+            .for("update")
             .limit(1);
           if (!existing || existing.companyId !== input.companyId) {
             throw new Error("knowledge pattern supersede target must exist in the same company");
@@ -121,51 +122,55 @@ export function knowledgePatternsService(db: Db) {
           if (existing.supersededById) {
             throw new Error("knowledge pattern supersede target is already superseded");
           }
+          if (existing.status === "retired") {
+            throw new Error("knowledge pattern supersede target is retired (chain terminal)");
+          }
         }
 
         // [T2b 서명 중복 — 명시 충돌] 사람·에이전트 제출은 onConflictDoNothing 대신 409 신호.
         if (defectSignature) await assertNoDuplicateSignature(tx, { companyId: input.companyId, defectSignature });
 
-        const [created] = await tx
-          .insert(companyKnowledgePatterns)
-          .values({
-            companyId: input.companyId,
-            kind,
-            title,
-            summary,
-            evidence,
-            ...(symptoms ? { symptoms } : {}),
-            ...(rootCause ? { rootCause } : {}),
-            ...(whatWorked ? { whatWorked } : {}),
-            scopeTags,
-            files,
-            symbols,
-            coupled,
-            errorSignatures,
-            source,
-            status, defectSignature,
-            createdByAgentId: input.createdByAgentId ?? null,
-            supersededById: null,
-          })
-          .returning();
+        let created: KnowledgePattern;
+        try {
+          [created] = await tx
+            .insert(companyKnowledgePatterns)
+            .values({
+              companyId: input.companyId, kind, title, summary, evidence,
+              ...(symptoms ? { symptoms } : {}),
+              ...(rootCause ? { rootCause } : {}),
+              ...(whatWorked ? { whatWorked } : {}),
+              scopeTags, files, symbols, coupled, errorSignatures,
+              source, status, defectSignature,
+              createdByAgentId: input.createdByAgentId ?? null,
+              supersededById: null,
+            })
+            .returning();
+        } catch (error) {
+          if (isDuplicateSignaturePgError(error)) {
+            throw new KnowledgePatternDuplicateSignatureError(null);
+          }
+          throw error;
+        }
 
         if (input.supersedeId) {
           const linked = await tx
             .update(companyKnowledgePatterns)
             .set({ supersededById: created.id })
-            .where(and(eq(companyKnowledgePatterns.id, input.supersedeId), isNull(companyKnowledgePatterns.supersededById)))
+            .where(and(
+              eq(companyKnowledgePatterns.id, input.supersedeId),
+              isNull(companyKnowledgePatterns.supersededById),
+              ne(companyKnowledgePatterns.status, "retired"),
+            ))
             .returning({ id: companyKnowledgePatterns.id });
           if (linked.length === 0) {
             throw new Error("knowledge pattern supersede target was superseded concurrently");
           }
         }
 
-        await tx.insert(activityLog).values({
+        await logPatternActivity(tx, {
           companyId: input.companyId,
-          actorType: "system",
-          actorId: input.createdByAgentId ?? "knowledge-patterns",
+          actorId: input.createdByAgentId,
           action: "knowledge_pattern.created",
-          entityType: "knowledge_pattern",
           entityId: created.id,
           details: { kind, title, source, status, supersededId: input.supersedeId ?? null },
         });
@@ -214,12 +219,9 @@ export function knowledgePatternsService(db: Db) {
         .returning();
 
       if (!card) return { card: null };
-      await db.insert(activityLog).values({
+      await logPatternActivity(db, {
         companyId: input.companyId,
-        actorType: "system",
-        actorId: "knowledge-patterns",
         action: "knowledge_pattern.auto_draft",
-        entityType: "knowledge_pattern",
         entityId: card.id,
         details: { kind: "failure_mode", title, source: "auto_rework_draft", defectSignature: signature },
       });
@@ -254,12 +256,9 @@ export function knowledgePatternsService(db: Db) {
       if (!updated) {
         throw new Error("knowledge pattern draft not found (already active or belongs to another company)");
       }
-      await db.insert(activityLog).values({
+      await logPatternActivity(db, {
         companyId: input.companyId,
-        actorType: "system",
-        actorId: "knowledge-patterns",
         action: "knowledge_pattern.approved",
-        entityType: "knowledge_pattern",
         entityId: updated.id,
         details: { source: updated.source, defectSignature: updated.defectSignature, audience: updated.audience },
       });
@@ -280,12 +279,9 @@ export function knowledgePatternsService(db: Db) {
       if (!updated) {
         throw new Error("knowledge pattern not found (belongs to another company)");
       }
-      await db.insert(activityLog).values({
+      await logPatternActivity(db, {
         companyId: input.companyId,
-        actorType: "system",
-        actorId: "knowledge-patterns",
         action: "knowledge_pattern.audience_curated",
-        entityType: "knowledge_pattern",
         entityId: updated.id,
         details: { audience: updated.audience, status: updated.status },
       });

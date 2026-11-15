@@ -7,6 +7,7 @@ import {
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
 import { knowledgePatternsService } from "../services/knowledge-patterns.js";
+import { KnowledgePatternDuplicateSignatureError } from "../services/knowledge-pattern-evidence-gate.js";
 import { retire, supersedeWithLineage } from "../services/knowledge-pattern-lifecycle.js";
 
 const support = await getEmbeddedPostgresTestSupport();
@@ -168,5 +169,90 @@ describeEP("knowledge pattern lifecycle (supersede lineage + retire)", () => {
     expect(after.length).toBe(before.length);
     const [row] = await db.select().from(companyKnowledgePatterns).where(eq(companyKnowledgePatterns.id, target.id));
     expect(row!.supersededById).toBeNull();
+  });
+
+  it("inherits defectSignature across supersede chain and coordinates with createAutoReworkDraft", async () => {
+    const svc = knowledgePatternsService(db);
+    const sig1 = `sig-inherit-${randomUUID()}`;
+    const sig2 = `sig-override-${randomUUID()}`;
+    const draft = await svc.createAutoReworkDraft({
+      companyId, signature: sig1, title: "자동 초안 v1", summary: "반복 결함 초안",
+    });
+    const v1 = await svc.approve({ companyId, id: draft.card!.id });
+
+    // ① 서명 미지정 supersede → 기존 카드 서명 계승 + 이전 행 슬롯 해제
+    const v2 = await supersedeWithLineage(db, {
+      companyId, existingId: v1.id, reason: "서명 계승 대체", next: nextCard({ title: "계승 v2" }),
+    });
+    expect(v2.defectSignature).toBe(sig1);
+    const [v1Row] = await db.select().from(companyKnowledgePatterns).where(eq(companyKnowledgePatterns.id, v1.id));
+    expect(v1Row!.supersededById).toBe(v2.id);
+    expect(v1Row!.defectSignature).toBeNull();
+
+    // ② 계승 후 동일 서명 createAutoReworkDraft → v2가 슬롯 보유, onConflictDoNothing으로 card:null 반환
+    const dupDraft = await svc.createAutoReworkDraft({
+      companyId, signature: sig1, title: "재발 초안", summary: "동일 서명 재감지",
+    });
+    expect(dupDraft.card).toBeNull();
+
+    // 다단계 체인에서도 서명 계승 유지
+    const v3 = await supersedeWithLineage(db, {
+      companyId, existingId: v2.id, reason: "3차 계승", next: nextCard({ title: "계승 v3" }),
+    });
+    expect(v3.defectSignature).toBe(sig1);
+    const [v2Row] = await db.select().from(companyKnowledgePatterns).where(eq(companyKnowledgePatterns.id, v2.id));
+    expect(v2Row!.defectSignature).toBeNull();
+
+    // 타 카드 보유 서명으로 명시 덮어쓰기 시 409 오류 + 롤백으로 기존 서명/계보 보존
+    const holder = await seedCard({ title: "타 서명 점유 카드", defectSignature: `sig-taken-${randomUUID()}` });
+    await expect(supersedeWithLineage(db, {
+      companyId, existingId: v3.id, reason: "충돌 서명", next: nextCard({ defectSignature: holder.defectSignature }),
+    })).rejects.toBeInstanceOf(KnowledgePatternDuplicateSignatureError);
+    const [v3Intact] = await db.select().from(companyKnowledgePatterns).where(eq(companyKnowledgePatterns.id, v3.id));
+    expect(v3Intact!.defectSignature).toBe(sig1);
+    expect(v3Intact!.supersededById).toBeNull();
+
+    // 변경 시그니처 명시 대체 → v4는 새 서명, 구 서명 슬롯은 해제되어 createAutoReworkDraft와 공존 가능
+    const v4 = await supersedeWithLineage(db, {
+      companyId, existingId: v3.id, reason: "서명 변경 대체",
+      next: nextCard({ title: "변경 서명 v4", defectSignature: sig2 }),
+    });
+    expect(v4.defectSignature).toBe(sig2);
+    const [v3Row] = await db.select().from(companyKnowledgePatterns).where(eq(companyKnowledgePatterns.id, v3.id));
+    expect(v3Row!.defectSignature).toBeNull();
+
+    const coexistingDraft = await svc.createAutoReworkDraft({
+      companyId, signature: sig1, title: "구 서명 재발 초안", summary: "해제된 구 서명으로 재생성",
+    });
+    expect(coexistingDraft.card).not.toBeNull();
+    expect(coexistingDraft.card!.defectSignature).toBe(sig1);
+    expect(coexistingDraft.card!.id).not.toBe(v4.id);
+  });
+
+  it("rejects cross-company evidence (F1a gate) and cross-company supersede/retire", async () => {
+    const otherCompanyId = randomUUID();
+    const foreignDefId = randomUUID();
+    const foreignRunId = randomUUID();
+    await db.insert(companies).values({ id: otherCompanyId, name: "Foreign Co", status: "active", issuePrefix: "KF1" });
+    await db.insert(workflowDefinitions).values({ id: foreignDefId, companyId: otherCompanyId, name: "foreign-def", stepsJson: [] });
+    await db.insert(workflowRuns).values({
+      id: foreignRunId, workflowId: foreignDefId, companyId: otherCompanyId, status: "completed", triggeredBy: "test",
+    });
+
+    const target = await seedCard({ title: "회사 격리 검증 대상", whatWorked: "회사 격리 게이트" });
+    await expect(supersedeWithLineage(db, {
+      companyId, existingId: target.id, reason: "타회사 근거",
+      next: nextCard({ evidence: [{ type: "workflow_run", id: foreignRunId }] }),
+    })).rejects.toThrow(/does not exist/);
+    await expect(supersedeWithLineage(db, {
+      companyId: otherCompanyId, existingId: target.id, reason: "타회사 대체", next: nextCard({ evidence: [] }),
+    })).rejects.toThrow(/same company/);
+    await expect(retire(db, { companyId: otherCompanyId, id: target.id, reason: "타회사 은퇴" })).rejects.toThrow(/cannot be retired/);
+
+    const [row] = await db.select().from(companyKnowledgePatterns).where(eq(companyKnowledgePatterns.id, target.id));
+    expect(row!.supersededById).toBeNull();
+    expect(row!.status).toBe("active");
+    const foreignCards = await db.select().from(companyKnowledgePatterns).where(eq(companyKnowledgePatterns.companyId, otherCompanyId));
+    expect(foreignCards).toHaveLength(0);
   });
 });

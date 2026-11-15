@@ -16,9 +16,15 @@
 //   - pitfalls는 주입 브리핑의 '피할 오답' 표시 전용이며 랭킹 점수에 기여하지 않는다.
 //   - retired는 체인 말단 — retired 카드를 supersede 대상으로 삼는 것을 거부한다.
 
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull, ne } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { activityLog, companyKnowledgePatterns } from "@paperclipai/db";
+import {
+  assertNoDuplicateSignature,
+  DEFECT_SIGNATURE_MAX,
+  isDuplicateSignaturePgError,
+  KnowledgePatternDuplicateSignatureError,
+} from "./knowledge-pattern-evidence-gate.js";
 import {
   assertEvidenceExists,
   KINDS,
@@ -84,6 +90,7 @@ export async function supersedeWithLineage(
       coupled?: unknown;
       errorSignatures?: unknown;
       pitfalls?: unknown;
+      defectSignature?: unknown;
       source: unknown;
       createdByAgentId?: string | null;
     };
@@ -104,9 +111,10 @@ export async function supersedeWithLineage(
   const scopeTags = readTags(next.scopeTags);
   const { files, symbols, coupled, errorSignatures } = readEntities(next);
   const nextPitfalls = readPitfalls(next.pitfalls);
+  const explicitSignature = readTrimmed(next.defectSignature, "defectSignature", DEFECT_SIGNATURE_MAX, false);
 
-  // [근거 실재성 게이트 — create()와 동일] 위조 근거가 즉시 active 카드가 되는 것을 차단.
-  await assertEvidenceExists(db, evidence);
+  // [근거 실재성 게이트 — create()와 동일] 위조·타회사 근거가 즉시 active 카드가 되는 것을 차단.
+  await assertEvidenceExists(db, evidence, input.companyId);
 
   return await db.transaction(async (tx) => {
     const [existing] = await tx
@@ -126,39 +134,70 @@ export async function supersedeWithLineage(
     }
 
     // 계보 롤업: 기존 pitfalls를 앞에 두고 새 입력을 뒤에 병합(순서 보존 중복 제거).
-    // whatWorked는 새 입력이 있으면 그것을, 없으면 기존 값을 계승한다.
+    // whatWorked·defectSignature는 새 입력이 있으면 그것을, 없으면 기존 값을 계승한다.
     const pitfalls = Array.from(new Set([...existing.pitfalls, ...nextPitfalls]));
     const whatWorked = nextWhatWorked ?? existing.whatWorked;
+    const defectSignature = explicitSignature ?? existing.defectSignature ?? null;
 
-    const [created] = await tx
-      .insert(companyKnowledgePatterns)
-      .values({
-        companyId: input.companyId,
-        kind,
-        title,
-        summary,
-        evidence,
-        ...(symptoms ? { symptoms } : {}),
-        ...(rootCause ? { rootCause } : {}),
-        ...(whatWorked ? { whatWorked } : {}),
-        scopeTags,
-        files,
-        symbols,
-        coupled,
-        errorSignatures,
-        pitfalls,
-        versionNumber: existing.versionNumber + 1,
-        supersedeReason: reason,
-        source,
-        createdByAgentId: next.createdByAgentId ?? null,
-        supersededById: null,
-      })
-      .returning();
+    if (defectSignature && defectSignature !== existing.defectSignature) {
+      await assertNoDuplicateSignature(tx, { companyId: input.companyId, defectSignature });
+    }
+    // (company_id, defect_signature) 부분 유일 인덱스가 non-null 전체를 잠그므로 대체되는
+    // 카드의 서명 슬롯을 같은 트랜잭션 안에서 비워 체인 헤드로 이전(또는 변경 시 해제)한다.
+    if (existing.defectSignature !== null) {
+      await tx
+        .update(companyKnowledgePatterns)
+        .set({ defectSignature: null })
+        .where(and(
+          eq(companyKnowledgePatterns.id, input.existingId),
+          eq(companyKnowledgePatterns.companyId, input.companyId),
+          isNull(companyKnowledgePatterns.supersededById),
+        ));
+    }
+
+    let created: KnowledgePattern;
+    try {
+      [created] = await tx
+        .insert(companyKnowledgePatterns)
+        .values({
+          companyId: input.companyId,
+          kind,
+          title,
+          summary,
+          evidence,
+          ...(symptoms ? { symptoms } : {}),
+          ...(rootCause ? { rootCause } : {}),
+          ...(whatWorked ? { whatWorked } : {}),
+          scopeTags,
+          files,
+          symbols,
+          coupled,
+          errorSignatures,
+          pitfalls,
+          defectSignature,
+          versionNumber: existing.versionNumber + 1,
+          supersedeReason: reason,
+          source,
+          createdByAgentId: next.createdByAgentId ?? null,
+          supersededById: null,
+        })
+        .returning();
+    } catch (error) {
+      if (isDuplicateSignaturePgError(error)) {
+        throw new KnowledgePatternDuplicateSignatureError(null);
+      }
+      throw error;
+    }
 
     const linked = await tx
       .update(companyKnowledgePatterns)
       .set({ supersededById: created.id })
-      .where(and(eq(companyKnowledgePatterns.id, input.existingId), isNull(companyKnowledgePatterns.supersededById)))
+      .where(and(
+        eq(companyKnowledgePatterns.id, input.existingId),
+        eq(companyKnowledgePatterns.companyId, input.companyId),
+        isNull(companyKnowledgePatterns.supersededById),
+        ne(companyKnowledgePatterns.status, KNOWLEDGE_PATTERN_STATUS_RETIRED),
+      ))
       .returning({ id: companyKnowledgePatterns.id });
     if (linked.length === 0) {
       throw new Error("knowledge pattern supersede target was superseded concurrently");
@@ -171,7 +210,10 @@ export async function supersedeWithLineage(
       action: "knowledge_pattern.superseded",
       entityType: "knowledge_pattern",
       entityId: created.id,
-      details: { kind, title, source, supersededId: input.existingId, versionNumber: created.versionNumber, reason },
+      details: {
+        kind, title, source, supersededId: input.existingId, versionNumber: created.versionNumber, reason,
+        ...(defectSignature ? { defectSignature } : {}),
+      },
     });
     return created;
   });
@@ -184,6 +226,9 @@ export async function retire(
   db: Db,
   input: { companyId: string; id: string; reason: unknown },
 ): Promise<KnowledgePattern> {
+  if (!input.companyId || !input.companyId.trim()) {
+    throw new Error("knowledge pattern cannot be retired (companyId is required)");
+  }
   const reason = readTrimmed(input.reason, "reason", REASON_MAX, true)!;
   const [updated] = await db
     .update(companyKnowledgePatterns)

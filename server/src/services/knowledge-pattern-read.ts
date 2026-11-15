@@ -34,6 +34,7 @@ export const KNOWLEDGE_PATTERN_STATUS_ACTIVE = "active";
 export const TITLE_MAX = 200;
 export const SUMMARY_MAX = 1200;
 export const TEXT_MAX = 2000;
+export const QUERY_ENTITY_LIST_MAX = 12;
 const TAGS_MAX = 8;
 const EVIDENCE_MAX = 10;
 
@@ -101,11 +102,37 @@ export function readEntities(input: {
   return parsed.data;
 }
 
-/** [근거 실재성 검증] evidence 참조가 실제 행을 가리키는지 확인한다(2026-11-14 결함 수정 ⓑ).
- *  검증 가능 타입: mission/workflow_run/issue/transition_event/heartbeat_run — 모두 uuid PK.
+export function readQueryEntityList(value: unknown, field: "files" | "symbols"): string[] | null {
+  if (value == null) return null;
+  let items: string[];
+  if (typeof value === "string") {
+    if (!value.trim()) return null;
+    items = value.split(",").map((item) => item.trim()).filter(Boolean);
+  } else if (Array.isArray(value)) {
+    items = value.flatMap((entry) =>
+      typeof entry === "string" ? entry.split(",").map((item) => item.trim()).filter(Boolean) : [],
+    );
+  } else {
+    throw new Error(`knowledge pattern query ${field} must be a string or string array`);
+  }
+  if (items.length > QUERY_ENTITY_LIST_MAX) {
+    throw new Error(`knowledge pattern query ${field} exceeds ${QUERY_ENTITY_LIST_MAX} items`);
+  }
+  return items.length > 0 ? items : null;
+}
+
+/** [근거 실재성 검증] evidence 참조가 같은 회사의 실제 행을 가리키는지 확인한다(2026-11-14 결함 수정 ⓑ + 회사 격리).
+ *  검증 가능 타입: mission/workflow_run/issue/transition_event/heartbeat_run — 모두 uuid PK + company_id.
  *  'pr'은 외부 GitHub 참조로 DB 테이블이 없어 형식 검증만 적용(존재 검증은 흡수 Top-2에서 별도 논의).
- *  위조 근거(존재하지 않는 id)로 즉시 active 카드가 되는 것을 막는다. */
-export async function assertEvidenceExists(db: Db, evidence: Array<Record<string, unknown>>): Promise<void> {
+ *  위조·타회사 근거로 즉시 active 카드가 되는 것을 막는다. */
+export async function assertEvidenceExists(
+  db: Db,
+  evidence: Array<Record<string, unknown>>,
+  companyId: string,
+): Promise<void> {
+  if (!companyId || !companyId.trim()) {
+    throw new Error("knowledge pattern evidence companyId is required");
+  }
   for (const entry of evidence) {
     const type = String(entry.type);
     const id = String(entry.id);
@@ -113,43 +140,80 @@ export async function assertEvidenceExists(db: Db, evidence: Array<Record<string
     if (!isUuidLike(id)) {
       throw new Error(`knowledge pattern evidence ${type} id must be a uuid (got "${id.slice(0, 40)}")`);
     }
-    const exists = await evidenceRowExists(db, type, id);
+    const exists = await evidenceRowExists(db, type, id, companyId);
     if (!exists) {
       throw new Error(`knowledge pattern evidence ${type} ${id} does not exist`);
     }
   }
 }
 
-export async function evidenceRowExists(db: Db, type: string, id: string): Promise<boolean> {
+export async function evidenceRowExists(db: Db, type: string, id: string, companyId: string): Promise<boolean> {
+  if (!companyId || !companyId.trim()) return false;
   switch (type) {
     case "mission": {
-      const rows = await db.select({ id: missions.id }).from(missions).where(eq(missions.id, id)).limit(1);
+      const rows = await db
+        .select({ id: missions.id })
+        .from(missions)
+        .where(and(eq(missions.id, id), eq(missions.companyId, companyId)))
+        .limit(1);
       return rows.length > 0;
     }
     case "workflow_run": {
-      const rows = await db.select({ id: workflowRuns.id }).from(workflowRuns).where(eq(workflowRuns.id, id)).limit(1);
+      const rows = await db
+        .select({ id: workflowRuns.id })
+        .from(workflowRuns)
+        .where(and(eq(workflowRuns.id, id), eq(workflowRuns.companyId, companyId)))
+        .limit(1);
       return rows.length > 0;
     }
     case "issue": {
-      const rows = await db.select({ id: issues.id }).from(issues).where(eq(issues.id, id)).limit(1);
+      const rows = await db
+        .select({ id: issues.id })
+        .from(issues)
+        .where(and(eq(issues.id, id), eq(issues.companyId, companyId)))
+        .limit(1);
       return rows.length > 0;
     }
     case "transition_event": {
       const rows = await db
         .select({ id: workflowTransitionEvents.id })
         .from(workflowTransitionEvents)
-        .where(eq(workflowTransitionEvents.id, id))
+        .where(and(eq(workflowTransitionEvents.id, id), eq(workflowTransitionEvents.companyId, companyId)))
         .limit(1);
       return rows.length > 0;
     }
     case "heartbeat_run": {
-      const rows = await db.select({ id: heartbeatRuns.id }).from(heartbeatRuns).where(eq(heartbeatRuns.id, id)).limit(1);
+      const rows = await db
+        .select({ id: heartbeatRuns.id })
+        .from(heartbeatRuns)
+        .where(and(eq(heartbeatRuns.id, id), eq(heartbeatRuns.companyId, companyId)))
+        .limit(1);
       return rows.length > 0;
     }
     default:
       return true;
   }
 }
+
+export type CreateKnowledgePatternInput = {
+  companyId: string;
+  kind: unknown;
+  title: unknown;
+  summary: unknown;
+  evidence?: unknown;
+  symptoms?: unknown;
+  rootCause?: unknown;
+  whatWorked?: unknown;
+  scopeTags?: unknown;
+  files?: unknown;
+  symbols?: unknown;
+  coupled?: unknown;
+  errorSignatures?: unknown;
+  defectSignature?: unknown;
+  source: unknown;
+  createdByAgentId?: string | null;
+  supersedeId?: string | null;
+};
 
 export type KnowledgePatternSearchInput = {
   companyId: string;

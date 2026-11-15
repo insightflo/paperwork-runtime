@@ -12,6 +12,8 @@ import { workflowRuns, workflowStepRuns } from "@paperclipai/db";
 import type { Db } from "@paperclipai/db";
 import { knowledgePatternEntitiesSchema } from "@paperclipai/shared/validators/knowledge-pattern";
 import { knowledgePatternsService } from "../services/knowledge-patterns.js";
+import { KnowledgePatternDuplicateSignatureError } from "../services/knowledge-pattern-evidence-gate.js";
+import { readQueryEntityList } from "../services/knowledge-pattern-read.js";
 import { retire } from "../services/knowledge-pattern-lifecycle.js";
 import { formatKnowledgePatternBriefs } from "../services/knowledge-pattern-brief.js";
 import { explainRelatedKnowledgePatterns, selectRelatedKnowledgePatterns } from "../services/knowledge-pattern-relevance.js";
@@ -51,16 +53,13 @@ const createKnowledgePatternSchema = z.object({
   supersedeId: z.string().trim().min(1).optional(),
 });
 
-/** [T1c] 검색 질의 파라미터 files/symbols — 쉼표 구분 목록(선택). 엔티티 정규화는 관련도 엔진 내부에서. */
-function readQueryList(value: unknown): string[] | null {
-  if (typeof value === "string" && value.trim()) {
-    return value.split(",").map((item) => item.trim()).filter(Boolean);
+/** [T1c] 검색 질의 파라미터 files/symbols — 쉼표 구분 목록(선택, 최대 12개). 초과·형식 오류 시 422. */
+function parseQueryEntities(value: unknown, field: "files" | "symbols"): string[] | null {
+  try {
+    return readQueryEntityList(value, field);
+  } catch (error) {
+    throw unprocessable(error instanceof Error ? error.message : String(error));
   }
-  if (Array.isArray(value)) {
-    const items = value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
-    return items.length > 0 ? items : null;
-  }
-  return null;
 }
 
 export function knowledgePatternsRoutes(db: Db) {
@@ -80,8 +79,8 @@ export function knowledgePatternsRoutes(db: Db) {
     const isBoard = req.actor.type !== "agent";
     const includeDrafts = isBoard && req.query.includeDrafts !== "false";
     const q = typeof req.query.q === "string" ? req.query.q : null;
-    const files = readQueryList(req.query.files);
-    const symbols = readQueryList(req.query.symbols);
+    const files = parseQueryEntities(req.query.files, "files");
+    const symbols = parseQueryEntities(req.query.symbols, "symbols");
     const patterns = await svc.search({
       companyId,
       kind: typeof req.query.kind === "string" ? req.query.kind : null,
@@ -114,7 +113,7 @@ export function knowledgePatternsRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     const q = typeof req.query.q === "string" ? req.query.q : "";
-    const contextTexts = [q, ...(readQueryList(req.query.files) ?? []), ...(readQueryList(req.query.symbols) ?? [])].filter((text) => text.trim() !== "");
+    const contextTexts = [q, ...(parseQueryEntities(req.query.files, "files") ?? []), ...(parseQueryEntities(req.query.symbols, "symbols") ?? [])].filter((text) => text.trim() !== "");
     const patterns = await svc.search({ companyId, includeDrafts: req.query.includeDrafts !== "false", includeSuperseded: req.query.includeSuperseded === "true", limit: 200 });
     res.json({ explanations: explainRelatedKnowledgePatterns(patterns, contextTexts) });
   });
@@ -162,7 +161,7 @@ export function knowledgePatternsRoutes(db: Db) {
     } catch (error) {
       // 서비스 계약 오류를 복구 불가 500이 아니라 재시도 가능한 4xx로 매핑(감독 루프 보호).
       const message = error instanceof Error ? error.message : String(error);
-      if (message.startsWith("knowledge pattern defect signature")) {
+      if (error instanceof KnowledgePatternDuplicateSignatureError || message.startsWith("knowledge pattern defect signature")) {
         next(conflict(message));
         return;
       }
@@ -170,15 +169,12 @@ export function knowledgePatternsRoutes(db: Db) {
         next(conflict("Supersede target was replaced by another card; re-read and supersede the new head"));
         return;
       }
-      if (message.startsWith("knowledge pattern evidence")) {
-        next(unprocessable(message));
-        return;
-      }
-      if (message.startsWith("knowledge pattern entity")) {
-        next(unprocessable(message));
-        return;
-      }
-      if (message.includes("supersede target must exist in the same company")) {
+      if (
+        message.startsWith("knowledge pattern evidence")
+        || message.startsWith("knowledge pattern entity")
+        || message.includes("supersede target must exist in the same company")
+        || message.includes("is retired")
+      ) {
         next(unprocessable(message));
         return;
       }
@@ -218,9 +214,11 @@ export function knowledgePatternsRoutes(db: Db) {
       assertBoard(req);
       const companyId = req.params.companyId as string;
       assertCompanyAccess(req, companyId);
-      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
-      if (!reason) {
-        next(badRequest("reason is required"));
+      const rawReason = req.body?.reason;
+      if (rawReason === undefined) { next(badRequest("reason is required")); return; }
+      const reason = typeof rawReason === "string" ? rawReason.trim() : "";
+      if (!reason || reason.length > 500) {
+        next(unprocessable("reason must be a string of 1..500 chars"));
         return;
       }
       const card = await retire(db, { companyId, id: req.params.patternId as string, reason });

@@ -30,6 +30,36 @@ import { selectRelatedKnowledgePatterns, type RelatedKnowledgePattern } from "./
 
 /** defectSignature 상한 — QA 기계 서명은 sha256 hex(64자)라 여유 상한. */
 export const DEFECT_SIGNATURE_MAX = 200;
+export const KNOWLEDGE_PATTERN_SIGNATURE_UNIQUE_INDEX = "company_knowledge_patterns_company_signature_uq";
+
+/** 동일 회사의 defect_signature 중복 충돌 — 사전 조회와 INSERT 23505 경합 모두 이 타입으로 수렴(409). */
+export class KnowledgePatternDuplicateSignatureError extends Error {
+  readonly existingCardId: string | null;
+
+  constructor(existingCardId: string | null, status?: string | null) {
+    const location = existingCardId
+      ? `on card ${existingCardId}${status ? ` (status=${status})` : ""}`
+      : "on an existing card";
+    super(`knowledge pattern defect signature already registered ${location}; supersede that card instead of duplicating`);
+    this.name = "KnowledgePatternDuplicateSignatureError";
+    this.existingCardId = existingCardId;
+  }
+}
+
+/** Postgres unique_violation(23505) 중 defect_signature 부분 유일 인덱스 충돌인지 판별(Drizzle cause 체인 포함). */
+export function isDuplicateSignaturePgError(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current && typeof current === "object"; depth += 1) {
+    if (seen.has(current)) return false;
+    seen.add(current);
+    const candidate = current as { code?: unknown; constraint?: unknown; constraint_name?: unknown; cause?: unknown };
+    const constraint = candidate.constraint ?? candidate.constraint_name;
+    if (candidate.code === "23505" && constraint === KNOWLEDGE_PATTERN_SIGNATURE_UNIQUE_INDEX) return true;
+    current = candidate.cause;
+  }
+  return false;
+}
 
 // 기계 출처 — 게이트가 강등을 적용하는 source 집합. create()는 SOURCES 열거로 먼저 검증하므로
 //   이 집합 밖(현재 operator뿐)은 항상 무강등 통과 = 사람 제출 차단 금지 계약.
@@ -69,9 +99,7 @@ export async function assertNoDuplicateSignature(
     ))
     .limit(1);
   if (existing) {
-    throw new Error(
-      `knowledge pattern defect signature already registered on card ${existing.id} (status=${existing.status}); supersede that card instead of duplicating`,
-    );
+    throw new KnowledgePatternDuplicateSignatureError(existing.id, existing.status);
   }
 }
 
