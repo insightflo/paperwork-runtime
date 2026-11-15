@@ -22,19 +22,20 @@ export function normalizeCodePathRef(raw: string): string {
   return normalizeKnowledgePatternEntityPath(stripLineColumns(raw));
 }
 
-/** 유일 파일명 — 정규화된 경로의 마지막 세그먼트. */
-export function uniqueFileName(pathRef: string): string {
-  const segments = pathRef.split("/").filter((segment) => segment.length > 0);
-  return segments[segments.length - 1] ?? pathRef;
-}
-
 /** `@/` 별칭 해석 — 입력받은 별칭 맵에서 긴 키부터 접두사 치환(하드코딩 금지).
- *  별칭 값도 공유 경로 규칙으로 정규화해 `ref === key`(값 그대로 반환)와 접두사
- *  치환(정규화 통과) 두 경로의 canonical form을 맞춘다. 키는 리터럴 접두사라 그대로 둔다. */
+ *  별칭 키·값 양쪽을 같은 규칙으로 정규화한다 — 키의 후행 슬래시(`"@/services/"`)도
+ *  없애 `ref === key`(값 그대로 반환)와 접두사 치환(정규화 통과) 두 경로의 canonical
+ *  form을 맞춘다. 정규화 후 빈 키는 매칭 불가라 건너뛰고, 같은 canonical 키는 먼저 것만. */
 export function resolvePathAlias(ref: string, aliasMap: Readonly<Record<string, string>>): string {
-  const keys = Object.keys(aliasMap).sort((left, right) => right.length - left.length);
+  const roots = new Map<string, string>();
+  for (const rawKey of Object.keys(aliasMap)) {
+    const key = normalizeKnowledgePatternEntityPath(rawKey).replace(/\/+$/, "");
+    if (key.length === 0 || roots.has(key)) continue;
+    roots.set(key, normalizeKnowledgePatternEntityPath(aliasMap[rawKey]!).replace(/\/+$/, ""));
+  }
+  const keys = [...roots.keys()].sort((left, right) => right.length - left.length);
   for (const key of keys) {
-    const root = normalizeKnowledgePatternEntityPath(aliasMap[key]!).replace(/\/+$/, "");
+    const root = roots.get(key)!;
     if (ref === key) return root;
     if (ref.startsWith(`${key}/`)) {
       return normalizeKnowledgePatternEntityPath(`${root}/${ref.slice(key.length + 1)}`);
@@ -144,14 +145,19 @@ export function normalizeKnowledgeTokens(text: string): string[] {
 }
 
 /** 경로 후보 추출 — 확장자를 가진 파일경로 모양 문자열(`@` 별칭 시길 포함.
- *   `:line:col`·`(l,c)`은 정규화 시 제거된다). */
+ *   `:line:col`·`(l,c)`은 정규화 시 제거된다).
+ *  오탐 가드: `https:` 같은 URL 스킴 직후 조각과 `2.4.1`·`v1.2` 같은 버전 문자열은
+ *  파일 참조가 아니다 — 스킴 접두 뒤의 매치를 버리고, 확장자에 문자가 1개 이상 있어야 인정한다. */
 export function extractFileRefs(texts: readonly string[]): string[] {
   const refs: string[] = [];
   const seen = new Set<string>();
   for (const text of texts) {
     for (const match of text.matchAll(/[@\w./\\-]+\.[\w-]+/g)) {
       const ref = match[0];
-      if (ref.length < 3 || seen.has(ref)) continue;
+      const start = match.index ?? -1;
+      if (ref.length < 3 || start < 0 || seen.has(ref)) continue;
+      if (/[a-zA-Z][a-zA-Z0-9+.-]+:$/.test(text.slice(0, start))) continue; // 스킴 직후 조각(URL)
+      if (!/\p{L}/u.test(ref.slice(ref.lastIndexOf(".") + 1))) continue; // 숫자뿐 확장자(버전)
       seen.add(ref);
       refs.push(ref);
     }

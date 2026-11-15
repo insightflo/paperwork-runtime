@@ -37,6 +37,9 @@ export const TEXT_MAX = 2000;
 export const QUERY_ENTITY_LIST_MAX = 12;
 const TAGS_MAX = 8;
 const EVIDENCE_MAX = 10;
+/** 엔티티 질의 시 재정렬 후보 창 — limit 창 안에만 재정렬하면 창 밖의 파일·심볼 일치
+ *  카드를 놓치므로 files/symbols 질의가 있을 때만 이 창까지 후보를 넓힌다. */
+const ENTITY_QUERY_FETCH_LIMIT = 500;
 
 export function readTrimmed(value: unknown, field: string, max: number, required: boolean): string | null {
   if (value == null) {
@@ -232,10 +235,14 @@ export type KnowledgePatternSearchInput = {
  *  draft 초안은 기본 제외(includeDrafts=true일 때만 노출 — 승인 화면 전용).
  *  [T1c] q·files·symbols 질의가 있으면 결과를 관련도 엔진(T1b)으로 재정렬한다 — 질의
  *  정규화는 엔진 내부 normalizer가 수행하므로 여기선 원문을 넘긴다. 재정렬은 DB 필터 통과
- *  행을 버리지 않고 순서만 바꾼다(엔진 최소점 미만 행은 종전 createdAt desc 순 뒤에 잔류). */
+ *  행을 버리지 않고 순서만 바꾼다(엔진 최소점 미만 행은 종전 createdAt desc 순 뒤에 잔류).
+ *  files/symbols 질의가 있으면 후보 창을 넓혀(ENTITY_QUERY_FETCH_LIMIT) 랭킹한 뒤 요청
+ *  limit로 자른다 — 질의 없는 현행 경로는 limit 조회 그대로. */
 export async function searchKnowledgePatterns(db: Db, input: KnowledgePatternSearchInput): Promise<KnowledgePattern[]> {
   const limit = Math.max(1, Math.min(input.limit ?? 50, 200));
   const q = input.q?.trim();
+  const entityQueries = [...(input.files ?? []), ...(input.symbols ?? [])].filter((item) => item.trim().length > 0);
+  const fetchLimit = entityQueries.length > 0 ? Math.max(limit, ENTITY_QUERY_FETCH_LIMIT) : limit;
   const conditions = [eq(companyKnowledgePatterns.companyId, input.companyId)];
   if (!input.includeSuperseded) {
     conditions.push(isNull(companyKnowledgePatterns.supersededById));
@@ -265,12 +272,17 @@ export async function searchKnowledgePatterns(db: Db, input: KnowledgePatternSea
     .from(companyKnowledgePatterns)
     .where(and(...conditions))
     .orderBy(desc(companyKnowledgePatterns.createdAt))
-    .limit(limit);
+    .limit(fetchLimit);
 
-  const entityQueries = [...(input.files ?? []), ...(input.symbols ?? [])].filter((item) => item.trim().length > 0);
   if (!q && entityQueries.length === 0) return rows;
-  const ranked = selectRelatedKnowledgePatterns(rows, [q ?? "", ...entityQueries], rows.length);
+  // files 질의는 정규화만 거쳐 fileRefSet에 직접 넣는다 — extractFileRefs는 확장자 있는
+  //   경로만 잡아 확장자 없는 질의(src/api/foo)가 정확 매칭되지 않는다.
+  const ranked = selectRelatedKnowledgePatterns(rows, [q ?? "", ...entityQueries], rows.length, {
+    fileRefs: input.files ?? [],
+  });
   const scoreById = new Map(ranked.map((entry) => [entry.id, entry.score]));
   // 안정 정렬 — 무득점 행은 종전 순서(createdAt desc)를 유지한 채 득점 행 뒤에 잔류한다.
-  return [...rows].sort((left, right) => (scoreById.get(right.id) ?? 0) - (scoreById.get(left.id) ?? 0));
+  return [...rows]
+    .sort((left, right) => (scoreById.get(right.id) ?? 0) - (scoreById.get(left.id) ?? 0))
+    .slice(0, limit);
 }
