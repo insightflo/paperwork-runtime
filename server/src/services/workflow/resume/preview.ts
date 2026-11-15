@@ -166,7 +166,11 @@ export async function assembleResumePreview(
   const companyBudgetBlockers = budgetBlockers(company);
   const budget = companyBudgetBlockers.some((blocker) => blocker.code === "budget_unknown") ? "unknown" : "verified";
 
-  const policyView = await loadResumedPolicy(tx, validated.companyId, definition.definitionHash);
+  const policyView = await loadResumedPolicy(tx, validated.companyId, {
+    definitionHash: definition.definitionHash,
+    executionMode: definition.executionMode,
+    steps: definition.steps,
+  });
   const requestRows = await tx.select().from(workflowResumeRequests)
     .where(and(
       eq(workflowResumeRequests.companyId, validated.companyId),

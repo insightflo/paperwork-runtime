@@ -11,6 +11,12 @@
  *     configHash 는 hashStructuredValue({name,enabled,adapterType,adapterConfig,inputSchema})
  *     이며, preview-policy 가 현재 DB registry 행과 대조한다. 이름만 같고 설정이 다른 행은
  *     resolve 되지 않는다(도구 효과 추론 금지).
+ *   - 매칭 키(2026-11-15 확장): definitionHash 는 해시 payload 에 workflowRunId·provenance 가
+ *     포함되어 run 마다 유일하다(동일 steps 라도 run 이 다르면 해시가 다르다 — 2026-11-15
+ *     실증). 그래서 exact definitionHash 엔트리는 그 run 하나에만 적용된다. stepsHash 를
+ *     선언한 엔트리는 resumeStepsHash({executionMode, steps}) 로 동일 그래프 형태의 모든
+ *     run 에 적용된다(스텝 바이트가 바뀌면 해시가 바뀌어 자동 미매치 — 그래프 표류 보호,
+ *     도구 표류는 toolBindings 가 보호). (companyId, stepsHash) 는 유일해야 한다.
  *   - 이 파일의 로직은 없다 — 데이터 경계만 있다. 검토 없이 배열을 채우는 것은
  *     이 레지스트리의 계약 위반이다.
  * [수정시 주의] schemaVersion 은 1 고정. steps 의 key 는 frozen definition 의 stepId 다.
@@ -30,7 +36,11 @@ export interface ReviewedResumePolicyStep {
 export interface ReviewedResumePolicy {
   schemaVersion: 1;
   companyId: string;
+  /** 검토 근거가 된 대표 run 의 frozen definition_hash(run 고유) — provenance 키. */
   definitionHash: string;
+  /** 안정 매칭 키(선택) — preview-policy.resumeStepsHash({executionMode, steps}) 값.
+ *     동일 그래프 형태의 모든 run 에 정책이 적용된다. 선언 시 (companyId, stepsHash) 유일. */
+  stepsHash?: string;
   steps: Record<string, ReviewedResumePolicyStep>;
   requiredGateStepIds: string[];
   publicationStepIds: string[];
@@ -38,13 +48,18 @@ export interface ReviewedResumePolicy {
 }
 
 /**
- * [현재 상태] 2026-10-22 youtube-report 검토 정책 1건 등록(회사 ff3e3efd, 미션 74a44d52
- *   의 run 8305cef9 frozen definition). 각 엔트리의 헤더 주석이 검토 근거(원본 정의·도구 실제
- *   동작·바인딩 채취 방법·날짜)이며, 근거 없는 엔트리 추가는 이 레지스트리의 계약 위반이다.
+ * [현재 상태] 2026-10-22 youtube-report 검토 정책, 2026-10-23 dsh-purge PAQO 정책에 이어
+ *   2026-11-15 service-onboarding / agent-team-concept-radar / youtube-report(현행 형태)
+ *   초안 3건이 추가됐다(에이전트 증거 수집 초안 — 최종 사람 검토 전, 각 헤더 참조).
+ *   2026-11-15 확장으로 기존 2건에 stepsHash 가 추가됐다(동일 그래프 형태의 다른 run 도
+ *   재개 가능하게 — 매칭 규칙은 파일 헤더 참조). 각 엔트리의 헤더 주석이 검토 근거(원본 정의·
+ *   도구 실제 동작·바인딩 채취 방법·날짜)이며, 근거 없는 엔트리 추가는 이 레지스트리의
+ *   계약 위반이다.
  *  [운영 주의] toolBindings 는 검토 시점 registry 행의 정확한 참조다. 해당 tool_definitions 행의
  *   enabled/updatedAt/설정(adapterConfig·inputSchema)이 바뀌면 bindingResolves 가 실패해 그
  *   스텝 effect 는 unknown 으로 되돌아가고(external_effect_unknown 재발) 정책은 자동 무효화된다.
  *   이는 의도된 fail-closed 동작이며, 도구 변경 후에는 이 매니페스트를 다시 검토·갱신해야 한다.
+ *   바인딩 채취·현재 registry 대조 검증은 scripts/resume-policy-bindings.ts (collect/verify) 로 한다.
  */
 export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
   /**
@@ -76,11 +91,15 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
    * [바인딩 채취] 2026-10-22 A1(127.0.0.1:54329 paperclip)에서 배포 런타임의
    *   hashStructuredValue({name,enabled,adapterType,adapterConfig,inputSchema}) 와 postgres.js
    *   updatedAt.toISOString() 로 계산. registry 행이 이 시점과 같아야 binding 이 resolve 된다.
+   *   [2026-11-15 stepsHash 추가] scripts/resume-policy-bindings.ts steps-hash --run 8305cef9…
+   *   로 계산(34960e17…). 동일 형태 run(예: 실패 6620094a, 2026-11-15)도 이 정책으로 재개된다.
+   *   같은 날 verify 로 전 바인딩이 현재 registry 와 일치함을 재확인했다.
    */
   {
     schemaVersion: 1,
     companyId: "ff3e3efd-e30c-45c2-b893-497164405629",
     definitionHash: "d0b3eca4019e01d75ef97661351f6a9e03954eb585c0e610d71b69d8bf9a97c6",
+    stepsHash: "34960e17005591437057a0f1399f94226f99212d0b77f6cd70a8f7ab5d903411",
     steps: {
       "collect-youtube-evidence": {
         effect: "read_only",
@@ -165,11 +184,14 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
    *   2026-10-23 A1 실측으로 updated_at 불변 확인(qa 9512da2f 2026-10-02T00:02:12.308Z,
    *   publish db36b402 2026-10-03T07:21:49.187Z, verify 2523e587 2026-10-02T00:02:12.723Z) —
    *   configHash 는 동일 검토 시점 값을 재사용한다(행 불변). 행이 바뀌면 binding 이 자동 무효화된다.
+   *   [2026-11-15 stepsHash 추가] scripts/resume-policy-bindings.ts steps-hash --run 9c6cf35d…
+   *   로 계산(0ad558dc…). 같은 날 verify 로 바인딩 3건 모두 현재 registry 와 일치함을 재확인했다.
    */
   {
     schemaVersion: 1,
     companyId: "ff3e3efd-e30c-45c2-b893-497164405629",
     definitionHash: "d57fd45e6eb9d7aeee24d2742f0a2a3a09f7d8d4d988abe2681b610addce42bb",
+    stepsHash: "0ad558dcdc213ae6014c11eb14facb4ed2c4ceb53c1104082188ff284a7e7542",
     steps: {
       "action-1-4ae1f74ba7": { effect: "none", toolBindings: [] },
       "qa-2-cd874c856d": { effect: "none", toolBindings: [] },
@@ -202,5 +224,297 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
     requiredGateStepIds: [],
     publicationStepIds: ["action-4-64dcc548f7"],
     generationStepIds: ["action-1-4ae1f74ba7"],
+  },
+  /**
+   * [검토 근거 — 2026-11-15 초안(에이전트 증거 수집, 최종 사람 검토 전)] 원본 정의:
+   *   workflow_definitions 56362d74-9c8f-482b-b766-b76bd3fe4ba1 (service-onboarding,
+   *   updated 2026-11-07 12:22). 검토 대상 스냅샷: workflow_run_definitions run
+   *   ad0eaa12-b39e-4f0d-953d-26e8600d6722 (stepsHash 아래, 9스텝). 2026-11-09~15 실패 8건
+   *   전부와 최신 완료 run(05bb0cb8, 90d19824)이 동일 stepsHash 다(그래프 형태 동일 실증).
+   *   스텝 효과는 frozen 스텝 서술·adapter_config·A1 실행 스크립트로 확인했다.
+   *   - collect-service-source (http→scrapling.showk.ing dynamic-fetch): A1 /srv/inflo-scrapling/
+   *     current/app.py fetch_dynamic — 대상 URL 브라우저 렌더 후 HTML 추출 응답(외부 읽기).
+   *     진행 콜백 POST는 /crawl 전용. 외부 쓰기 없음 → read_only.
+   *   - collect-repo-meta (builtin repo_meta.py): 스크립트 헤더 명시 "읽기 전용: 공개 API
+   *     GET만 호출". 산출물(repo-meta.json·이미지)은 $PAPERCLIP_STEP_OUTPUT_DIR(워크스페이스) →
+   *     read_only.
+   *   - analyze-service-profile (agent): 등록 산출물 입력 + "허용된 공식 범위에서만 보충 자료
+   *     최대 4개 저장"(외부 공식 소스 읽기). service-profile.json 산출, 발행 없음 → read_only.
+   *   - build-service-report-content (agent): 등록 산출물+repo-meta 입력, "발행하지 않는다"
+   *     명시. 저장소 코드 참조 가능(외부 읽기 가능) → read_only.
+   *   - prescreen-service-content (builtin judgment): LLM 추론 provider 호출(외부 읽기) 후
+   *     judgment-result.json 을 스텝 출력 디렉터리에 저장(agent-judgment-tool-executor.ts) →
+   *     read_only.
+   *   - validate-service-report-content (agent): 등록 산출물 대조 검증, 판정만 반환 → none.
+   *   - qa-service-report-content (builtin manual-onboarding-qa): 2026-10-22 youtube 검토와
+   *     동일 도구·동일 행 — 등록 본문 기계 검사, 결과 JSON 워크스페이스 기록 → none.
+   *   - publish-onboarding-manual (builtin manual-onboarding-publish): CMS(Cloudflare D1)
+   *     manuals 섹션 발행 → external + publicationStepIds.
+   *   - verify-onboarding-manual-publish (builtin manual-onboarding-verify): 공개 상태
+   *     readback 확인 읽기 → read_only.
+   *   generationStepIds: analyze(프로필 초안)·build(ContentV1)만. 수집·검증·발행 제외.
+   *   requiredGateStepIds 비움: dsh-purge 2026-10-23 정정과 동일 논리 — 게이트(qa) 이전
+   *   재개는 선형 하류라 항상 qa 를 포함하고, 게이트 이후(publish/verify) 재개는 이미 qa 를
+   *     통과한 동일 본문을 outside-predecessor 증거 검증으로 보존하는 경로뿐이다.
+   *     (사람 최종 검토 확인 항목 — 게이트 REQUIRED 선호 시 youtube 2026-10-22 방식으로 전환.)
+   * [바인딩 채취] 2026-11-15 scripts/resume-policy-bindings.ts collect --company ff3e3efd…
+   *   --names … 로 live DB 에서 채취(id/updatedAt/configHash 아래). qa·publish·verify 는
+   *   youtube 검토와 동일 행·불변(2026-11-15 verify 재확인).
+   */
+  {
+    schemaVersion: 1,
+    companyId: "ff3e3efd-e30c-45c2-b893-497164405629",
+    definitionHash: "83e6b5495464417c80d0ef49b95dad4ba9bec2a2df9c437f1849cc85a90d6219",
+    stepsHash: "53e4efaed26ec6c0234a026375b35e8eca4c7a55029dec16c0263747da161c8a",
+    steps: {
+      "collect-service-source": {
+        effect: "read_only",
+        toolBindings: [{
+          id: "0bf67156-a04b-4ecb-bc1e-15e33b2cdc3a",
+          updatedAt: "2026-08-26T02:19:43.617Z",
+          configHash: "2acf2195fe76d20d6b73c129c41d0eba51941203a9616dbab7407ff152545ee6",
+        }],
+      },
+      "collect-repo-meta": {
+        effect: "read_only",
+        toolBindings: [{
+          id: "22ee6c4c-d677-473e-8756-84118d9abcf2",
+          updatedAt: "2026-08-30T14:28:37.457Z",
+          configHash: "bc4c286a2d58222abaeac444dae25b8756073a1880ed772c63a54b39d1cb75c8",
+        }],
+      },
+      "analyze-service-profile": { effect: "read_only", toolBindings: [] },
+      "build-service-report-content": { effect: "read_only", toolBindings: [] },
+      "prescreen-service-content": {
+        effect: "read_only",
+        toolBindings: [{
+          id: "c7073d55-8b75-4343-ab84-9608530c6c07",
+          updatedAt: "2026-09-18T10:37:12.079Z",
+          configHash: "cd843e46a7696c078103d9f3948635f14132f09777c96ced110f964b9aabcf2f",
+        }],
+      },
+      "validate-service-report-content": { effect: "none", toolBindings: [] },
+      "qa-service-report-content": {
+        effect: "none",
+        toolBindings: [{
+          id: "9512da2f-46af-4ddb-86e4-21bd1c152094",
+          updatedAt: "2026-10-02T00:02:12.308Z",
+          configHash: "91be83e8546bf63c2b11c37873d6f0b5b7940f60e3ea02748b300f0822473f50",
+        }],
+      },
+      "publish-onboarding-manual": {
+        effect: "external",
+        toolBindings: [{
+          id: "db36b402-5e7c-4efe-a6d9-ee9bfa1fde43",
+          updatedAt: "2026-10-03T07:21:49.187Z",
+          configHash: "ec9bd5eda6af5c3e6db2c2f342e4899290f00cebf2d62b05c1056488589cb993",
+        }],
+      },
+      "verify-onboarding-manual-publish": {
+        effect: "read_only",
+        toolBindings: [{
+          id: "2523e587-77a8-4a93-ba2f-b1cac07bb777",
+          updatedAt: "2026-10-02T00:02:12.723Z",
+          configHash: "4f16e4ad1884ae70782afe12baf91075e066cef41187ef2fe373c5e16504eb3d",
+        }],
+      },
+    },
+    requiredGateStepIds: [],
+    publicationStepIds: ["publish-onboarding-manual"],
+    generationStepIds: ["analyze-service-profile", "build-service-report-content"],
+  },
+  /**
+   * [검토 근거 — 2026-11-15 초안(에이전트 증거 수집, 최종 사람 검토 전)] 원본 정의:
+   *   workflow_definitions 6fa3f267-d00e-44d9-959d-bd161d1c4aeb (agent-team-concept-radar,
+   *   updated 2026-11-14 20:00). 검토 대상 스냅샷: workflow_run_definitions run
+   *   6583e8a0-362d-4636-b6bf-4b523c13944f (stepsHash 아래, 14스텝). 실패 2건(6583e8a0,
+   *   f08ed7ec)·완료 run·정의 11-14 업데이트 후 최신 run(01495532)까지 전부 동일 stepsHash 다.
+   *   - collect-arxiv-candidates (http→n8n research-ai-news): [사람 확인 필요] n8n 워크플로가
+   *     별도 호스팅(n8n-auto.showk.ing)이라 A1 에서 내부 검증 불가 — 스텝 서술은 "결정론적
+   *     수집"이나 외부 쓰기 부재를 증명 못함. 안전 방향 external(재개 허용엔 영향 없음 —
+   *     tool 스텝은 external 도 재실행 가능, publication 아님). 원장 조회만임이 확인되면
+   *     read_only 로 강등 권고.
+   *   - scout-social-ai-concepts (http→n8n normalize-ai-news-ledger): [사람 확인 필요] 동일한
+   *     이유로 external — 도구명 'ledger' 가 n8n 측 원장 저장(외부 쓰기) 가능성을 시사한다.
+   *   - select-novel-concept (agent): "전체 라이브 concepts 카탈로그" 외부 읽기 +
+   *     topic-decision.json 산출 → read_only.
+   *   - validate-novelty-decision (agent): 등록 번들 + 라이브 카탈로그 대조 검증(외부 읽기) →
+   *     read_only.
+   *   - if-has-selected-topic (control, if): conditionGroup 이 등록 work product JSON 만 읽는다 →
+   *     none.
+   *   - complete-no-novel-topic (control, complete): completionReason 만 → none.
+   *   - research-selected-concept (agent): "선정 컨셉의 canonical 일차 소스를 읽는다"(외부
+   *     읽기) + evidence.md 산출 → read_only.
+   *   - draft-beginner-concept (agent): "등록된 evidence.md와 결정 아티팩트만 사용" → none.
+   *   - validate-concept-content (agent): 등록 산출물 대조 검증 → none.
+   *   - build-concept-content (agent): 등록 결정·concept.md·evidence.md 입력으로 content.json+
+   *     assets 산출, 발행 없음 → none.
+   *   - validate-concept-contentv1 (agent): 등록 산출물 대조 검증 → none.
+   *   - qa-concept-content (builtin manual-onboarding-qa): 기계 QA 게이트, 결과 JSON
+   *     워크스페이스 기록 → none(게이트 등록 여부는 아래 비움 참조).
+   *   - publish-concept-conditionally (builtin manual-onboarding-publish): CMS concepts 섹션
+   *     발행 → external + publicationStepIds.
+   *   - verify-concept-conditionally (builtin manual-onboarding-verify): readback 확인 읽기 →
+   *     read_only.
+   *   generationStepIds: topic-decision·evidence.md·concept.md·content.json 을 산출하는 4개
+   *     agent 스텝. 수집·검증·분기·발행 제외.
+   *   requiredGateStepIds 비움: service-onboarding 초안과 동일한 dsh-purge 2026-10-23 정정
+   *     논리(선형 하류라 게이트 이전 재개는 항상 qa 포함, 게이트 이후 재개는 통과 본문 보존
+   *     경로뿐). complete-no-novel-topic 분기는 발행 경로가 아니므로 우회 경로가 아니다.
+   * [바인딩 채취] 2026-11-15 scripts/resume-policy-bindings.ts collect 로 live DB 에서 채취.
+   *   qa·publish·verify 는 youtube 검토와 동일 행·불변(2026-11-15 verify 재확인).
+   */
+  {
+    schemaVersion: 1,
+    companyId: "ff3e3efd-e30c-45c2-b893-497164405629",
+    definitionHash: "fb64f39784df1b5152b90b070158c1b10b70887426f728386dcb725527a3360d",
+    stepsHash: "3e9719e40d6f3cbd39bb08adf9e7ebb6771f92c4335e3579b11a1c362c4cc15f",
+    steps: {
+      "collect-arxiv-candidates": {
+        effect: "external",
+        toolBindings: [{
+          id: "169487ee-e55b-4b4f-9fb6-7c2c6663a07c",
+          updatedAt: "2026-08-26T02:20:34.936Z",
+          configHash: "65cd5f06e37194db98b4cca7479496692a3753e337395ae41581733ef9dbcbb3",
+        }],
+      },
+      "scout-social-ai-concepts": {
+        effect: "external",
+        toolBindings: [{
+          id: "25335ed4-64fa-4538-88a4-001aff9f3901",
+          updatedAt: "2026-08-26T02:19:43.615Z",
+          configHash: "e5a296681d52bb1270432d5583dd8b4caf44a0ff2b96b75f5fa9f8377bd6a935",
+        }],
+      },
+      "select-novel-concept": { effect: "read_only", toolBindings: [] },
+      "validate-novelty-decision": { effect: "read_only", toolBindings: [] },
+      "if-has-selected-topic": { effect: "none", toolBindings: [] },
+      "complete-no-novel-topic": { effect: "none", toolBindings: [] },
+      "research-selected-concept": { effect: "read_only", toolBindings: [] },
+      "draft-beginner-concept": { effect: "none", toolBindings: [] },
+      "validate-concept-content": { effect: "none", toolBindings: [] },
+      "build-concept-content": { effect: "none", toolBindings: [] },
+      "validate-concept-contentv1": { effect: "none", toolBindings: [] },
+      "qa-concept-content": {
+        effect: "none",
+        toolBindings: [{
+          id: "9512da2f-46af-4ddb-86e4-21bd1c152094",
+          updatedAt: "2026-10-02T00:02:12.308Z",
+          configHash: "91be83e8546bf63c2b11c37873d6f0b5b7940f60e3ea02748b300f0822473f50",
+        }],
+      },
+      "publish-concept-conditionally": {
+        effect: "external",
+        toolBindings: [{
+          id: "db36b402-5e7c-4efe-a6d9-ee9bfa1fde43",
+          updatedAt: "2026-10-03T07:21:49.187Z",
+          configHash: "ec9bd5eda6af5c3e6db2c2f342e4899290f00cebf2d62b05c1056488589cb993",
+        }],
+      },
+      "verify-concept-conditionally": {
+        effect: "read_only",
+        toolBindings: [{
+          id: "2523e587-77a8-4a93-ba2f-b1cac07bb777",
+          updatedAt: "2026-10-02T00:02:12.723Z",
+          configHash: "4f16e4ad1884ae70782afe12baf91075e066cef41187ef2fe373c5e16504eb3d",
+        }],
+      },
+    },
+    requiredGateStepIds: [],
+    publicationStepIds: ["publish-concept-conditionally"],
+    generationStepIds: [
+      "select-novel-concept",
+      "research-selected-concept",
+      "draft-beginner-concept",
+      "build-concept-content",
+    ],
+  },
+  /**
+   * [검토 근거 — 2026-11-15 초안(에이전트 증거 수집, 최종 사람 검토 전)] 원본 정의:
+   *   workflow_definitions 006d48fe-c6b1-4161-8679-e9894a0c6ca8 (youtube-report, updated
+   *   2026-11-15 04:01 — qa 도구가 contentType=youtube-report 카드 검사 면제로 정정된 현행
+   *   버전). 검토 대상 스냅샷: workflow_run_definitions run 2b122d31-a47a-4cc0-aeef-9ef9e582846f
+   *   (stepsHash 아래, 9스텝). 스텝 구성·도구는 2026-10-22 검토 정책(위 d0b3eca4 엔트리)과
+   *   동일하고 toolArgs/서술만 갱신됐다(qa contentType 추가 등) — 스텝 효과 판정을 그대로
+   *   계승하고 바인딩만 2026-11-15 현재 행으로 재확인했다(전부 불변, verify 통과).
+   *   - collect-youtube-evidence read_only / summarize-select-scenes none / stage-youtube-video
+   *     external / capture-youtube-frames read_only / build-youtube-report-content read_only /
+   *     validate-youtube-report-content none / qa-youtube-report-content none / publish-
+   *     onboarding-manual external + publication / verify-onboarding-manual-publish read_only.
+   *   (스텝별 상세 근거는 위 d0b3eca4 엔트리 헤더 — 2026-10-22 사람 검토 원문.)
+   *   requiredGateStepIds 비움: 위 두 초안과 동일한 dsh-purge 2026-10-23 정정 논리. 기존
+   *     d0b3eca4 엔트리의 게이트 REQUIRED 는 그대로 유지(사람 검토 원문 존중) — 현행 형태에
+   *     대한 최종 정책은 사람 검토에서 확정한다.
+   *   generationStepIds: 2026-10-22 검토와 동일(장면 구성·프레임 추출·보고서 초안).
+   * [바인딩 채취] 2026-11-15 scripts/resume-policy-bindings.ts collect 로 live DB 에서 채취
+   *   (6개 도구 행 모두 2026-10-22 검토 시점과 불변 — configHash·updatedAt·enabled 일치).
+   */
+  {
+    schemaVersion: 1,
+    companyId: "ff3e3efd-e30c-45c2-b893-497164405629",
+    definitionHash: "a7367c27f29888e3888368992e21c8ab80075d9312adc6f79c640bc6e33c12a8",
+    stepsHash: "b1f937ca9c92fa6186475397798134355ffd47d9d10bfa7bdd2e83231b7e2e43",
+    steps: {
+      "collect-youtube-evidence": {
+        effect: "read_only",
+        toolBindings: [{
+          id: "6090651e-f710-4c53-b874-2706a083bccd",
+          updatedAt: "2026-08-26T02:19:43.611Z",
+          configHash: "d1c9ffa152673df423d43d51100fb911f326ddf9724670c61e536e80daa519fa",
+        }],
+      },
+      "summarize-select-scenes": { effect: "none", toolBindings: [] },
+      "stage-youtube-video": {
+        effect: "external",
+        toolBindings: [{
+          // [전사 검증] id 세그먼트는 6b26(2026-11-15 수집·재확인 — 7b26 로 오기하면
+          // verify 가 registry 행 없음으로 즉시 잡는다).
+          id: "84d0ca94-6b26-4903-995a-4292e62f5dcf",
+          updatedAt: "2026-08-27T02:04:26.319Z",
+          configHash: "243d2070a86fade821379f399a3d2ef2e6e8ff2cd7db0ebf01ebf1daf9790bf1",
+        }],
+      },
+      "capture-youtube-frames": {
+        effect: "read_only",
+        toolBindings: [{
+          id: "1238c3f7-7bba-4f85-ba02-4dec3519e14b",
+          updatedAt: "2026-08-28T13:12:54.623Z",
+          configHash: "af15397063aa980988491878739bb90b8a53a43fbb9cbb4b03f5ae57f9f8f3c8",
+        }],
+      },
+      "build-youtube-report-content": { effect: "read_only", toolBindings: [] },
+      "validate-youtube-report-content": { effect: "none", toolBindings: [] },
+      "qa-youtube-report-content": {
+        effect: "none",
+        toolBindings: [{
+          id: "9512da2f-46af-4ddb-86e4-21bd1c152094",
+          updatedAt: "2026-10-02T00:02:12.308Z",
+          configHash: "91be83e8546bf63c2b11c37873d6f0b5b7940f60e3ea02748b300f0822473f50",
+        }],
+      },
+      "publish-onboarding-manual": {
+        effect: "external",
+        toolBindings: [{
+          id: "db36b402-5e7c-4efe-a6d9-ee9bfa1fde43",
+          updatedAt: "2026-10-03T07:21:49.187Z",
+          configHash: "ec9bd5eda6af5c3e6db2c2f342e4899290f00cebf2d62b05c1056488589cb993",
+        }],
+      },
+      "verify-onboarding-manual-publish": {
+        effect: "read_only",
+        toolBindings: [{
+          id: "2523e587-77a8-4a93-ba2f-b1cac07bb777",
+          updatedAt: "2026-10-02T00:02:12.723Z",
+          configHash: "4f16e4ad1884ae70782afe12baf91075e066cef41187ef2fe373c5e16504eb3d",
+        }],
+      },
+    },
+    requiredGateStepIds: [],
+    publicationStepIds: ["publish-onboarding-manual"],
+    generationStepIds: [
+      "summarize-select-scenes",
+      "capture-youtube-frames",
+      "build-youtube-report-content",
+    ],
   },
 ];
