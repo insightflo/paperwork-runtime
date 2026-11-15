@@ -79,8 +79,20 @@ async function lockPrefix(tx: DeliveryTx, i: CorrectionDeliveryInput, o: Observe
     inArray(issues.id, o.rows.map(r => r.id)))).orderBy(asc(issues.id)).for("update");
   const currentRows = await issueRows(tx, i, o.selected);
   const currentHeartbeats = await heartbeatSet(tx, i, o.selected, currentRows, await wakes(tx, i));
-  requireDelivery(same(currentRows.map(owner), o.rows.map(owner))
-    && same(currentHeartbeats.map(h => h.id), o.heartbeats.map(h => h.id)), "owner_changed");
+  try {
+    requireDelivery(same(currentRows.map(owner), o.rows.map(owner))
+      && same(currentHeartbeats.map(h => h.id), o.heartbeats.map(h => h.id)), "owner_changed");
+  } catch (diagErr) {
+    // [진단 브랜치 전용 — 절대 병합 금지, PR #741] CI 플레이크(c02 qa_correction_delivery_owner_changed)
+    // 근거 수집: 잠금 전 관측(o.*) vs 잠금 후 재읽기(current*)의 소유자·하트비트 집합을 덤프하고 원래 예외를 그대로 되던진다.
+    if ((diagErr as { message?: string })?.message === "qa_correction_delivery_owner_changed") {
+      console.error("FLAKE_DIAG_C02_OWNER_CHANGED", JSON.stringify({
+        observedOwners: o.rows.map(owner), currentOwners: currentRows.map(owner),
+        observedHeartbeats: o.heartbeats.map((h) => h.id), currentHeartbeats: currentHeartbeats.map((h) => h.id),
+      }));
+    }
+    throw diagErr;
+  }
   await tx.select().from(workflowStepRuns).where(and(eq(workflowStepRuns.workflowRunId, i.workflowRunId),
     inArray(workflowStepRuns.id, sorted(targets(o.selected).map(t => t.stepRunId)))))
     .orderBy(asc(workflowStepRuns.id)).for("update");
