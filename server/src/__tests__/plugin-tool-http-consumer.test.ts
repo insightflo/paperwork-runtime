@@ -34,7 +34,21 @@ const runContext = () => ({ agentId: "agent-1", runId: randomUUID(), companyId: 
 const actual = { kind: "result" as const, result: { content: "full", data: { retained: true } }, response: { jsonrpc: "2.0" as const, id: 7, result: { content: "full", data: { retained: true } } } };
 function gate() { let resolve!: () => void; const promise = new Promise<void>((done) => { resolve = done; }); return { promise, resolve }; }
 async function turn() { await new Promise<void>((resolve) => setImmediate(resolve)); }
-async function waitUntil(check: () => Promise<boolean> | boolean) { for (let i = 0; i < 500; i += 1) { if (await check()) return; await turn(); } throw new Error("HTTP consumer state did not settle"); }
+async function waitUntil(check: () => Promise<boolean> | boolean) {
+  // [2026-11-15 CI 느린 러너 대응] 턴 수 상한만으로는 CPU 굶주림에서 조기 만료된다 —
+  //   최소 시간 하한(10초)을 둬야 setImmediate 턴이 느리게 소진되는 환경에서도 기다리고,
+  //   절대 상한(30초)으로 영구 대기는 막는다. 빠른 환경은 통상 수십 ms 내 통과해 비용 0.
+  const startedAt = Date.now();
+  let polls = 0;
+  while (Date.now() - startedAt < 30_000) {
+    if (await check()) return;
+    polls += 1;
+    if (polls >= 500 && Date.now() - startedAt >= 10_000) break;
+    await turn();
+  }
+  if (await check()) return;
+  throw new Error(`HTTP consumer state did not settle (waited ${Date.now() - startedAt}ms, ${polls} polls)`);
+}
 function proof(owner: RetainedToolRequest, fields: Record<string, unknown> = {}) { const identity = { requestId: owner.receiptId, executionId: owner.identity.runId, attemptId: owner.receiptId, executionGeneration: 1 }; return { kind: "definitely_unsent", pluginId: "fixture.plugin", toolName: "publish", identity, ...fields }; }
 function captureActuals(dispatcher: ReturnType<typeof createPluginToolDispatcher>) {
   const actuals = new Map<string, unknown>(), execute = dispatcher.executeToolObserved.bind(dispatcher);
