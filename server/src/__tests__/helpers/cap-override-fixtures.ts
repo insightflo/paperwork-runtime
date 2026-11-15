@@ -65,7 +65,7 @@ export async function drainHeartbeatRuns(db: Db, timeoutMs = 30000, settleMs = 5
     }
     await new Promise((r) => setTimeout(r, 50));
   }
-  throw new Error(`drainHeartbeatRuns timed out after ${timeoutMs}ms — in-flight heartbeat execution did not settle (queued/running did not stay at 0)`);
+  throw new Error(`drainHeartbeatRuns timed out after ${timeoutMs}ms — in-flight heartbeat execution did not settle (queued/running did not stay at 0)\nSTUCK=${JSON.stringify(await db.select({ id: heartbeatRuns.id, agentId: heartbeatRuns.agentId, issueId: heartbeatRuns.issueId, workflowStepRunId: heartbeatRuns.workflowStepRunId, invocationSource: heartbeatRuns.invocationSource, status: heartbeatRuns.status, startedAt: heartbeatRuns.startedAt, updatedAt: heartbeatRuns.updatedAt, error: heartbeatRuns.error }).from(heartbeatRuns).where(inArray(heartbeatRuns.status, ["queued", "running"])))}`);
 }
 
 export interface SeedOpts {

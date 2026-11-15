@@ -188,7 +188,24 @@ it("[①GREEN] artifact finding reworks the real producer and resolves only via 
   expect(resolved.evidence).toContainEqual(expect.objectContaining({ kind: "artifact" }));
   await syncWorkflowRunState(db, w.workflowRunId);
   const [finishedRun] = await db.select().from(workflowRuns).where(eq(workflowRuns.id, w.workflowRunId));
-  expect(finishedRun?.status).toBe("completed");
+  try {
+    expect(finishedRun?.status).toBe("completed");
+  } catch (err) {
+    // [CI 플레이크 진단 2026-11-15 — 진단 브랜치 전용, 병합 금지] 실패 순간 전체 상태 덤프.
+    const [dumpSteps, dumpTerminal, dumpVerdicts, dumpRun] = await Promise.all([
+      db.select().from(workflowStepRuns).where(eq(workflowStepRuns.workflowRunId, w.workflowRunId)),
+      db.select().from(workflowTerminalDecisions).where(eq(workflowTerminalDecisions.workflowRunId, w.workflowRunId)),
+      db.select().from(workflowTransitionEvents).where(and(eq(workflowTransitionEvents.companyId, w.companyId), eq(workflowTransitionEvents.issueId, w.qaIssueId))),
+      db.select().from(workflowRuns).where(eq(workflowRuns.id, w.workflowRunId)),
+    ]);
+    console.error("FLAKE_DIAG_DUMP", JSON.stringify({
+      run: dumpRun,
+      steps: dumpSteps.map((s) => ({ id: s.id, stepId: s.stepId, status: s.status, gen: (s as Record<string, unknown>).executionGeneration ?? null, iter: s.iterationIndex, completedAt: s.completedAt, lastDispatchErrorAt: s.lastDispatchErrorAt, lastDispatchErrorSummary: s.lastDispatchErrorSummary, metadataKeys: Object.keys(record(s.metadata)) })),
+      terminal: dumpTerminal,
+      qaVerdicts: dumpVerdicts.map((e) => ({ id: e.id, eventType: e.eventType, createdAt: e.createdAt, payload: e.payload })),
+    }));
+    throw err;
+  }
   console.info("T16A_M03_EVIDENCE", JSON.stringify({ companyId: w.companyId, missionId: w.missionId,
     workflowRunId: w.workflowRunId, producerStepRunId: w.producerStepRunId, productId: restamped.id,
     producerHeartbeat, qaHeartbeat: freshQaHeartbeat, oldHash, newHash, actionId: action.actionId }));

@@ -388,7 +388,9 @@ export async function createHeartbeatC5PublicLifecycle(
       || wake.runId === null || wake.companyId !== companyId || wake.agentId !== agentId
       || wake.issueId !== issueId || wake.missionId !== missionId || wake.workflowRunId !== runId
       || wake.workflowStepRunId !== stepRunId || wake.workflowExecutionGeneration !== stepRun.executionGeneration) {
-      throw new Error("C5 public workflow step existing wake lost its exact stored attempt binding");
+      // [CI 플레이크 진단 2026-11-15 — 진단 브랜치 전용, 병합 금지] 어느 필드가 어긋났는지 그대로 덤프.
+      const expected = { requestKind: "workflow_resume", reason: "workflow_step_runnable", runId: "non-null", companyId, agentId, issueId, missionId, workflowRunId: runId, workflowStepRunId: stepRunId, workflowExecutionGeneration: stepRun.executionGeneration };
+      throw new Error(`C5 public workflow step existing wake lost its exact stored attempt binding\nWAKE=${JSON.stringify(wake)}\nEXPECTED=${JSON.stringify(expected)}\nSTEP=${JSON.stringify({ id: stepRun.id, status: stepRun.status, gen: stepRun.executionGeneration, attempt: stepRun.attempt ?? null })}`);
     }
     const [matchingRuns, stepRuns] = await Promise.all([
       fixture.db.select().from(heartbeatRuns).where(eq(heartbeatRuns.wakeupRequestId, wake.id)),
