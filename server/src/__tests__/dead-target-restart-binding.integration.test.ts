@@ -75,7 +75,11 @@ describe("dead-target card structured restart binding", () => {
     await pg?.cleanup();
   });
 
-  it("keeps the failed-run-bound escalation pending when restart scope is unproven", async () => {
+  // [B4 2026-11-15] 정책 변경 — 해시 검증 카드 + 해시로 잠긴 재시작 범위(approvedScope) + 사람의
+  //   명시적 옵션 선택이면 권한 원본으로 인정한다. #457 이후 workflow_restart_request_v1 카드의
+  //   생산자가 없어 모든 UI 재시작이 구조적으로 409였던 회귀(godsvg 2026-11-14)를 연다.
+  //   보존 검증(실패한 최상위 런만·대체 실행 중복 금지)은 startWorkflowRestartFromOperatorDecision 이 유지한다.
+  it("executes the owner-selected restart from the failed-run-bound escalation and still holds tampered cards", async () => {
     const companyId = randomUUID(), ownerAgentId = randomUUID(), missionId = randomUUID();
     const workflowId = randomUUID(), workflowRunId = randomUUID();
     const sourceIssueId = randomUUID(), anchorIssueId = randomUUID();
@@ -84,7 +88,7 @@ describe("dead-target card structured restart binding", () => {
     await db.insert(missions).values({ id: missionId, companyId, ownerAgentId,
       title: "Recover dead source", status: "active" });
     await db.insert(workflowDefinitions).values({ id: workflowId, companyId,
-      name: "Recovery workflow", stepsJson: [{ id: "collect", name: "Collect", dependencies: [] }] });
+      name: "Recovery workflow", stepsJson: [] });
     await db.insert(workflowRuns).values({ id: workflowRunId, workflowId, companyId, missionId,
       status: "failed", triggeredBy: "test", completedAt: new Date() });
     await db.insert(issues).values([
@@ -119,22 +123,31 @@ describe("dead-target card structured restart binding", () => {
       .toBe(false);
 
     const before = await snapshotDeadTargetState(db, companyId, card.id);
-    await expect(operatorDecisionWriteService(db).resolve(card.id, {
+    const resolved = await operatorDecisionWriteService(db).resolve(card.id, {
       actionId: "submit",
       selectedOptionIds: [WORKFLOW_RESTART_FROM_START_OPTION_ID],
       comment: "restart with the bound failed run",
-    }, "board-user")).rejects.toMatchObject({
-      status: 409,
-      message: "이미 수행한 작업을 보존하기 위해 재시작하지 않았습니다. 현재 결정은 전체 수집 또는 처음부터 재시작할 권한과 근거를 확인해 주지 못합니다.",
-      details: { code: "recovery_restart_scope_unproven", operatorDecisionId: card.id },
-    });
+    }, "board-user");
+    expect(resolved.applied).toBe(true);
+
     const after = await snapshotDeadTargetState(db, companyId, card.id);
-    expect(after).toEqual(before);
-    expect(after.decisions).toHaveLength(1);
-    expect(after.decisions[0]).toEqual(card);
-    expect(after.decisions[0]!.status).toBe("pending");
+    // 결정은 적용됐고 소스 실행·이슈는 그대로(보존) — 새 최상위 대체 실행만 추가된다.
+    expect(after.decisions[0]!.status).toBe("resolved");
+    expect(after.decisions[0]!.result!.selectedOptionIds).toEqual([WORKFLOW_RESTART_FROM_START_OPTION_ID]);
     expect(after.issues.find((issue) => issue.id === sourceIssueId)!.status).toBe("done");
-    expect(after.issues.find((issue) => issue.id === anchorIssueId)!.status).toBe("blocked");
-    expect(after.runs.map((run) => run.id)).toEqual([workflowRunId]);
+    expect(after.runs.find((run) => run.id === workflowRunId)!.status).toBe("failed");
+    expect(after.runs).toHaveLength(before.runs.length + 1);
+    const replacement = after.runs.find((run) => run.id !== workflowRunId)!;
+    expect(replacement.metadata).toMatchObject({ operatorDecisionRestart: {
+      operatorDecisionId: card.id, sourceWorkflowRunId: workflowRunId,
+    } });
+    // blocked 였던 앵커 이슈는 재시작으로 재오픈(todo)된다.
+    expect(after.issues.find((issue) => issue.id === anchorIssueId)!.status).toBe("todo");
+    expect(after.activity.some((entry) => entry.action === "workflow_run.created"
+      && entry.details?.operatorDecisionId === card.id)).toBe(true);
+    // direct 재시작 경로는 continuation 을 만들지 않는다(기존 계약 유지).
+    expect(after.continuations).toHaveLength(0);
+    // 변조행(원본·해시 불일치) 홀드 회귀는 operator-decision-recovery-advice.integration.test.ts 의
+    //   hashMismatchId 단언이 담당한다 — 여기서는 dead-target 바인딩 실행 계약만 검증한다.
   });
 });

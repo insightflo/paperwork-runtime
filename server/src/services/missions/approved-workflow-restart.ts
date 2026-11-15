@@ -7,6 +7,7 @@ import {
   loadRecoveryAdviceIdentityFacts,
   recoveryAdviceStoredInput,
   type RecoveryAdviceDecision,
+  type RecoveryAdviceFacts,
 } from "../operator-decision-recovery-advice.js";
 import { sameOperatorDecisionResult, validateOperatorDecisionResult } from "../operator-decision-result.js";
 import { WORKFLOW_RESTART_FROM_START_OPTION_ID, WORKFLOW_RESTART_FROM_START_SCOPE } from "./workflow-restart-option.js";
@@ -17,11 +18,54 @@ export const holdUnprovenRestart = (operatorDecisionId: string): never => {
   throw conflict(heldMessage, { code: "recovery_restart_scope_unproven", operatorDecisionId });
 };
 
+/** [B4 2026-11-15] 사람이 명시적으로 '처음부터 재시작' 옵션을 선택한 해시 검증 moi 카드는
+ *  재시작 권한 원본으로 인정한다. #457(2026-10-30) 이후 유일한 인정 경로였던
+ *  workflow_restart_request_v1 카드의 생산자가 코드에 존재하지 않아, 실운영에서 모든 UI
+ *  재시작 선택이 구조적으로 409(recovery_restart_scope_unproven)로 막혔다(2026-11-14 godsvg).
+ *  보존 조건 — 실패한 최상위 소스 런만, 대체 실행 중복 금지, 결정 바인딩 일치 — 은
+ *  startWorkflowRestartFromOperatorDecision 의 런타임 검증이 그대로 지킨다.
+ *  변조행(저장 입력·해시 불일치)과 미허가 범위행은 여전히 홀드된다. */
+function isProvenOwnerHumanRestartSelection(
+  decision: RecoveryAdviceDecision,
+  result: OperatorDecisionResult,
+  input: { companyId: string; missionId: string; sourceWorkflowRunId: string },
+): boolean {
+  if (decision.sourceType !== "mission_owner_human_input"
+    || decision.companyId !== input.companyId
+    || decision.qualityActionId !== null || decision.qualityBinding !== null) return false;
+  const original = recoveryAdviceStoredInput(decision);
+  return original !== null
+    && original.sourceContext.missionId === input.missionId
+    && original.sourceContext.workflowRunId === input.sourceWorkflowRunId
+    && original.definition.approvedScope.includes(WORKFLOW_RESTART_FROM_START_SCOPE)
+    && ["approve", "submit"].includes(result.outcome)
+    && result.selectedOptionIds.includes(WORKFLOW_RESTART_FROM_START_OPTION_ID);
+}
+
+/** 재시작 선택 입장 게이트 — 회복 조언 identity 평가가 홀드 판정을 내려도, 해시로 잠긴
+ *  범위(approvedScope)와 사람의 명시적 옵션 선택이 입증된 moi 카드는 통과시킨다. */
+export function assertWorkflowRestartSelectionAdmission(
+  decision: RecoveryAdviceDecision,
+  result: OperatorDecisionResult,
+  input: { companyId: string; missionId: string; sourceWorkflowRunId: string },
+  facts: RecoveryAdviceFacts | null = null,
+): void {
+  const advice = facts !== null
+    ? evaluateRecoveryAdviceIdentity({ card: decision, ...facts })
+    : evaluateRecoveryAdviceIdentity({ kind: "outside_default_scope", card: decision });
+  if (advice.disposition === "outside_default_scope") return;
+  if (isProvenOwnerHumanRestartSelection(decision, result, input)) return;
+  holdUnprovenRestart(decision.id);
+}
+
 export function assertExactBoardWorkflowRestartPolicy(
   decision: RecoveryAdviceDecision,
   result: OperatorDecisionResult,
   input: { companyId: string; missionId: string; sourceWorkflowRunId: string },
 ): void {
+  // [B4 2026-11-15] proven moi 선택은 아래 보드 전용 형식 검사 없이 통과 — 근거는
+  //   isProvenOwnerHumanRestartSelection 주석. workflow_restart_request_v1 경로는 불변.
+  if (isProvenOwnerHumanRestartSelection(decision, result, input)) return;
   const original = recoveryAdviceStoredInput(decision);
   if (!original || decision.companyId !== input.companyId || decision.sourceType !== "workflow_restart_request_v1"
     || decision.requestedByAgentId !== null || decision.requestedByUserId === null
@@ -36,11 +80,13 @@ export function assertExactBoardWorkflowRestartPolicy(
   }
 }
 
-function assertRecoveryRestartAdvice(decision: RecoveryAdviceDecision, facts: Awaited<ReturnType<typeof loadRecoveryAdviceIdentityFacts>>): void {
-  const advice = facts
-    ? evaluateRecoveryAdviceIdentity({ card: decision, ...facts })
-    : evaluateRecoveryAdviceIdentity({ kind: "outside_default_scope", card: decision });
-  if (advice.disposition !== "outside_default_scope") holdUnprovenRestart(decision.id);
+function assertRecoveryRestartAdvice(
+  decision: RecoveryAdviceDecision,
+  facts: Awaited<ReturnType<typeof loadRecoveryAdviceIdentityFacts>>,
+  result: OperatorDecisionResult,
+  input: { companyId: string; missionId: string; sourceWorkflowRunId: string },
+): void {
+  assertWorkflowRestartSelectionAdmission(decision, result, input, facts);
 }
 
 /** 보드가 구조화된 재시작 선택지를 승인한 경우에만 새 최상위 실행을 시작한다.
@@ -89,7 +135,7 @@ export async function startWorkflowRestartFromOperatorDecision(db: Db, input: {
   }
 
   const facts = await loadRecoveryAdviceIdentityFacts(db, decision);
-  assertRecoveryRestartAdvice(decision, facts);
+  assertRecoveryRestartAdvice(decision, facts, persistedResult, input);
   assertExactBoardWorkflowRestartPolicy(decision, persistedResult, input);
 
   const [source] = await db.select().from(workflowRuns).where(and(
