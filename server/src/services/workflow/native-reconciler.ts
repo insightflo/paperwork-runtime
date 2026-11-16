@@ -46,6 +46,13 @@ export interface CreateNativeWorkflowReconcilerOptions {
 }
 
 const DEFAULT_RECONCILER_INTERVAL_MS = 5 * 60_000;
+// [B5 dead-card sweep 게이트] 스윕 호출의 모듈 수준 최소 실행 주기. A/B 판정(2026-11-16):
+//   틱마다 추가되는 await 호출이 시간 민감한 c5 경합 창(workflow_step_runs 튜플 lock
+//   timeout)을 넘겨 verify-tests-serial 이 흔들렸고, 와이어링만 제거한 탐침은 전체 통과했다.
+//   죽은 카드 정리는 1시간 지연해도 무해하므로(재스윕 대상은 이미 종결된 앵커의 잔존 카드)
+//   시도 자체를 시간 주기로 묶어 핫패스 await 를 제거한다.
+const DEAD_CARD_SWEEP_MIN_INTERVAL_MS = 60 * 60_000;
+let lastDeadCardSweepAt = 0;
 
 export function createNativeWorkflowReconciler(
   options: CreateNativeWorkflowReconcilerOptions,
@@ -183,16 +190,21 @@ export function createNativeWorkflowReconciler(
       }
       // [B5 dead-anchor card sweep] 종결 앵커에 묶여 영구 잔존하는 moi pending 카드를 취소한다.
       //   실패해도 reconciler tick 은 깨지지 않는다(같은 파일의 다른 sweep 들과 동일 계약).
-      try {
-        const deadCards = await sweepTerminalAnchorDeadCards(options.db, now);
-        if (deadCards.cancelled > 0) {
-          log.info({ ...deadCards }, "Terminal-anchor dead human-input cards swept");
+      //   최소 실행 주기 게이팅(위 모듈 주석): 마지막 시도 시각만 갱신하고 주기 안이면 호출 자체를
+      //   건너뛴다 — 실패 시에도 다음 시도는 주기 뒤라 재시도 폭풍도 구조적으로 묶인다.
+      if (now.getTime() - lastDeadCardSweepAt >= DEAD_CARD_SWEEP_MIN_INTERVAL_MS) {
+        lastDeadCardSweepAt = now.getTime();
+        try {
+          const deadCards = await sweepTerminalAnchorDeadCards(options.db, now);
+          if (deadCards.cancelled > 0) {
+            log.info({ ...deadCards }, "Terminal-anchor dead human-input cards swept");
+          }
+        } catch (error) {
+          log.warn(
+            { err: error instanceof Error ? error.message : String(error) },
+            "Terminal-anchor dead-card sweep failed",
+          );
         }
-      } catch (error) {
-        log.warn(
-          { err: error instanceof Error ? error.message : String(error) },
-          "Terminal-anchor dead-card sweep failed",
-        );
       }
       // Classify first; B recovery is flag-gated, C human cards are independent of the flag.
       try {
