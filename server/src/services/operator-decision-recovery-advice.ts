@@ -265,6 +265,20 @@ export function relaxedRestartCommentDefinition(card: RecoveryAdviceDecision): O
   return relaxCommentMode(definition);
 }
 
+/** [B4c 2026-11-17] resolve 후 동일 트랜잭션 안의 재시작 재검증 전용 완화 — 카드 상태와 무관하게
+ *  후보 자격만 본다. 실운영 확증(2026-11-16 20:35 UTC, 카드 c548ef60·credly.com): comment
+ *  required + restart 옵션 moi 카드를 comment:null 로 resolve 하면 쓰기 경로는 위 pending 전용
+ *  완화로 통과하지만, 재검증 시점에는 status 가 이미 "resolved" 라 완화가 적용되지 않아
+ *  원본 required 계약이 comment:null 을 거부 → 409 workflow_restart_decision_binding_invalid
+ *  → 트랜잭션 롤백·pending 잔존. 재검증의 질문은 '저장 시점에 완화 대상 후보였는가'이므로
+ *  상태 조건을 뺀다 — 비후보 카드는 여전히 원본 계약 그대로 엄격하다. */
+export function relaxedRestartCommentDefinitionForValidation(
+  card: RecoveryAdviceDecision,
+): OperatorDecisionDefinition {
+  const definition = card.definition as OperatorDecisionDefinition;
+  return isOwnerHumanRestartCandidate(card) ? relaxCommentMode(definition) : definition;
+}
+
 /** Return a display copy only; keep requester text visible without treating it as authority. */
 export function overlayRecoveryAdvice(
   definition: OperatorDecisionDefinition,

@@ -6,6 +6,7 @@ import {
   evaluateRecoveryAdviceIdentity,
   loadRecoveryAdviceIdentityFacts,
   recoveryAdviceStoredInput,
+  relaxedRestartCommentDefinitionForValidation,
   type RecoveryAdviceDecision,
   type RecoveryAdviceFacts,
 } from "../operator-decision-recovery-advice.js";
@@ -122,7 +123,13 @@ export async function startWorkflowRestartFromOperatorDecision(db: Db, input: {
       selectedOptionIds: decision.result.selectedOptionIds,
       comment: decision.result.comment,
     };
-    persistedResult = validateOperatorDecisionResult(decision.definition, savedResultInput);
+    // [B4c 2026-11-17] 쓰기 경로와 같은 완화 계약으로 재파생한다 — 이 시점의 decision 은 이미
+    //   "resolved" 라 pending 전용 완화(relaxedRestartCommentDefinition)가 적용되지 않는다.
+    //   상태 무관 헬퍼 없이 원본 required 정의를 쓰면 comment:null resolve 가 여기서만
+    //   실패해 409 binding_invalid 로 롤백된다(실운영 카드 c548ef60, 2026-11-16).
+    persistedResult = validateOperatorDecisionResult(
+      relaxedRestartCommentDefinitionForValidation(decision), savedResultInput,
+    );
     if (!sameOperatorDecisionResult(persistedResult, decision.result)
       || !sameOperatorDecisionResult(persistedResult, input.decisionResult)
       || !persistedResult.selectedOptionIds.includes(WORKFLOW_RESTART_FROM_START_OPTION_ID)) {
