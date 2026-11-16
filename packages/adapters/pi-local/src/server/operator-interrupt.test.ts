@@ -22,9 +22,13 @@ function makePayload(overrides: Partial<OperatorInterruptPayload> = {}): Operato
   };
 }
 
-async function waitFor(ensure: () => boolean, timeoutMs = 2000, label = "condition"): Promise<void> {
+async function waitFor(
+  ensure: () => boolean | Promise<boolean>,
+  timeoutMs = 2000,
+  label = "condition",
+): Promise<void> {
   const start = Date.now();
-  while (!ensure()) {
+  while (!(await ensure())) {
     if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${label}`);
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
@@ -144,7 +148,22 @@ describe("operator interrupt polling", () => {
 
       stdinAvailable = true;
       await waitFor(() => written.length === 1, 2000, "delayed injection");
-      await expect(fs.access(filePath)).rejects.toMatchObject({ code: "ENOENT" });
+      // The poller removes the file only after the stdin write succeeds, and that
+      // removal lands asynchronously after `written` grows, so wait for ENOENT
+      // instead of asserting immediate deletion.
+      await waitFor(
+        async () => {
+          try {
+            await fs.access(filePath);
+            return false;
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === "ENOENT") return true;
+            throw err;
+          }
+        },
+        2000,
+        "file removed after delayed injection",
+      );
     } finally {
       poller.stop();
     }
