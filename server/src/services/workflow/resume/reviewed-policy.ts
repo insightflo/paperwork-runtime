@@ -325,18 +325,21 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
   },
   /**
    * [검토 근거 — 2026-11-15 초안(에이전트 증거 수집) → 2026-11-16 사람 최종 승인
-   *   (n8n 원장 저장 여부 실화면 확인은 별도 진행 — 결과에 따라 external→read_only 강등 가능)] 원본 정의:
+   *   (n8n 원장 저장 여부는 2026-11-16 n8n API 실확인 완료 — 지속 저장 노드 없음이
+   *   확인돼 두 수집 스텝을 external→read_only 로 강등)] 원본 정의:
    *   workflow_definitions 6fa3f267-d00e-44d9-959d-bd161d1c4aeb (agent-team-concept-radar,
    *   updated 2026-11-14 20:00). 검토 대상 스냅샷: workflow_run_definitions run
    *   6583e8a0-362d-4636-b6bf-4b523c13944f (stepsHash 아래, 14스텝). 실패 2건(6583e8a0,
    *   f08ed7ec)·완료 run·정의 11-14 업데이트 후 최신 run(01495532)까지 전부 동일 stepsHash 다.
-   *   - collect-arxiv-candidates (http→n8n research-ai-news): [사람 확인 필요] n8n 워크플로가
-   *     별도 호스팅(n8n-auto.showk.ing)이라 A1 에서 내부 검증 불가 — 스텝 서술은 "결정론적
-   *     수집"이나 외부 쓰기 부재를 증명 못함. 안전 방향 external(재개 허용엔 영향 없음 —
-   *     tool 스텝은 external 도 재실행 가능, publication 아님). 원장 조회만임이 확인되면
-   *     read_only 로 강등 권고.
-   *   - scout-social-ai-concepts (http→n8n normalize-ai-news-ledger): [사람 확인 필요] 동일한
-   *     이유로 external — 도구명 'ledger' 가 n8n 측 원장 저장(외부 쓰기) 가능성을 시사한다.
+   *   - collect-arxiv-candidates (http→n8n research-ai-news): 2026-11-16 n8n API
+   *     (n8n-auto.showk.ing) 실확인 — 워크플로 "Papercompany - AI News Collect Research
+   *     HTTP"(id Q97v6kp5C2ktLyGA) 전 노드가 code/httpRequest/webhook/respondToWebhook
+   *     뿐이고 지속 저장 노드(파일·DB·시트 등) 없음. httpRequest 는 전부 외부 fetch(읽기)
+   *     → read_only.
+   *   - scout-social-ai-concepts (http→n8n normalize-ai-news-ledger): 동일 실확인 —
+   *     워크플로 "Papercompany - AI News Normalize HTTP"(id OormEIESe7UVi4GD)도 지속
+   *     저장 노드 없음. 도구명 'ledger' 는 응답 아티팩트(normalized_news_ledger.json)를
+   *     가리키며 n8n 측 원장 저장 없음 → read_only.
    *   - select-novel-concept (agent): "전체 라이브 concepts 카탈로그" 외부 읽기 +
    *     topic-decision.json 산출 → read_only.
    *   - validate-novelty-decision (agent): 등록 번들 + 라이브 카탈로그 대조 검증(외부 읽기) →
@@ -372,7 +375,7 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
     stepsHash: "3e9719e40d6f3cbd39bb08adf9e7ebb6771f92c4335e3579b11a1c362c4cc15f",
     steps: {
       "collect-arxiv-candidates": {
-        effect: "external",
+        effect: "read_only",
         toolBindings: [{
           id: "169487ee-e55b-4b4f-9fb6-7c2c6663a07c",
           updatedAt: "2026-08-26T02:20:34.936Z",
@@ -380,7 +383,7 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
         }],
       },
       "scout-social-ai-concepts": {
-        effect: "external",
+        effect: "read_only",
         toolBindings: [{
           id: "25335ed4-64fa-4538-88a4-001aff9f3901",
           updatedAt: "2026-08-26T02:19:43.615Z",
