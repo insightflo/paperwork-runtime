@@ -233,8 +233,8 @@ describe("실제 매니페스트 stepsHash 계약(원본 — 모의 없음)", ()
     const youtube = drafts.get("b1f937ca9c92fa6186475397798134355ffd47d9d10bfa7bdd2e83231b7e2e43");
     expect(youtube?.steps["publish-onboarding-manual"]?.effect).toBe("external");
     expect(Object.keys(youtube?.steps ?? {})).toHaveLength(9);
-    // n8n 수집기 2종(초안)은 미검증 외부 쓰기 가능성으로 external 로 안전 표기됐다.
-    expect(radar?.steps["collect-arxiv-candidates"]?.effect).toBe("external");
-    expect(radar?.steps["scout-social-ai-concepts"]?.effect).toBe("external");
+    // n8n 수집기 2종은 2026-11-16 n8n API 실확인(지속 저장 노드 없음)으로 read_only 강등됐다.
+    expect(radar?.steps["collect-arxiv-candidates"]?.effect).toBe("read_only");
+    expect(radar?.steps["scout-social-ai-concepts"]?.effect).toBe("read_only");
   });
 });
