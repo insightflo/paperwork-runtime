@@ -50,7 +50,7 @@ export interface ReviewedResumePolicy {
 /**
  * [현재 상태] 2026-10-22 youtube-report 검토 정책, 2026-10-23 dsh-purge PAQO 정책에 이어
  *   2026-11-15 service-onboarding / agent-team-concept-radar / youtube-report(현행 형태)
- *   초안 3건이 추가됐다(에이전트 증거 수집 초안 — 최종 사람 검토 전, 각 헤더 참조).
+ *   초안 3건이 추가됐다(에이전트 증거 수집 초안 → **2026-11-16 사용자 최종 승인**, 각 헤더 참조).
  *   2026-11-15 확장으로 기존 2건에 stepsHash 가 추가됐다(동일 그래프 형태의 다른 run 도
  *   재개 가능하게 — 매칭 규칙은 파일 헤더 참조). 각 엔트리의 헤더 주석이 검토 근거(원본 정의·
  *   도구 실제 동작·바인딩 채취 방법·날짜)이며, 근거 없는 엔트리 추가는 이 레지스트리의
@@ -226,7 +226,7 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
     generationStepIds: ["action-1-4ae1f74ba7"],
   },
   /**
-   * [검토 근거 — 2026-11-15 초안(에이전트 증거 수집, 최종 사람 검토 전)] 원본 정의:
+   * [검토 근거 — 2026-11-15 초안(에이전트 증거 수집) → 2026-11-16 사람 최종 승인] 원본 정의:
    *   workflow_definitions 56362d74-9c8f-482b-b766-b76bd3fe4ba1 (service-onboarding,
    *   updated 2026-11-07 12:22). 검토 대상 스냅샷: workflow_run_definitions run
    *   ad0eaa12-b39e-4f0d-953d-26e8600d6722 (stepsHash 아래, 9스텝). 2026-11-09~15 실패 8건
@@ -324,7 +324,8 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
     generationStepIds: ["analyze-service-profile", "build-service-report-content"],
   },
   /**
-   * [검토 근거 — 2026-11-15 초안(에이전트 증거 수집, 최종 사람 검토 전)] 원본 정의:
+   * [검토 근거 — 2026-11-15 초안(에이전트 증거 수집) → 2026-11-16 사람 최종 승인
+   *   (n8n 원장 저장 여부 실화면 확인은 별도 진행 — 결과에 따라 external→read_only 강등 가능)] 원본 정의:
    *   workflow_definitions 6fa3f267-d00e-44d9-959d-bd161d1c4aeb (agent-team-concept-radar,
    *   updated 2026-11-14 20:00). 검토 대상 스냅샷: workflow_run_definitions run
    *   6583e8a0-362d-4636-b6bf-4b523c13944f (stepsHash 아래, 14스텝). 실패 2건(6583e8a0,
@@ -430,7 +431,7 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
     ],
   },
   /**
-   * [검토 근거 — 2026-11-15 초안(에이전트 증거 수집, 최종 사람 검토 전)] 원본 정의:
+   * [검토 근거 — 2026-11-15 초안(에이전트 증거 수집) → 2026-11-16 사람 최종 승인] 원본 정의:
    *   workflow_definitions 006d48fe-c6b1-4161-8679-e9894a0c6ca8 (youtube-report, updated
    *   2026-11-15 04:01 — qa 도구가 contentType=youtube-report 카드 검사 면제로 정정된 현행
    *   버전). 검토 대상 스냅샷: workflow_run_definitions run 2b122d31-a47a-4cc0-aeef-9ef9e582846f
