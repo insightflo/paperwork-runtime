@@ -121,6 +121,48 @@ describe("approved workflow restart", () => {
     expect(fixture.insertValues).not.toHaveBeenCalled();
   });
 
+  it("restarts a comment-required moi restart card that was resolved with a null comment", async () => {
+    const input = ids();
+    const workflowId = randomUUID();
+    const fixture = workflowRestartDb(input, {
+      id: input.sourceWorkflowRunId, companyId: input.companyId, missionId: input.missionId,
+      workflowId, parentRunId: null, status: "failed", runDate: "2026-10-25",
+      metadata: { url: "https://www.credly.com/n", slug: "credly-com" },
+    }, {
+      sourceType: "mission_owner_human_input",
+      requestKey: `moi2:${randomUUID()}`,
+      commentMode: "required",
+      resultComment: null,
+      requestedByAgentId: randomUUID(),
+    });
+    trigger.mockResolvedValue({ runId: randomUUID(), status: "running", stepRuns: [] });
+
+    const result = await startWorkflowRestartFromOperatorDecision(fixture.db, fixture.input);
+
+    expect(trigger).toHaveBeenCalledWith(fixture.db, expect.objectContaining({
+      companyId: input.companyId, missionId: input.missionId, workflowId,
+      triggeredBy: "operator_decision_approval", triggerSource: "operator_decision",
+    }), { actor: { type: "none" } });
+    expect(result.runId).toBeDefined();
+    expect(fixture.insertValues).toHaveBeenCalledWith(expect.objectContaining({
+      action: "workflow_run.created", entityId: result.runId,
+    }));
+  });
+
+  it("keeps the strict comment contract for a non-candidate restart card", async () => {
+    const input = ids();
+    const fixture = workflowRestartDb(input, {
+      id: input.sourceWorkflowRunId, companyId: input.companyId, missionId: input.missionId,
+      workflowId: randomUUID(), parentRunId: null, status: "failed", runDate: "2026-10-25",
+      metadata: null,
+    }, { commentMode: "required", resultComment: null });
+    await expect(startWorkflowRestartFromOperatorDecision(fixture.db, fixture.input))
+      .rejects.toMatchObject({ status: 409, details: { code: "workflow_restart_decision_binding_invalid" } });
+    expect(trigger).not.toHaveBeenCalled();
+    expect(fixture.updateSet).not.toHaveBeenCalled();
+    expect(fixture.insertValues).not.toHaveBeenCalled();
+  });
+
   it.each(["missing", "mismatched"] as const)("rejects %s supplied decision binding before effects", async (damage) => {
     const input = ids();
     const fixture = workflowRestartDb(input, {
