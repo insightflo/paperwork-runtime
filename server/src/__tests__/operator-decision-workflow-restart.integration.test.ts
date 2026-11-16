@@ -31,7 +31,14 @@ describe("operator decision restart transaction (PostgreSQL)", () => {
     await db.insert(workflowDefinitions).values({ id: workflowId, companyId,
       name: "Restart workflow", stepsJson: [] });
     await db.insert(workflowRuns).values({ id: sourceRunId, workflowId, companyId, missionId,
-      status: "failed", triggeredBy: "test", runDate: "2026-10-25", completedAt: new Date() });
+      status: "failed", triggeredBy: "test", runDate: "2026-10-25", completedAt: new Date(),
+      // 실운영 형태(2026-11-16 algumon.com): 실행 입력 + 런타임 스탬프가 공존한다.
+      // executionDefinitionVersion 을 입력 metadata 로 넘기면 createAdmittedWorkflowRun 이
+      // workflow_reserved_metadata 로 거부하므로, 계승 대상에서 빠지는지도 함께 증명한다.
+      metadata: {
+        url: "https://www.algumon.com/n", slug: "algumon-com",
+        section: "manuals", visibility: "public", executionDefinitionVersion: 1,
+      } });
     await db.insert(issues).values({ id: issueId, companyId, missionId, title: "[OVERSIGHT] Restart",
       status: "blocked", assigneeAgentId: agentId, originKind: "mission_main_executor_oversight" });
 
@@ -70,9 +77,13 @@ describe("operator decision restart transaction (PostgreSQL)", () => {
     const replacement = await db.select().from(workflowRuns).where(and(
       eq(workflowRuns.missionId, missionId), ne(workflowRuns.id, sourceRunId)));
     expect(replacement).toHaveLength(1);
-    expect(replacement[0]!.metadata).toMatchObject({ operatorDecisionRestart: {
-      operatorDecisionId: created.decision.id, sourceWorkflowRunId: sourceRunId,
-    } });
+    expect(replacement[0]!.metadata).toMatchObject({
+      url: "https://www.algumon.com/n", slug: "algumon-com",
+      section: "manuals", visibility: "public",
+      operatorDecisionRestart: {
+        operatorDecisionId: created.decision.id, sourceWorkflowRunId: sourceRunId,
+      },
+    });
     const [oversight] = await db.select({ status: issues.status }).from(issues).where(eq(issues.id, issueId));
     expect(oversight.status).not.toBe("blocked");
 
