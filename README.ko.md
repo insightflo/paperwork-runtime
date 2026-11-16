@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0 License" /></a>
   <a href="https://github.com/insightflo/paperwork-runtime"><img src="https://img.shields.io/badge/repo-paperwork--runtime-18181b" alt="paperwork-runtime" /></a>
   <a href="https://discord.gg/m4HZY7xNG3"><img src="https://img.shields.io/discord/000000000?label=discord" alt="Discord" /></a>
 </p>
@@ -290,7 +290,7 @@ pnpm db:migrate       # 마이그레이션 적용
 
 ## 라이선스
 
-MIT. 이 저장소의 일부는 Paperclip base에서 파생되었으며, 2025 Paperclip AI 저작권이며 MIT 라이선스로 유지됩니다.
+AGPL-3.0-only. 전문은 [LICENSE](LICENSE)를 참고하세요. 이 저장소의 일부는 Paperclip base([paperclipai/paperclip](https://github.com/paperclipai/paperclip))에서 파생되었으며 2025 Paperclip AI 저작권으로 MIT 라이선스가 계속 적용됩니다 — [NOTICE](NOTICE) 참고.
 
 ## 업스트림
 
@@ -299,5 +299,5 @@ papercompany는 업스트림 Paperclip base 생태계와의 명시적 호환성�
 <br/>
 
 <p align="center">
-  <sub>MIT 오픈소스. 에이전트를 돌보는 대신 회사를 운영하고 싶은 사람들을 위해.</sub>
+  <sub>AGPL-3.0 오픈소스. 에이전트를 돌보는 대신 회사를 운영하고 싶은 사람들을 위해.</sub>
 </p>
