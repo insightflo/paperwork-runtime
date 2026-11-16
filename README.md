@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0 License" /></a>
   <a href="https://github.com/insightflo/paperwork-runtime"><img src="https://img.shields.io/badge/repo-paperwork--runtime-18181b" alt="paperwork-runtime" /></a>
   <a href="https://discord.gg/m4HZY7xNG3"><img src="https://img.shields.io/discord/000000000?label=discord" alt="Discord" /></a>
   <a href="README.ko.md"><img src="https://img.shields.io/badge/lang-한국어-important" alt="한국어" /></a>
@@ -301,7 +301,7 @@ We welcome contributions. See [doc/DEVELOPING.md](doc/DEVELOPING.md) for local s
 
 ## License
 
-MIT. Portions of this repository derive from Paperclip base, copyright 2025 Paperclip AI, and remain under the MIT license.
+AGPL-3.0-only. See [LICENSE](LICENSE). Portions of this repository derive from Paperclip base ([paperclipai/paperclip](https://github.com/paperclipai/paperclip)), copyright 2025 Paperclip AI, and remain available under the MIT License — see [NOTICE](NOTICE).
 
 ## Upstream
 
@@ -310,5 +310,5 @@ Paperwork keeps explicit compatibility with the upstream Paperclip base ecosyste
 <br/>
 
 <p align="center">
-  <sub>Open source under MIT. Built for people who want to run companies, not babysit agents.</sub>
+  <sub>Open source under AGPL-3.0. Built for people who want to run companies, not babysit agents.</sub>
 </p>
