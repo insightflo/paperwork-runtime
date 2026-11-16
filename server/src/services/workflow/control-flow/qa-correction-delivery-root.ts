@@ -4,6 +4,7 @@ import { PgTransaction } from "drizzle-orm/pg-core";
 import { agentWakeupRequests, heartbeatRuns, issues, issueWorkProducts, missions, workflowRuns,
   workflowStepRuns, workflowStepOutputBindings, withTxTimeout, DEFAULT_TX_TIMEOUT_MS, type Db } from "@paperclipai/db";
 import { asBoolean, parseObject } from "../../../adapters/utils.js";
+import { HttpError } from "../../../errors.js";
 import { budgetService } from "../../budgets.js";
 import { lifecycleInFlightClause } from "../../heartbeat-finalization/lifecycle-active.js";
 import { missionDedupExemptOversightReviewClause } from "../../heartbeat-mission-dedup.js";
@@ -223,6 +224,13 @@ export async function withCorrectionDeliveryRoot(db: Db, input: CorrectionDelive
         return receipt;
       }
       if (error instanceof PendingAppeared && attempt === 0) continue;
+      // [C02 2026-11-16] 관측(observe)과 잠금 재읽기(lockPrefix) 사이에 소유자·하트비트 집합이
+      //   실제로 바뀐 경우 — 예: heartbeat-pause-delivery 의 대기 웨이크 실행 배정 — 트랜잭션은
+      //   이미 롤백됐으므로 새 관측치로 전체 판단을 다시 실행한다(스테일 관측을 그대로 잠그는
+      //   일은 여전히 없다). 마지막 시도에서도 계속 바뀌면 기존처럼 409로 fail-closed 된다.
+      //   근거: CI 실측 덤프(2026-11-15) — 잠금 전후 사이 executionRunId 할당+자식 하트비트 삽입.
+      if (error instanceof HttpError && error.status === 409
+        && error.message === "qa_correction_delivery_owner_changed" && attempt === 0) continue;
       throw error;
     }
   }
