@@ -178,6 +178,24 @@ export async function startWorkflowRestartFromOperatorDecision(db: Db, input: {
     ));
   }
 
+  // [B4 2026-11-16] 새 런은 원본 런의 caller metadata(url·slug 등 실행 입력)를 계승한다.
+  //   마커만으로 교체하면 {$runMetadata.*} 템플릿이 미해결 문자열로 도구에 전달된다 —
+  //   실운영 algumon.com 수집 재시작(미션 421de28a)에서 첫 스텝이 원격 400으로 실패했다.
+  //   제외 키는 런마다 런타임이 새로 찍는 권한·영수증 스탬프다 — 계승 시 stale 권한이거나
+  //   admission/수락 검증이 거부한다: executionDefinitionVersion·replacementAuthorityId·
+  //   replacementStart(createAdmittedWorkflowRun 계열 거부), resumeRequestId·
+  //   resumeAuthorityVersion(resume 수락 검증 발동), ownerPlanExecution(owner intent 펜스),
+  //   operatorDecisionRestart(구 마커 — activeReplacement 중복 검사를 새 바인딩으로 유지).
+  const {
+    operatorDecisionRestart: _priorRestartMarker,
+    executionDefinitionVersion: _definitionStamp,
+    replacementAuthorityId: _replacementAuthority,
+    replacementStart: _replacementReceipt,
+    resumeRequestId: _resumeRequestId,
+    resumeAuthorityVersion: _resumeAuthorityVersion,
+    ownerPlanExecution: _ownerPlanStamp,
+    ...carriedMetadata
+  } = source.metadata ?? {};
   const result = await workflowService.trigger(db, {
     companyId: input.companyId,
     workflowId: source.workflowId,
@@ -186,6 +204,7 @@ export async function startWorkflowRestartFromOperatorDecision(db: Db, input: {
     triggeredBy: "operator_decision_approval",
     triggerSource: "operator_decision",
     metadata: {
+      ...carriedMetadata,
       operatorDecisionRestart: {
         schemaVersion: 1,
         operatorDecisionId: input.operatorDecisionId,
