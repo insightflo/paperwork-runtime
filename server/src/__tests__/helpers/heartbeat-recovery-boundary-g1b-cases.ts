@@ -306,15 +306,21 @@ it("G1-B replacement target claim and adapter start preserve source authority", 
     const [wake] = await harness!.peer.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.id, beforeWake.id));
     const [step] = await harness!.peer.select().from(workflowStepRuns).where(eq(workflowStepRuns.id, unit.qa.id));
     if (!heartbeat || !wake || !step) throw new Error("original QA heartbeat, wake, or step disappeared after verified finish");
-    const officialVerdicts = await harness!.peer.select().from(workflowTransitionEvents).where(and(
-      eq(workflowTransitionEvents.id, unit.verdictEventId), eq(workflowTransitionEvents.companyId, unit.companyId),
-      eq(workflowTransitionEvents.missionId, unit.missionId), eq(workflowTransitionEvents.workflowRunId, unit.runId),
-      eq(workflowTransitionEvents.workflowStepRunId, unit.qa.id), eq(workflowTransitionEvents.issueId, unit.qaIssue.id),
-      eq(workflowTransitionEvents.heartbeatRunId, unit.verdictHeartbeatId),
-      eq(workflowTransitionEvents.eventType, "workflow_validation_verdict"),
-      eq(workflowTransitionEvents.verdict, "request_changes"), eq(workflowTransitionEvents.decision, "request_changes"),
-      eq(workflowTransitionEvents.reason, "workflow_api")));
-    expect(officialVerdicts).toHaveLength(1);
+    // qaCompletion.finish() 와 heartbeat/step 정산이 끝나도 workflow_validation_verdict 행은
+    // 세 번째 쓰기 경로에서 커밋되므로 여전히 경쟁한다 — 단발 읽기가 커밋 전을 관측하지
+    // 않도록 행이 확정될 때까지 폴링한다(아래 기존 단언은 완화 없이 그대로 검사).
+    let officialVerdicts: (typeof workflowTransitionEvents.$inferSelect)[] = [];
+    await vi.waitFor(async () => {
+      officialVerdicts = await harness!.peer.select().from(workflowTransitionEvents).where(and(
+        eq(workflowTransitionEvents.id, unit.verdictEventId), eq(workflowTransitionEvents.companyId, unit.companyId),
+        eq(workflowTransitionEvents.missionId, unit.missionId), eq(workflowTransitionEvents.workflowRunId, unit.runId),
+        eq(workflowTransitionEvents.workflowStepRunId, unit.qa.id), eq(workflowTransitionEvents.issueId, unit.qaIssue.id),
+        eq(workflowTransitionEvents.heartbeatRunId, unit.verdictHeartbeatId),
+        eq(workflowTransitionEvents.eventType, "workflow_validation_verdict"),
+        eq(workflowTransitionEvents.verdict, "request_changes"), eq(workflowTransitionEvents.decision, "request_changes"),
+        eq(workflowTransitionEvents.reason, "workflow_api")));
+      expect(officialVerdicts).toHaveLength(1);
+    }, { timeout: 15_000, interval: 25 });
     const officialVerdict = officialVerdicts[0];
     if (!officialVerdict) throw new Error("original QA request_changes verdict was missing after verified finish");
     expect(unit.verdictHeartbeatId).toBe(beforeHeartbeat.id);
