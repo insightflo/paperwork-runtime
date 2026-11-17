@@ -24,6 +24,7 @@ import {
 } from "./workflow-restart-option.js";
 import { isPrerequisiteNoticeOption } from "./terminal-recovery-card-options.js";
 import { extractMissionOwnerDecisionFromText } from "./mission-owner-recovery-events.js";
+import { withFailureCauseInterpretation } from "../failure-interpretation.js";
 
 export const MISSION_OWNER_HUMAN_INPUT_SOURCE_TYPE = "mission_owner_human_input";
 export const MISSION_OWNER_HUMAN_INPUT_CARD_MAPPING_FAILED = "mission_owner_human_input_card_mapping_failed";
@@ -253,6 +254,19 @@ function buildOptionDerivedInterpretation(
 
 /** Build a validated card request; natural-language fields never select an operation. */
 export function buildMissionOwnerHumanInputDecisionCard(input: MissionOwnerHumanInputCardSpec): CreateOperatorDecisionInput {
+  return buildCard(input, { failureCause: true });
+}
+
+/** [레거시 호환 2026-11-17] 원인 해석 레지스트리 도입 이전에 현행 빌더로 발행된 카드의
+ *  requestHash 재구성 대조 후보 — '쉬운 해석'에 원인 문장을 붙이지 않던 당시 형식을 그대로
+ *  재현한다. 신규 발행은 절대 이 경로를 쓰지 않는다(위 빌더가 유일한 발행 경로). */
+export function buildPreFailureCauseMissionOwnerHumanInputDecisionCard(
+  input: MissionOwnerHumanInputCardSpec,
+): CreateOperatorDecisionInput {
+  return buildCard(input, { failureCause: false });
+}
+
+function buildCard(input: MissionOwnerHumanInputCardSpec, format: { failureCause: boolean }): CreateOperatorDecisionInput {
   if (!present(input.decisionEventId)) mappingFailure("결정 이벤트 식별자 없음");
   if (!present(input.missionId)) mappingFailure("미션 식별자 없음");
   if (!present(input.ownerActionIssueId)) mappingFailure("owner-action 이슈 식별자 없음");
@@ -326,11 +340,17 @@ export function buildMissionOwnerHumanInputDecisionCard(input: MissionOwnerHuman
   const recommendedDefinition = { ...definition, options };
   // [사람 카드 축소 Stage 1] 고정 축소 형식 — 증상 2줄(symptom), 해석 1문장. 상세 원문은 링크로만 참조.
   const symptom = formatSymptom(input.reason);
-  // [사람 카드 해석 C4a] 쉬운 해석은 증상·선택지와 같은 구조화 옵션 목록에서 파생한다 —
-  //   요청 산문(nextAction)을 패러프레이즈·인용하지 않고 '승인 여부 판단' 템플릿도 쓰지 않는다.
+  // [사람 카드 해석 C4a + 원인 해석 2026-11-17 — 운영자 방침: "패턴이 한두가지가 아니다"]
+  //   쉬운 해석은 원인 해석 우선·진행 안내 후속이다 — reason/evidence 의 기계 문장을
+  //   failure-interpretation 레지스트리로 해석해 원인 문장을 첫 문장에 두고, 선택지 파생
+  //   진행 안내 문장을 뒤에 붙인다(요약 클립이 첫 문장만 남기므로 원인이 먼저 와야 한다).
+  //   원인이 해석되지 않으면 기존 옵션 파생 문장만 나간다 — 요청 산문(nextAction)은
+  //   패러프레이즈·인용하지 않고 '승인 여부 판단' 템플릿도 쓰지 않는다.
   const interpretation = toOneLine(
-    buildOptionDerivedInterpretation(input.decision, recommendedDefinition.options), 200)
-    || HUMAN_INPUT_INTERPRETATION_FALLBACK;
+    format.failureCause
+      ? withFailureCauseInterpretation(input, buildOptionDerivedInterpretation(input.decision, recommendedDefinition.options))
+      : buildOptionDerivedInterpretation(input.decision, recommendedDefinition.options),
+    200) || HUMAN_INPUT_INTERPRETATION_FALLBACK;
   return {
     schemaVersion: 1,
     requestKey: input.lifetimeId !== undefined
