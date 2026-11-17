@@ -652,4 +652,87 @@ describeEmbeddedPostgres("terminal-mission Human Operator report (corrected prod
     expect((await countReportArtifacts(db, qaCapIssueId)).events).toBe(1);
     expect((await countReportArtifacts(db, seed.ownerActionIssueId)).events).toBe(0);
   });
+
+  it("re-reports when the same workflow run re-fails in place with a new failure generation", async () => {
+    const seed = await seedTerminalFixture(db);
+    // No failed heartbeat runs → post-loop workflow-run reporting owns this terminal failure.
+    await db.delete(heartbeatRuns).where(eq(heartbeatRuns.id, seed.failedRunId));
+
+    const definitionId = randomUUID();
+    const workflowRunId = randomUUID();
+    const stepRunId = randomUUID();
+    const t1 = new Date("2026-07-01T00:08:00.000Z");
+    const t2 = new Date("2026-07-01T01:08:00.000Z");
+    await db.insert(workflowDefinitions).values({
+      id: definitionId,
+      companyId: seed.companyId,
+      name: "in-place re-failure run",
+      stepsJson: [{ id: "produce", name: "Produce", dependencies: [] }],
+    });
+    await db.insert(workflowRuns).values({
+      id: workflowRunId,
+      workflowId: definitionId,
+      companyId: seed.companyId,
+      missionId: seed.missionId,
+      status: "failed",
+      triggeredBy: "system",
+      completedAt: t1,
+    });
+    await db.insert(workflowStepRuns).values({
+      id: stepRunId,
+      workflowRunId,
+      stepId: "produce",
+      issueId: seed.sourceIssueId,
+      status: "failed",
+      executionGeneration: 1,
+      retryCount: 0,
+      iterationIndex: 0,
+      completedAt: t1,
+    });
+
+    const svc = missionService(db);
+    // 1st sweep: terminal report emitted for the T1 failure snapshot.
+    await svc.runMainExecutorSupervision({ missionId: seed.missionId, staleAfterMinutes: 1, now: new Date("2026-07-01T00:10:00.000Z") });
+    let artifacts = await countReportArtifacts(db, seed.ownerActionIssueId);
+    expect(artifacts.audits).toBe(1);
+    expect(artifacts.comments).toBe(1);
+    expect(artifacts.events).toBe(1);
+    const firstCards = await db.select().from(operatorDecisions).where(eq(operatorDecisions.companyId, seed.companyId));
+    expect(firstCards).toHaveLength(1);
+    expect(firstCards[0]).toMatchObject({ status: "pending" });
+    expect(firstCards[0]!.requestKey.startsWith("moi1:")).toBe(true);
+
+    // 2nd sweep on the unchanged snapshot: snapshot-already-reported idempotency.
+    await svc.runMainExecutorSupervision({ missionId: seed.missionId, staleAfterMinutes: 1, now: new Date("2026-07-01T00:20:00.000Z") });
+    artifacts = await countReportArtifacts(db, seed.ownerActionIssueId);
+    expect(artifacts.audits).toBe(1);
+    expect(artifacts.comments).toBe(1);
+    expect(artifacts.events).toBe(1);
+
+    // Operator resolves the first card; the same run then re-fails in place —
+    // later workflow completedAt and a bumped step generation/retry make a new fingerprint.
+    await db.update(operatorDecisions).set({
+      status: "resolved",
+      result: { actionId: "submit", outcome: "submit", selectedOptionIds: ["retry-revised-input"], comment: null },
+      resolvedByUserId: "board-user",
+      resolvedAt: new Date("2026-07-01T00:30:00.000Z"),
+    }).where(eq(operatorDecisions.id, firstCards[0]!.id));
+    await db.update(workflowRuns).set({ completedAt: t2 }).where(eq(workflowRuns.id, workflowRunId));
+    await db.update(workflowStepRuns)
+      .set({ executionGeneration: 2, retryCount: 1, completedAt: t2 })
+      .where(eq(workflowStepRuns.id, stepRunId));
+
+    // 3rd sweep: not suppressed by snapshot-already-reported — new report + second card.
+    await svc.runMainExecutorSupervision({ missionId: seed.missionId, staleAfterMinutes: 1, now: new Date("2026-07-01T01:10:00.000Z") });
+    artifacts = await countReportArtifacts(db, seed.ownerActionIssueId);
+    expect(artifacts.audits).toBe(2);
+    expect(artifacts.comments).toBe(2);
+    expect(artifacts.events).toBe(2);
+    const cards = await db.select().from(operatorDecisions).where(eq(operatorDecisions.companyId, seed.companyId));
+    expect(cards).toHaveLength(2);
+    expect(cards.filter((card) => card.status === "resolved")).toHaveLength(1);
+    expect(cards.filter((card) => card.status === "pending")).toHaveLength(1);
+    expect(cards.every((card) => card.requestKey.startsWith("moi1:"))).toBe(true);
+    expect(new Set(cards.map((card) => card.requestKey)).size).toBe(2);
+  });
 });
