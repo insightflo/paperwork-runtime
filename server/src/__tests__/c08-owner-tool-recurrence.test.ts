@@ -152,4 +152,74 @@ describe("C08 closed tool request recurrence", () => {
     expect(link).toMatchObject({ eventType: "owner_tool_recovery_target_v1",
       idempotencyKey: `owner-tool-card:v2:${s.stepRunId}:${next.issue.id}` });
   });
+
+  it("creates a new v2 card per failure generation while stale nonhuman decisions stay inert", async () => {
+    const s = await seedToolRecoveryScenario({ db, artifactExists: false }); roots.push(s.tempRoot);
+    const [mission] = await db.select().from(missions).where(eq(missions.id, s.missionId));
+    const [oversightIssue] = await db.select().from(issues).where(eq(issues.id, s.oversightIssueId));
+    let [run] = await db.select().from(workflowRuns).where(eq(workflowRuns.id, s.workflowRunId));
+    let [stepRun] = await db.select().from(workflowStepRuns).where(eq(workflowStepRuns.id, s.stepRunId));
+    const [definition] = await db.select().from(workflowDefinitions).where(eq(workflowDefinitions.id, run.workflowId));
+    const step = (definition.stepsJson as WorkflowStep[]).find(value => value.id === stepRun.stepId)!;
+    const produce = () => ensureToolRecoveryCard(db, {}, {
+      mission, oversightIssue, run, stepRun, step, workflowName: definition.name,
+    }, async (tx, companyId, data) => (await tx.insert(issues).values({ ...data, companyId }).returning())[0]);
+    const adopt = async (issueId: string) => {
+      const runId = randomUUID();
+      await db.insert(heartbeatRuns).values({ id: runId, companyId: s.companyId,
+        agentId: s.ownerAgentId, issueId, status: "running" });
+      await issueService(db).checkout(issueId, s.ownerAgentId, ["todo"], runId);
+      return { actorType: "agent" as const, actorId: s.ownerAgentId, agentId: s.ownerAgentId, runId };
+    };
+    const target = () => ({ kind: "tool_step" as const, workflowRunId: run.id, stepRunId: stepRun.id,
+      expectedAuthorityVersion: run.dispatchAuthorityVersion,
+      expectedExecutionGeneration: stepRun.executionGeneration,
+      failedDispatchRequestId: stepRun.lastDispatchRequestId });
+    const failAgain = async (completedAt: Date) => {
+      run = (await db.update(workflowRuns).set({ status: "failed",
+        dispatchAuthorityVersion: run.dispatchAuthorityVersion + 1 })
+        .where(eq(workflowRuns.id, s.workflowRunId)).returning())[0]!;
+      stepRun = (await db.update(workflowStepRuns).set({ status: "failed",
+        executionGeneration: stepRun.executionGeneration + 1,
+        statusTransitionVersion: stepRun.statusTransitionVersion + 1,
+        lastDispatchRequestId: randomUUID(), completedAt })
+        .where(eq(workflowStepRuns.id, s.stepRunId)).returning())[0]!;
+    };
+
+    const first = await produce();
+    expect(first.created).toBe(true);
+    await submitMissionOwnerDecision({ db, issueId: first.issue.id, actor: await adopt(first.issue.id),
+      data: { decision: "retry_source_issue", reason: "first generation retry", recoveryTarget: target() } });
+    await issueService(db).update(first.issue.id, { status: "done" });
+    const reused = await produce();
+    expect(reused.created).toBe(false);
+    expect(reused.issue.id).toBe(first.issue.id);
+
+    await failAgain(new Date(Date.now() + 2000));
+    const second = await produce();
+    expect(second.created).toBe(true);
+    expect(second.issue.id).not.toBe(first.issue.id);
+    expect(second.issue.status).toBe("todo");
+    const [secondLink] = await db.select().from(workflowTransitionEvents)
+      .where(eq(workflowTransitionEvents.issueId, second.issue.id));
+    expect(secondLink).toMatchObject({ eventType: "owner_tool_recovery_target_v1",
+      idempotencyKey: `owner-tool-card:v2:${s.stepRunId}:${second.issue.id}` });
+
+    const actorB = await adopt(second.issue.id);
+    // The owner decision must postdate the observed failure instant to bind to this generation.
+    const settleDelay = stepRun.completedAt!.getTime() - Date.now() + 250;
+    if (settleDelay > 0) await new Promise((resolve) => setTimeout(resolve, settleDelay));
+    await submitMissionOwnerDecision({ db, issueId: second.issue.id, actor: actorB,
+      data: { decision: "no_action_waiting", reason: "second generation waiting" } });
+    await issueService(db).update(second.issue.id, { status: "done" });
+    const reusedSecond = await produce();
+    expect(reusedSecond.created).toBe(false);
+    expect(reusedSecond.issue.id).toBe(second.issue.id);
+
+    await failAgain(new Date(Date.now() + 5000));
+    const third = await produce();
+    expect(third.created).toBe(true);
+    expect(third.issue.id).not.toBe(second.issue.id);
+    expect(third.issue.id).not.toBe(first.issue.id);
+  }, 30_000);
 });
