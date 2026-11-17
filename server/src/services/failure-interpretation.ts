@@ -78,11 +78,15 @@ export const FAILURE_CAUSE_REGISTRY: readonly FailureCauseRule[] = [
   { name: "auth-denied", match: byPattern(
     /unauthorized|forbidden|status 40[13]\b/i,
     "권한이 없거나 접근이 거부되었습니다 — 자격증명·권한 설정을 확인하세요.") },
-  // 6. 비구조화 404 문자열 — 1번과 동일한 404 문장.
+  // 6. 비구조화 404 문자열(영어 + 한국어 요약) — 1번과 동일한 404 문장.
   { name: "unstructured-404", match: byPattern(
-    /status 404|HTTP 404/i,
+    /status 404|HTTP 404|404\s*(?:차단|오류|에러|응답|없는 페이지)|없는\s*페이지입니다\s*\(404\)/i,
     interpretTargetFailureStatusSentence(404)!) },
-  // 7. 응답 형식·구조 계열 — 페이지 구조·계약 변경 가능성 안내.
+  // 7. 한국어 403 차단 산문 — 자격증명 지적(auth-denied)이 아닌 대상 거부 문장이 정확한 한국어 요약 전용.
+  { name: "korean-target-403", match: byPattern(
+    /403\s*(?:차단|거부|오류|에러|응답)|403으로\s*접근\s*불가|접근을\s*거부했습니다\s*\(403\)/i,
+    interpretTargetFailureStatusSentence(403)!) },
+  // 8. 응답 형식·구조 계열 — 페이지 구조·계약 변경 가능성 안내.
   { name: "contract-shape", match: byPattern(
     /selector matched no elements|contract violated|non-JSON|missing required fields/i,
     "응답 내용이 예상 형식과 다릅니다 — 페이지 구조나 계약이 바뀌었을 수 있으니 확인하세요.") },
