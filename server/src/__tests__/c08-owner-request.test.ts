@@ -269,4 +269,55 @@ describeDb("C08 actual owner human submission", () => {
       .send({ decision: "reassign_source_issue", nextAction: plain.agentId });
     expect(rejected.status).toBe(400);
   });
+
+  // [Stage 4 2026-11-17] oversight 는 미션 단위 신원이다 — auth.run 은 읽기 시점 최신 실패 run으로
+  // 다시 선정되므로, R1 제출 후 재시작 run R2 가 실패하면 run 불일치로 GET current 가 409 가 되고
+  // 문서화된 CAS 교체 루프(expectedCurrentLifetimeId 확보 → replaced) 자체가 막힌다.
+  it("oversight current read survives a newer failed run and unblocks the CAS replacement loop", async () => {
+    const w = await world(true), workflowId = randomUUID(), r1 = randomUUID(), r2 = randomUUID();
+    await db.insert(workflowDefinitions).values({ id: workflowId, companyId: w.companyId, name: "oversight", stepsJson: [] });
+    await db.insert(workflowRuns).values({ id: r1, workflowId, companyId: w.companyId, missionId: w.missionId,
+      status: "failed", triggeredBy: "test", createdAt: new Date(Date.now() - 60_000) });
+    const first = await submit(w, keyed("oversight-r1"));
+    expect((await lifetimes(w))[0]!.cardInput.workflowRunId).toBe(r1);
+    await answerPendingCard(w);
+    const settled = await request(app(w)).get(`/api/issues/${w.issueId}/owner-recovery/decision/current`);
+    expect(settled.status).toBe(200); expect(settled.body.closure).toBeNull();
+    expect(settled.body.card.status).toBe("resolved");
+    await db.insert(workflowRuns).values({ id: r2, workflowId, companyId: w.companyId, missionId: w.missionId,
+      status: "failed", triggeredBy: "test", parentRunId: null });
+    const current = await request(app(w)).get(`/api/issues/${w.issueId}/owner-recovery/decision/current`);
+    expect(current.status, JSON.stringify(current.body)).toBe(200);
+    expect(current.body.lifetimeId).toBe(first.lifetimeId);
+    expect(current.body.closure).toBeNull(); expect(current.body.card.status).toBe("resolved");
+    expect(current.body.resubmit.humanRequest.expectedCurrentLifetimeId).toBe(first.lifetimeId);
+    const second = await request(app(w)).post(`/api/issues/${w.issueId}/owner-recovery/decision`)
+      .send(keyed("oversight-r2", first.lifetimeId!));
+    expect(second.status, JSON.stringify(second.body)).toBe(201);
+    expect(second.body.lifetimeId).not.toBe(first.lifetimeId);
+    const savedCards = await cards(w);
+    expect(savedCards).toHaveLength(2);
+    const pendingCard = savedCards.find((row) => row.status === "pending");
+    expect(pendingCard!.requestKey).toBe(`moi2:${second.body.lifetimeId}`);
+    const end = (await events(w)).find((row) => row.eventType === "owner_human_end_v1");
+    expect(end!.payload).toMatchObject({ kind: "owner_human_end_v1",
+      lifetimeId: first.lifetimeId, reason: "replaced", nextLifetimeId: second.body.lifetimeId });
+  });
+
+  // source_issue 스코프는 run 참조가 곧 카드 사실이므로 run 이동 시 여전히 fail-closed(409) 여야 한다.
+  it("source scope current read still fails closed when the source run reference moves", async () => {
+    const w = await world(), workflowId = randomUUID(), r1 = randomUUID(), r2 = randomUUID();
+    await db.insert(workflowDefinitions).values({ id: workflowId, companyId: w.companyId, name: "source", stepsJson: [] });
+    await db.insert(workflowRuns).values({ id: r1, workflowId, companyId: w.companyId, missionId: w.missionId,
+      status: "failed", triggeredBy: "test" });
+    await db.update(issues).set({ originRunId: r1 }).where(eq(issues.id, w.sourceId));
+    await submit(w, keyed("source-r1"));
+    expect((await lifetimes(w))[0]!.cardInput.workflowRunId).toBe(r1);
+    await answerPendingCard(w);
+    await db.insert(workflowRuns).values({ id: r2, workflowId, companyId: w.companyId, missionId: w.missionId,
+      status: "failed", triggeredBy: "test" });
+    await db.update(issues).set({ originRunId: r2 }).where(eq(issues.id, w.sourceId));
+    const current = await request(app(w)).get(`/api/issues/${w.issueId}/owner-recovery/decision/current`);
+    expect(current.status).toBe(409);
+  });
 });

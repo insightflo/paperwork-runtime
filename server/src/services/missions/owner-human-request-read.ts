@@ -157,9 +157,15 @@ export async function readOwnerHumanRequest(input: {
         scope: auth.scope, recoveryNeeded: false, closure: current.pointer.closure,
         card: null, delivery: null, resubmit: null };
     }
+    // oversight 스코프는 미션 단위 신원이다. auth.run 은 읽기 시점 최신 실패 run 으로 다시 선정되지만
+    // 열린 lifetime 의 cardInput.workflowRunId 는 제출 시점 run(R1)을 그대로 담는다. 사람 카드가
+    // 답해져도 closure 는 정착 주체가 아니므로 null 로 남고, 재시작 run R2 가 실패하면 run 불일치로
+    // 409 가 나와 문서화된 CAS 교체(expectedCurrentLifetimeId 확보 → replaced)를 막는다.
+    // runId 동등 검사는 oversight 에서만 건너뛰고 anchor/author/source·카드 해시/링크 검사는 그대로 둔다.
     if (current.pointer.anchorIssueId !== auth.anchor.id || lifetime.authorAgentId !== agentId
       || lifetime.sourceIssueId !== (auth.source?.id ?? null)
-      || lifetime.cardInput.workflowRunId !== (auth.run?.id ?? null)) return fail();
+      || (auth.scope.target.kind !== "oversight"
+        && lifetime.cardInput.workflowRunId !== (auth.run?.id ?? null))) return fail();
     const projection = await readCardAndDelivery(tx, current);
     return { lifetimeId: lifetime.lifetimeId, requestKey: lifetime.requestKey,
       anchorIssueId: current.pointer.anchorIssueId, scope: current.pointer.scope,
