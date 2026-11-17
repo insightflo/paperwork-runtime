@@ -402,3 +402,103 @@ describe("http workflow tool response assertions (fail-closed result contract)",
       : {};
   }
 });
+
+// [사람 해석 프리픽스 2026-11-17] scrapling 424 구조화 진단(targetStatus+url)이 미션 오너를
+//   거쳐 사람 카드 증상에 기계 JSON 그대로 실리던 것을, 한국어 해석 문장 선행 + (원본: …)
+//   보존 형태로 바꾼다. 해석 문장은 절단 대상이 아니고 원본 diagnostic만 1000자로 잘린다.
+describe("http workflow tool remote diagnostic humanization", () => {
+  const SCRAPLING_404 = {
+    error: "target fetch failed",
+    message: "target returned HTTP 404",
+    url: "https://collect-target.example.test/missing-page",
+    targetStatus: 404,
+  };
+
+  function runTool(status: number, body: unknown) {
+    const fetchImpl = vi.fn(async () => makeFetchResponse(status, body)) as unknown as FetchLike;
+    return executeHttpWorkflowTool(
+      {
+        companyId: "company-1",
+        toolName: "daily-tech-scout",
+        parameters: {},
+        requestId: "request-humanize",
+        stepOutputDir: null,
+        adapterConfig: ADAPTER_CONFIG,
+      },
+      {
+        fetchImpl,
+        resolveSecretValue: vi.fn(async () => SECRET_VALUE) as unknown as (
+          companyId: string, secretId: string, version: number | "latest",
+        ) => Promise<string>,
+      },
+    );
+  }
+
+  it("prepends a Korean interpretation and preserves the original for a target-404 diagnostic", async () => {
+    const result = await runTool(424, SCRAPLING_404);
+    expect(result.status).toBe(500);
+    const error = result.body.error ?? "";
+    expect(error).toContain('remote endpoint returned status 424');
+    expect(error).toContain("[사람 해석] 수집 대상 주소는 없는 페이지입니다(404)");
+    expect(error).toContain("(대상: https://collect-target.example.test/missing-page)");
+    const originalJson = JSON.stringify(SCRAPLING_404);
+    expect(error).toContain(`(원본: ${originalJson})`);
+    expect(error.indexOf("[사람 해석]")).toBeLessThan(error.indexOf(originalJson));
+  });
+
+  it("explains a target-403 diagnostic as access denied", async () => {
+    const result = await runTool(424, { ...SCRAPLING_404, targetStatus: 403, message: "target returned HTTP 403" });
+    expect(result.status).toBe(500);
+    expect(result.body.error ?? "").toContain("[사람 해석] 대상 사이트가 접근을 거부했습니다(403)");
+  });
+
+  it("explains a target-5xx diagnostic as an upstream site error", async () => {
+    const result = await runTool(424, { ...SCRAPLING_404, targetStatus: 503, message: "target returned HTTP 503" });
+    expect(result.status).toBe(500);
+    expect(result.body.error ?? "").toContain("[사람 해석] 대상 사이트 자체 오류(503)입니다");
+  });
+
+  it("explains other target-4xx diagnostics with the generic sentence", async () => {
+    const result = await runTool(424, { ...SCRAPLING_404, targetStatus: 429, message: "target returned HTTP 429" });
+    expect(result.status).toBe(500);
+    expect(result.body.error ?? "").toContain("[사람 해석] 대상 사이트가 429를 반환했습니다");
+  });
+
+  it("leaves a non-JSON diagnostic unchanged", async () => {
+    const result = await runTool(502, "proxy exploded upstream");
+    expect(result.status).toBe(500);
+    expect(result.body.error ?? "").toBe(
+      'Workflow tool "daily-tech-scout" remote endpoint returned status 502: proxy exploded upstream',
+    );
+  });
+
+  it("leaves a JSON diagnostic without the scrapling contract fields unchanged", async () => {
+    const result = await runTool(500, { error: "boom" });
+    expect(result.status).toBe(500);
+    const error = result.body.error ?? "";
+    expect(error).not.toContain("[사람 해석]");
+    expect(error).toContain('returned status 500: {"error":"boom"}');
+  });
+
+  it("redacts the secret before parsing and embedding the original diagnostic", async () => {
+    const result = await runTool(424, {
+      ...SCRAPLING_404,
+      message: `target returned HTTP 404 for key ${SECRET_VALUE}`,
+    });
+    expect(result.status).toBe(500);
+    const error = result.body.error ?? "";
+    expect(error).toContain("[사람 해석] 수집 대상 주소는 없는 페이지입니다(404)");
+    expect(JSON.stringify(result)).not.toContain(SECRET_VALUE);
+  });
+
+  it("bounds only the embedded 원본 to 1000 chars while the interpretation stays intact", async () => {
+    const result = await runTool(424, { ...SCRAPLING_404, message: `target returned HTTP 404 ${"m".repeat(2000)}` });
+    expect(result.status).toBe(500);
+    const error = result.body.error ?? "";
+    expect(error).toContain("[사람 해석] 수집 대상 주소는 없는 페이지입니다(404)");
+    const originalStart = error.indexOf("(원본: ");
+    expect(originalStart).toBeGreaterThan(-1);
+    const embedded = error.slice(originalStart + "(원본: ".length, error.length - 1);
+    expect(embedded.length).toBe(1_000);
+  });
+});

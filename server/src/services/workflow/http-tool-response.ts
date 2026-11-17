@@ -96,6 +96,33 @@ export function redactSecret(value: string, secret: string): string {
   if (!secret || !value.includes(secret)) return value;
   return value.split(secret).join("");
 }
+/** [사람 해석 프리픽스 — 2026-11-17 운영자 요구] scrapling 계열 원격 도구는 대상 수집 실패를
+ *  HTTP 424 + {"error":"target fetch failed","message":"target returned HTTP <n>","url":"…",
+ *  "targetStatus":<n>} 구조로 보고한다. 이 진단 문자열은 미션 오너를 거쳐 사람 카드 증상에
+ *  그대로 실리므로, 운영자가 기계 JSON을 해독하지 않아도 되게 한국어 해석 문장을 앞에 붙이고
+ *  원본 diagnostic은 뒤에 보존한다. 절단 대상은 (원본: …) 안의 원본뿐 — 해석 문장은 잘리지
+ *  않는다. targetStatus(number)·url(string)이 없거나 해석 계열이 없는 상태 코드, 그리고
+ *  JSON 파싱 실패·구조 불일치에는 기존 동작(원본 1000자 절단)을 그대로 반환한다. */
+export function humanizeRemoteDiagnostic(diagnostic: string): string {
+  const bounded = diagnostic.slice(0, 1000);
+  let parsed: unknown;
+  try { parsed = JSON.parse(diagnostic); } catch { return bounded; }
+  const record = readObject(parsed);
+  const targetStatus = record.targetStatus;
+  const url = nonEmptyString(record.url);
+  if (typeof targetStatus !== "number" || !Number.isFinite(targetStatus) || url === null) return bounded;
+  let sentence: string;
+  if (targetStatus === 404) {
+    sentence = "수집 대상 주소는 없는 페이지입니다(404). 재시작으로는 해결되지 않습니다 — 입력 주소를 확인·수정한 뒤 다시 시도하세요.";
+  } else if (targetStatus === 403) {
+    sentence = "대상 사이트가 접근을 거부했습니다(403). 차단 또는 로그인 필요 여부를 확인하세요.";
+  } else if (targetStatus >= 500 && targetStatus < 600) {
+    sentence = `대상 사이트 자체 오류(${targetStatus})입니다. 잠시 후 재시도를 고려하세요.`;
+  } else if (targetStatus >= 400 && targetStatus < 500) {
+    sentence = `대상 사이트가 ${targetStatus}를 반환했습니다. 주소·요청 조건을 확인하세요.`;
+  } else return bounded;
+  return `[사람 해석] ${sentence} (대상: ${url}) (원본: ${bounded})`;
+}
 export async function persistArtifact(stepOutputDir: string, fileName: string, artifactValue: unknown, signal?: AbortSignal): Promise<string> {
   signal?.throwIfAborted();
   const dir = path.resolve(stepOutputDir);
@@ -123,7 +150,10 @@ export async function consumeHttpToolResponse(res: Response, input: HttpWorkflow
     try { diagnostic = await res.text(); } catch { /* bounded timeout handled by caller */ }
     signal.throwIfAborted();
     for (const secret of secrets) diagnostic = redactSecret(diagnostic, secret);
-    diagnostic = diagnostic.slice(0, 1000);
+    // 이 진단은 미션 오너를 거쳐 사람 카드 증상으로 전파되므로, 비밀 마스킹 뒤 구조화 진단에는
+    //   한국어 해석을 선행시킨다. 1000자 절단은 (원본: …) 안의 원본에만 적용되어 해석 문장은
+    //   잘리지 않는다(비구조화 진단은 기존과 동일하게 절단된 원본만 반환).
+    diagnostic = humanizeRemoteDiagnostic(diagnostic);
     return failure(`Workflow tool "${toolName}" remote endpoint returned status ${res.status}${diagnostic ? `: ${diagnostic}` : ""}`);
   }
   let envelope: unknown;
