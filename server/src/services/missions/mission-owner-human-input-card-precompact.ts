@@ -1,30 +1,36 @@
 // server/src/services/missions/mission-owner-human-input-card-precompact.ts
 // [레거시 호환 2026-11-12] 구형 mission_owner_human_input 카드의 C08 재구성 대조용, 얼린 빌더 모음.
 // - buildPreCompactMissionOwnerHumanInputDecisionCard: PR #703(e0116f92, 사람 카드 축소 Stage 1)
-//   배포 이전에 발행된 구조화 카드(be79dd99 등)용. 본문은 e0116f92~1(= 226bef66)의
-//   buildMissionOwnerHumanInputDecisionCard 를 함수명만 바꿔 그대로 옮겼다
-//   (전문 description·요약 3줄·symptom 없는 humanReview·원본 선택지 설명).
+//   배포 이전에 발행된 구조화 카드(be79dd99 등)용. 바이트-동일 원본은 buildPreCompactCardBody 에
+//   보존하고, export 빌더는 그 출력의 '쉬운 해석' 앞에 원인 해석 문장을 얹는다.
 // - buildStage1CompactMissionOwnerHumanInputDecisionCard: #703 배포 이후~C4 빌더 변경 이전에
-//   발행된 Stage-1 축소 카드(f44d6f91 등)용. 본문은 dd563dcf 의 동일 함수를 함수명만 바꿔
-//   그대로 옮겼다(symptom 2줄·1줄 선택지 설명·축소 description·1문장 interpretation).
+//   발행된 Stage-1 축소 카드(f44d6f91 등)용. 바이트-동일 원본은 buildStage1CompactCardBody 에
+//   보존하고, export 빌더는 원인 해석 문장을 얹는다.
 // 새 카드는 절대 이 형식들로 발행되지 않는다 — 현행 빌더(mission-owner-human-input-card.ts)가
 // 유일한 발행 경로이며, 이 모듈은 cardMatchesInput/현재성 대조의 후보 재구성에만 쓰인다.
-// 원본이 바이트 단위로 동일해야 requestHash 비교가 성립하므로 내부 로직은 일절 손대지 않는다.
-// 얼린 빌더는 현행 빌더와 헬퍼를 공유하지 않는다 — 현행 빌더가 바뀌어도 이 형식은 불변이어야 하고,
-// 입력 스펙에 이후 추가되는 필드(예: prerequisiteNotice)는 당시 없던 값이므로 읽지 않는다.
+// [원인 해석 2026-11-17] 얼린 본체(*CardBody)는 원본이 바이트 단위로 동일해야 requestHash 비교가
+// 성립하므로 내부 로직을 일절 손대지 않는다. export 빌더에 붙는 원인 해석은 본체 출력의
+// interpretation 필드만 바꾸는 후처리이며, 대조 후보에는 원인 적용본과 바이트-동일 원본을 함께
+// 둔다 — 패턴에 맞는 사유를 가진 구형 pending 카드가 해시 불일치로 409 되지 않게 한다.
+// 입력 스펙에 이후 추가되는 필드(예: prerequisiteNotice)는 당시 없던 값이므로 본체는 읽지 않는다.
 import type {
   CreateOperatorDecisionInput,
   OperatorDecisionDefinition,
 } from "@paperclipai/shared/types/operator-decision";
 import { z } from "zod";
 import { unprocessable } from "../../errors.js";
+import { withFailureCauseInterpretation } from "../failure-interpretation.js";
 import {
   buildHumanInputDecisionCardRequestKey,
+  buildPreFailureCauseMissionOwnerHumanInputDecisionCard,
   MISSION_OWNER_HUMAN_INPUT_CARD_MAPPING_FAILED,
   MISSION_OWNER_HUMAN_INPUT_SOURCE_TYPE,
   type MissionOwnerHumanInputCardSpec,
 } from "./mission-owner-human-input-card.js";
-import { buildDefaultOwnerHumanDefinition } from "./mission-owner-human-default-definition.js";
+import {
+  buildDefaultOwnerHumanDefinition,
+  buildHistoricalDefaultOwnerHumanInputVariant,
+} from "./mission-owner-human-default-definition.js";
 import {
   WORKFLOW_RESTART_FROM_START_OPTION_ID,
   WORKFLOW_RESTART_FROM_START_SCOPE,
@@ -79,8 +85,18 @@ function buildStructuredDefinition(optionsInput: unknown): OperatorDecisionDefin
     forbiddenScope: ["agent_substitute_submission", "auto_execution"],
   };
 }
-/** Build a validated card request; natural-language fields never select an operation. */
+/** [원인 해석 2026-11-17] 얼린 본체 출력의 '쉬운 해석' 앞에 원인 문장을 첫 줄로 붙인다.
+ *  원인이 해석되지 않으면 본체와 동일한 출력이다. */
 export function buildPreCompactMissionOwnerHumanInputDecisionCard(input: MissionOwnerHumanInputCardSpec): CreateOperatorDecisionInput {
+  const card = buildPreCompactCardBody(input);
+  const review = card.definition.humanReview!;
+  return { ...card, definition: { ...card.definition,
+    humanReview: { ...review,
+      interpretation: clip(withFailureCauseInterpretation(input, review.interpretation), 4_000) } } };
+}
+
+/** Build a validated card request; natural-language fields never select an operation. */
+function buildPreCompactCardBody(input: MissionOwnerHumanInputCardSpec): CreateOperatorDecisionInput {
   if (!present(input.decisionEventId)) mappingFailure("결정 이벤트 식별자 없음");
   if (!present(input.missionId)) mappingFailure("미션 식별자 없음");
   if (!present(input.ownerActionIssueId)) mappingFailure("owner-action 이슈 식별자 없음");
@@ -258,8 +274,18 @@ function buildStage1StructuredDefinition(optionsInput: unknown): OperatorDecisio
   };
 }
 
-/** Build a validated card request; natural-language fields never select an operation. */
+/** [원인 해석 2026-11-17] 얼린 본체 출력의 '쉬운 해석' 앞에 원인 문장을 첫 문장으로 붙인다.
+ *  원인이 해석되지 않으면 본체와 동일한 출력이다. */
 export function buildStage1CompactMissionOwnerHumanInputDecisionCard(input: MissionOwnerHumanInputCardSpec): CreateOperatorDecisionInput {
+  const card = buildStage1CompactCardBody(input);
+  const review = card.definition.humanReview!;
+  return { ...card, definition: { ...card.definition,
+    humanReview: { ...review,
+      interpretation: toOneLine(withFailureCauseInterpretation(input, review.interpretation), 200) } } };
+}
+
+/** Build a validated card request; natural-language fields never select an operation. */
+function buildStage1CompactCardBody(input: MissionOwnerHumanInputCardSpec): CreateOperatorDecisionInput {
   if (!present(input.decisionEventId)) mappingFailure("결정 이벤트 식별자 없음");
   if (!present(input.missionId)) mappingFailure("미션 식별자 없음");
   if (!present(input.ownerActionIssueId)) mappingFailure("owner-action 이슈 식별자 없음");
@@ -384,13 +410,22 @@ export function buildStage1CompactMissionOwnerHumanInputDecisionCard(input: Miss
   };
 }
 
-/** C08 대조 후보 재구성 — 최신순(Stage-1 축소 → pre-#703 구조화). 저장된 cardInput 으로
- *  발행 당시 형식을 그대로 되살려 반환하며, 변조된 카드는 어떤 후보와도 일치하지 않는다. */
+/** C08 대조 후보 재구성 — 최신순(원인 해석 도입 직전 현행 형식 → Stage-1 축소 → pre-#703 구조화).
+ *  저장된 cardInput 으로 발행 당시 형식을 그대로 되살려 반환하며, 변조된 카드는 어떤 후보와도
+ *  일치하지 않는다. 원인 해석 적용본은 나란한 후보일 뿐이고, 바이트-동일 원본 본체 출력이
+ *  실제 저장 형식을 커버한다. 각 형식의 기본 정의(재시작 추천) 변형도 시대별로 후보에 둔다. */
 export function buildLegacyMissionOwnerHumanInputDecisionCardVariants(
   input: MissionOwnerHumanInputCardSpec,
 ): CreateOperatorDecisionInput[] {
-  return [
+  const variants = [
+    buildPreFailureCauseMissionOwnerHumanInputDecisionCard(input),
     buildStage1CompactMissionOwnerHumanInputDecisionCard(input),
+    buildStage1CompactCardBody(input),
     buildPreCompactMissionOwnerHumanInputDecisionCard(input),
+    buildPreCompactCardBody(input),
   ];
+  return variants.flatMap((variant) => {
+    const historical = buildHistoricalDefaultOwnerHumanInputVariant(variant);
+    return historical ? [variant, historical] : [variant];
+  });
 }

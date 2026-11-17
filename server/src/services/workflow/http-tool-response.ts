@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { interpretTargetFailureStatusSentence } from "../failure-interpretation.js";
 import type { CoreWorkflowToolExecutionResult } from "./core-tool-executor.js";
 import type { HttpWorkflowToolExecutionInput } from "./http-tool-adapter.js";
 
@@ -111,16 +112,10 @@ export function humanizeRemoteDiagnostic(diagnostic: string): string {
   const targetStatus = record.targetStatus;
   const url = nonEmptyString(record.url);
   if (typeof targetStatus !== "number" || !Number.isFinite(targetStatus) || url === null) return bounded;
-  let sentence: string;
-  if (targetStatus === 404) {
-    sentence = "수집 대상 주소는 없는 페이지입니다(404). 재시작으로는 해결되지 않습니다 — 입력 주소를 확인·수정한 뒤 다시 시도하세요.";
-  } else if (targetStatus === 403) {
-    sentence = "대상 사이트가 접근을 거부했습니다(403). 차단 또는 로그인 필요 여부를 확인하세요.";
-  } else if (targetStatus >= 500 && targetStatus < 600) {
-    sentence = `대상 사이트 자체 오류(${targetStatus})입니다. 잠시 후 재시도를 고려하세요.`;
-  } else if (targetStatus >= 400 && targetStatus < 500) {
-    sentence = `대상 사이트가 ${targetStatus}를 반환했습니다. 주소·요청 조건을 확인하세요.`;
-  } else return bounded;
+  // 상태 코드→문장 매핑은 failure-interpretation.ts의 단일 레지스트리가 담당한다 — 사람 카드의
+  //   원인 해석이 같은 문구를 공유하므로 여기서 별도 분기를 두지 않는다.
+  const sentence = interpretTargetFailureStatusSentence(targetStatus);
+  if (sentence === null) return bounded;
   return `[사람 해석] ${sentence} (대상: ${url}) (원본: ${bounded})`;
 }
 export async function persistArtifact(stepOutputDir: string, fileName: string, artifactValue: unknown, signal?: AbortSignal): Promise<string> {
