@@ -451,4 +451,54 @@ describeEP("mission owner dead-target retry loop prevention", () => {
     await expect(ensureDeadTargetHumanEscalation(db, input))
       .resolves.toEqual({ ensured: true, reason: "card-exists" });
   });
+
+  // [closed owner-action 2026-11-17] tool-recovery 바인딩(owner_tool_recovery_target_v1)이 R1 을
+  //   가리키는 종결 owner-action 은 같은 해결 세대다 — 카드 종결 뒤의 교체 실패 run(R2)이 있어도
+  //   resolved 카드를 다시 열지 않는다. R2 는 이 바인딩의 세대 증거가 아니다.
+  it("does not re-open a resolved card for a newer failed run once the bound owner action is closed", async () => {
+    const base = await seedBase(db, "Closed Tool Target Co");
+    const oversight = await issueService(db).create(base.companyId, {
+      assigneeAgentId: base.ownerAgentId, missionId: base.missionId,
+      originKind: "mission_main_executor_oversight", status: "todo", title: "[OVERSIGHT] tool",
+    });
+    const ownerAction = await issueService(db).create(base.companyId, {
+      assigneeAgentId: base.ownerAgentId, missionId: base.missionId,
+      originKind: "mission_main_executor_unblock", originId: oversight.id, status: "done",
+      title: "[Owner Action] Tool step failed: collect",
+    });
+    const workflowId = randomUUID(), r1 = randomUUID(), r2 = randomUUID(), stepRunId = randomUUID();
+    await db.insert(workflowDefinitions).values({ id: workflowId, companyId: base.companyId,
+      name: "Tool workflow", stepsJson: [] });
+    await db.insert(workflowRuns).values({ id: r1, workflowId, companyId: base.companyId,
+      missionId: base.missionId, status: "failed", triggeredBy: "test",
+      completedAt: new Date(Date.now() - 120_000) });
+    await db.insert(workflowStepRuns).values({ id: stepRunId, workflowRunId: r1, stepId: "collect",
+      status: "failed" });
+    await db.insert(workflowTransitionEvents).values({ companyId: base.companyId,
+      missionId: base.missionId, issueId: ownerAction.id, workflowRunId: r1,
+      workflowStepRunId: stepRunId, layer: "mission_owner_recovery",
+      eventType: "owner_tool_recovery_target_v1", idempotencyKey: `owner-tool-card:${stepRunId}`,
+      payload: { schemaVersion: 1, kind: "tool_step", workflowRunId: r1, stepRunId } });
+    const input = { ...deadTargetInput(base, ownerAction.id, ownerAction.title, oversight.id),
+      anchors: [
+        { id: ownerAction.id, status: "done", title: ownerAction.title, identifier: null },
+        { id: oversight.id, status: "todo", title: oversight.title, identifier: null },
+      ] };
+    await expect(ensureDeadTargetHumanEscalation(db, input))
+      .resolves.toEqual({ ensured: true, reason: "card-created" });
+    const [card] = await companyCards(base.companyId);
+    expect(card!.requestKey.startsWith("moi1:")).toBe(true);
+    const resolvedAt = new Date();
+    await resolveCard(card!.id, resolvedAt);
+    // 종결된 owner-action 뒤의 새 실패 교체 run 은 새 세대를 만들지 않는다.
+    await db.insert(workflowRuns).values({ id: r2, workflowId, companyId: base.companyId,
+      missionId: base.missionId, status: "failed", triggeredBy: "test",
+      completedAt: new Date(resolvedAt.getTime() + 60_000) });
+    await expect(ensureDeadTargetHumanEscalation(db, input))
+      .resolves.toEqual({ ensured: false, reason: "card-already-resolved" });
+    expect(await companyCards(base.companyId)).toHaveLength(1);
+    const keys = await escalationKeys(base.companyId);
+    expect(keys).toHaveLength(1);
+    expect(keys.some((event) => event.key?.includes(":after:"))).toBe(false);
+  });
 });

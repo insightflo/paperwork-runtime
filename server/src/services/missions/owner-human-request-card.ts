@@ -67,7 +67,28 @@ export async function lockOwnerHumanRequestCard(tx: OwnerHumanTx, companyId: str
   if (!parsed.success || actor.type !== "agent" || actor.id !== parsed.data.authorAgentId) return fail();
   const lifetime = parsed.data;
   let origin = lifetime;
-  if (lifetime.renewal) {
+  if (lifetime.renewal && options.allowTerminalAnchor) {
+    // 사람 resolve 경로의 갱신 수명은 종결된 현재 앵커를 수용해야 하므로 1-hop renew 잠금을
+    // 쓸 수 없다. 대신 연쇄 뿌리(origin)까지 올라가 settle 잠금으로 오늘의 앵커를 따로 검증한다
+    // (mission-work-settlement.ts 와 같은 증거 형태). 각 선행 링크는 저장된 헤더와
+    // 불변 scope/submission 이 현재 수명과 같아야 한다.
+    const seen = new Set<string>([lifetime.lifetimeId]);
+    while (origin.renewal) {
+      const previousLifetimeId = origin.renewal.previousLifetimeId;
+      if (seen.has(previousLifetimeId)) return fail();
+      seen.add(previousLifetimeId);
+      const [row] = await tx.select().from(workflowTransitionEvents).where(and(
+        eq(workflowTransitionEvents.companyId, companyId),
+        eq(workflowTransitionEvents.id, previousLifetimeId)));
+      const parent = ownerHumanLifetimeSchema.safeParse(row?.payload);
+      if (!parent.success || parent.data.lifetimeId !== previousLifetimeId
+        || parent.data.authorAgentId !== lifetime.authorAgentId
+        || parent.data.heartbeatRunId !== lifetime.heartbeatRunId
+        || !sameOwnerHumanValue(parent.data.scope, lifetime.scope)
+        || !sameOwnerHumanValue(parent.data.submission, lifetime.submission)) return fail();
+      origin = parent.data;
+    }
+  } else if (lifetime.renewal) {
     const [row] = await tx.select().from(workflowTransitionEvents).where(and(
       eq(workflowTransitionEvents.companyId, companyId),
       eq(workflowTransitionEvents.id, lifetime.renewal.previousLifetimeId)));
@@ -75,11 +96,16 @@ export async function lockOwnerHumanRequestCard(tx: OwnerHumanTx, companyId: str
     if (!parent.success || parent.data.lifetimeId !== lifetime.renewal.previousLifetimeId) return fail();
     origin = parent.data;
   }
+  const terminalRenewal = Boolean(lifetime.renewal) && options.allowTerminalAnchor;
   const auth = await lockOwnerHumanRequestAuthority(tx, {
     companyId, missionId: lifetime.scope.missionId, ownerActionIssueId: origin.anchorIssueId,
     agentId: actor.id, heartbeatRunId: lifetime.heartbeatRunId,
-    recoveryTarget: lifetime.submission.recoveryTarget, purpose: lifetime.renewal ? "renew" : "settle",
-    ...(lifetime.renewal ? { renewal: { previousLifetimeId: lifetime.renewal.previousLifetimeId,
+    recoveryTarget: lifetime.submission.recoveryTarget,
+    purpose: terminalRenewal ? "settle" : lifetime.renewal ? "renew" : "settle",
+    ...(lifetime.renewal ? { renewal: {
+      // settle 경로는 뿌리 lifetime 을 넘겨야 권위 내부의 previous.anchorIssueId === anchor.id
+      // 검사가 다중 홉 연쇄에서도 통과한다(mission-work-settlement.ts:38-63 과 동일).
+      previousLifetimeId: terminalRenewal ? origin.lifetimeId : lifetime.renewal.previousLifetimeId,
       anchorIssueId: lifetime.anchorIssueId } } : {}),
   });
   return lockOwnerHumanCurrentCard(auth, input, actor, options);
@@ -94,7 +120,7 @@ export async function lockOwnerHumanCurrentCard(auth: OwnerHumanAuthority,
   const { tx } = auth, companyId = auth.scope.companyId;
   const current = await readOwnerHumanCurrent(auth);
   const lifetime = current?.lifetime;
-  const anchor = auth.purpose === "renew" ? auth.renewalAnchor : auth.anchor;
+  const anchor = auth.renewal ? auth.renewalAnchor : auth.anchor;
   const [mission] = await tx.select().from(missions).where(and(
     eq(missions.companyId, companyId), eq(missions.id, auth.scope.missionId)));
   if (!current || !lifetime || !anchor || !mission || ["completed", "cancelled"].includes(mission.status)
@@ -110,8 +136,10 @@ export async function lockOwnerHumanCurrentCard(auth: OwnerHumanAuthority,
     || !sameOwnerHumanValue(auth.scope, lifetime.scope)
     || !current.pointer.recoveryNeeded || current.pointer.anchorIssueId !== anchor.id
     || lifetime.anchorIssueId !== anchor.id) return fail();
-  if (lifetime.renewal ? auth.purpose !== "renew"
-    || auth.renewal?.previousLifetimeId !== lifetime.renewal.previousLifetimeId
+  if (lifetime.renewal
+    ? options.allowTerminalAnchor
+      ? auth.purpose !== "settle" || auth.renewal?.anchorIssueId !== lifetime.anchorIssueId
+      : auth.purpose !== "renew" || auth.renewal?.previousLifetimeId !== lifetime.renewal.previousLifetimeId
     : auth.purpose !== "settle") return fail();
   // Rebuild from the saved input, never from today's display title/status or the caller's prose.
   const expected = validateAndHashOperatorDecisionCreate(buildMissionOwnerHumanInputDecisionCard({
