@@ -222,4 +222,86 @@ describe("C08 closed tool request recurrence", () => {
     expect(third.issue.id).not.toBe(second.issue.id);
     expect(third.issue.id).not.toBe(first.issue.id);
   }, 30_000);
+
+  it("reuses the decided card across the post-apply retry window on generations 0 and 1", async () => {
+    const s = await seedToolRecoveryScenario({ db, artifactExists: false }); roots.push(s.tempRoot);
+    const [mission] = await db.select().from(missions).where(eq(missions.id, s.missionId));
+    const [oversightIssue] = await db.select().from(issues).where(eq(issues.id, s.oversightIssueId));
+    let [run] = await db.select().from(workflowRuns).where(eq(workflowRuns.id, s.workflowRunId));
+    let [stepRun] = await db.select().from(workflowStepRuns).where(eq(workflowStepRuns.id, s.stepRunId));
+    const [definition] = await db.select().from(workflowDefinitions).where(eq(workflowDefinitions.id, run.workflowId));
+    const step = (definition.stepsJson as WorkflowStep[]).find(value => value.id === stepRun.stepId)!;
+    // Phase 2 callers hand in the failed snapshot captured before Phase 1 applied the retry.
+    const produce = (inputRun = run, inputStepRun = stepRun) => ensureToolRecoveryCard(db, {}, {
+      mission, oversightIssue, run: inputRun, stepRun: inputStepRun, step, workflowName: definition.name,
+    }, async (tx, companyId, data) => (await tx.insert(issues).values({ ...data, companyId }).returning())[0]);
+    const adopt = async (issueId: string) => {
+      const runId = randomUUID();
+      await db.insert(heartbeatRuns).values({ id: runId, companyId: s.companyId,
+        agentId: s.ownerAgentId, issueId, status: "running" });
+      await issueService(db).checkout(issueId, s.ownerAgentId, ["todo"], runId);
+      return { actorType: "agent" as const, actorId: s.ownerAgentId, agentId: s.ownerAgentId, runId };
+    };
+    const target = (inputRun = run, inputStepRun = stepRun) => ({
+      kind: "tool_step" as const, workflowRunId: inputRun.id, stepRunId: inputStepRun.id,
+      expectedAuthorityVersion: inputRun.dispatchAuthorityVersion,
+      expectedExecutionGeneration: inputStepRun.executionGeneration,
+      failedDispatchRequestId: inputStepRun.lastDispatchRequestId });
+    // Phase 1 apply: durable rows advance to running while the caller keeps the failed snapshot.
+    const applyRetry = async () => {
+      await db.update(workflowRuns).set({ status: "running",
+        dispatchAuthorityVersion: run.dispatchAuthorityVersion + 1 })
+        .where(eq(workflowRuns.id, s.workflowRunId));
+      await db.update(workflowStepRuns).set({ status: "running",
+        executionGeneration: stepRun.executionGeneration + 1,
+        statusTransitionVersion: stepRun.statusTransitionVersion + 1,
+        lastDispatchRequestId: randomUUID() })
+        .where(eq(workflowStepRuns.id, s.stepRunId));
+    };
+    const refail = async () => {
+      run = (await db.update(workflowRuns).set({ status: "failed" })
+        .where(eq(workflowRuns.id, s.workflowRunId)).returning())[0]!;
+      stepRun = (await db.update(workflowStepRuns).set({ status: "failed",
+        statusTransitionVersion: stepRun.statusTransitionVersion + 1,
+        lastDispatchRequestId: randomUUID(), completedAt: new Date() })
+        .where(eq(workflowStepRuns.id, s.stepRunId)).returning())[0]!;
+    };
+
+    // Generation 0: card A decided retry_source_issue, applied, then re-polled with the stale snapshot.
+    const first = await produce();
+    expect(first.created).toBe(true);
+    await submitMissionOwnerDecision({ db, issueId: first.issue.id, actor: await adopt(first.issue.id),
+      data: { decision: "retry_source_issue", reason: "gen0 approved retry", recoveryTarget: target() } });
+    await issueService(db).update(first.issue.id, { status: "done" });
+    await applyRetry();
+    const duringGen0 = await produce();
+    expect(duringGen0.created).toBe(false);
+    expect(duringGen0.issue.id).toBe(first.issue.id);
+
+    // The generation-0 retry fails: the applied dispatch mints a fresh v2 card (card B).
+    await refail();
+    const second = await produce();
+    expect(second.created).toBe(true);
+    expect(second.issue.id).not.toBe(first.issue.id);
+    const [secondLink] = await db.select().from(workflowTransitionEvents)
+      .where(eq(workflowTransitionEvents.issueId, second.issue.id));
+    expect(secondLink).toMatchObject({ eventType: "owner_tool_recovery_target_v1",
+      idempotencyKey: `owner-tool-card:v2:${s.stepRunId}:${second.issue.id}` });
+
+    // Generation 1: card B decided and applied; the stale-snapshot re-poll must still reuse card B.
+    await submitMissionOwnerDecision({ db, issueId: second.issue.id, actor: await adopt(second.issue.id),
+      data: { decision: "retry_source_issue", reason: "gen1 approved retry", recoveryTarget: target() } });
+    await issueService(db).update(second.issue.id, { status: "done" });
+    await applyRetry();
+    const duringGen1 = await produce();
+    expect(duringGen1.created).toBe(false);
+    expect(duringGen1.issue.id).toBe(second.issue.id);
+
+    // The generation-1 retry fails as well: mint card C, never a 409.
+    await refail();
+    const third = await produce();
+    expect(third.created).toBe(true);
+    expect(third.issue.id).not.toBe(second.issue.id);
+    expect(third.issue.id).not.toBe(first.issue.id);
+  });
 });

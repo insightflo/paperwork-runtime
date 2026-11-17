@@ -17,7 +17,7 @@ import { renewOwnerHumanRequestWithCard } from "./owner-human-request-renew.js";
 import { logger } from "../../middleware/logger.js";
 import { loadToolRecoveryBriefFacts } from "./tool-recovery-brief-facts.js";
 
-function nonhumanDecisionMatchesCurrentFailure(
+function nonhumanDecisionMatchesFailure(
   decision: MissionOwnerDecisionRecord,
   run: typeof workflowRuns.$inferSelect,
   stepRun: typeof workflowStepRuns.$inferSelect,
@@ -145,8 +145,11 @@ export async function ensureToolRecoveryCard(db: Db, deps: MissionServiceDeps, i
           || decision.sourceIssueId !== source.id) return fail();
         decided.push({ issue: anchor, human: ownerDecisionRequestsHuman(decision.decision.decision), eventId: decision.eventId, decision });
       }
-      const nonhuman = decided.filter((entry) => !entry.human
-        && nonhumanDecisionMatchesCurrentFailure(entry.decision, run, stepRun));
+      const nonhuman = decided.filter((entry) => !entry.human && (
+        stepRun.status === "failed"
+          ? nonhumanDecisionMatchesFailure(entry.decision, run, stepRun)
+          : nonhumanDecisionMatchesFailure(entry.decision, input.run, input.stepRun)
+      ));
       const human = decided.filter((entry) => entry.human);
       let closedLegacyHuman = false;
       if (!current && human.length === 1) {
