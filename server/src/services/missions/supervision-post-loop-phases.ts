@@ -57,6 +57,10 @@ import type {
   MissionOwnerSupervisionResult,
 } from "./supervision-types.js";
 import { selectTerminalWorkflowAuthoritySource } from "./terminal-mission-authority-source.js";
+import {
+  TERMINAL_FAILURE_RUN_STATUSES,
+  type TerminalMissionFailedRun,
+} from "./terminal-mission-human-operator-alert.js";
 import { isIssueLessToolWorkflowStep } from "./tool-step-failure.js";
 import { issueLessToolRecoveryOwnsFailure } from "./tool-step-recovery-authority.js";
 
@@ -88,6 +92,24 @@ export interface MissionPostLoopPhaseInputs {
   qaCapOwnerActionByWorkflowRunId: PreLoopPhaseResult["qaCapOwnerActionByWorkflowRunId"];
   qaCapPendingWorkflowRunIds: PreLoopPhaseResult["qaCapPendingWorkflowRunIds"];
   planSubmissionMissingCandidate: PreLoopPhaseResult["planSubmissionMissingCandidate"];
+}
+
+/** workflow run 종단 실패 스냅샷을 terminal report 입력으로 변환한다. 같은 run 의 in-place
+ *  재실행 재실패(completedAt 갱신·step-run generation/retry 증가)는 새 failedAt/stepgen 토큰으로
+ *  새 fingerprint 를 만들어 스냅샷 멱등 억제를 통과하고 재보고된다. */
+function buildTerminalWorkflowFailedRunSnapshot(
+  workflowRunId: string,
+  workflowStepRows: MissionSupervisionWorkflowStepRow[],
+): TerminalMissionFailedRun[] {
+  const workflowCompletedAt = workflowStepRows[0]?.run.completedAt ?? null;
+  const parts = workflowStepRows
+    .filter((row) => TERMINAL_FAILURE_RUN_STATUSES.has(row.stepRun.status))
+    .map((row) => `${row.stepRun.stepId}:${row.stepRun.status}:g${row.stepRun.executionGeneration ?? 0}:r${row.stepRun.retryCount ?? 0}:i${row.stepRun.iterationIndex ?? 0}:${row.stepRun.completedAt ? row.stepRun.completedAt.toISOString() : ""}`)
+    .sort();
+  const failureGeneration = parts.length > 0
+    ? `stepgen:${createHash("sha256").update(parts.join("|")).digest("hex").slice(0, 16)}`
+    : null;
+  return [{ id: workflowRunId, status: "failed", errorCode: "workflow_run_failed", failedAt: workflowCompletedAt, failureGeneration }];
 }
 
 export async function runMissionPostLoopPhases({
@@ -167,7 +189,7 @@ export async function runMissionPostLoopPhases({
         }),
         group: {
           workflowRunId,
-          failedRuns: [{ id: workflowRunId, status: "failed", errorCode: "workflow_run_failed" }],
+          failedRuns: buildTerminalWorkflowFailedRunSnapshot(workflowRunId, workflowStepRows),
           sourceIssue,
           workflowStepRows,
         },

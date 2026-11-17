@@ -154,6 +154,42 @@ describe("buildTerminalMissionSnapshotKey (one report per terminal evidence snap
     const b = buildTerminalMissionSnapshotKey({ ...base, failedRuns: [{ id: "r2", status: "failed", errorCode: null }, { id: "r1", status: "failed", errorCode: null }] });
     expect(a).toBe(b);
   });
+
+  it("produces the identical key for a Date failedAt and its matching ISO string (sweep idempotency)", () => {
+    const fromDate = buildTerminalMissionSnapshotKey({
+      ...base,
+      failedRuns: [{ id: "c0349423", status: "failed", errorCode: "workflow_run_failed", failedAt: new Date("2026-07-01T00:08:00.000Z"), failureGeneration: "stepgen:aaaabbbbccccdddd" }],
+    });
+    const fromIsoString = buildTerminalMissionSnapshotKey({
+      ...base,
+      failedRuns: [{ id: "c0349423", status: "failed", errorCode: "workflow_run_failed", failedAt: "2026-07-01T00:08:00.000Z", failureGeneration: "stepgen:aaaabbbbccccdddd" }],
+    });
+    expect(fromDate).toBe(fromIsoString);
+  });
+
+  it("produces a new key when the same workflow run re-fails in place with a later failedAt", () => {
+    const first = buildTerminalMissionSnapshotKey({
+      ...base,
+      failedRuns: [{ id: "c0349423", status: "failed", errorCode: "workflow_run_failed", failedAt: new Date("2026-07-01T00:08:00.000Z") }],
+    });
+    const refailed = buildTerminalMissionSnapshotKey({
+      ...base,
+      failedRuns: [{ id: "c0349423", status: "failed", errorCode: "workflow_run_failed", failedAt: new Date("2026-07-01T01:08:00.000Z") }],
+    });
+    expect(first).not.toBe(refailed);
+  });
+
+  it("produces a new key when only the step-generation token changes (failedAt null)", () => {
+    const first = buildTerminalMissionSnapshotKey({
+      ...base,
+      failedRuns: [{ id: "c0349423", status: "failed", errorCode: "workflow_run_failed", failedAt: null, failureGeneration: "stepgen:1111111111111111" }],
+    });
+    const retried = buildTerminalMissionSnapshotKey({
+      ...base,
+      failedRuns: [{ id: "c0349423", status: "failed", errorCode: "workflow_run_failed", failedAt: null, failureGeneration: "stepgen:2222222222222222" }],
+    });
+    expect(first).not.toBe(retried);
+  });
 });
 
 describe("buildTerminalMissionHumanOperatorComment (system-authored, bounded, sanitized)", () => {
