@@ -339,4 +339,116 @@ describeEP("mission owner dead-target retry loop prevention", () => {
     expect((await superviseOwner(s.missionId, new Date(baseTime + 4 * 60_000))).findings.join("\n"))
       .toContain("owner_tool_recovery_dead_target_breaker");
   });
+
+  // [Stage 2 2026-11-17] resolved/cancelled 에스컬레이션 카드는 "card-exists"로 오보하지 않고,
+  //   카드 종결 이후의 새 실패 신호(terminal run / not_applied 마커)가 있을 때만 `:after:` 세대키로
+  //   새 에스컬레이션 이벤트 + 새 pending 카드를 연다.
+  const deadTargetInput = (base: Base, ownerActionIssueId: string, title: string | null, sourceIssueId: string) => ({
+    companyId: base.companyId, missionId: base.missionId, ownerAgentId: base.ownerAgentId,
+    loopKey: "retry_source_issue",
+    anchors: [{ id: ownerActionIssueId, status: "blocked", title, identifier: null }],
+    ownerActionIssueId, sourceIssueId,
+    reason: "dead target", evidence: "source_terminal",
+  });
+  // owner-unblock 카드는 owner.originId → 같은 미션의 실제 소스 이슈 바인딩을 요구한다.
+  const seedBlockedOwnerAction = async (base: Base) => {
+    const source = await issueService(db).create(base.companyId, {
+      assigneeAgentId: base.workerAgentId, missionId: base.missionId,
+      originKind: "workflow_execution", status: "done", title: "Terminal source",
+    });
+    const ownerAction = await issueService(db).create(base.companyId, {
+      assigneeAgentId: base.ownerAgentId, missionId: base.missionId,
+      originKind: "mission_main_executor_unblock", originId: source.id, status: "blocked",
+      title: "Dead target oversight",
+    });
+    return { source, ownerAction };
+  };
+  const resolveCard = (cardId: string, resolvedAt: Date) => db.update(operatorDecisions).set({
+    status: "resolved", resolvedByUserId: "board-user", resolvedAt,
+    result: { actionId: "submit", outcome: "submit", selectedOptionIds: ["replan-mission"], comment: null },
+  }).where(eq(operatorDecisions.id, cardId));
+  const companyCards = (companyId: string) => db.select().from(operatorDecisions)
+    .where(eq(operatorDecisions.companyId, companyId));
+  const escalationKeys = (companyId: string) => db
+    .select({ key: workflowTransitionEvents.idempotencyKey })
+    .from(workflowTransitionEvents)
+    .where(and(
+      eq(workflowTransitionEvents.companyId, companyId),
+      eq(workflowTransitionEvents.eventType, "mission_owner_dead_target_escalation"),
+    ));
+
+  it("re-opens a fresh card only when a new dead-target generation postdates the resolved card", async () => {
+    const base = await seedBase(db, "Resolved Card Co");
+    const { source, ownerAction } = await seedBlockedOwnerAction(base);
+    const input = deadTargetInput(base, ownerAction.id, ownerAction.title, source.id);
+
+    // 1) 첫 호출이 pending moi1 카드를 만들고, 즉시 재호출은 같은 카드를 멱등 확인한다.
+    await expect(ensureDeadTargetHumanEscalation(db, input))
+      .resolves.toEqual({ ensured: true, reason: "card-created" });
+    await expect(ensureDeadTargetHumanEscalation(db, input))
+      .resolves.toEqual({ ensured: true, reason: "card-exists" });
+    const firstCards = await companyCards(base.companyId);
+    expect(firstCards).toHaveLength(1);
+    expect(firstCards[0]!.status).toBe("pending");
+    expect(firstCards[0]!.requestKey.startsWith("moi1:")).toBe(true);
+
+    // 2) 카드 해결 뒤 새 실패 신호가 없으면 resolved 카드를 "card-exists"로 오보하지 않는다.
+    const resolvedAt = new Date();
+    await resolveCard(firstCards[0]!.id, resolvedAt);
+    await expect(ensureDeadTargetHumanEscalation(db, input))
+      .resolves.toEqual({ ensured: false, reason: "card-already-resolved" });
+    expect(await companyCards(base.companyId)).toHaveLength(1);
+
+    // 3) 해결 시각 이후에 끝난 새 종결 실패 run 이 새 세대 에스컬레이션 + 두 번째 pending 카드를 연다.
+    const workflowId = randomUUID();
+    await db.insert(workflowDefinitions).values({ id: workflowId, companyId: base.companyId,
+      name: "Retry target workflow", stepsJson: [] });
+    await db.insert(workflowRuns).values({ id: randomUUID(), workflowId, companyId: base.companyId,
+      missionId: base.missionId, status: "failed", triggeredBy: "test",
+      completedAt: new Date(resolvedAt.getTime() + 60_000) });
+    await expect(ensureDeadTargetHumanEscalation(db, input))
+      .resolves.toEqual({ ensured: true, reason: "card-created" });
+    const secondCards = await companyCards(base.companyId);
+    expect(secondCards).toHaveLength(2);
+    expect(secondCards.filter((card) => card.status === "resolved")).toHaveLength(1);
+    expect(secondCards.filter((card) => card.status === "pending")).toHaveLength(1);
+    expect(new Set(secondCards.map((card) => card.requestKey)).size).toBe(2);
+    expect(await escalationKeys(base.companyId)).toHaveLength(2);
+    expect((await escalationKeys(base.companyId)).some((event) => event.key?.includes(":after:"))).toBe(true);
+
+    // 같은 세대를 다시 호출하면 최신 이벤트의 pending 카드를 멱등 확인한다.
+    await expect(ensureDeadTargetHumanEscalation(db, input))
+      .resolves.toEqual({ ensured: true, reason: "card-exists" });
+    expect(await companyCards(base.companyId)).toHaveLength(2);
+  });
+
+  it("re-opens a fresh card when a newer not_applied marker postdates the resolved card", async () => {
+    const base = await seedBase(db, "Resolved Card NotApplied Co");
+    const { source, ownerAction } = await seedBlockedOwnerAction(base);
+    const input = deadTargetInput(base, ownerAction.id, ownerAction.title, source.id);
+
+    await expect(ensureDeadTargetHumanEscalation(db, input))
+      .resolves.toEqual({ ensured: true, reason: "card-created" });
+    const [card] = await companyCards(base.companyId);
+    const resolvedAt = new Date();
+    await resolveCard(card!.id, resolvedAt);
+    await expect(ensureDeadTargetHumanEscalation(db, input))
+      .resolves.toEqual({ ensured: false, reason: "card-already-resolved" });
+
+    // 해결 이후 기록된 not_applied 마커가 새 세대 에스컬레이션 + 새 pending 카드를 연다.
+    await db.insert(workflowTransitionEvents).values({
+      companyId: base.companyId, missionId: base.missionId, issueId: ownerAction.id,
+      layer: "mission_owner_recovery", eventType: "mission_owner_decision_not_applied",
+      toStatus: "not_applied", decision: "retry_source_issue", reasonCode: "source_terminal",
+      idempotencyKey: `not-applied-marker:${randomUUID()}`,
+      createdAt: new Date(resolvedAt.getTime() + 60_000),
+    });
+    await expect(ensureDeadTargetHumanEscalation(db, input))
+      .resolves.toEqual({ ensured: true, reason: "card-created" });
+    const cards = await companyCards(base.companyId);
+    expect(cards).toHaveLength(2);
+    expect(cards.filter((row) => row.status === "pending")).toHaveLength(1);
+    await expect(ensureDeadTargetHumanEscalation(db, input))
+      .resolves.toEqual({ ensured: true, reason: "card-exists" });
+  });
 });

@@ -155,7 +155,30 @@ export type TerminalMissionFailedRun = {
   id: string;
   status: string;
   errorCode: string | null;
+  /** Terminal completion/failure timestamp distinguishing in-place reruns/resumes of the same run. */
+  failedAt?: Date | string | null;
+  /** Optional bounded generation token (e.g., hashed failed step-run attempt tuple) for in-place step reruns. */
+  failureGeneration?: string | null;
 };
+
+// In-place rerun/resume 감지용 정규화. Date·ISO 문자열은 같은 토큰으로 수렴시켜 sweep 마다
+//   동일 스냅샷이 같은 key 를 얻게 하고, 파싱 불가 문자열은 bounded sanitize 로만 보존한다.
+function normalizeFailedAtToken(value: Date | string | null | undefined): string {
+  if (value instanceof Date) {
+    return !Number.isNaN(value.getTime()) ? value.toISOString() : "";
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    const parsed = new Date(trimmed);
+    return !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : sanitizeToken(trimmed, TOKEN_MAX);
+  }
+  return "";
+}
+
+function normalizeFailureGenerationToken(value: string | null | undefined): string {
+  return value ? sanitizeToken(value, TOKEN_MAX) : "";
+}
 
 export type TerminalMissionHumanOperatorCommentInput = {
   language?: SystemLanguage; issueId: string;
@@ -232,7 +255,13 @@ export function buildTerminalMissionSnapshotKey(input: {
 }): string {
   const scope = input.workflowRunId ? `run:${input.workflowRunId}` : `mission:${input.missionId}`;
   const fingerprints = input.failedRuns
-    .map((run) => `${run.id}:${run.status}:${sanitizeToken(run.errorCode, TOKEN_MAX) || ""}`)
+    .map((run) => {
+      const code = sanitizeToken(run.errorCode, TOKEN_MAX) || "";
+      const failedAt = normalizeFailedAtToken(run.failedAt);
+      const generation = normalizeFailureGenerationToken(run.failureGeneration);
+      const generationSuffix = failedAt || generation ? `:${failedAt}:${generation}` : "";
+      return `${run.id}:${run.status}:${code}${generationSuffix}`;
+    })
     .sort();
   const fpHash = createHash("sha256").update(fingerprints.join("|") || "none").digest("hex").slice(0, 16);
   return `terminal-mission-report:${input.companyId}:${input.missionId}:${scope}:${fpHash}`;
@@ -412,7 +441,18 @@ export async function emitTerminalMissionHumanOperatorReport(
   });
   const sanitizedFailedRunsPayload = terminalFailedRuns
     .slice(0, FAILED_RUN_AGGREGATE_MAX)
-    .map((run) => ({ id: run.id, status: run.status, errorCode: sanitizeToken(run.errorCode, TOKEN_MAX) || null }));
+    .map((run) => {
+      const failedAt = normalizeFailedAtToken(run.failedAt);
+      const failureGeneration = normalizeFailureGenerationToken(run.failureGeneration);
+      return {
+        id: run.id,
+        status: run.status,
+        errorCode: sanitizeToken(run.errorCode, TOKEN_MAX) || null,
+        // in-place rerun 세대 감사 맥락 — 비어 있으면 payload 에 싣지 않는다(기존 행과 동일 모양).
+        ...(failedAt ? { failedAt } : {}),
+        ...(failureGeneration ? { failureGeneration } : {}),
+      };
+    });
 
   const txResult = await db.transaction(async (tx) => {
     // [finding 6] scope enforcement: issue 행을 잠그고 companyId/missionId/originKind 검증. mismatch → fail-closed.
