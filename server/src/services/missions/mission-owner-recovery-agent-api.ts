@@ -102,7 +102,10 @@ export async function submitMissionOwnerDecision(input: {
     // source's latest terminal run failed with a retryable/settlement-owned error code
     // (429·quota adapter_failed, stale_queued, issue_status_blocked) or is still unsettled,
     // the escalation is rejected — retry/auto-recovery owns it, not a human card.
-    if (needsHumanAlert && sourceIssueId) {
+    // tool_step 스코프·oversight 원천은 이 억제를 건너뛴다 — 원천의 terminal 런은 복구 대상이
+    // 아니라(tool-recovery-card.ts 경로와 동일한 판정 경계) 자동 회수 증거로 보지 않는다.
+    if (needsHumanAlert && sourceIssueId && humanAuthority?.scope.target.kind !== "tool_step"
+      && sourceIssueOriginKind !== "mission_main_executor_oversight") {
       const admission = await admitHumanCardForSource(tx, issue.companyId, sourceIssueId);
       if (!admission.admit) {
         throw unprocessable(

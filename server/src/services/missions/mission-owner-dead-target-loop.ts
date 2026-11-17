@@ -14,6 +14,7 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, gt, inArray, isNull, like, ne, or, sql } from "drizzle-orm";
 import {
+  issues,
   operatorDecisions,
   workflowRuns,
   workflowStepRuns,
@@ -224,17 +225,38 @@ async function findDeadTargetClaimCard(db: Db, companyId: string, baseClaimKey: 
 async function findNewDeadTargetGenerationAfter(db: Db, input: {
   companyId: string; missionId: string; ownerActionIssueId: string; cutoffAt: Date;
 }): Promise<string | null> {
-  const [latestRun] = await db
-    .select({ id: workflowRuns.id, completedAt: workflowRuns.completedAt, createdAt: workflowRuns.createdAt })
-    .from(workflowRuns)
-    .where(and(
-      eq(workflowRuns.companyId, input.companyId),
-      eq(workflowRuns.missionId, input.missionId),
-      inArray(workflowRuns.status, ["failed", "timed_out"]),
-      sql`coalesce(${workflowRuns.completedAt}, ${workflowRuns.createdAt}) > ${input.cutoffAt.toISOString()}::timestamptz`,
-    ))
-    .orderBy(desc(sql`coalesce(${workflowRuns.completedAt}, ${workflowRuns.createdAt})`))
+  // 종결된 owner-action 은 새 세대의 실패 run 증거로 쓰지 않는다 — 카드 종결 뒤의 새 run 이
+  //   와도 resolved 카드를 다시 열지 않는다. 열린 owner-action 은 tool-recovery 링크가 있으면
+  //   그 바인딩된 run 만이 세대 증거다(임의의 최신 실패 run 으로 다시 열지 않는다).
+  const [ownerAction] = await db
+    .select({ status: issues.status })
+    .from(issues)
+    .where(and(eq(issues.companyId, input.companyId), eq(issues.id, input.ownerActionIssueId)))
     .limit(1);
+  const [toolTarget] = await db
+    .select({ workflowRunId: workflowTransitionEvents.workflowRunId })
+    .from(workflowTransitionEvents)
+    .where(and(
+      eq(workflowTransitionEvents.companyId, input.companyId),
+      eq(workflowTransitionEvents.missionId, input.missionId),
+      eq(workflowTransitionEvents.issueId, input.ownerActionIssueId),
+      eq(workflowTransitionEvents.eventType, "owner_tool_recovery_target_v1"),
+    ))
+    .limit(1);
+  const [latestRun] = !ownerAction || (ownerAction.status !== "done" && ownerAction.status !== "cancelled")
+    ? await db
+      .select({ id: workflowRuns.id, completedAt: workflowRuns.completedAt, createdAt: workflowRuns.createdAt })
+      .from(workflowRuns)
+      .where(and(
+        eq(workflowRuns.companyId, input.companyId),
+        eq(workflowRuns.missionId, input.missionId),
+        inArray(workflowRuns.status, ["failed", "timed_out"]),
+        sql`coalesce(${workflowRuns.completedAt}, ${workflowRuns.createdAt}) > ${input.cutoffAt.toISOString()}::timestamptz`,
+        ...(toolTarget?.workflowRunId ? [eq(workflowRuns.id, toolTarget.workflowRunId)] : []),
+      ))
+      .orderBy(desc(sql`coalesce(${workflowRuns.completedAt}, ${workflowRuns.createdAt})`))
+      .limit(1)
+    : [];
   const [latestNotApplied] = await db
     .select({ id: workflowTransitionEvents.id, createdAt: workflowTransitionEvents.createdAt })
     .from(workflowTransitionEvents)
