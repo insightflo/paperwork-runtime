@@ -167,3 +167,26 @@ describe("interpretTargetFailureStatusSentence", () => {
     expect(interpretTargetFailureStatusSentence(200)).toBeNull();
   });
 });
+
+// ---------- 한국어 대상 실패 산문(Stage 2 2026-11-17) ----------
+const FORBIDDEN_TARGET = "대상 사이트가 접근을 거부했습니다(403). 차단 또는 로그인 필요 여부를 확인하세요.";
+
+describe("Korean target-failure prose rules", () => {
+  it("interprets the live demo owner 403 summary as a target denial and propagates it into the card", () => {
+    const reason = "collect-service-source 스텝이 대상의 403 차단으로 실패. "
+      + "일반 요청·브라우저 UA·anti-bot fetcher 모두 403으로 접근 불가 확인.";
+    expect(interpretFailureCause(reason)).toBe(FORBIDDEN_TARGET);
+    const card = buildMissionOwnerHumanInputDecisionCard(spec({ reason }));
+    const interpretation = card.definition.humanReview!.interpretation;
+    expect(interpretation.startsWith(FORBIDDEN_TARGET)).toBe(true);
+    expect(interpretation).not.toContain("\n");
+  });
+
+  it.each([
+    ["collect-service-source 스텝이 404 오류로 실패했습니다", NOT_FOUND],
+    ["대상이 없는 페이지입니다(404)로 응답했습니다", NOT_FOUND],
+    ["HTTP status 403 Forbidden", AUTH],
+  ])("interprets %s", (text, expected) => {
+    expect(interpretFailureCause(text)).toBe(expected);
+  });
+});
