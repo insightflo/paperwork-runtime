@@ -7,7 +7,6 @@ import type {
 import {
   asBoolean,
   asString,
-  asStringArray,
   buildPaperclipExecutionEnv,
   ensureAbsoluteDirectory,
   ensureCommandResolvable,
@@ -20,8 +19,11 @@ import {
   buildAntigravityArgs,
   extractLatestAntigravityResponse,
   resolveAntigravityBypassPermissions,
+  resolveAntigravityExtraArgs,
   resolveAntigravityPrintTimeout,
 } from "./execute.js";
+
+const SMOKE_PROBE_TIMEOUT_SEC = 180;
 
 function summarizeStatus(checks: AdapterEnvironmentCheck[]): AdapterEnvironmentTestResult["status"] {
   if (checks.some((check) => check.level === "error")) return "fail";
@@ -90,15 +92,11 @@ export async function testEnvironment(
     } else {
       const model = asString(config.model, "auto").trim() || "auto";
       const effort = asString(config.effort, "").trim();
-      const extraArgs = (() => {
-        const fromExtraArgs = asStringArray(config.extraArgs);
-        if (fromExtraArgs.length > 0) return fromExtraArgs;
-        return asStringArray(config.args);
-      })();
+      const extraArgs = resolveAntigravityExtraArgs(config);
       const printTimeout = resolveAntigravityPrintTimeout({
         printTimeout: config.printTimeout,
         printTimeoutSec: config.printTimeoutSec,
-        timeoutSec: 180,
+        timeoutSec: SMOKE_PROBE_TIMEOUT_SEC,
         extraArgs,
       });
       const bypassPermissions = resolveAntigravityBypassPermissions(config);
@@ -116,7 +114,7 @@ export async function testEnvironment(
       const probe = await runChildProcess(`antigravity-envtest-${Date.now()}`, command, args, {
         cwd,
         env: runtimeEnv,
-        timeoutSec: 180,
+        timeoutSec: SMOKE_PROBE_TIMEOUT_SEC,
         graceSec: 5,
         onLog: async () => {},
       });
@@ -131,7 +129,7 @@ export async function testEnvironment(
           level: "warn",
           message: "Antigravity CLI did not return the expected hello probe output.",
           detail: extractLatestAntigravityResponse(probe.stderr) || summary,
-          hint: "Run `agy --print-timeout 180s --print 'Reply with exactly one line: AGY_SMOKE_OK'` manually to inspect auth and CLI behavior.",
+          hint: `Run \`agy --print-timeout ${SMOKE_PROBE_TIMEOUT_SEC}s --print 'Reply with exactly one line: AGY_SMOKE_OK'\` manually to inspect auth and CLI behavior.`,
         });
       }
     }

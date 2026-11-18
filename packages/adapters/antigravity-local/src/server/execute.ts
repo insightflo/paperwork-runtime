@@ -17,7 +17,6 @@ import {
   asBoolean,
   asNumber,
   asString,
-  asStringArray,
   buildPaperclipEnv,
   buildPaperclipExecutionEnv,
   ensureAbsoluteDirectory,
@@ -32,6 +31,7 @@ import {
   buildAntigravityArgs,
   buildAntigravityExecutionNote,
   resolveAntigravityBypassPermissions,
+  resolveAntigravityExtraArgs,
   resolveAntigravityModelAndEffort,
   resolveAntigravityPrintTimeout,
   type BuildAntigravityArgsInput,
@@ -49,6 +49,7 @@ export {
   buildAntigravityExecutionNote,
   extractLatestAntigravityResponse,
   resolveAntigravityBypassPermissions,
+  resolveAntigravityExtraArgs,
   resolveAntigravityFailure,
   resolveAntigravityPrintTimeout,
   type BuildAntigravityArgsInput,
@@ -147,11 +148,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const timeoutSec = asNumber(config.timeoutSec, 0);
   const bypassPermissions = resolveAntigravityBypassPermissions(config);
   const sandbox = asBoolean(config.sandbox, false);
-  const extraArgs = (() => {
-    const fromExtraArgs = asStringArray(config.extraArgs);
-    if (fromExtraArgs.length > 0) return fromExtraArgs;
-    return asStringArray(config.args);
-  })();
+  const extraArgs = resolveAntigravityExtraArgs(config);
   const printTimeout = resolveAntigravityPrintTimeout({
     printTimeout: config.printTimeout,
     printTimeoutSec: config.printTimeoutSec,
