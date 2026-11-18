@@ -178,11 +178,10 @@ pub(crate) fn open_guard_fd(lock_root: &str, target: &str) -> Result<RawFd, Deni
 
 fn arm_guard(fd: RawFd, gp: &str, target: &str) -> Result<(), Denied> {
     let held = fstat(fd).map_err(|e| Denied::Internal(py_err(&e)))?;
-    let mode = held.st_mode as u32;
-    if mode & (libc::S_IFMT as u32) != (libc::S_IFREG as u32) {
+    if (held.st_mode & libc::S_IFMT) != libc::S_IFREG {
         return Err(refuse("bad_guard", format!("guard is not a regular file: {gp}")));
     }
-    if mode & 0o022 != 0 {
+    if (held.st_mode & 0o022) != 0 {
         return Err(refuse(
             "unsafe_guard",
             format!("guard is group or world writable: {gp}"),
