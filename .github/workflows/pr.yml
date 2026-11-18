@@ -141,11 +141,13 @@ jobs:
         with:
           components: clippy
 
-      - name: Verify Rust qa-file-owner crate
+      - name: Verify Rust crates
         if: steps.scope.outputs.heavy == 'true'
         run: |
-          cargo clippy --manifest-path crates/qa-file-owner/Cargo.toml --all-targets -- -D warnings
-          cargo test --release --manifest-path crates/qa-file-owner/Cargo.toml
+          for manifest in crates/*/Cargo.toml; do
+            cargo clippy --manifest-path "$manifest" --all-targets -- -D warnings
+            cargo test --release --manifest-path "$manifest"
+          done
 
   # [CI-REDUCE] 문서 전용 변경의 전체 스위트 생략을 구조화된 신호로 남긴다 — 성공한 verify-tests* 잡이
   #   없으면 병합 가드(ci_baseline_guard)가 미병합 처리하므로 이 잡이 필요하다(선례: PR#701).
