@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { execute } from "@paperclipai/adapter-antigravity-local/server";
+import { isTrackedLocalChildProcessAdapter } from "../services/heartbeat-process-liveness.js";
 
 async function writeFakeAntigravityCommand(binDir: string): Promise<string> {
   const commandPath = path.join(binDir, "agy");
@@ -79,5 +80,9 @@ describe("antigravity_local child environment", () => {
       else process.env.PAPERCLIP_RUN_ID = originalRunId;
       await fs.rm(root, { recursive: true, force: true });
     }
+  });
+
+  it("treats antigravity_local as a tracked local child process adapter for orphan recovery", () => {
+    expect(isTrackedLocalChildProcessAdapter("antigravity_local")).toBe(true);
   });
 });
