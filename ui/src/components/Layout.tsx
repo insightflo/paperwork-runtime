@@ -1,7 +1,6 @@
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, Bot, Moon, Settings, Sun } from "lucide-react";
-import { Link, Outlet, useLocation, useNavigate, useParams } from "@/lib/router";
+import { Outlet, useLocation, useNavigate, useParams } from "@/lib/router";
 import { CompanyRail } from "./CompanyRail";
 import { Sidebar } from "./Sidebar";
 import { InstanceSidebar } from "./InstanceSidebar";
@@ -12,7 +11,6 @@ import { ToastViewport } from "./ToastViewport";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { WorktreeBanner } from "./WorktreeBanner";
 import { DevRestartBanner } from "./DevRestartBanner";
-import { AppVersionBadge } from "./AppVersionBadge";
 import { useDialog } from "../context/DialogContext";
 import { usePanel } from "../context/PanelContext";
 import { useCompany } from "../context/CompanyContext";
@@ -23,69 +21,22 @@ import { useCompanyPageMemory } from "../hooks/useCompanyPageMemory";
 import { useAfterInitialPaint } from "../hooks/useAfterInitialPaint";
 import { healthApi } from "../api/health";
 import { shouldSyncCompanySelectionFromRoute } from "../lib/company-selection";
-import {
-  DEFAULT_INSTANCE_SETTINGS_PATH,
-  normalizeRememberedInstanceSettingsPath,
-} from "../lib/instance-settings";
+import { normalizeRememberedInstanceSettingsPath } from "../lib/instance-settings";
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
 import { NotFoundPage } from "../pages/NotFound";
-import { Button } from "@/components/ui/button";
-
-const INSTANCE_SETTINGS_MEMORY_KEY = "paperclip.lastInstanceSettingsPath";
-const HERMES_PANEL_MEMORY_KEY = "paperclip.hermesPanelOpen";
-const LazyHermesChatPanel = lazy(async () => ({ default: (await import("./HermesChatPanel")).HermesChatPanel }));
-const LazyNewIssueDialog = lazy(async () => ({ default: (await import("./NewIssueDialog")).NewIssueDialog }));
-const LazyNewProjectDialog = lazy(async () => ({ default: (await import("./NewProjectDialog")).NewProjectDialog }));
-const LazyNewGoalDialog = lazy(async () => ({ default: (await import("./NewGoalDialog")).NewGoalDialog }));
-const LazyNewMissionDialog = lazy(async () => ({ default: (await import("./NewMissionDialog")).NewMissionDialog }));
-const LazyNewAgentDialog = lazy(async () => ({ default: (await import("./NewAgentDialog")).NewAgentDialog }));
-
-function DialogMounts() {
-  const { newIssueOpen, newProjectOpen, newGoalOpen, newMissionOpen, newAgentOpen } = useDialog();
-
-  if (!newIssueOpen && !newProjectOpen && !newGoalOpen && !newMissionOpen && !newAgentOpen) {
-    return null;
-  }
-
-  return (
-    <Suspense fallback={null}>
-      {newIssueOpen && <LazyNewIssueDialog />}
-      {newProjectOpen && <LazyNewProjectDialog />}
-      {newGoalOpen && <LazyNewGoalDialog />}
-      {newMissionOpen && <LazyNewMissionDialog />}
-      {newAgentOpen && <LazyNewAgentDialog />}
-    </Suspense>
-  );
-}
-
-function readRememberedInstanceSettingsPath(): string {
-  if (typeof window === "undefined") return DEFAULT_INSTANCE_SETTINGS_PATH;
-  try {
-    return normalizeRememberedInstanceSettingsPath(window.localStorage.getItem(INSTANCE_SETTINGS_MEMORY_KEY));
-  } catch {
-    return DEFAULT_INSTANCE_SETTINGS_PATH;
-  }
-}
-
-function readRememberedHermesPanelOpen(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    const raw = window.localStorage.getItem(HERMES_PANEL_MEMORY_KEY);
-    if (raw !== null) return raw === "true";
-    return !window.matchMedia("(max-width: 767px)").matches;
-  } catch {
-    return true;
-  }
-}
-
-function writeHermesPanelPreference(open: boolean) {
-  try {
-    window.localStorage.setItem(HERMES_PANEL_MEMORY_KEY, String(open));
-  } catch {
-    // Ignore storage failures in restricted environments.
-  }
-}
+import {
+  DesktopHermesAside,
+  DialogMounts,
+  INSTANCE_SETTINGS_MEMORY_KEY,
+  MobileHermesDrawer,
+  SidebarFooterBar,
+  StickyLiveRunDock,
+  readRememberedHermesPanelOpen,
+  readRememberedInstanceSettingsPath,
+  useAutoCompactSidebar,
+  writeHermesPanelPreference,
+} from "./LayoutChrome";
 
 export function Layout() {
   const { sidebarOpen, setSidebarOpen, toggleSidebar, isMobile } = useSidebar();
@@ -111,6 +62,7 @@ export function Layout() {
   const [hermesPanelOpen, setHermesPanelOpenState] = useState(() => readRememberedHermesPanelOpen());
   const heavyPanelsReady = useAfterInitialPaint(900);
   const nextTheme = theme === "dark" ? "light" : "dark";
+
   const matchedCompany = useMemo(() => {
     if (!companyPrefix) return null;
     const requestedPrefix = companyPrefix.toUpperCase();
@@ -118,6 +70,7 @@ export function Layout() {
   }, [companies, companyPrefix]);
   const hasUnknownCompanyPrefix =
     Boolean(companyPrefix) && !companiesLoading && companies.length > 0 && !matchedCompany;
+
   const { data: health } = useQuery({
     queryKey: queryKeys.health,
     queryFn: () => healthApi.get(),
@@ -140,46 +93,23 @@ export function Layout() {
 
   useEffect(() => {
     if (!companyPrefix || companiesLoading || companies.length === 0) return;
-
     if (!matchedCompany) {
-      const fallback = (selectedCompanyId ? companies.find((company) => company.id === selectedCompanyId) : null)
-        ?? companies[0]
-        ?? null;
+      const fallback =
+        (selectedCompanyId ? companies.find((c) => c.id === selectedCompanyId) : null) ?? companies[0] ?? null;
       if (fallback && selectedCompanyId !== fallback.id) {
         setSelectedCompanyId(fallback.id, { source: "route_sync" });
       }
       return;
     }
-
     if (companyPrefix !== matchedCompany.issuePrefix) {
       const suffix = location.pathname.replace(/^\/[^/]+/, "");
       navigate(`/${matchedCompany.issuePrefix}${suffix}${location.search}`, { replace: true });
       return;
     }
-
-    if (
-      shouldSyncCompanySelectionFromRoute({
-        selectionSource,
-        selectedCompanyId,
-        routeCompanyId: matchedCompany.id,
-      })
-    ) {
+    if (shouldSyncCompanySelectionFromRoute({ selectionSource, selectedCompanyId, routeCompanyId: matchedCompany.id })) {
       setSelectedCompanyId(matchedCompany.id, { source: "route_sync" });
     }
-  }, [
-    companyPrefix,
-    companies,
-    companiesLoading,
-    matchedCompany,
-    location.pathname,
-    location.search,
-    navigate,
-    selectionSource,
-    selectedCompanyId,
-    setSelectedCompanyId,
-  ]);
-
-  const togglePanel = togglePanelVisible;
+  }, [companyPrefix, companies, companiesLoading, matchedCompany, location.pathname, location.search, navigate, selectionSource, selectedCompanyId, setSelectedCompanyId]);
 
   const setHermesPanelOpen = useCallback((open: boolean) => {
     setHermesPanelOpenState(open);
@@ -191,12 +121,12 @@ export function Layout() {
     if (isMobile) setSidebarOpen(false);
   }, [isMobile, setHermesPanelOpen, setSidebarOpen]);
 
+  useAutoCompactSidebar(isMobile, setSidebarOpen);
   useCompanyPageMemory();
-
   useKeyboardShortcuts({
     onNewIssue: () => openNewIssue(),
     onToggleSidebar: toggleSidebar,
-    onTogglePanel: togglePanel,
+    onTogglePanel: togglePanelVisible,
   });
 
   useEffect(() => {
@@ -208,45 +138,22 @@ export function Layout() {
     setMobileNavVisible(true);
   }, [isMobile]);
 
-  // Swipe gesture to open/close sidebar on mobile
   useEffect(() => {
     if (!isMobile) return;
-
-    const EDGE_ZONE = 30; // px from left edge to start open-swipe
-    const MIN_DISTANCE = 50; // minimum horizontal swipe distance
-    const MAX_VERTICAL = 75; // max vertical drift before we ignore
-
     let startX = 0;
     let startY = 0;
-
     const onTouchStart = (e: TouchEvent) => {
-      const t = e.touches[0]!;
-      startX = t.clientX;
-      startY = t.clientY;
+      startX = e.touches[0]!.clientX;
+      startY = e.touches[0]!.clientY;
     };
-
     const onTouchEnd = (e: TouchEvent) => {
-      const t = e.changedTouches[0]!;
-      const dx = t.clientX - startX;
-      const dy = Math.abs(t.clientY - startY);
-
-      if (dy > MAX_VERTICAL) return; // vertical scroll, ignore
-
-      // Swipe right from left edge → open
-      if (!sidebarOpen && startX < EDGE_ZONE && dx > MIN_DISTANCE) {
-        setSidebarOpen(true);
-        return;
-      }
-
-      // Swipe left when open → close
-      if (sidebarOpen && dx < -MIN_DISTANCE) {
-        setSidebarOpen(false);
-      }
+      const dx = e.changedTouches[0]!.clientX - startX;
+      if (Math.abs(e.changedTouches[0]!.clientY - startY) > 75) return;
+      if (!sidebarOpen && startX < 30 && dx > 50) setSidebarOpen(true);
+      else if (sidebarOpen && dx < -50) setSidebarOpen(false);
     };
-
     document.addEventListener("touchstart", onTouchStart, { passive: true });
     document.addEventListener("touchend", onTouchEnd, { passive: true });
-
     return () => {
       document.removeEventListener("touchstart", onTouchStart);
       document.removeEventListener("touchend", onTouchEnd);
@@ -255,15 +162,8 @@ export function Layout() {
 
   const updateMobileNavVisibility = useCallback((currentTop: number) => {
     const delta = currentTop - lastMainScrollTop.current;
-
-    if (currentTop <= 24) {
-      setMobileNavVisible(true);
-    } else if (delta > 8) {
-      setMobileNavVisible(false);
-    } else if (delta < -8) {
-      setMobileNavVisible(true);
-    }
-
+    if (currentTop <= 24 || delta < -8) setMobileNavVisible(true);
+    else if (delta > 8) setMobileNavVisible(false);
     lastMainScrollTop.current = currentTop;
   }, []);
 
@@ -273,37 +173,24 @@ export function Layout() {
       lastMainScrollTop.current = 0;
       return;
     }
-
-    const onScroll = () => {
-      updateMobileNavVisibility(window.scrollY || document.documentElement.scrollTop || 0);
-    };
-
+    const onScroll = () => updateMobileNavVisibility(window.scrollY || document.documentElement.scrollTop || 0);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
-
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-    };
+    return () => window.removeEventListener("scroll", onScroll);
   }, [isMobile, updateMobileNavVisibility]);
 
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-
+    const prev = document.body.style.overflow;
     document.body.style.overflow = isMobile ? "visible" : "hidden";
-
     return () => {
-      document.body.style.overflow = previousOverflow;
+      document.body.style.overflow = prev;
     };
   }, [isMobile]);
 
   useEffect(() => {
     if (!location.pathname.startsWith("/instance/settings/")) return;
-
-    const nextPath = normalizeRememberedInstanceSettingsPath(
-      `${location.pathname}${location.search}${location.hash}`,
-    );
+    const nextPath = normalizeRememberedInstanceSettingsPath(`${location.pathname}${location.search}${location.hash}`);
     setInstanceSettingsTarget(nextPath);
-
     try {
       window.localStorage.setItem(INSTANCE_SETTINGS_MEMORY_KEY, nextPath);
     } catch {
@@ -311,13 +198,14 @@ export function Layout() {
     }
   }, [location.hash, location.pathname, location.search]);
 
+  const sidePanel = isInstanceSettingsRoute ? (
+    <InstanceSidebar />
+  ) : (
+    <Sidebar onOpenHermes={openHermesPanel} hermesPanelOpen={hermesPanelOpen} />
+  );
+
   return (
-    <div
-      className={cn(
-        "bg-background text-foreground pt-[env(safe-area-inset-top)]",
-        isMobile ? "min-h-dvh" : "flex h-dvh flex-col overflow-hidden",
-      )}
-    >
+    <div className={cn("bg-background text-foreground pt-[env(safe-area-inset-top)]", isMobile ? "min-h-dvh" : "flex h-dvh flex-col overflow-hidden")}>
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -328,202 +216,61 @@ export function Layout() {
       <DevRestartBanner devServer={health?.devServer} />
       <div className={cn("min-h-0 flex-1", isMobile ? "w-full" : "flex overflow-hidden")}>
         {isMobile && sidebarOpen && (
-          <button
-            type="button"
-            className="fixed inset-0 z-40 bg-black/50"
-            onClick={() => setSidebarOpen(false)}
-            aria-label="Close sidebar"
-          />
+          <button type="button" className="fixed inset-0 z-40 bg-black/50" onClick={() => setSidebarOpen(false)} aria-label="Close sidebar" />
         )}
-
         {isMobile ? (
-          <div
-            className={cn(
-              "fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden pt-[env(safe-area-inset-top)] transition-transform duration-100 ease-out",
-              sidebarOpen ? "translate-x-0" : "-translate-x-full"
-            )}
-          >
+          <div className={cn("fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden pt-[env(safe-area-inset-top)] transition-transform duration-100 ease-out", sidebarOpen ? "translate-x-0" : "-translate-x-full")}>
             <div className="flex flex-1 min-h-0 overflow-hidden">
               <CompanyRail />
-              {isInstanceSettingsRoute ? (
-                <InstanceSidebar />
-              ) : (
-                <Sidebar onOpenHermes={openHermesPanel} hermesPanelOpen={hermesPanelOpen} />
-              )}
+              {sidePanel}
             </div>
-            <div className="border-t border-r border-border px-3 py-2 bg-background">
-              <div className="flex items-center gap-1">
-                <a
-                  href="https://docs.paperclip.ing/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors text-foreground/80 hover:bg-accent/50 hover:text-foreground flex-1 min-w-0"
-                >
-                  <BookOpen className="h-4 w-4 shrink-0" />
-                  <span className="truncate">Documentation</span>
-                </a>
-                <AppVersionBadge version={health?.version} />
-                <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" asChild>
-                  <Link
-                    to={instanceSettingsTarget}
-                    aria-label="Instance settings"
-                    title="Instance settings"
-                    onClick={() => {
-                      if (isMobile) setSidebarOpen(false);
-                    }}
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Link>
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="text-muted-foreground shrink-0"
-                  onClick={toggleTheme}
-                  aria-label={`Switch to ${nextTheme} mode`}
-                  title={`Switch to ${nextTheme} mode`}
-                >
-                  {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
+            <SidebarFooterBar
+              healthVersion={health?.version}
+              instanceSettingsTarget={instanceSettingsTarget}
+              theme={theme}
+              nextTheme={nextTheme}
+              onToggleTheme={toggleTheme}
+              onCloseMobile={() => setSidebarOpen(false)}
+              withBackground
+            />
           </div>
         ) : (
           <div className="flex h-full shrink-0">
             <CompanyRail />
-            <div
-              className={cn(
-                "flex h-full flex-col overflow-hidden transition-[width] duration-100 ease-out",
-                sidebarOpen ? "w-60" : "w-0"
-              )}
-            >
-              <div className="flex-1 min-h-0 overflow-hidden">
-                {isInstanceSettingsRoute ? (
-                  <InstanceSidebar />
-                ) : (
-                  <Sidebar onOpenHermes={openHermesPanel} hermesPanelOpen={hermesPanelOpen} />
-                )}
-              </div>
-              <div className="border-t border-r border-border px-3 py-2">
-                <div className="flex items-center gap-1">
-                  <a
-                    href="https://docs.paperclip.ing/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors text-foreground/80 hover:bg-accent/50 hover:text-foreground flex-1 min-w-0"
-                  >
-                    <BookOpen className="h-4 w-4 shrink-0" />
-                    <span className="truncate">Documentation</span>
-                  </a>
-                  <AppVersionBadge version={health?.version} />
-                  <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" asChild>
-                    <Link
-                      to={instanceSettingsTarget}
-                      aria-label="Instance settings"
-                      title="Instance settings"
-                      onClick={() => {
-                        if (isMobile) setSidebarOpen(false);
-                      }}
-                    >
-                      <Settings className="h-4 w-4" />
-                    </Link>
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="text-muted-foreground shrink-0"
-                    onClick={toggleTheme}
-                    aria-label={`Switch to ${nextTheme} mode`}
-                    title={`Switch to ${nextTheme} mode`}
-                  >
-                    {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-                  </Button>
-                </div>
-              </div>
+            <div className={cn("flex h-full flex-col overflow-hidden transition-[width] duration-100 ease-out", sidebarOpen ? "w-60" : "w-0")}>
+              <div className="flex-1 min-h-0 overflow-hidden">{sidePanel}</div>
+              <SidebarFooterBar
+                healthVersion={health?.version}
+                instanceSettingsTarget={instanceSettingsTarget}
+                theme={theme}
+                nextTheme={nextTheme}
+                onToggleTheme={toggleTheme}
+              />
             </div>
           </div>
         )}
 
         <div className={cn("flex min-w-0 flex-col", isMobile ? "w-full" : "h-full flex-1")}>
-          <div
-            className={cn(
-              isMobile && "sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85",
-            )}
-          >
+          <div className={cn(isMobile && "sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85")}>
             <BreadcrumbBar />
           </div>
           <div className={cn(isMobile ? "block" : "flex flex-1 min-h-0")}>
-            <main
-              id="main-content"
-              tabIndex={-1}
-              className={cn(
-                "flex-1 p-4 md:p-6",
-                isMobile ? "overflow-visible pb-[calc(5rem+env(safe-area-inset-bottom))]" : "overflow-auto",
-              )}
-            >
+            <main id="main-content" tabIndex={-1} className={cn("flex-1 p-4 md:p-6", isMobile ? "overflow-visible pb-[calc(5rem+env(safe-area-inset-bottom))]" : "overflow-auto")}>
               {hasUnknownCompanyPrefix ? (
-                <NotFoundPage
-                  scope="invalid_company_prefix"
-                  requestedPrefix={companyPrefix ?? selectedCompany?.issuePrefix}
-                />
+                <NotFoundPage scope="invalid_company_prefix" requestedPrefix={companyPrefix ?? selectedCompany?.issuePrefix} />
               ) : (
                 <Outlet />
               )}
             </main>
             <PropertiesPanel />
             {!isMobile && (
-              <aside
-                className={cn(
-                  "hidden min-h-0 md:flex shrink-0 overflow-hidden border-l border-border bg-background transition-[width] duration-150 ease-out",
-                  hermesPanelOpen ? "w-96" : "w-12",
-                )}
-              >
-                {hermesPanelOpen ? (
-                  <div className="h-full min-h-0 w-96 min-w-96 overflow-hidden">
-                    {heavyPanelsReady && (
-                      <Suspense fallback={null}>
-                        <LazyHermesChatPanel mode="sidebar" onCollapse={() => setHermesPanelOpen(false)} />
-                      </Suspense>
-                    )}
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="flex h-full w-12 flex-col items-center gap-2 px-2 py-3 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-                    onClick={() => setHermesPanelOpen(true)}
-                    aria-label="Open Hermes chat"
-                    title="Open Hermes chat"
-                  >
-                    <Bot className="h-4 w-4" />
-                    <span className="text-[11px] font-medium uppercase tracking-wide [writing-mode:vertical-rl]">
-                      Hermes
-                    </span>
-                  </button>
-                )}
-              </aside>
+              <DesktopHermesAside open={hermesPanelOpen} heavyPanelsReady={heavyPanelsReady} onOpen={() => setHermesPanelOpen(true)} onClose={() => setHermesPanelOpen(false)} />
             )}
           </div>
         </div>
       </div>
-      {isMobile && hermesPanelOpen && (
-        <div className="fixed inset-0 z-[70] md:hidden">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setHermesPanelOpen(false)}
-            aria-label="Close Hermes chat"
-          />
-          <aside className="absolute inset-y-0 right-0 flex min-h-0 w-[min(100vw,24rem)] flex-col overflow-hidden border-l border-border bg-background shadow-lg">
-            {heavyPanelsReady && (
-              <Suspense fallback={null}>
-                <LazyHermesChatPanel mode="sidebar" onCollapse={() => setHermesPanelOpen(false)} />
-              </Suspense>
-            )}
-          </aside>
-        </div>
-      )}
+      {isMobile && <MobileHermesDrawer open={hermesPanelOpen} heavyPanelsReady={heavyPanelsReady} onClose={() => setHermesPanelOpen(false)} />}
+      {!isMobile && <StickyLiveRunDock companyId={selectedCompanyId} companyPrefix={selectedCompany?.issuePrefix ?? companyPrefix} />}
       {isMobile && <MobileBottomNav visible={mobileNavVisible} />}
       <CommandPalette />
       <DialogMounts />

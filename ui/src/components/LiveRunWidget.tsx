@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@/lib/router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { heartbeatsApi, type LiveRunForIssue } from "../api/heartbeats";
@@ -9,6 +9,7 @@ import { Identity } from "./Identity";
 import { StatusBadge } from "./StatusBadge";
 import { RunTranscriptView } from "./transcript/RunTranscriptView";
 import { useLiveRunTranscripts } from "./transcript/useLiveRunTranscripts";
+import type { TranscriptEntry } from "../adapters/types";
 
 interface LiveRunWidgetProps {
   issueId: string;
@@ -24,9 +25,35 @@ function isRunActive(status: string): boolean {
   return status === "queued" || status === "running";
 }
 
+function formatElapsed(startIso: string | null | undefined, endIso: string | null | undefined, nowMs: number): string | null {
+  if (!startIso) return null;
+  const startMs = new Date(startIso).getTime();
+  if (!Number.isFinite(startMs)) return null;
+  const targetMs = endIso ? new Date(endIso).getTime() : nowMs;
+  const sec = Math.max(0, Math.round((targetMs - startMs) / 1000));
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  return `${min}m ${sec % 60}s`;
+}
+
+function summarizeLiveSteps(entries: readonly TranscriptEntry[]) {
+  let tools = 0;
+  let thinking = 0;
+  let errors = 0;
+  for (const entry of entries) {
+    if (entry.kind === "tool_call") tools += 1;
+    else if (entry.kind === "thinking") thinking += 1;
+    else if (entry.kind === "stderr" || ((entry.kind === "tool_result" || entry.kind === "result") && entry.isError)) {
+      errors += 1;
+    }
+  }
+  return { tools, thinking, errors };
+}
+
 export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
   const queryClient = useQueryClient();
   const [cancellingRunIds, setCancellingRunIds] = useState(new Set<string>());
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const { data: liveRuns } = useQuery({
     queryKey: queryKeys.issues.liveRuns(issueId),
@@ -44,9 +71,7 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
 
   const runs = useMemo(() => {
     const deduped = new Map<string, LiveRunForIssue>();
-    for (const run of liveRuns ?? []) {
-      deduped.set(run.id, run);
-    }
+    for (const run of liveRuns ?? []) deduped.set(run.id, run);
     if (activeRun) {
       deduped.set(activeRun.id, {
         id: activeRun.id,
@@ -66,6 +91,14 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
   }, [activeRun, issueId, liveRuns]);
+
+  const hasActiveRuns = useMemo(() => runs.some((run) => isRunActive(run.status)), [runs]);
+  useEffect(() => {
+    if (!hasActiveRuns) return;
+    setNowMs(Date.now());
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [hasActiveRuns]);
 
   const { transcriptByRun, hasOutputForRun } = useLiveRunTranscripts({ runs, companyId });
 
@@ -101,6 +134,9 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
         {runs.map((run) => {
           const isActive = isRunActive(run.status);
           const transcript = transcriptByRun.get(run.id) ?? [];
+          const elapsed = formatElapsed(run.startedAt, run.finishedAt, nowMs);
+          const stepCounts = summarizeLiveSteps(transcript);
+          const hasSteps = stepCounts.tools > 0 || stepCounts.thinking > 0 || stepCounts.errors > 0;
           return (
             <section key={run.id} className="px-4 py-4">
               <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -116,6 +152,22 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
                       {run.id.slice(0, 8)}
                     </Link>
                     <StatusBadge status={run.status} />
+                    <span
+                      data-provider={run.adapterType}
+                      className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono text-[11px]"
+                      style={{ borderColor: "var(--openbot-border-strong)", color: "var(--openbot-text-secondary)" }}
+                    >
+                      <span
+                        className="h-1.5 w-1.5 rounded-full"
+                        style={{ backgroundColor: "var(--openbot-provider-current)" }}
+                      />
+                      <span>{run.adapterType}</span>
+                    </span>
+                    {elapsed && (
+                      <span className="font-mono text-[11px] tabular-nums" style={{ color: "var(--openbot-accent-text)" }}>
+                        {elapsed}
+                      </span>
+                    )}
                     <span>{formatDateTime(run.startedAt ?? run.createdAt)}</span>
                   </div>
                 </div>
@@ -140,6 +192,27 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
                   </Link>
                 </div>
               </div>
+
+              {hasSteps && (
+                <div
+                  className="mb-2 inline-flex flex-wrap items-center gap-2 rounded-md border px-2 py-1 font-mono text-[11px]"
+                  style={{
+                    borderColor: "var(--openbot-border)",
+                    backgroundColor: "var(--openbot-bg-surface)",
+                    color: "var(--openbot-text-muted)",
+                  }}
+                >
+                  <span>{stepCounts.tools} tools</span>
+                  <span>·</span>
+                  <span>{stepCounts.thinking} thoughts</span>
+                  {stepCounts.errors > 0 && (
+                    <>
+                      <span>·</span>
+                      <span style={{ color: "var(--openbot-danger-text)" }}>{stepCounts.errors} errors</span>
+                    </>
+                  )}
+                </div>
+              )}
 
               <div className="max-h-[320px] overflow-y-auto pr-1">
                 <RunTranscriptView

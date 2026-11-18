@@ -2,6 +2,8 @@ import type { Db } from "@paperclipai/db";
 import type { HeartbeatRun } from "./owner-capability.js";
 import { resolveWorkflowExecutionLink } from "./workflow-link.js";
 import { attemptFullSettlement } from "./settlement.js";
+import { logger } from "../../middleware/logger.js";
+import { settleFanoutAfterHeartbeat } from "../heartbeat-fanout-barrier.js";
 
 export async function settleHeartbeatAfterExecution(
   db: Db,
@@ -11,6 +13,11 @@ export async function settleHeartbeatAfterExecution(
   const settlement = await attemptFullSettlement(db, run, now);
   if (settlement !== "settled") return;
   await syncWorkflowAfterHeartbeatSettlement(db, run);
+  try {
+    await settleFanoutAfterHeartbeat(db, run, now);
+  } catch (err) {
+    logger.warn({ err, runId: run.id }, "fanout post-settlement hook failed; preserving mission/workflow settlement");
+  }
 }
 
 export async function syncWorkflowAfterHeartbeatSettlement(db: Db, run: HeartbeatRun): Promise<void> {

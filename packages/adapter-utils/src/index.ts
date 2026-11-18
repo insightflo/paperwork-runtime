@@ -59,6 +59,13 @@ export {
   redactHomePathUserSegmentsInValue,
   redactTranscriptEntryPaths,
 } from "./log-redaction.js";
+export {
+  registerRuntimeSecrets,
+  clearRegisteredRuntimeSecretsForTests,
+  redactEmbeddedJson,
+  redactSensitiveText,
+  redactBeforeTruncate,
+} from "./secret-redactor.js";
 export { joinPromptSections, renderTemplate, resolvePathValue } from "./prompt-utils.js";
 export { buildPaperclipRuntimeBrief } from "./runtime-brief.js";
 export {

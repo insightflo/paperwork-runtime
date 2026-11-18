@@ -1,4 +1,8 @@
-import { redactHomePathUserSegments, redactHomePathUserSegmentsInValue } from "@paperclipai/adapter-utils";
+import {
+  redactHomePathUserSegments,
+  redactHomePathUserSegmentsInValue,
+  redactSensitiveText,
+} from "@paperclipai/adapter-utils";
 
 const REDACTED_ENV_VALUE = "***REDACTED***";
 const SECRET_ENV_KEY_RE =
@@ -7,6 +11,10 @@ const JWT_VALUE_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?:\.[A-Za-
 
 export function redactPathText(value: string, censorUsernameInLogs: boolean) {
   return redactHomePathUserSegments(value, { enabled: censorUsernameInLogs });
+}
+
+export function redactRunOutputText(value: string, censorUsernameInLogs: boolean): string {
+  return redactHomePathUserSegments(redactSensitiveText(value), { enabled: censorUsernameInLogs });
 }
 
 export function redactPathValue<T>(value: T, censorUsernameInLogs: boolean): T {

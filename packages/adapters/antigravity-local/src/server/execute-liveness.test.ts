@@ -40,6 +40,120 @@ describe("antigravity_local liveness and failure detection", () => {
     });
   });
 
+  it("distinguishes MODEL_CAPACITY_EXHAUSTED overload from spent plan quota on exit zero", () => {
+    expect(
+      resolveAntigravityFailure({
+        exitCode: 0,
+        timedOut: false,
+        stdout: "\n\u26A0 No capacity available for model gemini-4-argon-medium (MODEL_CAPACITY_EXHAUSTED)",
+        stderr: "",
+        latestResponse: "\u26A0 No capacity available for model gemini-4-argon-medium (MODEL_CAPACITY_EXHAUSTED)",
+      }),
+    ).toEqual({
+      errorMessage:
+        "Antigravity model temporarily overloaded: No capacity available for model gemini-4-argon-medium (MODEL_CAPACITY_EXHAUSTED)",
+      errorCode: "provider_overloaded",
+    });
+
+    expect(
+      resolveAntigravityFailure({
+        exitCode: 0,
+        timedOut: false,
+        stdout: "\u26A0 Usage Limit Reached\n\nResets in 3h12m.",
+        stderr: "",
+        latestResponse: "Resets in 3h12m.",
+      }),
+    ).toEqual({
+      errorMessage: "Antigravity provider quota exhausted: Usage Limit Reached Resets in 3h12m.",
+      errorCode: "provider_quota_exhausted",
+    });
+  });
+
+  it("detects inline exit-zero CLI warning, auth verification, session loss, MCP load, and invalid output failures", () => {
+    expect(
+      resolveAntigravityFailure({
+        exitCode: 0,
+        timedOut: false,
+        stdout: "\n\u26A0 Agent Platform API has not been used in project 12345 before or it is disabled.",
+        stderr: "",
+        latestResponse: "\u26A0 Agent Platform API has not been used in project 12345 before or it is disabled.",
+      }),
+    ).toEqual({
+      errorMessage: "Agent Platform API has not been used in project 12345 before or it is disabled.",
+      errorCode: "adapter_failed",
+    });
+
+    expect(
+      resolveAntigravityFailure({
+        exitCode: 0,
+        timedOut: false,
+        stdout: "\u26A0\uFE0F Verification Required\nPlease verify your account in your browser to continue.",
+        stderr: "",
+        latestResponse: "\u26A0\uFE0F Verification Required\nPlease verify your account in your browser to continue.",
+      }),
+    ).toEqual({
+      errorMessage:
+        "Antigravity account verification or authentication required: Verification Required Please verify your account in your browser to continue.",
+      errorCode: "antigravity_auth_required",
+    });
+
+    expect(
+      resolveAntigravityFailure({
+        exitCode: 0,
+        timedOut: false,
+        stdout: "Agent connection was lost and could not be re-established: websocket closed (1006)",
+        stderr: "",
+        latestResponse: "Agent connection was lost and could not be re-established: websocket closed (1006)",
+      }),
+    ).toEqual({
+      errorMessage: "Agent connection was lost and could not be re-established: websocket closed (1006)",
+      errorCode: "antigravity_session_lost",
+    });
+
+    expect(
+      resolveAntigravityFailure({
+        exitCode: 0,
+        timedOut: false,
+        stdout: "\u26A0 The MCP server 'filesystem' failed to initialize: spawn npx ENOENT. Fix the MCP server.",
+        stderr: "",
+        latestResponse: "\u26A0 The MCP server 'filesystem' failed to initialize: spawn npx ENOENT. Fix the MCP server.",
+      }),
+    ).toEqual({
+      errorMessage: "Antigravity MCP server 'filesystem' failed to initialize: spawn npx ENOENT. Fix the MCP server.",
+      errorCode: "antigravity_mcp_load_failed",
+    });
+
+    expect(
+      resolveAntigravityFailure({
+        exitCode: 0,
+        timedOut: false,
+        stdout: "\u26A0 Model produced invalid output.",
+        stderr: "",
+        latestResponse: "\u26A0 Model produced invalid output.",
+      }),
+    ).toEqual({
+      errorMessage: "Antigravity model produced invalid empty step output: Model produced invalid output.",
+      errorCode: "antigravity_invalid_model_output",
+    });
+  });
+
+  it("rejects answers that consist solely of unexecuted raw text tool calls", () => {
+    const rawNs = ["default", "api"].join("_");
+    const rawCallText = `${["call", rawNs, "run_command"].join(":")}{"CommandLine":"ls"}`;
+    expect(
+      resolveAntigravityFailure({
+        exitCode: 0,
+        timedOut: false,
+        stdout: rawCallText,
+        stderr: "",
+        latestResponse: rawCallText,
+      }),
+    ).toEqual({
+      errorMessage: "Antigravity model emitted an unexecuted text tool call instead of running the tool",
+      errorCode: "antigravity_unexecuted_tool_call",
+    });
+  });
+
   it("emits activity callbacks only while the diagnostic log file grows", async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "agy-diag-monitor-"));
     const logPath = path.join(dir, "diag.log");
