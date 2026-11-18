@@ -57,7 +57,7 @@ export function buildAntigravityLocalConfig(v: CreateConfigValues): Record<strin
   ac.model = v.model || "auto";
   if (v.thinkingEffort) ac.effort = v.thinkingEffort;
   ac.chrome = Boolean(v.chrome);
-  ac.printTimeout = "180s";
+  ac.timeoutSec = 0;
   ac.bypassPermissions = Boolean(v.dangerouslySkipPermissions);
   ac.dangerouslySkipPermissions = Boolean(v.dangerouslySkipPermissions);
   ac.sandbox = !v.dangerouslyBypassSandbox;

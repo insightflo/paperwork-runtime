@@ -30,11 +30,20 @@ import {
 import { resolveAntigravitySkillPrompt } from "./skills.js";
 import {
   buildAntigravityArgs,
+  buildAntigravityExecutionNote,
+  resolveAntigravityBypassPermissions,
   resolveAntigravityModelAndEffort,
+  resolveAntigravityPrintTimeout,
   type BuildAntigravityArgsInput,
 } from "./args.js";
 
-export { buildAntigravityArgs, type BuildAntigravityArgsInput };
+export {
+  buildAntigravityArgs,
+  buildAntigravityExecutionNote,
+  resolveAntigravityBypassPermissions,
+  resolveAntigravityPrintTimeout,
+  type BuildAntigravityArgsInput,
+};
 
 export function extractLatestAntigravityResponse(stdout: string): string {
   const normalized = stdout.replace(/\r\n/g, "\n").trim();
@@ -66,6 +75,12 @@ function extractAntigravityQuotaMessage(diagnosticLog: string): string | null {
   return `RESOURCE_EXHAUSTED (code 429): ${match[1]?.trim() ?? "quota exhausted"}`;
 }
 
+function extractAntigravityMonitorDenial(diagnosticLog: string): string | null {
+  const matches = [...diagnosticLog.matchAll(/Monitor\s+\S+\s+FINISHED:\s+triggered=true,\s+reason="([^"]+)"/gi)];
+  const last = matches.at(-1);
+  return last?.[1]?.trim() || null;
+}
+
 export function resolveAntigravityFailure(
   input: ResolveAntigravityFailureInput,
 ): { errorMessage: string; errorCode: string } | null {
@@ -73,8 +88,13 @@ export function resolveAntigravityFailure(
     return { errorMessage: input.latestResponse || "Antigravity CLI timed out", errorCode: "adapter_failed" };
   }
   if ((input.exitCode ?? 0) !== 0) {
+    const monitorDenial = extractAntigravityMonitorDenial(input.diagnosticLog ?? "");
     return {
-      errorMessage: extractLatestAntigravityResponse(input.stderr) || input.latestResponse || "Antigravity CLI failed",
+      errorMessage:
+        extractLatestAntigravityResponse(input.stderr) ||
+        input.latestResponse ||
+        (monitorDenial ? `Antigravity safety monitor denied execution: ${monitorDenial}` : null) ||
+        "Antigravity CLI failed",
       errorCode: "adapter_failed",
     };
   }
@@ -87,6 +107,13 @@ export function resolveAntigravityFailure(
       return {
         errorMessage: `Antigravity provider quota exhausted: ${quotaMessage}`,
         errorCode: "provider_quota_exhausted",
+      };
+    }
+    const monitorDenial = extractAntigravityMonitorDenial(input.diagnosticLog ?? "");
+    if (monitorDenial) {
+      return {
+        errorMessage: `Antigravity safety monitor denied execution: ${monitorDenial}`,
+        errorCode: "adapter_failed",
       };
     }
     return { errorMessage: "Antigravity CLI exited without producing a response", errorCode: "adapter_failed" };
@@ -180,24 +207,31 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     }
   }
 
-  const prompt = joinPromptSections([
-    instructionsPrefix.trim(),
-    await resolveAntigravitySkillPrompt(config),
-    renderTemplate(promptTemplate, { agent, runtime, context, config }),
-    buildPaperclipRuntimeBrief({ agent, runtime, context }),
-  ]);
-
   const model = asString(config.model, "auto").trim() || "auto";
   const effort = asString(config.effort, "").trim();
   const chrome = asBoolean(config.chrome, false);
-  const printTimeout = asString(config.printTimeout, `${asNumber(config.printTimeoutSec, 180)}s`);
-  const bypassPermissions = asBoolean(config.bypassPermissions, asBoolean(config.dangerouslySkipPermissions, false));
+  const timeoutSec = asNumber(config.timeoutSec, 0);
+  const bypassPermissions = resolveAntigravityBypassPermissions(config);
   const sandbox = asBoolean(config.sandbox, false);
   const extraArgs = (() => {
     const fromExtraArgs = asStringArray(config.extraArgs);
     if (fromExtraArgs.length > 0) return fromExtraArgs;
     return asStringArray(config.args);
   })();
+  const printTimeout = resolveAntigravityPrintTimeout({
+    printTimeout: config.printTimeout,
+    printTimeoutSec: config.printTimeoutSec,
+    timeoutSec,
+    extraArgs,
+  });
+  const prompt = joinPromptSections([
+    instructionsPrefix.trim(),
+    await resolveAntigravitySkillPrompt(config),
+    renderTemplate(promptTemplate, { agent, runtime, context, config }),
+    buildPaperclipRuntimeBrief({ agent, runtime, context }),
+    buildAntigravityExecutionNote({ sandbox }),
+  ]);
+
   const { conflictWarning } = resolveAntigravityModelAndEffort({ model, effort, extraArgs });
   if (conflictWarning) {
     await onLog("stderr", `[paperclip] ${conflictWarning}\n`);
@@ -228,7 +262,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     context: { sessionId, model, effort, chromeSupportedByCurrentCli: false, chromeRequested: chrome },
   });
 
-  const timeoutSec = asNumber(config.timeoutSec, 0);
   const graceSec = asNumber(config.graceSec, 20);
   const child = await runChildProcess(`antigravity-${runId}`, command, args, {
     cwd,

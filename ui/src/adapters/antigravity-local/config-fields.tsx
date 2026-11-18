@@ -64,7 +64,9 @@ export function AntigravityLocalAdvancedFields({
             : eff(
                 "adapterConfig",
                 "dangerouslySkipPermissions",
-                config.dangerouslySkipPermissions === true || config.bypassPermissions === true,
+                typeof config.dangerouslySkipPermissions === "boolean"
+                  ? config.dangerouslySkipPermissions
+                  : config.bypassPermissions === true,
               )
         }
         onChange={(v) =>
@@ -79,7 +81,7 @@ export function AntigravityLocalAdvancedFields({
         checked={
           isCreate
             ? !values!.dangerouslyBypassSandbox
-            : eff("adapterConfig", "sandbox", config.sandbox !== false)
+            : eff("adapterConfig", "sandbox", config.sandbox === true)
         }
         onChange={(v) =>
           isCreate
@@ -87,6 +89,20 @@ export function AntigravityLocalAdvancedFields({
             : mark("adapterConfig", "sandbox", v)
         }
       />
+      {!isCreate && (
+        <Field
+          label="Print timeout"
+          hint="Optional CLI --print-timeout (e.g. 0s, 600s, 10m). Leave empty to follow Timeout (sec) or 0s."
+        >
+          <DraftInput
+            value={eff("adapterConfig", "printTimeout", String(config.printTimeout ?? ""))}
+            onCommit={(v) => mark("adapterConfig", "printTimeout", v.trim() || undefined)}
+            immediate
+            className={inputClass}
+            placeholder="0s (or follows Timeout sec)"
+          />
+        </Field>
+      )}
       <ToggleField
         label="Enable Chrome"
         hint="Stored for compatibility with local-agent config templates. The current agy CLI does not expose a Chrome flag, so this is not passed unless supplied manually in Extra args."
