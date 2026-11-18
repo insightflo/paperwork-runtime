@@ -6,6 +6,7 @@ import { lifecycleActiveClause } from "./lifecycle-active.js";
 import { attemptFullSettlement } from "./settlement.js";
 import { syncWorkflowAfterHeartbeatSettlement } from "./post-execution.js";
 import { publishLiveEvent } from "../live-events.js";
+import { runRustSettlerRecoverOnce } from "./settler-client.js";
 
 /**
  * [C2 2026-11-08] 정산 후 표시/슬롯 기준 일치: 이 run 의 정산으로 해당 에이전트의
@@ -75,6 +76,37 @@ export async function recoverTerminalUnsettledRuns(
       sql`COALESCE(${heartbeatRuns.finishedAt}, ${heartbeatRuns.updatedAt}) < ${cutoffIso}`,
     ))
     .limit(50);
+  if (candidates.length === 0) return 0;
+
+  const rustResult = await runRustSettlerRecoverOnce(db, now, graceMs);
+  if (rustResult) {
+    for (const item of rustResult.settled) {
+      if (item.agentStatusReleased) {
+        publishLiveEvent({
+          companyId: item.agentStatusReleased.companyId,
+          type: "agent.status",
+          payload: {
+            agentId: item.agentStatusReleased.agentId,
+            status: "idle",
+            outcome: item.agentStatusReleased.outcome,
+          },
+        });
+      }
+      if (item.workflowStepRunId) {
+        try {
+          await syncWorkflowAfterHeartbeatSettlement(db, {
+            id: item.runId,
+            companyId: item.companyId,
+            issueId: item.issueId,
+            workflowStepRunId: item.workflowStepRunId,
+          } as typeof heartbeatRuns.$inferSelect);
+        } catch {
+          // Recovery is best-effort; individual failures are retried on the next tick.
+        }
+      }
+    }
+    return rustResult.processed;
+  }
 
   let processed = 0;
   for (const candidate of candidates) {

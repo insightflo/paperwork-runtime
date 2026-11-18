@@ -5,6 +5,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 import * as schema from "./schema/index.js";
+import { registerDbConnectionUrl } from "./connection-url-registry.js";
 
 const MIGRATIONS_FOLDER = fileURLToPath(new URL("./migrations", import.meta.url));
 const DRIZZLE_MIGRATIONS_TABLE = "__drizzle_migrations";
@@ -46,8 +47,7 @@ export type MigrationState =
     };
 
 export function createDb(url: string) {
-  const sql = postgres(url);
-  return drizzlePg(sql, { schema });
+  return registerDbConnectionUrl(drizzlePg(postgres(url), { schema }), url);
 }
 
 export async function getPostgresDataDirectory(url: string): Promise<string | null> {
