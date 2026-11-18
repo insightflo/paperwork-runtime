@@ -16,7 +16,12 @@ import {
   sanitizeInheritedPaperclipEnv,
   runChildProcess,
 } from "@paperclipai/adapter-utils/server-utils";
-import { buildAntigravityArgs, extractLatestAntigravityResponse } from "./execute.js";
+import {
+  buildAntigravityArgs,
+  extractLatestAntigravityResponse,
+  resolveAntigravityBypassPermissions,
+  resolveAntigravityPrintTimeout,
+} from "./execute.js";
 
 function summarizeStatus(checks: AdapterEnvironmentCheck[]): AdapterEnvironmentTestResult["status"] {
   if (checks.some((check) => check.level === "error")) return "fail";
@@ -83,7 +88,6 @@ export async function testEnvironment(
         detail: command,
       });
     } else {
-      const printTimeout = asString(config.printTimeout, "180s");
       const model = asString(config.model, "auto").trim() || "auto";
       const effort = asString(config.effort, "").trim();
       const extraArgs = (() => {
@@ -91,11 +95,18 @@ export async function testEnvironment(
         if (fromExtraArgs.length > 0) return fromExtraArgs;
         return asStringArray(config.args);
       })();
+      const printTimeout = resolveAntigravityPrintTimeout({
+        printTimeout: config.printTimeout,
+        printTimeoutSec: config.printTimeoutSec,
+        timeoutSec: 180,
+        extraArgs,
+      });
+      const bypassPermissions = resolveAntigravityBypassPermissions(config);
       const args = buildAntigravityArgs({
         cwd,
         prompt: "Reply with exactly one line: AGY_SMOKE_OK",
         printTimeout,
-        bypassPermissions: asBoolean(config.bypassPermissions, false),
+        bypassPermissions,
         sandbox: asBoolean(config.sandbox, false),
         sessionId: null,
         extraArgs,
