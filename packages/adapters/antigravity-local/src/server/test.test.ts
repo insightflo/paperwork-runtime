@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { resolveAntigravityExtraArgs } from "./execute.js";
 import { testEnvironment } from "./test.js";
 
 async function writeFakeAgy(binDir: string): Promise<string> {
@@ -101,15 +102,27 @@ describe("antigravity_local environment diagnostics", () => {
     const flagCount = withExtra.argv.filter((arg) => arg === "--print-timeout").length;
     expect(flagCount).toBe(1);
     expect(withExtra.argv[withExtra.argv.indexOf("--print-timeout") + 1]).toBe("45s");
+
+    const withLegacyArgs = await runEnvTest({ args: ["--print-timeout", "60s"] });
+    expect(withLegacyArgs.argv.filter((arg) => arg === "--print-timeout")).toHaveLength(1);
+    expect(withLegacyArgs.argv[withLegacyArgs.argv.indexOf("--print-timeout") + 1]).toBe("60s");
   });
 
   it("warns when hello probe returns unexpected output or nonzero exit", async () => {
     const badOut = await runEnvTest({}, "fail_output");
     expect(badOut.result.status).toBe("warn");
-    expect(badOut.result.checks.some((check) => check.code === "antigravity_hello_probe_failed")).toBe(true);
+    const failedCheck = badOut.result.checks.find((check) => check.code === "antigravity_hello_probe_failed");
+    expect(failedCheck?.hint).toContain("--print-timeout 180s");
 
     const badExit = await runEnvTest({}, "fail_exit");
     expect(badExit.result.status).toBe("warn");
     expect(badExit.result.checks.some((check) => check.code === "antigravity_hello_probe_failed")).toBe(true);
+  });
+
+  it("prefers extraArgs over legacy args in resolveAntigravityExtraArgs", () => {
+    expect(resolveAntigravityExtraArgs({ extraArgs: ["--foo"], args: ["--bar"] })).toEqual(["--foo"]);
+    expect(resolveAntigravityExtraArgs({ extraArgs: [], args: ["--bar"] })).toEqual(["--bar"]);
+    expect(resolveAntigravityExtraArgs({ args: ["--bar"] })).toEqual(["--bar"]);
+    expect(resolveAntigravityExtraArgs({})).toEqual([]);
   });
 });

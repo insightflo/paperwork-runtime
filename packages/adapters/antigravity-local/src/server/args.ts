@@ -1,3 +1,5 @@
+import { asStringArray } from "@paperclipai/adapter-utils/server-utils";
+
 export interface BuildAntigravityArgsInput {
   cwd: string;
   prompt: string;
@@ -87,6 +89,15 @@ export function resolveAntigravityBypassPermissions(config: Record<string, unkno
     return config.bypassPermissions;
   }
   return false;
+}
+
+/**
+ * Resolve extra CLI arguments, preferring `extraArgs` over legacy `args`.
+ */
+export function resolveAntigravityExtraArgs(config: Record<string, unknown>): string[] {
+  const fromExtraArgs = asStringArray(config.extraArgs);
+  if (fromExtraArgs.length > 0) return fromExtraArgs;
+  return asStringArray(config.args);
 }
 
 /**
