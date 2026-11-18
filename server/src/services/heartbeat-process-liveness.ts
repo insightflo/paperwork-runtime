@@ -32,6 +32,7 @@ const SESSIONED_LOCAL_ADAPTERS = new Set([
   "opencode_local",
   "pi_local",
   "commandcode_local",
+  "antigravity_local",
 ]);
 
 export function isTrackedLocalChildProcessAdapter(adapterType: string) {

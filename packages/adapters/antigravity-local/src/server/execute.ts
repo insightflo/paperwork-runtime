@@ -37,89 +37,23 @@ import {
   type BuildAntigravityArgsInput,
 } from "./args.js";
 
+import {
+  extractLatestAntigravityResponse,
+  resolveAntigravityFailure,
+  startDiagnosticLogActivityMonitor,
+  type ResolveAntigravityFailureInput,
+} from "./runtime.js";
+
 export {
   buildAntigravityArgs,
   buildAntigravityExecutionNote,
+  extractLatestAntigravityResponse,
   resolveAntigravityBypassPermissions,
+  resolveAntigravityFailure,
   resolveAntigravityPrintTimeout,
   type BuildAntigravityArgsInput,
+  type ResolveAntigravityFailureInput,
 };
-
-export function extractLatestAntigravityResponse(stdout: string): string {
-  const normalized = stdout.replace(/\r\n/g, "\n").trim();
-  if (!normalized) return "";
-  const blocks = normalized
-    .split(/\n\s*\n/g)
-    .map((block) => block.trim())
-    .filter(Boolean);
-  const latestBlock = blocks.length > 0 ? blocks[blocks.length - 1] : normalized;
-  const lines = latestBlock.split("\n").map((line) => line.trimEnd()).filter((line) => line.trim().length > 0);
-  if (blocks.length <= 1 && lines.length > 1) {
-    return lines[lines.length - 1]?.trim() ?? "";
-  }
-  return lines.join("\n").trim();
-}
-
-export interface ResolveAntigravityFailureInput {
-  exitCode: number | null | undefined;
-  timedOut: boolean;
-  stdout: string;
-  stderr: string;
-  latestResponse: string;
-  diagnosticLog?: string;
-}
-
-function extractAntigravityQuotaMessage(diagnosticLog: string): string | null {
-  const match = diagnosticLog.match(/RESOURCE_EXHAUSTED \(code 429\):\s*([^\n]+)/i);
-  if (!match) return null;
-  return `RESOURCE_EXHAUSTED (code 429): ${match[1]?.trim() ?? "quota exhausted"}`;
-}
-
-function extractAntigravityMonitorDenial(diagnosticLog: string): string | null {
-  const matches = [...diagnosticLog.matchAll(/Monitor\s+\S+\s+FINISHED:\s+triggered=true,\s+reason="([^"]+)"/gi)];
-  const last = matches.at(-1);
-  return last?.[1]?.trim() || null;
-}
-
-export function resolveAntigravityFailure(
-  input: ResolveAntigravityFailureInput,
-): { errorMessage: string; errorCode: string } | null {
-  if (input.timedOut) {
-    return { errorMessage: input.latestResponse || "Antigravity CLI timed out", errorCode: "adapter_failed" };
-  }
-  if ((input.exitCode ?? 0) !== 0) {
-    const monitorDenial = extractAntigravityMonitorDenial(input.diagnosticLog ?? "");
-    return {
-      errorMessage:
-        extractLatestAntigravityResponse(input.stderr) ||
-        input.latestResponse ||
-        (monitorDenial ? `Antigravity safety monitor denied execution: ${monitorDenial}` : null) ||
-        "Antigravity CLI failed",
-      errorCode: "adapter_failed",
-    };
-  }
-  if (/^Error:\s*timed out waiting for response\s*$/i.test(input.latestResponse.trim())) {
-    return { errorMessage: input.latestResponse.trim(), errorCode: "adapter_failed" };
-  }
-  if (!input.latestResponse.trim() && !input.stdout.trim() && !input.stderr.trim()) {
-    const quotaMessage = extractAntigravityQuotaMessage(input.diagnosticLog ?? "");
-    if (quotaMessage) {
-      return {
-        errorMessage: `Antigravity provider quota exhausted: ${quotaMessage}`,
-        errorCode: "provider_quota_exhausted",
-      };
-    }
-    const monitorDenial = extractAntigravityMonitorDenial(input.diagnosticLog ?? "");
-    if (monitorDenial) {
-      return {
-        errorMessage: `Antigravity safety monitor denied execution: ${monitorDenial}`,
-        errorCode: "adapter_failed",
-      };
-    }
-    return { errorMessage: "Antigravity CLI exited without producing a response", errorCode: "adapter_failed" };
-  }
-  return null;
-}
 
 function antigravityConversationCachePath(): string {
   return path.join(os.homedir(), ".gemini", "antigravity-cli", "cache", "last_conversations.json");
@@ -263,14 +197,25 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   });
 
   const graceSec = asNumber(config.graceSec, 20);
-  const child = await runChildProcess(`antigravity-${runId}`, command, args, {
-    cwd,
-    env: runtimeEnv,
-    timeoutSec,
-    graceSec,
-    onLog,
-    onSpawn,
+  const stopActivityMonitor = startDiagnosticLogActivityMonitor({
+    logFilePath: diagnosticLogFilePath,
+    onActivity: async (bytes) => {
+      await onLog("stderr", `[paperclip] Antigravity active (diagnostic log ${bytes} bytes)\n`);
+    },
   });
+  let child: Awaited<ReturnType<typeof runChildProcess>>;
+  try {
+    child = await runChildProcess(runId, command, args, {
+      cwd,
+      env: runtimeEnv,
+      timeoutSec,
+      graceSec,
+      onLog,
+      onSpawn,
+    });
+  } finally {
+    await stopActivityMonitor();
+  }
 
   const nextSessionId = await readConversationIdForCwdFromCache(cwd);
   let diagnosticLog = "";
