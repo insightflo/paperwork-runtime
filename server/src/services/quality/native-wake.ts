@@ -194,7 +194,10 @@ export async function selectQueuedWakeupRequestIds(
       eq(agentWakeupRequests.status, "queued"),
       sql`${agentWakeupRequests.runId} is null`,
     ))
-    .orderBy(asc(agentWakeupRequests.requestedAt))
+    .orderBy(
+      sql`case when ${agentWakeupRequests.requestedByActorType} = 'user' or ${agentWakeupRequests.triggerDetail} = 'manual' then 0 when ${agentWakeupRequests.missionId} is not null or ${agentWakeupRequests.workflowRunId} is not null or ${agentWakeupRequests.workflowStepRunId} is not null then 1 else 2 end asc`,
+      asc(agentWakeupRequests.requestedAt),
+    )
     .limit(Math.max(limit * 4, limit));
 }
 
