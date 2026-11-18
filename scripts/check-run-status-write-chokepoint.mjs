@@ -6,10 +6,8 @@
  * 직접 상태 쓰기(`.update(heartbeatRuns)` / `.update(workflowRuns)` 및 동등한
  * raw SQL UPDATE)를 인가된 쓰기 계층으로 강제하는 CI 정적 검사.
  *
- * 배경(reboot-1107/rust-engine-study.md §3–§4.3, PR #679/#682):
- *   미션 종료 정리·워크플로 종결 취소 경로가 초크포인트(setHeartbeatRunStatus →
- *   v1 finalization)를 우회해 raw UPDATE 를 날리는 것이 좀비 런 결함의 근본 원인이었다.
- *   이 가드는 동종 우회가 다시 들어오면 CI 를 실패시켜 재발을 차단한다(문제 감지 → CI 차단).
+ * 배경(reboot-1107/rust-engine-study.md §3–§4.3, PR #679/#682): 정리·취소 경로가
+ *   초크포인트를 우회한 raw UPDATE 로 좀비 런 결함을 낸 전례 — 동종 우회 재발 시 CI 차단.
  *
  * 통과 조건:
  *   1. 테스트 코드(__tests__/, *.test.ts, *.spec.ts)는 제외 — 시드/검증이 직접 쓰기를 쓴다.
@@ -29,10 +27,8 @@
  *   pnpm check:write-chokepoint                                    # package.json 스크립트
  *
  * 알려진 한계(설계상):
- *   - 동적 간접 참조(const t = heartbeatRuns; db.update(t))는 탐지하지 못한다.
- *     코드 리뷰 + 향후 §4.3-A 타입 기반 초크포인트(WriteModel)로 보완한다.
- *   - migrations/*.sql 은 스캔 대상이 아니다(.ts 만 검사). 데이터 백필은 마이그레이션
- *     리뷰 경로로 관리한다.
+ *   - 동적 간접 참조(const t = heartbeatRuns; db.update(t)) 미탐지 — 코드 리뷰와 향후
+ *     §4.3-A 타입 기반 초크포인트(WriteModel)로 보완. migrations/*.sql 은 스캔 외(.ts 만 검사).
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -104,7 +100,11 @@ const WRITE_ALLOWLIST = new Map([
   // --- LEGACY: 현재 main 의 합법 사이트(신규 추가 금지, 단계적 수렴 대상) ----
   [
     "server/src/services/heartbeat.ts",
-    "LEGACY|핵심 실행 엔진의 레거시 상태/패치 전이 16곳. setHeartbeatRunStatus 로 단계 수렴 대상",
+    "LEGACY|핵심 실행 엔진의 레거시 상태/패치 전이 14곳. setHeartbeatRunStatus 로 단계 수렴 대상",
+  ],
+  [
+    "server/src/services/heartbeat-enqueue-wakeup.ts",
+    "LEGACY|heartbeat.ts 에서 기계적 분리된 동일 스코프 깨움 병합(contextSnapshot 갱신) 2곳(상태 전이 아님, 단계 수렴 대상)",
   ],
   [
     "server/src/services/heartbeat-run-log.ts",
