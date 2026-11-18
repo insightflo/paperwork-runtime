@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { WorkflowStepMachineCheck } from "@paperclipai/shared";
+import { resolveFsScanBin, runFsScanJson } from "../fs-scan-client.js";
 import { normalizeWorkflowStepMachineChecks } from "./step-contract.js";
 
 /** Reserved structural-gate toolName. Never registered in the tool registry —
@@ -171,6 +172,73 @@ async function evaluateSingleCheck(
   }
 }
 
+type FsScanCheckInput =
+  | { kind: "file_glob"; displayPath: string; resolvedPath: string; glob: string; minCount: number }
+  | { kind: "file_exists"; displayPath: string; resolvedPath: string }
+  | { kind: "min_size_bytes"; displayPath: string; resolvedPath: string; minBytes: number }
+  | { kind: "content_sha256"; displayPath: string; resolvedPath: string; sha256: string };
+
+function toFsScanInput(
+  check: WorkflowStepMachineCheck,
+  resolvedPath: string,
+): FsScanCheckInput {
+  if (check.kind === "file_glob") {
+    return {
+      kind: check.kind,
+      displayPath: check.dir,
+      resolvedPath,
+      glob: check.glob,
+      minCount: check.minCount,
+    };
+  }
+  if (check.kind === "min_size_bytes") {
+    return { kind: check.kind, displayPath: check.path, resolvedPath, minBytes: check.minBytes };
+  }
+  if (check.kind === "content_sha256") {
+    return { kind: check.kind, displayPath: check.path, resolvedPath, sha256: check.sha256 };
+  }
+  return { kind: check.kind, displayPath: check.path, resolvedPath };
+}
+
+async function evaluateWithFsScan(
+  bin: string,
+  checks: WorkflowStepMachineCheck[],
+  resolvePath: (tokened: string) => string | null,
+  workspaceCwd: string,
+): Promise<StepMachineCheckResult[] | null> {
+  const results = new Array<StepMachineCheckResult | null>(checks.length).fill(null);
+  const batch: Array<{ index: number; payload: FsScanCheckInput }> = [];
+  for (let i = 0; i < checks.length; i += 1) {
+    const check = checks[i]!;
+    const rawPath = check.kind === "file_glob" ? check.dir : check.path;
+    const resolved = resolveCheckPath(rawPath, resolvePath, workspaceCwd);
+    if ("error" in resolved) {
+      results[i] = { kind: check.kind, path: rawPath, ok: false, detail: resolved.error };
+    } else {
+      batch.push({ index: i, payload: toFsScanInput(check, resolved.resolved) });
+    }
+  }
+  if (batch.length === 0) {
+    return results as StepMachineCheckResult[];
+  }
+  try {
+    const response = await runFsScanJson<{ results?: StepMachineCheckResult[] }>(
+      bin,
+      "machine-checks",
+      { checks: batch.map((entry) => entry.payload) },
+    );
+    if (!Array.isArray(response.results) || response.results.length !== batch.length) {
+      return null;
+    }
+    for (let i = 0; i < batch.length; i += 1) {
+      results[batch[i]!.index] = response.results[i]!;
+    }
+    return results as StepMachineCheckResult[];
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Evaluates a machineChecks payload. Never throws — per-check errors (missing
  * files, permission, IO) become ok:false results. An absent/empty/unparseable
@@ -188,6 +256,13 @@ export async function evaluateStepMachineChecks(input: {
       ok: false,
       results: [{ kind: "machineChecks", path: "", ok: false, detail: "no valid machineChecks on gate step" }],
     };
+  }
+  const fsScanBin = resolveFsScanBin();
+  if (fsScanBin) {
+    const accelerated = await evaluateWithFsScan(fsScanBin, checks, input.resolvePath, input.workspaceCwd);
+    if (accelerated) {
+      return { ok: accelerated.every((result) => result.ok), results: accelerated };
+    }
   }
   const results: StepMachineCheckResult[] = [];
   for (const check of checks) {

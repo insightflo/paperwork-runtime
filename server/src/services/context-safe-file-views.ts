@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveFsScanBin, runFsScanJson } from "./fs-scan-client.js";
 
 export interface ContextSafeFileView {
   workspaceId: string | null;
@@ -39,6 +40,38 @@ const MAX_CONTENT_HASH_BYTES = 4 * 1024 * 1024;
 
 const FILE_TOKEN_PATTERN = /(?:[A-Za-z0-9._-]+\/)*[A-Za-z0-9._-]+\.[A-Za-z0-9._-]+/g;
 
+type InspectedFile = { exists: boolean; sha256: string | null };
+
+async function inspectFilesBatch(absolutePaths: string[]): Promise<InspectedFile[]> {
+  if (absolutePaths.length === 0) return [];
+  const fsScanBin = resolveFsScanBin();
+  if (fsScanBin) {
+    try {
+      const response = await runFsScanJson<{ files?: InspectedFile[] }>(
+        fsScanBin,
+        "file-hashes",
+        { maxBytes: MAX_CONTENT_HASH_BYTES, paths: absolutePaths },
+      );
+      if (Array.isArray(response.files) && response.files.length === absolutePaths.length) {
+        return response.files;
+      }
+    } catch {
+      // Fall back cleanly to Node filesystem inspection on spawn/protocol error.
+    }
+  }
+  return Promise.all(
+    absolutePaths.map(async (absolutePath): Promise<InspectedFile> => {
+      const stat = await fs.stat(absolutePath).catch(() => null);
+      const exists = stat?.isFile() ?? false;
+      const sha256 =
+        exists && stat !== null && stat.size <= MAX_CONTENT_HASH_BYTES
+          ? await hashFileContents(absolutePath)
+          : null;
+      return { exists, sha256 };
+    }),
+  );
+}
+
 export async function buildContextSafeFileViews(input: {
   text: string | null;
   workspaceCwd: string | null;
@@ -59,28 +92,22 @@ export async function buildContextSafeFileViews(input: {
     if (deduped.size >= (input.maxViews ?? 8)) break;
   }
 
-  const views: ContextSafeFileView[] = [];
+  const candidates: Array<{ relativePath: string; absolutePath: string }> = [];
   for (const relativePath of deduped) {
     const absolutePath = path.resolve(workspaceRoot, relativePath);
     if (absolutePath !== workspaceRoot && !absolutePath.startsWith(`${workspaceRoot}${path.sep}`)) {
       continue;
     }
-    const stat = await fs.stat(absolutePath).catch(() => null);
-    const exists = stat?.isFile() ?? false;
-    const contentHash =
-      exists && stat !== null && stat.size <= MAX_CONTENT_HASH_BYTES
-        ? await hashFileContents(absolutePath)
-        : null;
-    views.push({
-      workspaceId: input.workspaceId ?? null,
-      relativePath,
-      source: "wake_comment",
-      exists,
-      contentHash,
-    });
+    candidates.push({ relativePath, absolutePath });
   }
-
-  return views;
+  const inspected = await inspectFilesBatch(candidates.map((entry) => entry.absolutePath));
+  return candidates.map((entry, idx) => ({
+    workspaceId: input.workspaceId ?? null,
+    relativePath: entry.relativePath,
+    source: "wake_comment",
+    exists: inspected[idx]!.exists,
+    contentHash: inspected[idx]!.sha256,
+  }));
 }
 
 /**
@@ -97,7 +124,14 @@ export async function evaluateFileViewFreshness(input: {
   if (!workspaceCwd || !Array.isArray(input.views)) return [];
 
   const workspaceRoot = path.resolve(workspaceCwd);
-  const results: FileViewFreshness[] = [];
+  type PendingView =
+    | { kind: "ready"; value: FileViewFreshness }
+    | { kind: "created_check"; relativePath: string; inspectIdx: number }
+    | { kind: "hash_check"; relativePath: string; recordedContentHash: string; inspectIdx: number };
+
+  const pending: PendingView[] = [];
+  const inspectPaths: string[] = [];
+
   for (const entry of input.views) {
     if (typeof entry !== "object" || entry === null) continue;
     const record = entry as Record<string, unknown>;
@@ -113,77 +147,63 @@ export async function evaluateFileViewFreshness(input: {
       absolutePath !== null &&
       absolutePath !== workspaceRoot &&
       absolutePath.startsWith(`${workspaceRoot}${path.sep}`);
-    if (!normalized || !withinWorkspace) {
-      results.push({
-        relativePath,
-        status: "invalid_path",
-        recordedContentHash,
-        currentContentHash: null,
+    if (!normalized || !withinWorkspace || !absolutePath) {
+      pending.push({
+        kind: "ready",
+        value: { relativePath, status: "invalid_path", recordedContentHash, currentContentHash: null },
       });
       continue;
     }
 
     if (recordedContentHash === null) {
       if (record.exists !== true) {
-        const stat = await fs.stat(absolutePath).catch(() => null);
-        if (stat?.isFile()) {
-          const currentContentHash =
-            stat.size <= MAX_CONTENT_HASH_BYTES ? await hashFileContents(absolutePath) : null;
-          results.push({
-            relativePath,
-            status: "created",
-            recordedContentHash: null,
-            currentContentHash,
-          });
-        } else {
-          results.push({
-            relativePath,
-            status: "missing",
-            recordedContentHash: null,
-            currentContentHash: null,
-          });
-        }
+        const inspectIdx = inspectPaths.push(absolutePath) - 1;
+        pending.push({ kind: "created_check", relativePath, inspectIdx });
       } else {
-        results.push({
-          relativePath,
-          status: "unknown",
-          recordedContentHash: null,
-          currentContentHash: null,
+        pending.push({
+          kind: "ready",
+          value: { relativePath, status: "unknown", recordedContentHash: null, currentContentHash: null },
         });
       }
       continue;
     }
 
-    const stat = await fs.stat(absolutePath).catch(() => null);
-    if (!stat?.isFile()) {
-      results.push({
-        relativePath,
-        status: "missing",
-        recordedContentHash,
-        currentContentHash: null,
-      });
-      continue;
-    }
-    const currentContentHash =
-      stat.size <= MAX_CONTENT_HASH_BYTES ? await hashFileContents(absolutePath) : null;
-    if (currentContentHash === null) {
-      results.push({
-        relativePath,
-        status: "unknown",
-        recordedContentHash,
-        currentContentHash: null,
-      });
-      continue;
-    }
-    results.push({
-      relativePath,
-      status: currentContentHash === recordedContentHash ? "current" : "stale",
-      recordedContentHash,
-      currentContentHash,
-    });
+    const inspectIdx = inspectPaths.push(absolutePath) - 1;
+    pending.push({ kind: "hash_check", relativePath, recordedContentHash, inspectIdx });
   }
 
-  return results;
+  const inspected = await inspectFilesBatch(inspectPaths);
+  return pending.map((item) => {
+    if (item.kind === "ready") return item.value;
+    const info = inspected[item.inspectIdx]!;
+    if (item.kind === "created_check") {
+      return info.exists
+        ? { relativePath: item.relativePath, status: "created", recordedContentHash: null, currentContentHash: info.sha256 }
+        : { relativePath: item.relativePath, status: "missing", recordedContentHash: null, currentContentHash: null };
+    }
+    if (!info.exists) {
+      return {
+        relativePath: item.relativePath,
+        status: "missing",
+        recordedContentHash: item.recordedContentHash,
+        currentContentHash: null,
+      };
+    }
+    if (info.sha256 === null) {
+      return {
+        relativePath: item.relativePath,
+        status: "unknown",
+        recordedContentHash: item.recordedContentHash,
+        currentContentHash: null,
+      };
+    }
+    return {
+      relativePath: item.relativePath,
+      status: info.sha256 === item.recordedContentHash ? "current" : "stale",
+      recordedContentHash: item.recordedContentHash,
+      currentContentHash: info.sha256,
+    };
+  });
 }
 
 async function hashFileContents(absolutePath: string): Promise<string | null> {
