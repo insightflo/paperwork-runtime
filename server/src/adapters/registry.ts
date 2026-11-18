@@ -50,9 +50,7 @@ import {
   sessionCodec as openCodeSessionCodec,
   listOpenCodeModels,
 } from "@paperclipai/adapter-opencode-local/server";
-import {
-  agentConfigurationDoc as openCodeAgentConfigurationDoc,
-} from "@paperclipai/adapter-opencode-local";
+import { agentConfigurationDoc as openCodeAgentConfigurationDoc } from "@paperclipai/adapter-opencode-local";
 import {
   execute as openclawGatewayExecute,
   testEnvironment as openclawGatewayTestEnvironment,
@@ -61,6 +59,7 @@ import {
   agentConfigurationDoc as openclawGatewayAgentConfigurationDoc,
   models as openclawGatewayModels,
 } from "@paperclipai/adapter-openclaw-gateway";
+import { listAntigravityModels } from "./antigravity-models.js";
 import { listCodexModels } from "./codex-models.js";
 import { listClaudeModels } from "./claude-models.js";
 import { listCursorModels } from "./cursor-models.js";
@@ -74,9 +73,7 @@ import {
   sessionCodec as piSessionCodec,
   listPiModels,
 } from "@paperclipai/adapter-pi-local/server";
-import {
-  agentConfigurationDoc as piAgentConfigurationDoc,
-} from "@paperclipai/adapter-pi-local";
+import { agentConfigurationDoc as piAgentConfigurationDoc } from "@paperclipai/adapter-pi-local";
 import {
   execute as commandCodeExecute,
   testEnvironment as commandCodeTestEnvironment,
@@ -86,9 +83,7 @@ import {
   listCommandCodeModels,
   discoverCommandCodeModelEffortsCached,
 } from "@paperclipai/adapter-commandcode-local/server";
-import {
-  agentConfigurationDoc as commandCodeAgentConfigurationDoc,
-} from "@paperclipai/adapter-commandcode-local";
+import { agentConfigurationDoc as commandCodeAgentConfigurationDoc } from "@paperclipai/adapter-commandcode-local";
 import {
   testEnvironment as hermesTestEnvironment,
   sessionCodec as hermesSessionCodec,
@@ -110,6 +105,7 @@ const antigravityLocalAdapter: ServerAdapterModule = {
   syncSkills: syncAntigravitySkills,
   sessionManagement: getAdapterSessionManagement("antigravity_local") ?? undefined,
   models: antigravityModels,
+  listModels: listAntigravityModels,
   supportsLocalAgentJwt: true,
   agentConfigurationDoc: antigravityAgentConfigurationDoc,
 };

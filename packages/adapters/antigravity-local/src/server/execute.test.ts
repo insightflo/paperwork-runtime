@@ -93,6 +93,109 @@ describe("antigravity_local argument builder", () => {
       "diagnose",
     ]);
   });
+
+  it("omits --model for auto/empty and passes explicit --model before --print", () => {
+    const autoArgs = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: [],
+      model: "auto",
+    });
+    expect(autoArgs).not.toContain("--model");
+
+    const explicitArgs = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: [],
+      model: "gemini-4-argon-high",
+    });
+    expect(explicitArgs).toContain("--model");
+    expect(explicitArgs[explicitArgs.indexOf("--model") + 1]).toBe("gemini-4-argon-high");
+    expect(explicitArgs.indexOf("--model")).toBeLessThan(explicitArgs.indexOf("--print"));
+  });
+
+  it("passes --effort unless the model id already encodes a conflicting effort suffix", () => {
+    const baseModelArgs = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: [],
+      model: "gemini-3.8-flash",
+      effort: "low",
+    });
+    expect(baseModelArgs).toContain("--effort");
+    expect(baseModelArgs[baseModelArgs.indexOf("--effort") + 1]).toBe("low");
+
+    const autoEffortArgs = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: [],
+      model: "auto",
+      effort: "medium",
+    });
+    expect(autoEffortArgs).not.toContain("--model");
+    expect(autoEffortArgs).toContain("--effort");
+    expect(autoEffortArgs[autoEffortArgs.indexOf("--effort") + 1]).toBe("medium");
+
+    const matchingSuffixArgs = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: [],
+      model: "gemini-3.8-flash-low",
+      effort: "low",
+    });
+    expect(matchingSuffixArgs).toContain("--effort");
+
+    const conflictingSuffixArgs = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: [],
+      model: "gemini-3.8-flash-low",
+      effort: "high",
+    });
+    expect(conflictingSuffixArgs).toContain("--model");
+    expect(conflictingSuffixArgs).not.toContain("--effort");
+  });
+
+  it("does not duplicate --model or --effort when already supplied in extraArgs", () => {
+    const args = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: ["--model=gemini-4-hydrogen", "--effort", "xhigh"],
+      model: "gemini-4-argon-high",
+      effort: "low",
+    });
+    expect(args.filter((a) => a === "--model" || a.startsWith("--model="))).toEqual(["--model=gemini-4-hydrogen"]);
+    expect(args.filter((a) => a === "--effort" || a.startsWith("--effort="))).toEqual(["--effort"]);
+    expect(args[args.indexOf("--effort") + 1]).toBe("xhigh");
+  });
 });
 
 describe("antigravity_local output/session helpers", () => {

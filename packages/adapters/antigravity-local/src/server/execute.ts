@@ -28,34 +28,13 @@ import {
   runChildProcess,
 } from "@paperclipai/adapter-utils/server-utils";
 import { resolveAntigravitySkillPrompt } from "./skills.js";
+import {
+  buildAntigravityArgs,
+  resolveAntigravityModelAndEffort,
+  type BuildAntigravityArgsInput,
+} from "./args.js";
 
-export interface BuildAntigravityArgsInput {
-  cwd: string;
-  prompt: string;
-  printTimeout: string;
-  bypassPermissions: boolean;
-  sandbox: boolean;
-  sessionId: string | null;
-  extraArgs: string[];
-  diagnosticLogFilePath?: string;
-}
-
-export function buildAntigravityArgs(input: BuildAntigravityArgsInput): string[] {
-  const args: string[] = [];
-  if (input.printTimeout.trim()) args.push("--print-timeout", input.printTimeout.trim());
-  if (input.bypassPermissions) args.push("--dangerously-skip-permissions");
-  if (input.sandbox) args.push("--sandbox");
-  args.push("--add-dir", input.cwd);
-  if (input.sessionId) args.push("--conversation", input.sessionId);
-  const diagnosticLogFilePath = input.diagnosticLogFilePath?.trim();
-  const extraArgs = diagnosticLogFilePath
-    ? input.extraArgs.filter((arg, index, all) => arg !== "--log-file" && all[index - 1] !== "--log-file")
-    : input.extraArgs;
-  if (extraArgs.length > 0) args.push(...extraArgs);
-  if (diagnosticLogFilePath) args.push("--log-file", diagnosticLogFilePath);
-  args.push("--print", input.prompt);
-  return args;
-}
+export { buildAntigravityArgs, type BuildAntigravityArgsInput };
 
 export function extractLatestAntigravityResponse(stdout: string): string {
   const normalized = stdout.replace(/\r\n/g, "\n").trim();
@@ -208,8 +187,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     buildPaperclipRuntimeBrief({ agent, runtime, context }),
   ]);
 
-  const model = asString(config.model, "auto");
-  const effort = asString(config.effort, "");
+  const model = asString(config.model, "auto").trim() || "auto";
+  const effort = asString(config.effort, "").trim();
   const chrome = asBoolean(config.chrome, false);
   const printTimeout = asString(config.printTimeout, `${asNumber(config.printTimeoutSec, 180)}s`);
   const bypassPermissions = asBoolean(config.bypassPermissions, asBoolean(config.dangerouslySkipPermissions, false));
@@ -219,6 +198,10 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     if (fromExtraArgs.length > 0) return fromExtraArgs;
     return asStringArray(config.args);
   })();
+  const { conflictWarning } = resolveAntigravityModelAndEffort({ model, effort, extraArgs });
+  if (conflictWarning) {
+    await onLog("stderr", `[paperclip] ${conflictWarning}\n`);
+  }
   const sessionId = readRuntimeSession(runtime, cwd);
   const diagnosticLogFilePath = path.join(os.tmpdir(), `paperclip-antigravity-${runId}.log`);
   await fs.rm(diagnosticLogFilePath, { force: true });
@@ -231,6 +214,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     sessionId,
     extraArgs,
     diagnosticLogFilePath,
+    model,
+    effort,
   });
 
   await onMeta?.({

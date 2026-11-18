@@ -38,7 +38,7 @@ import {
   DraftNumberInput,
   help,
 } from "./agent-config-primitives";
-import { defaultCreateValues } from "./agent-config-defaults";
+import { defaultCreateValues, getStaticThinkingEffortOptions } from "./agent-config-defaults";
 import { getUIAdapter } from "../adapters";
 import { ClaudeLocalAdvancedFields } from "../adapters/claude-local/config-fields";
 import { AntigravityLocalAdvancedFields } from "../adapters/antigravity-local/config-fields";
@@ -169,39 +169,6 @@ function asRecord(value: unknown): Record<string, unknown> {
     ? (value as Record<string, unknown>)
     : {};
 }
-
-const codexThinkingEffortOptions = [
-  { id: "", label: "Auto" },
-  { id: "low", label: "Low" },
-  { id: "medium", label: "Medium" },
-  { id: "high", label: "High" },
-  { id: "xhigh", label: "XHigh" },
-  { id: "max", label: "Max" },
-  { id: "ultra", label: "Ultra" },
-] as const;
-
-const openCodeThinkingEffortOptions = [
-  { id: "", label: "Auto" },
-  { id: "minimal", label: "Minimal" },
-  { id: "low", label: "Low" },
-  { id: "medium", label: "Medium" },
-  { id: "high", label: "High" },
-  { id: "max", label: "Max" },
-] as const;
-
-const cursorModeOptions = [
-  { id: "", label: "Auto" },
-  { id: "plan", label: "Plan" },
-  { id: "ask", label: "Ask" },
-] as const;
-
-const claudeThinkingEffortOptions = [
-  { id: "", label: "Auto" },
-  { id: "low", label: "Low" },
-  { id: "medium", label: "Medium" },
-  { id: "high", label: "High" },
-] as const;
-
 
 /* ---- Form ---- */
 
@@ -613,15 +580,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const thinkingEffortOptions =
     adapterType === "commandcode_local"
       ? buildCommandCodeEffortOptions(commandCodeEfforts ?? [])
-      : adapterType === "codex_local"
-        ? codexThinkingEffortOptions
-        : adapterType === "pi_local"
-          ? openCodeThinkingEffortOptions
-          : adapterType === "cursor"
-          ? cursorModeOptions
-          : adapterType === "opencode_local"
-            ? openCodeThinkingEffortOptions
-            : claudeThinkingEffortOptions;
+      : getStaticThinkingEffortOptions(adapterType);
   const currentThinkingEffort = isCreate
     ? val!.thinkingEffort
     : adapterType === "codex_local"

@@ -84,6 +84,8 @@ export async function testEnvironment(
       });
     } else {
       const printTimeout = asString(config.printTimeout, "180s");
+      const model = asString(config.model, "auto").trim() || "auto";
+      const effort = asString(config.effort, "").trim();
       const extraArgs = (() => {
         const fromExtraArgs = asStringArray(config.extraArgs);
         if (fromExtraArgs.length > 0) return fromExtraArgs;
@@ -97,6 +99,8 @@ export async function testEnvironment(
         sandbox: asBoolean(config.sandbox, false),
         sessionId: null,
         extraArgs,
+        model,
+        effort,
       });
       const probe = await runChildProcess(`antigravity-envtest-${Date.now()}`, command, args, {
         cwd,
