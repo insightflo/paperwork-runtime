@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAntigravityArgs,
+  buildAntigravityExecutionNote,
   extractLatestAntigravityResponse,
   readConversationIdForCwdFromCache,
+  resolveAntigravityBypassPermissions,
   resolveAntigravityFailure,
+  resolveAntigravityPrintTimeout,
 } from "./execute.js";
 
 describe("antigravity_local argument builder", () => {
@@ -269,5 +272,49 @@ describe("antigravity_local output/session helpers", () => {
         "Antigravity provider quota exhausted: RESOURCE_EXHAUSTED (code 429): Individual quota reached. Contact your administrator to enable overages. Resets in 2h57m51s.",
       errorCode: "provider_quota_exhausted",
     });
+  });
+
+  it("promotes safety-monitor denials from diagnostic logs when output is empty", () => {
+    expect(
+      resolveAntigravityFailure({
+        exitCode: 0,
+        timedOut: false,
+        stdout: "",
+        stderr: "",
+        latestResponse: "",
+        diagnosticLog:
+          'I1118 01:38:47.386012 1495 runner.go:909] Monitor sir_flash_lite FINISHED: triggered=true, reason="The agent is running a command to print environment variables containing API keys (PAPERCLIP_API_KEY)."',
+      }),
+    ).toEqual({
+      errorMessage:
+        "Antigravity safety monitor denied execution: The agent is running a command to print environment variables containing API keys (PAPERCLIP_API_KEY).",
+      errorCode: "adapter_failed",
+    });
+  });
+
+  it("resolves --print-timeout from explicit settings, positive timeoutSec, or unbounded 0s default", () => {
+    expect(resolveAntigravityPrintTimeout({ timeoutSec: 0 })).toBe("0s");
+    expect(resolveAntigravityPrintTimeout({ timeoutSec: 900 })).toBe("900s");
+    expect(resolveAntigravityPrintTimeout({ printTimeoutSec: 300, timeoutSec: 900 })).toBe("300s");
+    expect(resolveAntigravityPrintTimeout({ printTimeoutSec: 0, timeoutSec: 900 })).toBe("0s");
+    expect(resolveAntigravityPrintTimeout({ printTimeout: "10m", printTimeoutSec: 300, timeoutSec: 900 })).toBe("10m");
+    expect(resolveAntigravityPrintTimeout({ timeoutSec: 900, extraArgs: ["--print-timeout", "5m"] })).toBe("");
+  });
+
+  it("prefers dangerouslySkipPermissions over stale legacy bypassPermissions", () => {
+    expect(resolveAntigravityBypassPermissions({ dangerouslySkipPermissions: true, bypassPermissions: false })).toBe(true);
+    expect(resolveAntigravityBypassPermissions({ dangerouslySkipPermissions: false, bypassPermissions: true })).toBe(false);
+    expect(resolveAntigravityBypassPermissions({ bypassPermissions: true })).toBe(true);
+    expect(resolveAntigravityBypassPermissions({})).toBe(false);
+  });
+
+  it("includes headless monitor-avoidance notes matching sandbox setting", () => {
+    const unsandboxedNote = buildAntigravityExecutionNote({ sandbox: false });
+    expect(unsandboxedNote).toContain("PAPERCLIP_API_KEY");
+    expect(unsandboxedNote).toContain("BypassSandbox");
+
+    const sandboxedNote = buildAntigravityExecutionNote({ sandbox: true });
+    expect(sandboxedNote).toContain("PAPERCLIP_API_KEY");
+    expect(sandboxedNote).not.toContain("BypassSandbox");
   });
 });
