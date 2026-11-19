@@ -94,14 +94,20 @@
 /* ---- Wave 2: 2.5D adaptive shell, inspector, wait & diff tokens ---- */
 :root,
 .dark {
-  --openbot-surface-25d-bg: #232323;
-  --openbot-surface-25d-raised: #2a2a2a;
-  --openbot-surface-25d-border: rgba(255, 255, 255, 0.1);
+  --openbot-surface-25d-bg: #222631;
+  --openbot-surface-25d-raised: #292e3b;
+  --openbot-surface-25d-border: rgba(255, 255, 255, 0.11);
   --openbot-surface-25d-highlight: rgba(255, 255, 255, 0.06);
-  --openbot-surface-25d-shadow: 0 18px 42px -22px rgba(0, 0, 0, 0.6);
+  --openbot-surface-25d-shadow: 0 18px 42px -22px rgba(0, 0, 0, 0.65);
   --openbot-sheet-shadow-rgb: 0 0 0;
-  --openbot-subnav-bg: rgba(28, 28, 28, 0.78);
-  --openbot-subnav-border: rgba(255, 255, 255, 0.07);
+  --openbot-subnav-bg: rgba(18, 21, 27, 0.95);
+  --openbot-subnav-border: rgba(255, 255, 255, 0.08);
+  --openbot-shell-frame-bg: #111318;
+  --openbot-canvas-sheet-bg: #191c24;
+  --openbot-canvas-sheet-border: rgba(255, 255, 255, 0.13);
+  --openbot-nav-active-bg: rgba(0, 124, 247, 0.18);
+  --openbot-nav-active-border: rgba(66, 160, 255, 0.4);
+  --openbot-nav-hover-bg: rgba(255, 255, 255, 0.06);
   --openbot-inspector-width: 360px;
   --openbot-kpi-cols: 3;
   --openbot-density-gap: 16px;
@@ -129,14 +135,20 @@
 
 :root:not(.dark),
 :root[data-openbot-color-scheme="light"] {
-  --openbot-surface-25d-bg: #fdfdfd;
+  --openbot-surface-25d-bg: #f6f8fc;
   --openbot-surface-25d-raised: #ffffff;
   --openbot-surface-25d-border: rgba(20, 20, 20, 0.1);
   --openbot-surface-25d-highlight: rgba(255, 255, 255, 0.8);
   --openbot-surface-25d-shadow: 0 14px 34px -20px rgba(15, 23, 42, 0.25);
   --openbot-sheet-shadow-rgb: 15 23 42;
-  --openbot-subnav-bg: rgba(252, 252, 252, 0.82);
-  --openbot-subnav-border: rgba(20, 20, 20, 0.07);
+  --openbot-subnav-bg: rgba(252, 252, 252, 0.88);
+  --openbot-subnav-border: rgba(20, 20, 20, 0.08);
+  --openbot-shell-frame-bg: #ebeef5;
+  --openbot-canvas-sheet-bg: #fcfdff;
+  --openbot-canvas-sheet-border: rgba(15, 23, 42, 0.11);
+  --openbot-nav-active-bg: rgba(0, 124, 247, 0.11);
+  --openbot-nav-active-border: rgba(0, 100, 200, 0.28);
+  --openbot-nav-hover-bg: rgba(15, 23, 42, 0.05);
   --openbot-drag-handle-bg: rgba(20, 20, 20, 0.07);
   --openbot-drag-handle-fg: rgba(20, 20, 20, 0.38);
   --openbot-drag-handle-hover: rgba(20, 20, 20, 0.15);
@@ -211,4 +223,30 @@
 [data-provider="cursor"],
 [data-provider="cursor_local"] {
   --openbot-provider-current: var(--openbot-provider-cursor);
+}
+
+/* ---- Wave 3: 2.5D floating workspace sheet & compact icon mini-sidebar ---- */
+.openbot-canvas-sheet {
+  background-color: var(--openbot-canvas-sheet-bg);
+  border-top: 1px solid var(--openbot-canvas-sheet-border);
+  border-left: 1px solid var(--openbot-canvas-sheet-border);
+  border-top-left-radius: 16px;
+}
+
+[aria-label="명령 헤더"] {
+  border-radius: 14px;
+}
+[aria-label="명령 헤더"] .openbot-kpi-grid > a {
+  border-radius: 10px;
+}
+
+[data-compact-nav="true"] .openbot-compact-section > div > div:first-child {
+  display: none;
+}
+[data-compact-nav="true"] a[href*="docs.paperclip.ing"] {
+  justify-content: center;
+  padding-inline: 0.375rem;
+}
+[data-compact-nav="true"] a[href*="docs.paperclip.ing"] span {
+  display: none;
 }

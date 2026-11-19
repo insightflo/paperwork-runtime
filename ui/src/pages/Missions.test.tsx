@@ -94,9 +94,18 @@ vi.mock("@/components/StatusBadge", () => ({
 }));
 
 vi.mock("lucide-react", () => ({
-  Rocket: () => <span>Rocket</span>,
+  Bot: () => <span>Bot</span>,
+  CircleDot: () => <span>CircleDot</span>,
+  DollarSign: () => <span>DollarSign</span>,
+  Hourglass: () => <span>Hourglass</span>,
+  Inbox: () => <span>Inbox</span>,
+  MessageSquare: () => <span>MessageSquare</span>,
+  PanelRightOpen: () => <span>PanelRightOpen</span>,
   Plus: () => <span>Plus</span>,
   RefreshCw: () => <span>RefreshCw</span>,
+  Rocket: () => <span>Rocket</span>,
+  ShieldCheck: () => <span>ShieldCheck</span>,
+  UserRoundCheck: () => <span>UserRoundCheck</span>,
 }));
 
 describe("Missions", () => {
@@ -190,5 +199,17 @@ describe("Missions", () => {
 
     expect(html).toContain("Refresh");
     expect(html).toContain("RefreshCw");
+  });
+
+  it("renders the front-stage command header and quick operator links on Missions", () => {
+    const html = renderToStaticMarkup(<Missions />);
+
+    expect(html).toContain("명령 헤더");
+    expect(html).toContain("가동 에이전트");
+    expect(html).toContain("대기/차단 현황");
+    expect(html).toContain('href="/worktree/rules"');
+    expect(html).toContain('href="/channels"');
+    expect(html).toContain('href="/human-operator"');
+    expect(html).toContain("우측 인스펙터");
   });
 });

@@ -15,6 +15,7 @@ import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
+import { DashboardCommandHeader } from "../components/DashboardCommandHeader";
 import { Rocket, Plus, RefreshCw } from "lucide-react";
 
 const STATUS_TABS: { label: string; value: MissionStatus | "all" }[] = [
@@ -172,7 +173,16 @@ export function Missions() {
         </p>
       )}
 
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+      <DashboardCommandHeader companyId={selectedCompanyId} />
+
+      <div
+        className="flex flex-col gap-3 rounded-xl border p-3.5 xl:flex-row xl:items-start xl:justify-between"
+        style={{
+          backgroundColor: "var(--openbot-surface-25d-bg)",
+          borderColor: "var(--openbot-surface-25d-border)",
+          boxShadow: "var(--openbot-surface-25d-shadow)",
+        }}
+      >
         <div className="space-y-3">
           <div className="flex items-center gap-1 flex-wrap">
             {STATUS_TABS.map((tab) => (
@@ -325,7 +335,14 @@ export function Missions() {
 
       {missions && missions.length > 0 && (
         <>
-          <div className="border border-border">
+          <div
+            className="overflow-hidden rounded-xl border"
+            style={{
+              backgroundColor: "var(--openbot-surface-25d-raised)",
+              borderColor: "var(--openbot-surface-25d-border)",
+              boxShadow: "var(--openbot-surface-25d-shadow)",
+            }}
+          >
             {missions.map((mission) => (
               <div
                 key={mission.id}

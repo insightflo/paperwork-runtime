@@ -63,7 +63,7 @@ export function Layout() {
   const [hermesPanelOpen, setHermesPanelOpenState] = useState(() => readRememberedHermesPanelOpen());
   const heavyPanelsReady = useAfterInitialPaint(900);
   const nextTheme = theme === "dark" ? "light" : "dark";
-  const rightPanelWidth = (panelVisible && panelContent ? 360 : 0) + (hermesPanelOpen && !isMobile ? 384 : 0);
+  const rightPanelWidth = (panelVisible ? 360 : 0) + (hermesPanelOpen && !isMobile ? 384 : 0);
   const slide = useSidebarSlideController({ isMobile, sidebarOpen, setSidebarOpen, rightPanelWidth });
 
   const matchedCompany = useMemo(() => {
@@ -173,12 +173,19 @@ export function Layout() {
 
   const sidePanel = (
     <SidebarDensityContext.Provider value={slide.density}>
-      {isInstanceSettingsRoute ? <InstanceSidebar /> : <Sidebar onOpenHermes={openHermesPanel} hermesPanelOpen={hermesPanelOpen} />}
+      {isInstanceSettingsRoute ? (
+        <InstanceSidebar />
+      ) : (
+        <Sidebar onOpenHermes={openHermesPanel} hermesPanelOpen={hermesPanelOpen} onToggleCompact={slide.toggleCompact} />
+      )}
     </SidebarDensityContext.Provider>
   );
 
   return (
-    <div className={cn("bg-background text-foreground pt-[env(safe-area-inset-top)]", isMobile ? "min-h-dvh" : "flex h-dvh flex-col overflow-hidden")}>
+    <div
+      className={cn("bg-background text-foreground pt-[env(safe-area-inset-top)]", isMobile ? "min-h-dvh" : "flex h-dvh flex-col overflow-hidden")}
+      style={isMobile ? undefined : { backgroundColor: "var(--openbot-shell-frame-bg)" }}
+    >
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -211,6 +218,7 @@ export function Layout() {
           <div className="flex h-full shrink-0">
             <CompanyRail />
             <div
+              data-compact-nav={slide.density.compact ? "true" : undefined}
               className="flex h-full flex-col overflow-hidden transition-[width] duration-100 ease-out"
               style={{ width: slide.effectiveNavWidth }}
               onPointerEnter={() => slide.setHoveringSubNav(true)}
@@ -250,7 +258,7 @@ export function Layout() {
               id="main-content"
               tabIndex={-1}
               data-density-tier={slide.metrics.canvasDensityTier}
-              className={cn("flex-1 p-4 md:p-6", isMobile ? "overflow-visible pb-[calc(5rem+env(safe-area-inset-bottom))]" : "overflow-auto")}
+              className={cn("flex-1 p-4 md:p-6", isMobile ? "overflow-visible pb-[calc(5rem+env(safe-area-inset-bottom))]" : "overflow-auto openbot-canvas-sheet")}
               style={
                 isMobile
                   ? undefined
