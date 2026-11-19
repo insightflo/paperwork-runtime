@@ -54,10 +54,13 @@ export function createHeartbeatRunLog(options: HeartbeatRunLogOptions) {
   const storageLimitBytes = resolveRunawayLogLimitBytes(options.config);
   let storageCapped = false;
   let summaryEmitted = false;
+  let finalizing = false;
+  let finalized = false;
+  const pendingAppends = new Set<Promise<void>>();
   const storage = { storedRecords: 0, storedBytes: 0, omittedRecords: 0, omittedBytes: 0, writeErrors: 0 };
 
   async function appendStoredEvent(event: RunLogEvent) {
-    if (!handle) return;
+    if (!handle || finalizing || finalized) return;
     const bytes = Buffer.byteLength(serializeRunLogEvent(event), "utf8");
     if (storageCapped || (storageLimitBytes > 0 && storage.storedBytes + bytes > storageLimitBytes)) {
       storageCapped = true;
@@ -65,13 +68,23 @@ export function createHeartbeatRunLog(options: HeartbeatRunLogOptions) {
       storage.omittedBytes += bytes;
       return;
     }
+    // Track the append while it is in flight so finalize() can settle it first.
+    const activeHandle = handle;
+    const pendingAppend = (async () => {
+      try {
+        await runLogStore.append(activeHandle, event);
+        storage.storedRecords += 1;
+        storage.storedBytes += bytes;
+      } catch (err) {
+        storage.writeErrors += 1;
+        throw err;
+      }
+    })();
+    pendingAppends.add(pendingAppend);
     try {
-      await runLogStore.append(handle, event);
-      storage.storedRecords += 1;
-      storage.storedBytes += bytes;
-    } catch (err) {
-      storage.writeErrors += 1;
-      throw err;
+      await pendingAppend;
+    } finally {
+      pendingAppends.delete(pendingAppend);
     }
   }
 
@@ -229,18 +242,26 @@ export function createHeartbeatRunLog(options: HeartbeatRunLogOptions) {
 
   async function finalize() {
     if (!handle) return null;
-    const summary = await runLogStore.finalize(handle);
-    if (!summaryEmitted) {
-      await options.appendEvent({
-        eventType: "log_storage_summary",
-        stream: "system",
-        level: storage.omittedRecords || storage.writeErrors ? "warn" : "info",
-        message: "Run log storage summary",
-        payload: { version: 1, storageLimitBytes, ...storage, actualBytes: summary.bytes, sha256: summary.sha256 ?? null },
-      });
-      summaryEmitted = true;
+    try {
+      // Block new appends; let already-started ones settle before compressing the log.
+      finalizing = true;
+      while (pendingAppends.size > 0) await Promise.allSettled([...pendingAppends]);
+      const summary = await runLogStore.finalize(handle);
+      finalized = true;
+      if (!summaryEmitted) {
+        await options.appendEvent({
+          eventType: "log_storage_summary",
+          stream: "system",
+          level: storage.omittedRecords || storage.writeErrors ? "warn" : "info",
+          message: "Run log storage summary",
+          payload: { version: 1, storageLimitBytes, ...storage, actualBytes: summary.bytes, sha256: summary.sha256 ?? null },
+        });
+        summaryEmitted = true;
+      }
+      return summary;
+    } finally {
+      finalizing = false;
     }
-    return summary;
   }
 
   async function finalizeAfterError() {

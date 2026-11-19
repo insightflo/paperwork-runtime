@@ -1645,9 +1645,11 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       for (const [key, value] of Object.entries(evidence)) {
         if (value === undefined) continue;
         const existing = current[key as keyof typeof current];
+        const unfinalizedCompression = key === "logCompressed" && existing === false && value === true && current.logBytes === null && current.logSha256 === null; // unfinalized default false -> compressed true
         if (existing === null || existing === undefined) {
           if (value !== null) patch[key] = value;
-        } else if (!isDeepStrictEqual(existing, value)) return false;
+        } else if (unfinalizedCompression) patch[key] = value;
+        else if (!isDeepStrictEqual(existing, value)) return false;
       }
       if (Object.keys(patch).length === 0) return true;
       const rows = await tx.update(heartbeatRuns).set({ ...patch, updatedAt: new Date() })
