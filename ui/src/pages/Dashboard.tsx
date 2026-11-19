@@ -20,9 +20,10 @@ import { StatusBadge } from "../components/StatusBadge";
 import { ActivityRow } from "../components/ActivityRow";
 import { Identity } from "../components/Identity";
 import { timeAgo } from "../lib/timeAgo";
-import { cn, formatCents } from "../lib/utils";
+import { formatCents } from "../lib/utils";
 import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, PauseCircle, Rocket } from "lucide-react";
 import { ActiveAgentsPanel } from "../components/ActiveAgentsPanel";
+import { DashboardCommandHeader } from "../components/DashboardCommandHeader";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { PageSkeleton } from "../components/PageSkeleton";
 import type { Agent, Issue } from "@paperclipai/shared";
@@ -218,6 +219,22 @@ export function Dashboard() {
       )}
 
       <ActiveAgentsPanel companyId={selectedCompanyId!} />
+
+      {data && (
+        <DashboardCommandHeader
+          companyId={selectedCompanyId!}
+          kpis={{
+            runningAgents: data.agents.running,
+            enabledAgents: data.agents.active + data.agents.running + data.agents.paused + data.agents.error,
+            inProgressTasks: data.tasks.inProgress,
+            blockedTasks: data.tasks.blocked,
+            activeMissions: missions?.filter((m) => m.status === "active").length ?? 0,
+            monthSpendCents: data.costs.monthSpendCents,
+            monthBudgetCents: data.costs.monthBudgetCents,
+            waitCount: data.pendingApprovals + data.budgets.pendingApprovals,
+          }}
+        />
+      )}
 
       {data && (
         <>
