@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { interpretTargetFailureStatusSentence } from "../failure-interpretation.js";
 import type { CoreWorkflowToolExecutionResult } from "./core-tool-executor.js";
 import type { HttpWorkflowToolExecutionInput } from "./http-tool-adapter.js";
 
@@ -96,6 +97,27 @@ export function redactSecret(value: string, secret: string): string {
   if (!secret || !value.includes(secret)) return value;
   return value.split(secret).join("");
 }
+/** [사람 해석 프리픽스 — 2026-11-17 운영자 요구] scrapling 계열 원격 도구는 대상 수집 실패를
+ *  HTTP 424 + {"error":"target fetch failed","message":"target returned HTTP <n>","url":"…",
+ *  "targetStatus":<n>} 구조로 보고한다. 이 진단 문자열은 미션 오너를 거쳐 사람 카드 증상에
+ *  그대로 실리므로, 운영자가 기계 JSON을 해독하지 않아도 되게 한국어 해석 문장을 앞에 붙이고
+ *  원본 diagnostic은 뒤에 보존한다. 절단 대상은 (원본: …) 안의 원본뿐 — 해석 문장은 잘리지
+ *  않는다. targetStatus(number)·url(string)이 없거나 해석 계열이 없는 상태 코드, 그리고
+ *  JSON 파싱 실패·구조 불일치에는 기존 동작(원본 1000자 절단)을 그대로 반환한다. */
+export function humanizeRemoteDiagnostic(diagnostic: string): string {
+  const bounded = diagnostic.slice(0, 1000);
+  let parsed: unknown;
+  try { parsed = JSON.parse(diagnostic); } catch { return bounded; }
+  const record = readObject(parsed);
+  const targetStatus = record.targetStatus;
+  const url = nonEmptyString(record.url);
+  if (typeof targetStatus !== "number" || !Number.isFinite(targetStatus) || url === null) return bounded;
+  // 상태 코드→문장 매핑은 failure-interpretation.ts의 단일 레지스트리가 담당한다 — 사람 카드의
+  //   원인 해석이 같은 문구를 공유하므로 여기서 별도 분기를 두지 않는다.
+  const sentence = interpretTargetFailureStatusSentence(targetStatus);
+  if (sentence === null) return bounded;
+  return `[사람 해석] ${sentence} (대상: ${url}) (원본: ${bounded})`;
+}
 export async function persistArtifact(stepOutputDir: string, fileName: string, artifactValue: unknown, signal?: AbortSignal): Promise<string> {
   signal?.throwIfAborted();
   const dir = path.resolve(stepOutputDir);
@@ -123,7 +145,10 @@ export async function consumeHttpToolResponse(res: Response, input: HttpWorkflow
     try { diagnostic = await res.text(); } catch { /* bounded timeout handled by caller */ }
     signal.throwIfAborted();
     for (const secret of secrets) diagnostic = redactSecret(diagnostic, secret);
-    diagnostic = diagnostic.slice(0, 1000);
+    // 이 진단은 미션 오너를 거쳐 사람 카드 증상으로 전파되므로, 비밀 마스킹 뒤 구조화 진단에는
+    //   한국어 해석을 선행시킨다. 1000자 절단은 (원본: …) 안의 원본에만 적용되어 해석 문장은
+    //   잘리지 않는다(비구조화 진단은 기존과 동일하게 절단된 원본만 반환).
+    diagnostic = humanizeRemoteDiagnostic(diagnostic);
     return failure(`Workflow tool "${toolName}" remote endpoint returned status ${res.status}${diagnostic ? `: ${diagnostic}` : ""}`);
   }
   let envelope: unknown;

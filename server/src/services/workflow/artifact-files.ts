@@ -6,6 +6,16 @@ import { createHash } from "node:crypto";
 
 export const digest = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
 export type ArtifactRoot = { path: string; dev: number; ino: number };
+
+export function resolveArtifactIoBin(): string | null {
+  const configured = process.env.PAPERCLIP_ARTIFACT_IO_BIN?.trim() ?? "";
+  if (!configured) return null;
+  if (!path.isAbsolute(configured) || configured.includes("\0")) {
+    throw new Error("artifact_io_bin_invalid");
+  }
+  return configured;
+}
+
 export async function captureArtifactRoot(root: string): Promise<ArtifactRoot> {
   const canonical = await realpath(root);
   const s = await lstat(root);
@@ -51,8 +61,12 @@ export async function readArtifactBytes(root: ArtifactRoot, relative: string, ma
     || path.isAbsolute(relative) || relative.split(/[\\\\/]/).some(p => !p || p === '.' || p === '..')) {
     throw new Error("artifact_path_invalid");
   }
-  const result = await promisify(execFile)(process.execPath,
-    ["-e", reader, relative, String(root.dev), String(root.ino), String(maxBytes)],
+  const rustBin = resolveArtifactIoBin();
+  const executable = rustBin ?? process.execPath;
+  const args = rustBin
+    ? ["read", relative, String(root.dev), String(root.ino), String(maxBytes)]
+    : ["-e", reader, relative, String(root.dev), String(root.ino), String(maxBytes)];
+  const result = await promisify(execFile)(executable, args,
     { cwd: root.path, encoding: "buffer", maxBuffer: maxBytes + 16384, timeout: 10000 });
   return result.stdout;
 }

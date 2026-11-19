@@ -1,22 +1,16 @@
 name: PR
 
-# [CI-REDUCE 2026-11-13] PR push 마다 7잡(policy·verify·verify-tests 3샤드·verify-tests-serial·e2e) 전량을
-#   돌리던 구성을 "경량 잡 1개 + 조건부 전체 스위트"로 나눈다. 줄이려는 것은 잡당 시간이 아니라 실행 횟수다
-#   (실측: 성공 run 40~45분, verify-tests 샤드 13~23분, push 반복 시 매번 전량 재실행).
-#   · 경량 잡(policy) = 비드래프트 push 마다. 설치·타입체크까지(문서 전용 변경이면 그마저 생략)
-#   · 전체 스위트      = ready_for_review 전환 / ci-full 라벨 / dispatch(scope=full) 일 때만
-#   · 드래프트 PR      = 라벨이 없으면 정책 스텝을 돌리지 않는다(라벨은 명시 요청이라 실행)
-#   판정은 scripts/ci-scope.sh 가 소유한다(행렬 시험: server/src/__tests__/ci-scope-script.test.ts).
-#   워크플로 `if:` 에 같은 규칙을 복제하지 않는다 — 복제하면 시험이 실제 실행 경로를 검증하지 못한다.
+# [CI-REDUCE 2026-11-13] 실행 횟수를 줄이기 위해 경량 잡 1개(policy, 비드래프트 push 마다 설치·타입체크)와
+#   조건부 전체 스위트(ready_for_review/ci-full 라벨/dispatch scope=full)로 나눈다(드래프트는 라벨 없으면 미실행).
+#   판정은 scripts/ci-scope.sh 소유(행렬 시험: ci-scope-script.test.ts) — `if:` 에 규칙을 복제하지 않는다.
 on:
   pull_request:
     branches:
       - main
     # labeled 가 없으면 병합 파이프라인이 부착하는 ci-full 라벨로 전체 스위트를 깨울 수 없다.
     types: [opened, synchronize, reopened, ready_for_review, labeled]
-  # lockfile 봇 PR은 GITHUB_TOKEN으로 만들어져 pull_request 이벤트가 발생하지 않는다.
-  # refresh-lockfile.yml 이 이 워크플로를 해당 ref로 직접 dispatch해 필수 검사(policy)만 붙인다.
-  # scope=full 은 사람이 전체 스위트를 수동으로 한 번 더 돌리는 경로다(기본값은 봇 경로 유지).
+  # GITHUB_TOKEN 봇 PR은 pull_request 이벤트가 없어 refresh-lockfile.yml 이 이 ref로 직접 dispatch한다
+  # (기본값 policy = 필수 검사만; scope=full 은 사람이 전체 스위트를 수동으로 도는 경로).
   workflow_dispatch:
     inputs:
       scope:
@@ -35,7 +29,6 @@ jobs:
   # policy 는 브랜치 보호의 필수 상태 체크다(required_status_checks=[policy]). 이름·id 를 바꾸지 않는다.
   policy:
     runs-on: ubuntu-latest
-    # 타입체크가 들어와 5분으로는 부족하다(설치 + pnpm -r typecheck).
     timeout-minutes: 20
     outputs:
       heavy: ${{ steps.scope.outputs.heavy }}
@@ -61,8 +54,7 @@ jobs:
             base="$(git rev-parse origin/main)"
             head="$(git rev-parse HEAD)"
           fi
-          # 세 점(base...head) = merge-base..head. 두 점 diff 는 main 이 전진한 만큼을 PR 변경으로 잘못 세어
-          # 문서 전용 판정을 무력화한다. 실패하면 두 점, 그것도 실패하면 빈 목록으로 떨어진다.
+          # 세 점(base...head)=merge-base..head — 두 점은 main 전진분을 오계산한다. 실패 시 두 점 → 빈 목록 순 폴백.
           git diff --name-only "$base...$head" > "$RUNNER_TEMP/changed.txt" 2>/dev/null \
             || git diff --name-only "$base" "$head" > "$RUNNER_TEMP/changed.txt" 2>/dev/null \
             || : > "$RUNNER_TEMP/changed.txt"
@@ -110,11 +102,8 @@ jobs:
           # 이제 policy 가 설치·타입체크를 하므로 매 push 가 콜드 스토어로 돌지 않게 캐시를 쓴다.
           cache: pnpm
 
-      # [write-chokepoint static guard] heartbeat_runs/workflow_runs 직접 상태 쓰기(
-      # .update(heartbeatRuns|workflowRuns) 및 동등 raw SQL UPDATE)를 인가된 쓰기
-      # 계층(heartbeat-queue-lifecycle.ts, heartbeat-finalization/*)으로 강제한다.
-      # reboot-1107 §4.3 no-regret #1 — PR #679/#682 유형의 초크포인트 우회 재발 차단.
-      # --self-test 로 가드 자체의 탐지 능력(합성 bypass)을 매 실행마다 검증한다.
+      # [write-chokepoint] heartbeat_runs/workflow_runs 직접 UPDATE 를 인가 쓰기 계층으로 강제
+      # (reboot-1107 §4.3, PR#679/#682 재발 차단) — --self-test 로 가드 탐지력을 매 실행 검증.
       - name: Enforce run-status write chokepoint
         if: steps.scope.outputs.heavy == 'true'
         run: |
@@ -146,10 +135,22 @@ jobs:
         if: steps.scope.outputs.heavy == 'true'
         run: pnpm -r typecheck
 
-  # [CI-REDUCE] 문서 전용 변경에서는 전체 스위트를 돌리지 않는다. 그 사실을 **구조화된 신호**로 남긴다:
-  #   잡 이름이 verify-tests 로 시작하고 conclusion 이 success 이므로, 병합 파이프라인의 ci_baseline_guard
-  #   (성공한 verify-tests 잡이 0개면 병합하지 않는다)가 "테스트 미실행"과 "전체 스위트 불필요"를 구분한다.
-  #   이 잡이 없으면 문서 전용 PR(선례: PR#701 README·docs 만 변경)이 영구 미병합이 된다.
+      - name: Setup Rust toolchain
+        if: steps.scope.outputs.heavy == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Verify Rust crates
+        if: steps.scope.outputs.heavy == 'true'
+        run: |
+          for manifest in crates/*/Cargo.toml; do
+            cargo clippy --manifest-path "$manifest" --all-targets -- -D warnings
+            cargo test --release --manifest-path "$manifest"
+          done
+
+  # [CI-REDUCE] 문서 전용 변경의 전체 스위트 생략을 구조화된 신호로 남긴다 — 성공한 verify-tests* 잡이
+  #   없으면 병합 가드(ci_baseline_guard)가 미병합 처리하므로 이 잡이 필요하다(선례: PR#701).
   verify-tests-docs-only:
     needs: [policy]
     if: needs.policy.outputs.docs_only == 'true'
@@ -162,12 +163,8 @@ jobs:
           echo "documentation-only change: full suite intentionally skipped"
           echo "policy reason: ${{ needs.policy.outputs.reason }}"
 
-  # [verify-test-sharding] 테스트를 3 샤드로 병렬 분산 — EP(임베디드 PG) 테스트 170파일
-  #   풀스위트가 CI 20분 한계에 13~15분으로 근접, 러너 편차 시 초과 취소(2026-08-29 #170 초과 사례).
-  #   샤드당 실측 ~1/3(로컬 109s/292s 선형). verify(빌드·카나리)와 병렬로 돈다.
-  #
-  # [CI-REDUCE] 아래 네 잡은 전체 스위트다 — policy.outputs.full 이 true 일 때만 돈다
-  # (ready_for_review / ci-full 라벨 / dispatch scope=full). dispatch 기본값(policy)은 예전과 같이 policy 만 돈다.
+  # [verify-test-sharding] EP 풀스위트가 CI 한계 근접(2026-08-29 #170 초과 사례)이라 3 샤드 병렬 분산.
+  # [CI-REDUCE] 아래 네 잡은 전체 스위트 — policy.outputs.full == true(ready_for_review/ci-full/dispatch full) 일 때만.
   verify:
     needs: [policy]
     if: needs.policy.outputs.full == 'true'
@@ -204,22 +201,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # pnpm·Node 설정 + lockfile 2단계 설치는 composite action 하나로 모았다(.github/actions/ci-install).
       - uses: ./.github/actions/ci-install
 
+      # rust parity test 가 beforeAll 에서 cargo build 한다 — 명시 설치로 러너 이미지 변동을 흡수한다.
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Run tests (shard ${{ matrix.shard }}/3)
-        # [ci-serial-split] 중량 통합 스위트 3종은 전용 직렬 잡(verify-tests-serial)이 독점 실행한다.
-        #   샤드에서 제외해 중복 실행·경합(4-fork 동시 embedded-PG + Python 락)을 원천 차단한다.
+        # [ci-serial-split] 중량 4종은 verify-tests-serial 독점 — 샤드에서 제외해 중복 실행·경합 차단.
         env:
           PAPERCLIP_CI_EXCLUDE_SERIAL_SUITES: "1"
         run: pnpm test:run --shard=${{ matrix.shard }}/3
 
-  # [ci-serial-split] 중량 통합 스위트 3종 전용 직렬 잡 — 파일별 1개 프로세스씩 독점 실행하여
-  #   4-fork 동시 embedded-PG + Python 락 경합을 원천 제거한다. 잡 이름을 verify-tests 접두사로
-  #   유지해 pi-serial-merge.sh 의 startswith("verify-tests") 병합 가드(L149–152)가 코드 수정
-  #   없이 이 잡을 자동 감시하게 한다. 루트 pnpm test:run 으로 실행해 Vitest 멀티프로젝트 출력
-  #   형식(FAIL @paperclipai/server src/__tests__/... [ server/src/__tests__/... ])을 기존 샤드와
-  #   동일하게 유지한다(--filter exec vitest 사용 금지 — 브래킷 경로가 달라짐).
+  # [ci-serial-split] 중량 통합 4종 전용 직렬 잡(4-fork embedded-PG + Python 락 경합 차단). 잡 이름을
+  #   verify-tests 접두사로 유지해 pi-serial-merge.sh 병합 가드가 자동 감시한다. 루트 pnpm test:run 고수
+  #   — Vitest 출력 형식을 샤드와 동일하게 유지(--filter exec vitest 금지 — 브래킷 경로가 달라짐).
   verify-tests-serial:
     needs: [policy]
     if: needs.policy.outputs.full == 'true'
@@ -230,7 +226,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # pnpm·Node 설정 + lockfile 2단계 설치는 composite action 하나로 모았다(.github/actions/ci-install).
       - uses: ./.github/actions/ci-install
 
       - name: Run heavy integration tests serially
@@ -238,13 +233,13 @@ jobs:
           pnpm test:run --no-file-parallelism \
             server/src/__tests__/heartbeat-c5-public-activation.test.ts \
             server/src/__tests__/qa-remediation-admission-root.test.ts \
-            server/src/__tests__/mission-owner-authority-flow.integration.test.ts
+            server/src/__tests__/mission-owner-authority-flow.integration.test.ts \
+            server/src/__tests__/mission-owner-delegate-fix.integration.test.ts
 
   e2e:
     needs: [policy]
     if: needs.policy.outputs.full == 'true'
-    # Playwright 1.58 does not support Chromium on Ubuntu 26.04 yet. Pin the
-    # E2E runner so GitHub's ubuntu-latest migration cannot skip the tests.
+    # Playwright 미지원 회피 pin — ubuntu-latest 이주 시 E2E 가 통째로 스킵되지 않게 ubuntu-24.04 고정.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
@@ -252,7 +247,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # pnpm·Node 설정 + lockfile 2단계 설치는 composite action 하나로 모았다(.github/actions/ci-install).
       - uses: ./.github/actions/ci-install
 
       - name: Build

@@ -918,6 +918,20 @@
       "when": 1794289469535,
       "tag": "0131_mighty_cargill",
       "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1794654756408,
+      "tag": "0132_knowledge_pattern_coupling_entities",
+      "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1794677136424,
+      "tag": "0133_knowledge_pattern_lineage",
+      "breakpoints": true
     }
   ]
 }

@@ -13,8 +13,13 @@ import { MISSION_OWNER_DECISION_OPTIONS } from "./mission-owner-recovery-events.
 import { publishHumanOperatorRequestEvent } from "./human-operator-alert-events.js";
 import { completeUnblockActionWithSourceHandback } from "./owner-action-completion.js";
 import { extractQaCapProducerIssueRef, isQaReworkCapOversightIssue } from "./qa-rework-cap-oversight.js";
-import { createMissionOwnerHumanInputDecisionCard, findPendingMissionHumanCard,
-  bumpPendingMissionHumanCard } from "./mission-owner-human-input-card.js";
+import {
+  bumpPendingMissionHumanCard,
+  createMissionOwnerHumanInputDecisionCard,
+  findPendingMissionHumanCard,
+  hasConcreteKoreanHumanReason,
+  isGenericFallbackMissionHumanCard,
+} from "./mission-owner-human-input-card.js";
 import { admitHumanCardForSource } from "./human-card-admission.js";
 import { isExactOwnerHumanReplay } from "./owner-human-request-submit.js";
 import {
@@ -102,7 +107,10 @@ export async function submitMissionOwnerDecision(input: {
     // source's latest terminal run failed with a retryable/settlement-owned error code
     // (429·quota adapter_failed, stale_queued, issue_status_blocked) or is still unsettled,
     // the escalation is rejected — retry/auto-recovery owns it, not a human card.
-    if (needsHumanAlert && sourceIssueId) {
+    // tool_step 스코프·oversight 원천은 이 억제를 건너뛴다 — 원천의 terminal 런은 복구 대상이
+    // 아니라(tool-recovery-card.ts 경로와 동일한 판정 경계) 자동 회수 증거로 보지 않는다.
+    if (needsHumanAlert && sourceIssueId && humanAuthority?.scope.target.kind !== "tool_step"
+      && sourceIssueOriginKind !== "mission_main_executor_oversight") {
       const admission = await admitHumanCardForSource(tx, issue.companyId, sourceIssueId);
       if (!admission.admit) {
         throw unprocessable(
@@ -123,9 +131,20 @@ export async function submitMissionOwnerDecision(input: {
     // missionId+원인분류). 카드 생성/갱신 계약(C08)은 그대로 두고 제출 경로에서만 차단한다.
     // 동일 요청의 재전송(replay)은 기존 카드의 멱등 재생성이므로 통과시키고, legacy(무효)
     // 제출은 기존 identityRequired 계약을 그대로 따른다(moi1 중복 병합 계약이 이미 존재).
+    let supersedeFallbackPending = false;
     if (needsHumanAlert && humanAuthority && effectiveSubmission.humanRequest) {
       const pendingCard = await findPendingMissionHumanCard(tx, issue.companyId, humanAuthority.scope.missionId);
-      if (pendingCard && !(await isExactOwnerHumanReplay(humanAuthority, effectiveSubmission))) {
+      const canSupersedeFallback = Boolean(
+        pendingCard
+          && hasConcreteKoreanHumanReason(effectiveSubmission.reason)
+          && isGenericFallbackMissionHumanCard(pendingCard),
+      );
+      if (canSupersedeFallback) {
+        // [폴백 카드 교체 안전화] 커밋 전 트랜잭션에서 기존 카드를 미리 취소하지 않는다 —
+        //   커밋 후 createMissionOwnerHumanInputDecisionCard 가 단일 트랜잭션에서 회수+생성을
+        //   원자 수행하여 생성 실패 시에도 기존 pending 카드가 유실되지 않게 한다(재전송 replay 포함).
+        supersedeFallbackPending = true;
+      } else if (pendingCard && !(await isExactOwnerHumanReplay(humanAuthority, effectiveSubmission))) {
         await bumpPendingMissionHumanCard(input.db, issue.companyId, humanAuthority.scope.missionId)
           .catch(() => undefined); // 진단 메타데이터 — 거부 처리에는 영향 없음
         throw unprocessable(
@@ -150,16 +169,21 @@ export async function submitMissionOwnerDecision(input: {
       sourceIssueId,
       heartbeatRunId: input.actor.runId,
     });
-    return { recorded, human, issue, sourceIssueOriginKind, submission };
+    return { recorded, human, issue, sourceIssueOriginKind, submission, supersedeFallbackPending };
   });
-  const { recorded, human, issue, sourceIssueOriginKind, submission } = committed;
+  const { recorded, human, issue, sourceIssueOriginKind, submission, supersedeFallbackPending } = committed;
   if (human?.humanInserted && human.humanPayload) {
     publishHumanOperatorRequestEvent(issue.companyId, human.humanPayload);
   }
   let operatorDecisionId: string | undefined;
   if (human) {
     try {
-      const card = await createMissionOwnerHumanInputDecisionCard(input.db, human.humanInputCardSpec);
+      const card = await createMissionOwnerHumanInputDecisionCard(
+        input.db,
+        supersedeFallbackPending
+          ? { ...human.humanInputCardSpec, allowSupersedeFallback: true }
+          : human.humanInputCardSpec,
+      );
       operatorDecisionId = card.decision.id;
     } catch (error) {
       throw new HttpError(500, "Operator decision card creation failed after the decision was committed. Resubmit the same decision — the ledger dedup returns the same event and the card is recreated by its idempotent request key.", {

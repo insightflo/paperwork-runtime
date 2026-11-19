@@ -11,6 +11,7 @@ export {
   type MigrationBootstrapResult,
   type Db,
 } from "./client.js";
+export { getDbConnectionUrl } from "./connection-url-registry.js";
 export {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,

@@ -1,0 +1,166 @@
+// server/src/services/knowledge-text-normalizer.ts
+//
+// [파일 목적] 지식 패턴 관련도 엔진(T1b — mistology 흡수)의 텍스트 정규화 순수 모듈.
+//   질의·카드 양쪽을 같은 규칙으로 정규화해 노이즈(스택트레이스 장식·조사·대소문자)에
+//   강한 매칭을 만든다. DB·기존 서비스 import 금지 — 순수 함수만.
+// [비고] 경로 정규화 기본 규칙(백슬래시→슬래시, a/·b/ diff 접두사, 중복 슬래시, 선행 ./)은
+//   T1a 공유 계약을 그대로 쓴다 — 패키지 인덱스가 아직 이 계약을 재수출하지 않으므로
+//   저장소 관례(검증자·서버의 validators 하위경로 직접 import)를 따라 규칙 이중 정의를 피한다.
+
+import { normalizeKnowledgePatternEntityPath } from "@paperclipai/shared/validators/knowledge-pattern";
+
+/** 스택트레이스/diff 경로 장식 제거 — `path:12:34`·`path:12`·`path(10,15)` → `path`. */
+export function stripLineColumns(raw: string): string {
+  return raw
+    .replace(/\(\d+,\s*\d+\)$/, "")
+    .replace(/:\d+(?::\d+)?$/, "")
+    .trim();
+}
+
+/** 코드 경로 참조 정규화 — 행·열 제거 후 공유 경로 규칙(diff 접두사·슬래시 통일) 적용. */
+export function normalizeCodePathRef(raw: string): string {
+  return normalizeKnowledgePatternEntityPath(stripLineColumns(raw));
+}
+
+/** `@/` 별칭 해석 — 입력받은 별칭 맵에서 긴 키부터 접두사 치환(하드코딩 금지).
+ *  별칭 키·값 양쪽을 같은 규칙으로 정규화한다 — 키의 후행 슬래시(`"@/services/"`)도
+ *  없애 `ref === key`(값 그대로 반환)와 접두사 치환(정규화 통과) 두 경로의 canonical
+ *  form을 맞춘다. 정규화 후 빈 키는 매칭 불가라 건너뛰고, 같은 canonical 키는 먼저 것만. */
+export function resolvePathAlias(ref: string, aliasMap: Readonly<Record<string, string>>): string {
+  const roots = new Map<string, string>();
+  for (const rawKey of Object.keys(aliasMap)) {
+    const key = normalizeKnowledgePatternEntityPath(rawKey).replace(/\/+$/, "");
+    if (key.length === 0 || roots.has(key)) continue;
+    roots.set(key, normalizeKnowledgePatternEntityPath(aliasMap[rawKey]!).replace(/\/+$/, ""));
+  }
+  const keys = [...roots.keys()].sort((left, right) => right.length - left.length);
+  for (const key of keys) {
+    const root = roots.get(key)!;
+    if (ref === key) return root;
+    if (ref.startsWith(`${key}/`)) {
+      return normalizeKnowledgePatternEntityPath(`${root}/${ref.slice(key.length + 1)}`);
+    }
+  }
+  return ref;
+}
+
+/** 한국어 조사 31종 — 접미사 목록 순회 전용(정규식·언어 분석기 없음). 긴 것부터 나열. */
+export const KOREAN_PARTICLES: readonly string[] = [
+  "에서는", "에게서",
+  "에게", "에서", "으로", "한테", "보다", "처럼", "만큼", "부터", "까지", "조차", "밖에", "이라", "이나",
+  "은", "는", "이", "가", "을", "를", "께", "로", "와", "과", "도", "만", "의", "에", "라", "나",
+];
+
+/** 조사 스테밍 — 목록 순회로 마지막 접미사를 1회만 제거한다(재귀 없음, 결정론적).
+ *   1자 조사는 stem이 2음절 이상일 때만 제거('사과'→'사' 오식 방지). */
+export function stemKoreanParticle(word: string): string {
+  for (const particle of KOREAN_PARTICLES) {
+    if (word.length <= particle.length || !word.endsWith(particle)) continue;
+    const stem = word.slice(0, -particle.length);
+    if (particle.length === 1 && stem.length < 2) continue;
+    return stem;
+  }
+  return word;
+}
+
+/** 서브워드 분리 — camelCase/PascalCase/약어 경계(HTTPServer→http+server)·snake_case·
+ *  kebab-case(하이픈 복합어)·한영 경계. 하이픈 포함 고유명은 여기서 부분만 반환하며
+ *  원형 전체 토큰은 normalizeKnowledgeTokens이 별도로 함께 색인한다(둘 다 매칭 가능). */
+export function splitSubWords(token: string): string[] {
+  const spaced = token
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/[_-]+/gu, " ")
+    .replace(/(\p{Script=Hangul}+)([A-Za-z0-9]+)/gu, "$1 $2")
+    .replace(/([A-Za-z0-9]+)(\p{Script=Hangul}+)/gu, "$1 $2");
+  return spaced
+    .split(/\s+/)
+    .filter((part) => part.length > 0)
+    .map((part) => part.toLowerCase());
+}
+
+/** 코드/워크플로 산문 불용어 — 관사·be동사·보조·접속·범용 코드 단어 중심.
+ *   고빈도 도메인 단어(workflow/mission/issue)는 불용어가 아니다 — IDF가 다룬다. */
+const STOPWORDS: ReadonlySet<string> = new Set([
+  "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "am",
+  "do", "does", "did", "has", "have", "had", "will", "would", "can", "could", "should",
+  "and", "or", "of", "in", "on", "at", "to", "for", "with", "by", "from", "as",
+  "it", "its", "this", "that", "these", "those", "not", "no", "but", "if", "then", "when", "while",
+  "failed", "fails", "failing", "error", "errors",
+  "함수", "실행", "처리", "발생", "경우", "문제", "사용", "통해", "위해", "때문",
+  "등", "및", "또한", "그리고", "이후", "이전", "동안", "관련", "대한",
+]);
+
+/** 불용어 판정 — 도메인 단어(workflow/mission/issue)는 항상 false. */
+export function isKnowledgeStopword(token: string): boolean {
+  return STOPWORDS.has(token.toLowerCase());
+}
+
+/** 이 길이 미만의 엔티티 키는 부분문자열 대신 토큰 경계 매칭을 요구한다. */
+export const MIN_SUBSTRING_ENTITY_KEY_LENGTH = 8;
+
+/** 엔티티 키↔문맥 매칭 — 짧은 키는 공백 분리 부분이 모두 문맥 토큰 집합에 있어야 히트
+ *  ("get"⊄"target", "503"⊄"15034" 같은 단어 경계 오탐 차단 — 한국어 토큰엔 \b가 없어
+ *  정규식 경계 대신 토큰 집합 정확 일치). 긴 고유 문자열(오류 서명 등)은 부분매칭 오탐
+ *  위험이 적고 recall에 필요해 기존 부분문자열을 유지한다. */
+export function corpusHasEntityKey(
+  key: string,
+  contextCorpus: string,
+  contextTokens: ReadonlySet<string>,
+): boolean {
+  return key.length >= MIN_SUBSTRING_ENTITY_KEY_LENGTH
+    ? contextCorpus.includes(key)
+    : key.split(" ").every((part) => contextTokens.has(part));
+}
+
+/** 텍스트 → 정규화 토큰(중복 제거·등장순) — 문장부호 제거→정크 가드(문자·숫자 없는
+ *  "---"/"___" 같은 장식 토큰 폐기)→서브워드→조사→불용어·길이 필터. 하이픈 토큰은
+ *  원형도 함께 색인한다(x-y → "x-y"+"x"+"y" — 복합어 고유명 매칭과 부분 recall을 둘 다 보존). */
+export function normalizeKnowledgeTokens(text: string): string[] {
+  const rawTokens = text
+    .replace(/[^\p{L}\p{N}\s_-]+/gu, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 0);
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const rawToken of rawTokens) {
+    if (!/[\p{L}\p{N}]/u.test(rawToken)) continue;
+    if (rawToken.includes("-")) {
+      const whole = rawToken.replace(/^-+|-+$/g, "").toLowerCase();
+      if (whole.length >= 2 && !isKnowledgeStopword(whole) && !seen.has(whole)) {
+        seen.add(whole);
+        tokens.push(whole);
+      }
+    }
+    for (const part of splitSubWords(rawToken)) {
+      const stemmed = stemKoreanParticle(part);
+      if (stemmed.length < 2 || isKnowledgeStopword(stemmed)) continue;
+      if (!seen.has(stemmed)) {
+        seen.add(stemmed);
+        tokens.push(stemmed);
+      }
+    }
+  }
+  return tokens;
+}
+
+/** 경로 후보 추출 — 확장자를 가진 파일경로 모양 문자열(`@` 별칭 시길 포함.
+ *   `:line:col`·`(l,c)`은 정규화 시 제거된다).
+ *  오탐 가드: `https:` 같은 URL 스킴 직후 조각과 `2.4.1`·`v1.2` 같은 버전 문자열은
+ *  파일 참조가 아니다 — 스킴 접두 뒤의 매치를 버리고, 확장자에 문자가 1개 이상 있어야 인정한다. */
+export function extractFileRefs(texts: readonly string[]): string[] {
+  const refs: string[] = [];
+  const seen = new Set<string>();
+  for (const text of texts) {
+    for (const match of text.matchAll(/[@\w./\\-]+\.[\w-]+/g)) {
+      const ref = match[0];
+      const start = match.index ?? -1;
+      if (ref.length < 3 || start < 0 || seen.has(ref)) continue;
+      if (/[a-zA-Z][a-zA-Z0-9+.-]+:$/.test(text.slice(0, start))) continue; // 스킴 직후 조각(URL)
+      if (!/\p{L}/u.test(ref.slice(ref.lastIndexOf(".") + 1))) continue; // 숫자뿐 확장자(버전)
+      seen.add(ref);
+      refs.push(ref);
+    }
+  }
+  return refs;
+}

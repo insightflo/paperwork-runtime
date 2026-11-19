@@ -18,6 +18,7 @@ import { operatorDecisionWriteService } from "../services/operator-decisions-wri
 import { recordMissionOwnerDecision } from "../services/missions/mission-owner-recovery-ledger.js";
 import { lockOwnerHumanRequestAuthority } from "../services/missions/owner-human-request-authority.js";
 import { closeOwnerHumanRequest } from "../services/missions/owner-human-request-state.js";
+import { renewOwnerHumanRequestWithCard } from "../services/missions/owner-human-request-renew.js";
 import { ownerHumanLifetimeSchema } from "../services/missions/owner-human-request-contract.js";
 import { publishLiveEvent } from "../services/live-events.js";
 
@@ -268,5 +269,129 @@ describeDb("C08 actual owner human submission", () => {
     const rejected = await request(app(plain)).post(`/api/issues/${plain.issueId}/owner-recovery/decision`)
       .send({ decision: "reassign_source_issue", nextAction: plain.agentId });
     expect(rejected.status).toBe(400);
+  });
+
+  // [Stage 4 2026-11-17] oversight 는 미션 단위 신원이다 — auth.run 은 읽기 시점 최신 실패 run으로
+  // 다시 선정되므로, R1 제출 후 재시작 run R2 가 실패하면 run 불일치로 GET current 가 409 가 되고
+  // 문서화된 CAS 교체 루프(expectedCurrentLifetimeId 확보 → replaced) 자체가 막힌다.
+  it("oversight current read survives a newer failed run and unblocks the CAS replacement loop", async () => {
+    const w = await world(true), workflowId = randomUUID(), r1 = randomUUID(), r2 = randomUUID();
+    await db.insert(workflowDefinitions).values({ id: workflowId, companyId: w.companyId, name: "oversight", stepsJson: [] });
+    await db.insert(workflowRuns).values({ id: r1, workflowId, companyId: w.companyId, missionId: w.missionId,
+      status: "failed", triggeredBy: "test", createdAt: new Date(Date.now() - 60_000) });
+    const first = await submit(w, keyed("oversight-r1"));
+    expect((await lifetimes(w))[0]!.cardInput.workflowRunId).toBe(r1);
+    await answerPendingCard(w);
+    const settled = await request(app(w)).get(`/api/issues/${w.issueId}/owner-recovery/decision/current`);
+    expect(settled.status).toBe(200); expect(settled.body.closure).toBeNull();
+    expect(settled.body.card.status).toBe("resolved");
+    await db.insert(workflowRuns).values({ id: r2, workflowId, companyId: w.companyId, missionId: w.missionId,
+      status: "failed", triggeredBy: "test", parentRunId: null });
+    const current = await request(app(w)).get(`/api/issues/${w.issueId}/owner-recovery/decision/current`);
+    expect(current.status, JSON.stringify(current.body)).toBe(200);
+    expect(current.body.lifetimeId).toBe(first.lifetimeId);
+    expect(current.body.closure).toBeNull(); expect(current.body.card.status).toBe("resolved");
+    expect(current.body.resubmit.humanRequest.expectedCurrentLifetimeId).toBe(first.lifetimeId);
+    const second = await request(app(w)).post(`/api/issues/${w.issueId}/owner-recovery/decision`)
+      .send(keyed("oversight-r2", first.lifetimeId!));
+    expect(second.status, JSON.stringify(second.body)).toBe(201);
+    expect(second.body.lifetimeId).not.toBe(first.lifetimeId);
+    const savedCards = await cards(w);
+    expect(savedCards).toHaveLength(2);
+    const pendingCard = savedCards.find((row) => row.status === "pending");
+    expect(pendingCard!.requestKey).toBe(`moi2:${second.body.lifetimeId}`);
+    const end = (await events(w)).find((row) => row.eventType === "owner_human_end_v1");
+    expect(end!.payload).toMatchObject({ kind: "owner_human_end_v1",
+      lifetimeId: first.lifetimeId, reason: "replaced", nextLifetimeId: second.body.lifetimeId });
+  });
+
+  // source_issue 스코프는 run 참조가 곧 카드 사실이므로 run 이동 시 여전히 fail-closed(409) 여야 한다.
+  it("source scope current read still fails closed when the source run reference moves", async () => {
+    const w = await world(), workflowId = randomUUID(), r1 = randomUUID(), r2 = randomUUID();
+    await db.insert(workflowDefinitions).values({ id: workflowId, companyId: w.companyId, name: "source", stepsJson: [] });
+    await db.insert(workflowRuns).values({ id: r1, workflowId, companyId: w.companyId, missionId: w.missionId,
+      status: "failed", triggeredBy: "test" });
+    await db.update(issues).set({ originRunId: r1 }).where(eq(issues.id, w.sourceId));
+    await submit(w, keyed("source-r1"));
+    expect((await lifetimes(w))[0]!.cardInput.workflowRunId).toBe(r1);
+    await answerPendingCard(w);
+    await db.insert(workflowRuns).values({ id: r2, workflowId, companyId: w.companyId, missionId: w.missionId,
+      status: "failed", triggeredBy: "test" });
+    await db.update(issues).set({ originRunId: r2 }).where(eq(issues.id, w.sourceId));
+    const current = await request(app(w)).get(`/api/issues/${w.issueId}/owner-recovery/decision/current`);
+    expect(current.status).toBe(409);
+  });
+
+  // [terminal renew 2026-11-17] 다중 홉 갱신 수명(A1→A2→A3)의 현재 카드는 종결된 현재 앵커(A3)
+  //   위에서도 사람이 답할 수 있어야 한다. resolve 경로만 뿌리 수명까지 올라가 settle 잠금으로
+  //   검증하므로, 종결 앵커가 거부되거나 뿌리 이외의 수명으로 잠겨도 409 가 된다.
+  it("resolves a multi-hop renewed tool-step card on its terminal anchor after the step generation moved", async () => {
+    const w = await world(), workflowId = randomUUID(), workflowRunId = randomUUID(), stepRunId = randomUUID();
+    const a2 = randomUUID(), a3 = randomUUID();
+    await db.insert(workflowDefinitions).values({ id: workflowId, companyId: w.companyId, name: "tool", stepsJson: [] });
+    await db.insert(workflowRuns).values({ id: workflowRunId, workflowId, companyId: w.companyId,
+      missionId: w.missionId, status: "failed", triggeredBy: "test" });
+    await db.insert(workflowStepRuns).values({ id: stepRunId, workflowRunId, stepId: "tool", status: "failed" });
+    const toolLink = (issueId: string, version: 1 | 2) => ({ companyId: w.companyId, missionId: w.missionId,
+      issueId, workflowRunId, workflowStepRunId: stepRunId, layer: "mission_owner_recovery",
+      eventType: "owner_tool_recovery_target_v1",
+      idempotencyKey: version === 1 ? `owner-tool-card:${stepRunId}` : `owner-tool-card:v2:${stepRunId}:${issueId}`,
+      payload: version === 1
+        ? { schemaVersion: 1, kind: "tool_step", workflowRunId, stepRunId }
+        : { schemaVersion: 2, kind: "tool_step", companyId: w.companyId, missionId: w.missionId,
+          anchorIssueId: issueId, sourceIssueId: w.sourceId, workflowRunId, stepRunId } });
+    await db.insert(workflowTransitionEvents).values(toolLink(w.issueId, 1));
+    await db.insert(issues).values([
+      { id: a2, companyId: w.companyId, missionId: w.missionId, title: "Owner action A2",
+        status: "todo", assigneeAgentId: w.agentId,
+        originKind: "mission_main_executor_unblock", originId: w.sourceId },
+      { id: a3, companyId: w.companyId, missionId: w.missionId, title: "Owner action A3",
+        status: "todo", assigneeAgentId: w.agentId,
+        originKind: "mission_main_executor_unblock", originId: w.sourceId },
+    ]);
+    await db.insert(workflowTransitionEvents).values([toolLink(a2, 2), toolLink(a3, 2)]);
+    const first = await submit(w, { ...keyed("tool-root"),
+      recoveryTarget: { kind: "tool_step", workflowRunId, stepRunId,
+        expectedAuthorityVersion: 0, expectedExecutionGeneration: 0, failedDispatchRequestId: null } });
+    const renewTo = (previousLifetimeId: string, anchorIssueId: string) => db.transaction((tx) =>
+      renewOwnerHumanRequestWithCard(tx, { companyId: w.companyId, previousLifetimeId,
+        anchorIssueId, requestKey: `owner-tool-renewal:v2:${stepRunId}:${anchorIssueId}` }));
+    await db.update(issues).set({ status: "done" }).where(eq(issues.id, w.issueId));
+    const second = await renewTo(first.lifetimeId!, a2);
+    await db.update(issues).set({ status: "done" }).where(eq(issues.id, a2));
+    const third = await renewTo(second.current.lifetime.lifetimeId, a3);
+    await db.update(issues).set({ status: "done" }).where(eq(issues.id, a3));
+    await db.update(workflowStepRuns).set({ executionGeneration: 1 }).where(eq(workflowStepRuns.id, stepRunId));
+    const resolved = await operatorDecisionWriteService(db).resolve(third.card.id,
+      { actionId: "approve", selectedOptionIds: ["approve"], comment: null }, "board");
+    expect(resolved.decision.status).toBe("resolved");
+  });
+
+  // [admit gate 2026-11-17] tool_step·oversight 원천은 소스의 종결(자동 회수형) 런을 카드 억제
+  //   근거로 쓰지 않는다 — 그 런은 이 제출의 복구 대상이 아니다(tool-recovery-card.ts 경계와 동일).
+  it("admits a tool-step submission whose oversight source has a settled auto-recoverable run", async () => {
+    const w = await world(), oversightId = randomUUID(), workflowId = randomUUID(),
+      workflowRunId = randomUUID(), stepRunId = randomUUID();
+    await db.insert(issues).values({ id: oversightId, companyId: w.companyId, missionId: w.missionId,
+      title: "Oversight", status: "todo", assigneeAgentId: w.agentId,
+      originKind: "mission_main_executor_oversight" });
+    await db.insert(heartbeatRuns).values({ id: randomUUID(), companyId: w.companyId,
+      agentId: w.agentId, issueId: oversightId, status: "cancelled",
+      errorCode: "issue_status_blocked", settledAt: new Date() });
+    await db.update(issues).set({ originId: oversightId }).where(eq(issues.id, w.issueId));
+    await db.insert(workflowDefinitions).values({ id: workflowId, companyId: w.companyId, name: "tool", stepsJson: [] });
+    await db.insert(workflowRuns).values({ id: workflowRunId, workflowId, companyId: w.companyId,
+      missionId: w.missionId, status: "failed", triggeredBy: "test" });
+    await db.insert(workflowStepRuns).values({ id: stepRunId, workflowRunId, stepId: "tool", status: "failed" });
+    await db.insert(workflowTransitionEvents).values({ companyId: w.companyId, missionId: w.missionId,
+      issueId: w.issueId, workflowRunId, workflowStepRunId: stepRunId, layer: "mission_owner_recovery",
+      eventType: "owner_tool_recovery_target_v1", idempotencyKey: `owner-tool-card:${stepRunId}`,
+      payload: { schemaVersion: 1, kind: "tool_step", workflowRunId, stepRunId } });
+    const result = await submit(w, { ...keyed("tool-oversight"),
+      recoveryTarget: { kind: "tool_step", workflowRunId, stepRunId,
+        expectedAuthorityVersion: 0, expectedExecutionGeneration: 0, failedDispatchRequestId: null } });
+    expect(result.lifetimeId).toBeTruthy();
+    const pending = (await cards(w)).find((card) => card.status === "pending");
+    expect(pending?.requestKey).toBe(`moi2:${result.lifetimeId}`);
   });
 });

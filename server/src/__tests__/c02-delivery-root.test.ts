@@ -218,12 +218,11 @@ describe("C02 correction delivery root", () => {
     expect(await deliveryState(c)).toEqual(changed);
   }, 30000);
 
-  it("aborts on a newly observed owner after waiting for the run lock, instead of locking that owner late", async () => {
+  it("re-observes once when a new owner appears while waiting for the run lock, and never writes on the stale observation", async () => {
     const c = await issueC02(owned, { mode: "content-only" }), i = await deliveryInput(c), observer = owned.connect();
     const writer = vi.fn(deliveryWriter(c));
     let pending: PromiseSettledResult<Awaited<ReturnType<typeof deliver>>>[] | undefined;
     let running: Promise<PromiseSettledResult<Awaited<ReturnType<typeof deliver>>>[]> | undefined;
-    let changed: Awaited<ReturnType<typeof deliveryState>> | undefined;
     try {
       await owned.connect().transaction(async tx => {
         await tx.select().from(workflowRuns).where(eq(workflowRuns.id, i.workflowRunId)).for("no key update");
@@ -231,13 +230,22 @@ describe("C02 correction delivery root", () => {
         running = Promise.allSettled([deliver(c, i, owned.connect(), writer)]);
         await waitForDeliveryLocks(observer, Number(holder!.pid), 1);
         await invalidateDelivery(c, i, "owner");
-        changed = await deliveryState(c);
       });
       pending = await running!;
-      expect(pending[0]!.status).toBe("rejected");
-      if (pending[0]!.status === "rejected") expect(pending[0]!.reason.message).toBe("qa_correction_delivery_owner_changed");
+      // [2026-11-16 소유자 변경 재관측] 1회 변경은 롤백 후 재관측으로 회복된다 — 새 실행 소유자가
+      //   있는 상태로 지연(waiting/deferred_issue_execution)을 돌려주고, 스테일 관측 기준 쓰기는 없다.
+      expect(pending[0]!.status).toBe("fulfilled");
+      if (pending[0]!.status === "fulfilled") {
+        expect(pending[0]!.value.kind).toBe("waiting");
+        expect(pending[0]!.value.startRunId).toBeNull();
+      }
       expect(writer).not.toHaveBeenCalled();
-      expect(await deliveryState(c)).toEqual(changed);
+      const rows = await correctionRows(c);
+      expect(rows.wakes).toHaveLength(1);
+      expect(rows.wakes[0]!.status).toBe("deferred_issue_execution");
+      expect(rows.wakes[0]!.runId).toBeNull();
+      expect(rows.heartbeats).toHaveLength(0);
+      expect(rows.receipts).toHaveLength(0);
     } finally {
       if (running) await running;
     }

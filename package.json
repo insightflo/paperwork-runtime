@@ -1,6 +1,7 @@
 {
   "name": "paperclip",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
     "dev": "node scripts/run-node-version.mjs scripts/dev-runner.mjs watch",

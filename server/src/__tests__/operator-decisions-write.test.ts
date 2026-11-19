@@ -387,6 +387,46 @@ describeDb("operator decision write service", () => {
         expect(await db.select().from(issueComments)).toHaveLength(1);
       });
 
+      it("M4: terminal anchor resolve blocks the continuation at birth with an explicit notice, not a silent pending hop", async () => {
+        const service = operatorDecisionWriteService(db);
+        const created = await service.create(companyId, moiCard("moi-terminal-blocked", {
+          issueId, issueStatus: "in_progress",
+        }), { type: "agent", id: agentId });
+        await db.update(issues).set({ status: "done" }).where(eq(issues.id, issueId));
+        const resolved = await service.resolve(created.decision.id, resolveBody, "board");
+        expect(resolved).toMatchObject({ applied: true, decision: { status: "resolved" } });
+        // [B5 2026-11-15] 같은 200 응답의 continuation 이 처음부터 종결 사실을 말한다 —
+        //   pending 홉 → 워커 리스 → block 지연/무동작(2026-11-14 RES-11444 사례)이 없다.
+        expect(resolved.continuation).toMatchObject({
+          state: "blocked", errorCode: "issue_terminal", effectiveStatus: "skipped",
+        });
+        expect(resolved.continuation?.retryHint).toContain("종결되어 후속 실행이 불가");
+        const [continuationRow] = await db.select().from(operatorDecisionContinuations);
+        expect(continuationRow).toMatchObject({ state: "blocked", errorCode: "issue_terminal", attemptCount: 0 });
+        const blockedActivity = await db.select().from(activityLog)
+          .where(eq(activityLog.action, "operator_decision.continuation_blocked"));
+        expect(blockedActivity).toHaveLength(1);
+        expect(blockedActivity[0]!.details).toMatchObject({
+          operatorDecisionId: created.decision.id, errorCode: "issue_terminal", blockedAtResolve: true,
+        });
+        // 재안내 — 종결 컨텍스트에서 "다음 실행자가 따른다"고 약속하지 않는다(기본 언어 en).
+        const [comment] = await db.select().from(issueComments).where(eq(issueComments.issueId, issueId));
+        expect(comment!.body).toContain("no automated follow-up will run");
+        expect(comment!.body).toContain("terminal (done)");
+
+        // 진행 중 이슈는 기존 pending 전달 경로를 유지한다(회귀 가드).
+        await db.update(issues).set({ status: "in_progress" }).where(eq(issues.id, issueId));
+        const open = await service.create(companyId, moiCard("moi-open-delivery", {
+          issueId, issueStatus: "in_progress",
+        }), { type: "agent", id: agentId });
+        const openResolved = await service.resolve(open.decision.id, resolveBody, "board");
+        expect(openResolved.applied).toBe(true);
+        expect(openResolved.continuation).toMatchObject({ state: "pending", errorCode: null });
+        const rows = await db.select().from(operatorDecisionContinuations)
+          .where(eq(operatorDecisionContinuations.operatorDecisionId, open.decision.id));
+        expect(rows[0]!).toMatchObject({ state: "pending", errorCode: null });
+      });
+
       it("M3: non-moi cards keep the exact-snapshot rejection on the same open-state churn", async () => {
         const service = operatorDecisionWriteService(db);
         const created = await service.create(companyId, snapshotCard("exact-open-churn", {

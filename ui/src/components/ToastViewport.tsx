@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "@/lib/router";
-import { X } from "lucide-react";
+import { Check, Copy, X } from "lucide-react";
+import { redactSensitiveText } from "@paperclipai/adapter-utils";
 import { useToast, type ToastItem, type ToastTone } from "../context/ToastContext";
+import { extractErrorReference } from "../lib/user-errors";
 import { cn } from "../lib/utils";
 
 const toneClasses: Record<ToastTone, string> = {
@@ -26,30 +28,55 @@ function AnimatedToast({
   onDismiss: (id: string) => void;
 }) {
   const [visible, setVisible] = useState(false);
+  const [copiedRef, setCopiedRef] = useState(false);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setVisible(true));
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  const safeBody = toast.body ? redactSensitiveText(toast.body) : null;
+  const errorRef =
+    safeBody && (toast.tone === "warn" || toast.tone === "error") ? extractErrorReference(toast.body) : null;
+
+  const handleCopyRef = async () => {
+    if (!errorRef || typeof navigator === "undefined" || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(errorRef);
+      setCopiedRef(true);
+      setTimeout(() => setCopiedRef(false), 1500);
+    } catch {
+      // Clipboard may be blocked in restricted browser contexts.
+    }
+  };
+
   return (
     <li
       className={cn(
         "pointer-events-auto rounded-sm border shadow-lg backdrop-blur-xl transition-[transform,opacity] duration-200 ease-out",
-        visible
-          ? "translate-y-0 opacity-100"
-          : "translate-y-3 opacity-0",
+        visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
         toneClasses[toast.tone],
       )}
     >
       <div className="flex items-start gap-3 px-3 py-2.5">
         <span className={cn("mt-1 h-2 w-2 shrink-0 rounded-full", toneDotClasses[toast.tone])} />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold leading-5">{toast.title}</p>
-          {toast.body && (
-            <p className="mt-1 text-xs leading-4 opacity-70">
-              {toast.body}
-            </p>
+          <p className="text-sm font-semibold leading-5">{redactSensitiveText(toast.title)}</p>
+          {safeBody && <p className="mt-1 text-xs leading-4 opacity-80">{safeBody}</p>}
+          {errorRef && (
+            <button
+              type="button"
+              onClick={handleCopyRef}
+              className="mt-1.5 inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px] hover:opacity-80"
+              style={{
+                borderColor: "var(--openbot-border-strong)",
+                backgroundColor: "var(--openbot-bg-surface)",
+                color: "var(--openbot-text-secondary)",
+              }}
+            >
+              <span>ref:{errorRef}</span>
+              {copiedRef ? <Check className="h-2.5 w-2.5" /> : <Copy className="h-2.5 w-2.5" />}
+            </button>
           )}
           {toast.action && (
             <Link
@@ -87,11 +114,7 @@ export function ToastViewport() {
     >
       <ol className="flex w-full flex-col-reverse gap-2">
         {toasts.map((toast) => (
-          <AnimatedToast
-            key={toast.id}
-            toast={toast}
-            onDismiss={dismissToast}
-          />
+          <AnimatedToast key={toast.id} toast={toast} onDismiss={dismissToast} />
         ))}
       </ol>
     </aside>

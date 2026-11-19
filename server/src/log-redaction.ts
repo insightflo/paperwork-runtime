@@ -1,4 +1,8 @@
 import os from "node:os";
+import {
+  ensureNativeRedactorLoaded,
+  redactCurrentUserTextWithNative,
+} from "./redactor-native.js";
 
 export const CURRENT_USER_REDACTION_TOKEN = "*";
 
@@ -83,6 +87,23 @@ function defaultHomeDirs(userNames: string[]) {
   return uniqueNonEmpty(candidates);
 }
 
+const userNamePatterns = new Map<string, RegExp>();
+const MAX_CACHED_PATTERNS = 64;
+
+// The "g"-flagged patterns below are stateful (lastIndex); safe only because they
+// are used exclusively with String.replace, which resets lastIndex per call.
+function patternForUserName(userName: string): RegExp {
+  const cached = userNamePatterns.get(userName);
+  if (cached) { userNamePatterns.delete(userName); userNamePatterns.set(userName, cached); return cached; }
+  const pattern = new RegExp(`(?<![A-Za-z0-9._-])${escapeRegExp(userName)}(?![A-Za-z0-9._-])`, "g");
+  if (userNamePatterns.size >= MAX_CACHED_PATTERNS) {
+    const oldest = userNamePatterns.keys().next();
+    if (!oldest.done) userNamePatterns.delete(oldest.value);
+  }
+  userNamePatterns.set(userName, pattern);
+  return pattern;
+}
+
 let cachedCurrentUserCandidates: CurrentUserCandidates | null = null;
 
 function getDefaultCurrentUserCandidates(): CurrentUserCandidates {
@@ -107,8 +128,11 @@ function resolveCurrentUserCandidates(opts?: CurrentUserRedactionOptions) {
 export function redactCurrentUserText(input: string, opts?: CurrentUserRedactionOptions) {
   if (!input) return input;
   if (opts?.enabled === false) return input;
+  ensureNativeRedactorLoaded();
 
   const { userNames, homeDirs, replacement } = resolveCurrentUserCandidates(opts);
+  const native = redactCurrentUserTextWithNative(input, userNames, homeDirs, replacement);
+  if (native !== null) return native;
   let result = input;
 
   for (const homeDir of [...homeDirs].sort((a, b) => b.length - a.length)) {
@@ -120,8 +144,7 @@ export function redactCurrentUserText(input: string, opts?: CurrentUserRedaction
   }
 
   for (const userName of [...userNames].sort((a, b) => b.length - a.length)) {
-    const pattern = new RegExp(`(?<![A-Za-z0-9._-])${escapeRegExp(userName)}(?![A-Za-z0-9._-])`, "g");
-    result = result.replace(pattern, maskUserNameForLogs(userName, replacement));
+    result = result.replace(patternForUserName(userName), maskUserNameForLogs(userName, replacement));
   }
 
   return result;
@@ -144,3 +167,7 @@ export function redactCurrentUserValue<T>(value: T, opts?: CurrentUserRedactionO
   }
   return redacted as T;
 }
+
+// Activate the native redactor at startup when PAPERCLIP_REDACTOR_LIB is set;
+// a no-op (zero fs I/O) when unset.
+ensureNativeRedactorLoaded();

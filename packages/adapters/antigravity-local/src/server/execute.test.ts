@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAntigravityArgs,
+  buildAntigravityExecutionNote,
   extractLatestAntigravityResponse,
   readConversationIdForCwdFromCache,
+  resolveAntigravityBypassPermissions,
   resolveAntigravityFailure,
+  resolveAntigravityPrintTimeout,
 } from "./execute.js";
 
 describe("antigravity_local argument builder", () => {
@@ -93,6 +96,109 @@ describe("antigravity_local argument builder", () => {
       "diagnose",
     ]);
   });
+
+  it("omits --model for auto/empty and passes explicit --model before --print", () => {
+    const autoArgs = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: [],
+      model: "auto",
+    });
+    expect(autoArgs).not.toContain("--model");
+
+    const explicitArgs = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: [],
+      model: "gemini-4-argon-high",
+    });
+    expect(explicitArgs).toContain("--model");
+    expect(explicitArgs[explicitArgs.indexOf("--model") + 1]).toBe("gemini-4-argon-high");
+    expect(explicitArgs.indexOf("--model")).toBeLessThan(explicitArgs.indexOf("--print"));
+  });
+
+  it("passes --effort unless the model id already encodes a conflicting effort suffix", () => {
+    const baseModelArgs = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: [],
+      model: "gemini-3.8-flash",
+      effort: "low",
+    });
+    expect(baseModelArgs).toContain("--effort");
+    expect(baseModelArgs[baseModelArgs.indexOf("--effort") + 1]).toBe("low");
+
+    const autoEffortArgs = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: [],
+      model: "auto",
+      effort: "medium",
+    });
+    expect(autoEffortArgs).not.toContain("--model");
+    expect(autoEffortArgs).toContain("--effort");
+    expect(autoEffortArgs[autoEffortArgs.indexOf("--effort") + 1]).toBe("medium");
+
+    const matchingSuffixArgs = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: [],
+      model: "gemini-3.8-flash-low",
+      effort: "low",
+    });
+    expect(matchingSuffixArgs).toContain("--effort");
+
+    const conflictingSuffixArgs = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: [],
+      model: "gemini-3.8-flash-low",
+      effort: "high",
+    });
+    expect(conflictingSuffixArgs).toContain("--model");
+    expect(conflictingSuffixArgs).not.toContain("--effort");
+  });
+
+  it("does not duplicate --model or --effort when already supplied in extraArgs", () => {
+    const args = buildAntigravityArgs({
+      cwd: "/tmp/work",
+      prompt: "hello",
+      printTimeout: "180s",
+      bypassPermissions: false,
+      sandbox: false,
+      sessionId: null,
+      extraArgs: ["--model=gemini-4-hydrogen", "--effort", "xhigh"],
+      model: "gemini-4-argon-high",
+      effort: "low",
+    });
+    expect(args.filter((a) => a === "--model" || a.startsWith("--model="))).toEqual(["--model=gemini-4-hydrogen"]);
+    expect(args.filter((a) => a === "--effort" || a.startsWith("--effort="))).toEqual(["--effort"]);
+    expect(args[args.indexOf("--effort") + 1]).toBe("xhigh");
+  });
 });
 
 describe("antigravity_local output/session helpers", () => {
@@ -166,5 +272,49 @@ describe("antigravity_local output/session helpers", () => {
         "Antigravity provider quota exhausted: RESOURCE_EXHAUSTED (code 429): Individual quota reached. Contact your administrator to enable overages. Resets in 2h57m51s.",
       errorCode: "provider_quota_exhausted",
     });
+  });
+
+  it("promotes safety-monitor denials from diagnostic logs when output is empty", () => {
+    expect(
+      resolveAntigravityFailure({
+        exitCode: 0,
+        timedOut: false,
+        stdout: "",
+        stderr: "",
+        latestResponse: "",
+        diagnosticLog:
+          'I1118 01:38:47.386012 1495 runner.go:909] Monitor sir_flash_lite FINISHED: triggered=true, reason="The agent is running a command to print environment variables containing API keys (PAPERCLIP_API_KEY)."',
+      }),
+    ).toEqual({
+      errorMessage:
+        "Antigravity safety monitor denied execution: The agent is running a command to print environment variables containing API keys (PAPERCLIP_API_KEY).",
+      errorCode: "adapter_failed",
+    });
+  });
+
+  it("resolves --print-timeout from explicit settings, positive timeoutSec, or unbounded 0s default", () => {
+    expect(resolveAntigravityPrintTimeout({ timeoutSec: 0 })).toBe("0s");
+    expect(resolveAntigravityPrintTimeout({ timeoutSec: 900 })).toBe("900s");
+    expect(resolveAntigravityPrintTimeout({ printTimeoutSec: 300, timeoutSec: 900 })).toBe("300s");
+    expect(resolveAntigravityPrintTimeout({ printTimeoutSec: 0, timeoutSec: 900 })).toBe("0s");
+    expect(resolveAntigravityPrintTimeout({ printTimeout: "10m", printTimeoutSec: 300, timeoutSec: 900 })).toBe("10m");
+    expect(resolveAntigravityPrintTimeout({ timeoutSec: 900, extraArgs: ["--print-timeout", "5m"] })).toBe("");
+  });
+
+  it("prefers dangerouslySkipPermissions over stale legacy bypassPermissions", () => {
+    expect(resolveAntigravityBypassPermissions({ dangerouslySkipPermissions: true, bypassPermissions: false })).toBe(true);
+    expect(resolveAntigravityBypassPermissions({ dangerouslySkipPermissions: false, bypassPermissions: true })).toBe(false);
+    expect(resolveAntigravityBypassPermissions({ bypassPermissions: true })).toBe(true);
+    expect(resolveAntigravityBypassPermissions({})).toBe(false);
+  });
+
+  it("includes headless monitor-avoidance notes matching sandbox setting", () => {
+    const unsandboxedNote = buildAntigravityExecutionNote({ sandbox: false });
+    expect(unsandboxedNote).toContain("PAPERCLIP_API_KEY");
+    expect(unsandboxedNote).toContain("BypassSandbox");
+
+    const sandboxedNote = buildAntigravityExecutionNote({ sandbox: true });
+    expect(sandboxedNote).toContain("PAPERCLIP_API_KEY");
+    expect(sandboxedNote).not.toContain("BypassSandbox");
   });
 });

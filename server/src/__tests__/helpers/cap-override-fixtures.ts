@@ -49,7 +49,10 @@ export async function startCapOverrideTestDb(): Promise<SharedTestDb> {
 //   → queued/running=0 을 짧은 안정화 구간(settleMs) 동안 "연속"으로 확인한 뒤에 cleanup 한다.
 //   전체 timeout 초과 시 silent return 없이 throw(실행이 실제로 종료되지 않음을 실패로 드러냄).
 //   테스트 격리는 row 삭제가 아니라 seed 의 randomUUID company/issue 스코프(모든 쿼리 company-scoped)로 보장.
-export async function drainHeartbeatRuns(db: Db, timeoutMs = 10000, settleMs = 500): Promise<void> {
+// [2026-11-15 CI 느린 러너 대응] 기본 타임아웃 10초 → 30초. GitHub 러너가 느릴 때 afterAll drain이
+//   90초로 늘려도 안 찰 때가 있어 호출부(mission-owner-authority-flow 240초)와 함께 상향 — 빠른 환경은
+//   안정 창 통과로 조기 반환되므로 비용 0.
+export async function drainHeartbeatRuns(db: Db, timeoutMs = 30000, settleMs = 500): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   let zeroSince: number | null = null;
   while (Date.now() < deadline) {

@@ -1,4 +1,5 @@
 import { inArray } from "drizzle-orm";
+import { waitForHeartbeatExecutionsToDrain } from "../../services/heartbeat-execution-tracker.js";
 import {
   type createDb,
   agents,
@@ -44,8 +45,17 @@ async function cleanupHeartbeatRunRecords(db: ReturnType<typeof createDb>) {
     await db.delete(activityLog);
     await db.delete(agentTaskSessions);
     // finalization tables reference heartbeat_runs via FK — delete before runs.
-    await db.delete(heartbeatRunFinalizationSteps);
-    await db.delete(heartbeatRunFinalizations);
+    // [2026-11-15 FK 경합 수선] 비동기 finalization-steps 작성자가 steps 삭제 → finalizations 삭제
+    //   사이 틈에 하위행을 새로 쓰면 FK 위반으로 afterEach 전체가 중단되고, 잔여 데이터가 다음
+    //   테스트(companies.issue_prefix 유일 충돌)까지 격파한다(heartbeat-context-budget-preflight
+    //   CI 2연속 실패 원인). steps→finalizations 쌍을 같은 재시도 루프 안에서 삭제한다.
+    try {
+      await db.delete(heartbeatRunFinalizationSteps);
+      await db.delete(heartbeatRunFinalizations);
+    } catch (error) {
+      if (attempt === 2) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
     try {
       await db.delete(heartbeatRuns);
       return;
@@ -80,6 +90,14 @@ async function deleteAgentsAfterLateIssueSideEffects(db: ReturnType<typeof creat
 }
 
 export async function cleanupHeartbeatBudgetFixture(db: ReturnType<typeof createDb>) {
+  // [플레이크 RCA 2026-11-15·재현 입증] 종말 상태 기록 뒤에도 executeRun 프라미스 내부에서 정산
+  //   (finalization + steps 순차 기록, attemptFullSettlement)이 계속된다. 아래 상태 폴링
+  //   (queued/running 부재 + 정착 500ms)은 이 기록자를 프라미스로 기다리지 못해 CI 경합 시
+  //   삭제 창과 겹치고, steps 삭제 → finalizations 삭제 사이 재기입이 FK 위반으로 afterEach 를
+  //   중단시켜 잔여 companies 가 다음 테스트를 issue_prefix 유일 충돌로 격파한다(관측된 2연속 실패).
+  //   삭제 전에 추적된 실행(trackHeartbeatExecution)을 프라미스 기반으로 결정적으로 드레인한다.
+  //   드레인 타임아웃 시에도 아래 폴링·재시도 루프가 폴백으로 정리를 이어간다.
+  await waitForHeartbeatExecutionsToDrain(db, 30_000).catch(() => undefined);
   // Drain/stop in-flight heartbeat work before deleting rows so residual adapter.execute
   // and secret materialization cannot pollute the next test (Hermes Ops spy / company_secrets FK).
   // We also wait for terminal runs' fire-and-forget post-processing to settle: executeRun

@@ -24,6 +24,7 @@ import {
 } from "./workflow-restart-option.js";
 import { isPrerequisiteNoticeOption } from "./terminal-recovery-card-options.js";
 import { extractMissionOwnerDecisionFromText } from "./mission-owner-recovery-events.js";
+import { withFailureCauseInterpretation } from "../failure-interpretation.js";
 
 export const MISSION_OWNER_HUMAN_INPUT_SOURCE_TYPE = "mission_owner_human_input";
 export const MISSION_OWNER_HUMAN_INPUT_CARD_MAPPING_FAILED = "mission_owner_human_input_card_mapping_failed";
@@ -82,6 +83,8 @@ export type MissionOwnerHumanInputCardSpec = {
   /** [C4a] 전제·안내 문구 — 선택지로 노출하지 않고 카드 안내줄(unresolvedFacts)로만 표시한다.
    *  structuredOptions 안에 전제 문구가 섞여 들어와도 같은 안내줄로 이동한다. */
   readonly prerequisiteNotice?: string | null;
+  /** 제출 경로에서 기존 폴백(blank moi1) 카드를 후속 카드 생성 트랜잭션 안에서 원자 교체할지 여부. */
+  readonly allowSupersedeFallback?: boolean;
 };
 
 const clip = (value: string, max: number) => value.length > max ? value.slice(0, max) : value;
@@ -253,6 +256,19 @@ function buildOptionDerivedInterpretation(
 
 /** Build a validated card request; natural-language fields never select an operation. */
 export function buildMissionOwnerHumanInputDecisionCard(input: MissionOwnerHumanInputCardSpec): CreateOperatorDecisionInput {
+  return buildCard(input, { failureCause: true });
+}
+
+/** [레거시 호환 2026-11-17] 원인 해석 레지스트리 도입 이전에 현행 빌더로 발행된 카드의
+ *  requestHash 재구성 대조 후보 — '쉬운 해석'에 원인 문장을 붙이지 않던 당시 형식을 그대로
+ *  재현한다. 신규 발행은 절대 이 경로를 쓰지 않는다(위 빌더가 유일한 발행 경로). */
+export function buildPreFailureCauseMissionOwnerHumanInputDecisionCard(
+  input: MissionOwnerHumanInputCardSpec,
+): CreateOperatorDecisionInput {
+  return buildCard(input, { failureCause: false });
+}
+
+function buildCard(input: MissionOwnerHumanInputCardSpec, format: { failureCause: boolean }): CreateOperatorDecisionInput {
   if (!present(input.decisionEventId)) mappingFailure("결정 이벤트 식별자 없음");
   if (!present(input.missionId)) mappingFailure("미션 식별자 없음");
   if (!present(input.ownerActionIssueId)) mappingFailure("owner-action 이슈 식별자 없음");
@@ -326,11 +342,17 @@ export function buildMissionOwnerHumanInputDecisionCard(input: MissionOwnerHuman
   const recommendedDefinition = { ...definition, options };
   // [사람 카드 축소 Stage 1] 고정 축소 형식 — 증상 2줄(symptom), 해석 1문장. 상세 원문은 링크로만 참조.
   const symptom = formatSymptom(input.reason);
-  // [사람 카드 해석 C4a] 쉬운 해석은 증상·선택지와 같은 구조화 옵션 목록에서 파생한다 —
-  //   요청 산문(nextAction)을 패러프레이즈·인용하지 않고 '승인 여부 판단' 템플릿도 쓰지 않는다.
+  // [사람 카드 해석 C4a + 원인 해석 2026-11-17 — 운영자 방침: "패턴이 한두가지가 아니다"]
+  //   쉬운 해석은 원인 해석 우선·진행 안내 후속이다 — reason/evidence 의 기계 문장을
+  //   failure-interpretation 레지스트리로 해석해 원인 문장을 첫 문장에 두고, 선택지 파생
+  //   진행 안내 문장을 뒤에 붙인다(요약 클립이 첫 문장만 남기므로 원인이 먼저 와야 한다).
+  //   원인이 해석되지 않으면 기존 옵션 파생 문장만 나간다 — 요청 산문(nextAction)은
+  //   패러프레이즈·인용하지 않고 '승인 여부 판단' 템플릿도 쓰지 않는다.
   const interpretation = toOneLine(
-    buildOptionDerivedInterpretation(input.decision, recommendedDefinition.options), 200)
-    || HUMAN_INPUT_INTERPRETATION_FALLBACK;
+    format.failureCause
+      ? withFailureCauseInterpretation(input, buildOptionDerivedInterpretation(input.decision, recommendedDefinition.options))
+      : buildOptionDerivedInterpretation(input.decision, recommendedDefinition.options),
+    200) || HUMAN_INPUT_INTERPRETATION_FALLBACK;
   return {
     schemaVersion: 1,
     requestKey: input.lifetimeId !== undefined
@@ -391,24 +413,83 @@ export function buildMissionOwnerHumanInputDecisionCard(input: MissionOwnerHuman
   };
 }
 
-/** Merge an equivalent pending request, replay an exact terminal legacy card, or create normally. */
+/** concrete 한국어 증상이 있는 요청인지 판정한다(시스템 일반 폴백 문구·영문만 있는 사유 제외). */
+export function hasConcreteKoreanHumanReason(reason: string | null | undefined): boolean {
+  const formatted = formatSymptom(present(reason));
+  return Boolean(formatted && !formatted.startsWith(SYMPTOM_STATUS_FALLBACK));
+}
+
+/** 시스템이 concrete 증상 없이 선점 발행한 기본 moi1 대기 카드인지 판정한다. */
+export function isGenericFallbackMissionHumanCard(card: { requestKey: string; definition?: unknown }): boolean {
+  if (!card.requestKey.startsWith("moi1:")) return false;
+  const def = card.definition as { humanReview?: { symptom?: unknown } } | null | undefined;
+  const symptom = typeof def?.humanReview?.symptom === "string" ? def.humanReview.symptom.trim() : "";
+  return !symptom || symptom.startsWith(SYMPTOM_STATUS_FALLBACK);
+}
+
+function shouldSupersedeFallbackCard(
+  spec: MissionOwnerHumanInputCardSpec,
+  existing: { requestKey: string; definition?: unknown },
+  incomingRequestKey: string,
+): boolean {
+  if (existing.requestKey === incomingRequestKey) return false;
+  if (!isGenericFallbackMissionHumanCard(existing)) return false;
+  if (spec.allowSupersedeFallback) return true;
+  return !incomingRequestKey.startsWith("moi2:")
+    && spec.actorType !== "system"
+    && hasConcreteKoreanHumanReason(spec.reason);
+}
+
+export const SUPERSEDE_FALLBACK_REASON = "superseded_by_concrete_owner_diagnosis";
+
+/** Merge an equivalent pending request, supersede a blank fallback card with concrete diagnosis, or create normally. */
 export async function createMissionOwnerHumanInputDecisionCard(db: Db, spec: MissionOwnerHumanInputCardSpec) {
   const cardInput = buildMissionOwnerHumanInputDecisionCard(spec);
+  const createCard = () =>
+    operatorDecisionWriteService(db).create(spec.companyId, cardInput, { type: "agent", id: spec.requestedByAgentId });
+  const supersedeAndCreate = () =>
+    db.transaction(async (tx) => {
+      const current = await findPendingMissionHumanCard(tx, spec.companyId, spec.missionId);
+      if (current && shouldSupersedeFallbackCard(spec, current, cardInput.requestKey)) {
+        await withdrawPendingMissionHumanCard(tx, spec.companyId, spec.missionId, {
+          actorId: spec.requestedByAgentId,
+          reason: SUPERSEDE_FALLBACK_REASON,
+          details: { newRequestKey: cardInput.requestKey },
+        });
+      }
+      return operatorDecisionWriteService(tx as unknown as Db).create(spec.companyId, cardInput, {
+        type: "agent",
+        id: spec.requestedByAgentId,
+      });
+    });
   try {
     const merged = await tryMergePendingHumanInputCard(db, spec, cardInput);
     if (merged) return merged;
     const historicalReplay = await replayHistoricalDefaultHumanInputCard(db, spec, cardInput);
     if (historicalReplay) return historicalReplay;
-    return await operatorDecisionWriteService(db).create(spec.companyId, cardInput, { type: "agent", id: spec.requestedByAgentId });
+    const canCheckSupersede = Boolean(spec.allowSupersedeFallback)
+      || (!cardInput.requestKey.startsWith("moi2:") && spec.actorType !== "system" && hasConcreteKoreanHumanReason(spec.reason));
+    if (canCheckSupersede) {
+      const pending = await findPendingMissionHumanCard(db, spec.companyId, spec.missionId);
+      if (pending && shouldSupersedeFallbackCard(spec, pending, cardInput.requestKey)) {
+        return await supersedeAndCreate();
+      }
+    }
+    return await createCard();
   } catch (error) {
-    // [C1 2026-11-08] 미션당 pending 카드 1장 부분 고유 인덱스가 동시 제출의 두 번째 insert 를
-    // 거부한다(R2 게이트의 SELECT→INSERT 레이스). legacy(moi1) 발행은 새 카드 대신 기존 pending
-    // 카드에 사유를 누적하고 그 카드를 반환한다 — R2 의 재요청 처리와 같은 계약.
-    // 현재 수명(moi2) 발행은 create 트랜잭션 안에서 교체 대상을 먼저 회수하므로 여기서
-    // 위반되면 예상 밖이다 — 조용히 접히면 stale 카드로 resolve 교착이 생길 수 있어 그대로
-    // 노출한다(기존 카드 쓰기 5xx 계약 유지).
+    // [C1 2026-11-08] 미션당 pending 카드 1장 부분 고유 인덱스 위반 — 시스템 기본 폴백 카드를
+    //   에이전트의 구체적 한국어 진단으로 교체하는 경우에만 단일 트랜잭션으로 회수+재시도하고,
+    //   그 외는 기존 pending 카드에 사유를 누적한다(repeatCount).
     if (!isPendingMissionHumanCardUniqueViolation(error)) throw error;
-    if (cardInput.requestKey.startsWith("moi2:")) throw error;
+    if (cardInput.requestKey.startsWith("moi2:") && !spec.allowSupersedeFallback) throw error;
+    const racePending = await findPendingMissionHumanCard(db, spec.companyId, spec.missionId);
+    if (racePending && shouldSupersedeFallbackCard(spec, racePending, cardInput.requestKey)) {
+      try {
+        return await supersedeAndCreate();
+      } catch (retryError) {
+        if (!isPendingMissionHumanCardUniqueViolation(retryError)) throw retryError;
+      }
+    }
     const bumped = await bumpPendingMissionHumanCard(db, spec.companyId, spec.missionId);
     const existing = bumped ? await findPendingMissionHumanCard(db, spec.companyId, spec.missionId) : null;
     if (!existing) throw error;
@@ -423,11 +504,17 @@ export async function findPendingMissionHumanCard(
   db: Pick<Db, "select">,
   companyId: string,
   missionId: string,
-): Promise<{ id: string; requestKey: string; sourceContext: OperatorDecisionSourceContextJson } | null> {
+): Promise<{
+  id: string;
+  requestKey: string;
+  sourceContext: OperatorDecisionSourceContextJson;
+  definition: typeof operatorDecisions.$inferSelect["definition"];
+} | null> {
   const [existing] = await db.select({
     id: operatorDecisions.id,
     requestKey: operatorDecisions.requestKey,
     sourceContext: operatorDecisions.sourceContext,
+    definition: operatorDecisions.definition,
   }).from(operatorDecisions).where(and(
     eq(operatorDecisions.companyId, companyId),
     eq(operatorDecisions.status, "pending"),
@@ -528,6 +615,7 @@ async function tryMergePendingHumanInputCard(
       id: operatorDecisions.id,
       requestKey: operatorDecisions.requestKey,
       sourceContext: operatorDecisions.sourceContext,
+      definition: operatorDecisions.definition,
     }).from(operatorDecisions).where(and(
       eq(operatorDecisions.companyId, spec.companyId),
       eq(operatorDecisions.status, "pending"),
@@ -539,6 +627,9 @@ async function tryMergePendingHumanInputCard(
     if (!existing) return null;
     if (existing.requestKey === cardInput.requestKey) {
       return { decision: await operatorDecisionReadService(db).getRequired(existing.id), replayed: true };
+    }
+    if (shouldSupersedeFallbackCard(spec, existing, cardInput.requestKey)) {
+      return null;
     }
     const previous = existing.sourceContext?.missionOwnerHumanInput?.repeatCount;
     const repeatCount = (typeof previous === "number" && Number.isFinite(previous) && previous >= 0 ? previous : 0) + 1;

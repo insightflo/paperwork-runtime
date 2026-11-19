@@ -1,6 +1,6 @@
 import { and, eq, getTableColumns, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { activityLog, companies, issueComments, operatorDecisionContinuations, operatorDecisions } from "@paperclipai/db";
+import { activityLog, companies, issueComments, issues, operatorDecisionContinuations, operatorDecisions } from "@paperclipai/db";
 import type { CreateOperatorDecisionInput } from "@paperclipai/shared/types/operator-decision";
 import { conflict, notFound, unprocessable } from "../errors.js";
 import { logger } from "../middleware/logger.js";
@@ -21,9 +21,9 @@ import {
   type ResumeMutationTransaction,
   type ResumeSerializationContext,
 } from "./workflow/resume/serialization.js";
-import { assertExactBoardWorkflowRestartPolicy, holdUnprovenRestart,
+import { assertExactBoardWorkflowRestartPolicy, assertWorkflowRestartSelectionAdmission,
   startWorkflowRestartFromOperatorDecision } from "./missions/approved-workflow-restart.js";
-import { evaluateRecoveryAdviceIdentity, isOwnerHumanRestartCandidate, loadRecoveryAdviceIdentityFacts,
+import { isOwnerHumanRestartCandidate, loadRecoveryAdviceIdentityFacts,
   relaxedRestartCommentDefinition, type RecoveryAdviceDecision } from "./operator-decision-recovery-advice.js";
 import { lockQaRecoveryCollectionAdmission } from "./operator-decision-qa-recovery-admission.js";
 import { withOperatorRestartTransaction } from "./operator-decision-restart-transaction.js";
@@ -62,15 +62,28 @@ async function insertOperatorDecisionResolvedComment(
     issueId: string;
     operatorDecisionId: string; language: SystemLanguage;
     selectedOptions: { id: string; label: string; description: string | null }[];
+    anchorIssueStatus: string | null;
   },
 ): Promise<void> {
   const selectionLines = input.selectedOptions.map((option) =>
     `- 선택: ${option.label}${option.description ? ` — ${option.description}` : ""}`);
+  // [B5 2026-11-15] 종결(done/cancelled) 이슈 컨텍스트에서는 "다음 실행자가 따른다"는 안내가
+  //   거짓이 된다 — 후속이 없음과 복구 방법(이슈 재오픈·새 카드)을 명시해 200 승인이
+  //   무동작으로 끝나지 않게 한다(2026-11-14 RES-11444 사례).
+  const terminalAnchor = input.anchorIssueStatus !== null
+    && ["done", "cancelled"].includes(input.anchorIssueStatus);
+  const nextActionLine = terminalAnchor
+    ? input.language === "ko"
+      ? `- 다음 행동: 연결 이슈가 종결(${input.anchorIssueStatus})되어 자동 후속 실행이 없습니다. 결정 기록은 보존되며, 진행이 필요하면 이슈를 재오픈하거나 새 카드로 지시해 주세요.`
+      : `- Next action: the linked issue is terminal (${input.anchorIssueStatus}) so no automated follow-up will run (연결 이슈가 종결되어 자동 후속 실행이 없습니다). The record is preserved; reopen the issue or issue a new card to proceed.`
+    : input.language === "ko"
+      ? "- 다음 행동: 다음 실행자는 이 결정을 우선 지시로 따른다. 선택 기록은 실행 완료를 뜻하지 않습니다."
+      : "- Next action: the next executor follows this decision as the priority instruction (다음 실행자는 이 결정을 우선 지시로 따른다.). A recorded selection does not mean execution is complete.";
   const body = [
     "## 운영자 결정 반영 (operator decision resolved)",
     ...selectionLines,
     `- operatorDecisionId: ${input.operatorDecisionId}`,
-    input.language === "ko" ? "- 다음 행동: 다음 실행자는 이 결정을 우선 지시로 따른다. 선택 기록은 실행 완료를 뜻하지 않습니다." : "- Next action: the next executor follows this decision as the priority instruction (다음 실행자는 이 결정을 우선 지시로 따른다.). A recorded selection does not mean execution is complete.",
+    nextActionLine,
   ].join("\n");
   try {
     await db.insert(issueComments).values({
@@ -160,10 +173,10 @@ export function operatorDecisionResolutionWriteService(
         if (targetSnapshot) await assertTargetSnapshotCurrent(tx, id, current.companyId, targetSnapshot,
           current.sourceType === MISSION_OWNER_HUMAN_INPUT_SOURCE_TYPE ? "mission_alive" : "exact");
         const facts = await loadRecoveryAdviceIdentityFacts(tx as unknown as Db, current);
-        const advice = facts
-          ? evaluateRecoveryAdviceIdentity({ card: current, ...facts })
-          : evaluateRecoveryAdviceIdentity({ kind: "outside_default_scope", card: current });
-        if (advice.disposition !== "outside_default_scope") holdUnprovenRestart(id);
+        assertWorkflowRestartSelectionAdmission(current, currentResult, {
+          companyId: current.companyId, missionId: current.sourceContext.missionId,
+          sourceWorkflowRunId: current.sourceContext.workflowRunId,
+        }, facts);
         assertExactBoardWorkflowRestartPolicy(current, currentResult, {
           companyId: current.companyId, missionId: current.sourceContext.missionId,
           sourceWorkflowRunId: current.sourceContext.workflowRunId,
@@ -195,13 +208,47 @@ export function operatorDecisionResolutionWriteService(
       }
       let continuationId: string | null = null;
       if (updated.continuationMode === "issue_current_assignee" && !directCommandSelected) {
+        // [B5 2026-11-15] 종결(done/cancelled) 이슈에 묶인 카드 승인은 200만 남기고 후속이 없는
+        //   무동작이었다(continuation pending 생성 → worker가 issue_terminal로 block,
+        //   2026-11-14 RES-11444·RES-11442 사례). resolve 트랜잭션에서 종결을 즉시 반영해
+        //   같은 응답의 continuation 상태·재시도 안내가 처음부터 정직하게 나오게 한다.
+        //   pending 경로·워커 계약(lease/block)과 이슈 소멸(issue_missing)은 불변.
+        const anchorStatus = updated.issueId
+          ? await tx.select({ status: issues.status }).from(issues)
+            .where(and(eq(issues.id, updated.issueId), eq(issues.companyId, updated.companyId)))
+            .then((rows) => rows[0]?.status ?? null)
+          : null;
+        const terminalAnchor = anchorStatus !== null && ["done", "cancelled"].includes(anchorStatus);
         continuationId = await tx.insert(operatorDecisionContinuations).values({
           companyId: updated.companyId,
           operatorDecisionId: id,
           issueId: updated.issueId,
-          state: "pending",
+          state: terminalAnchor ? "blocked" : "pending",
+          errorCode: terminalAnchor ? "issue_terminal" : null,
           nextAttemptAt: now,
         }).returning({ id: operatorDecisionContinuations.id }).then((rows) => rows[0]!.id);
+        if (terminalAnchor) {
+          await tx.insert(activityLog).values({
+            companyId: updated.companyId,
+            actorType: "system",
+            actorId: "operator-decision-continuation-worker",
+            action: "operator_decision.continuation_blocked",
+            entityType: "operator_decision",
+            entityId: id,
+            details: {
+              schemaVersion: 1,
+              operatorDecisionId: id,
+              continuationId,
+              generation: 1,
+              attempt: 0,
+              targetAgentId: null,
+              wakeupRequestId: null,
+              effectiveStatus: "blocked",
+              errorCode: "issue_terminal",
+              blockedAtResolve: true,
+            },
+          });
+        }
       }
       await tx.insert(activityLog).values({
         companyId: updated.companyId,
@@ -266,23 +313,59 @@ export function operatorDecisionResolutionWriteService(
           missionId: before.sourceContext.missionId!, sourceRunId: before.sourceContext.workflowRunId! }, resolveInsideTransaction)
         : await db.transaction((tx) => resolveInsideTransaction(tx));
     const decision = await read.getRequired(id);
-    // [delivery bridge] applied(첫 적용)에만 코멘트를 남긴다 — replay 는 이미 코멘트가 존재한다.
-    //   이슈가 삭제된 경우 decision.issueId 는 FK(set null) 로 비어 자연 스킵된다.
+    // [B5] 코멘트 안내·승인 파생 가드 모두 이슈 종결 여부로 갈린다 — 커밋 후 한 번만 읽어 공유한다.
+    //   이슈가 삭제된 경우 decision.issueId 는 FK(set null) 로 비어 자연 스킵되고, 읽기 실패는
+    //   null(종결 미확인)로 둬 승인 후속을 억제하지 않는다.
+    let anchorIssueStatus: string | null = null;
     if (applied && decision.issueId) {
+      anchorIssueStatus = await db.select({ status: issues.status }).from(issues)
+        .where(and(eq(issues.id, decision.issueId), eq(issues.companyId, decision.companyId)))
+        .then((rows) => rows[0]?.status ?? null)
+        .catch(() => null);
+      // [delivery bridge] applied(첫 적용)에만 코멘트를 남긴다 — replay 는 이미 코멘트가 존재한다.
       await insertOperatorDecisionResolvedComment(db, {
         companyId: decision.companyId,
         issueId: decision.issueId,
         operatorDecisionId: id, language: normalizeSystemLanguage(before.defaultLanguage),
         selectedOptions: resolveSelectedOptions(decision.definition, result.selectedOptionIds),
+        anchorIssueStatus,
       });
     }
+    const anchorTerminal = anchorIssueStatus !== null && ["done", "cancelled"].includes(anchorIssueStatus);
     // 직접 복구 명령은 같은 resolve에서 이미 정확한 대상 실행을 만들거나 재개했다.
     // 일반 승인 후처리까지 실행하면 별도 revision run이 중복 시작될 수 있다.
+    // [B5 dead-anchor guard] 종결 앵커에 묶인 카드의 승인 파생(revision run)은 실행하지 않는다 —
+    //   경합 창에서 사람이 닫힌 문맥의 카드에 답한 경우다. resolve·결정 기록은 유지하고
+    //   (continuation 은 트랜잭션 안에서 이미 issue_terminal 로 blocked) 스킵 사유만 activity 에 남긴다.
     if (applied && !directCommandSelected && result.outcome === "approve" && decision.sourceContext.missionId) {
       const missionId = decision.sourceContext.missionId;
-      void startApprovedRevisionRun(db, { companyId: decision.companyId, missionId })
-        .catch((err) => logger.warn({ err, operatorDecisionId: id, missionId },
-          "approved revision start after decision resolve failed"));
+      if (anchorTerminal) {
+        try {
+          await db.insert(activityLog).values({
+            companyId: decision.companyId,
+            actorType: "system",
+            actorId: "operator-decision-resolution",
+            action: "operator_decision.approved_revision_skipped",
+            entityType: "operator_decision",
+            entityId: id,
+            details: {
+              schemaVersion: 1,
+              operatorDecisionId: id,
+              reason: "anchor-issue-terminal",
+              issueId: decision.issueId,
+              issueStatus: anchorIssueStatus,
+              missionId,
+            },
+          });
+        } catch (error) {
+          logger.warn({ err: error, operatorDecisionId: id, missionId },
+            "failed to record approved-revision skip on terminal anchor");
+        }
+      } else {
+        void startApprovedRevisionRun(db, { companyId: decision.companyId, missionId })
+          .catch((err) => logger.warn({ err, operatorDecisionId: id, missionId },
+            "approved revision start after decision resolve failed"));
+      }
     }
     return { decision, applied, continuation: decision.continuation };
   }

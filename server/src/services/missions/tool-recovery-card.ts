@@ -8,7 +8,7 @@ import { buildToolStepRecoveryDescription } from "./tool-step-recovery-descripti
 import { conflict } from "../../errors.js";
 import { toolRecoveryOwnsStepFailure } from "./tool-step-recovery-authority.js";
 import { lockOwnerHumanRequestAuthority, readOwnerToolIdentity } from "./owner-human-request-authority.js";
-import { loadLatestMissionOwnerDecision } from "./mission-owner-recovery-ledger.js";
+import { loadLatestMissionOwnerDecision, type MissionOwnerDecisionRecord } from "./mission-owner-recovery-ledger.js";
 import { ownerDecisionRequestsHuman } from "./owner-tool-recovery-eligibility.js";
 import { ownerHumanCurrentKey, ownerHumanCurrentSchema, ownerHumanLifetimeSchema,
   sameOwnerHumanValue } from "./owner-human-request-contract.js";
@@ -16,6 +16,26 @@ import { readOwnerHumanCurrent } from "./owner-human-request-state.js";
 import { renewOwnerHumanRequestWithCard } from "./owner-human-request-renew.js";
 import { logger } from "../../middleware/logger.js";
 import { loadToolRecoveryBriefFacts } from "./tool-recovery-brief-facts.js";
+
+function nonhumanDecisionMatchesFailure(
+  decision: MissionOwnerDecisionRecord,
+  run: typeof workflowRuns.$inferSelect,
+  stepRun: typeof workflowStepRuns.$inferSelect,
+): boolean {
+  const latestFailureAt = stepRun.completedAt ?? stepRun.lastDispatchErrorAt ?? stepRun.startedAt ?? null;
+  if (latestFailureAt && decision.createdAt && latestFailureAt.getTime() > decision.createdAt.getTime()) {
+    return false;
+  }
+  const target = decision.decision.recoveryTarget;
+  if (target?.kind === "tool_step") {
+    return target.workflowRunId === run.id
+      && target.stepRunId === stepRun.id
+      && target.expectedAuthorityVersion === run.dispatchAuthorityVersion
+      && target.expectedExecutionGeneration === stepRun.executionGeneration
+      && target.failedDispatchRequestId === stepRun.lastDispatchRequestId;
+  }
+  return true;
+}
 
 /** Identity link only, not permission to execute. Creation and link commit together. */
 export async function ensureToolRecoveryCard(db: Db, deps: MissionServiceDeps, input: {
@@ -113,7 +133,7 @@ export async function ensureToolRecoveryCard(db: Db, deps: MissionServiceDeps, i
       return { issue: open[0]!, created: false, classification, toolNames };
     }
     if (anchors.length) {
-      const decided: Array<{ issue: IssueRow; human: boolean; eventId: string }> = [];
+      const decided: Array<{ issue: IssueRow; human: boolean; eventId: string; decision: MissionOwnerDecisionRecord }> = [];
       const relevant = current
         ? anchors.filter((anchor) => anchor.id === current!.pointer.anchorIssueId)
         : anchors;
@@ -123,9 +143,13 @@ export async function ensureToolRecoveryCard(db: Db, deps: MissionServiceDeps, i
         if (!decision) continue;
         if (decision.authorAgentId !== mission.ownerAgentId || decision.missionId !== mission.id
           || decision.sourceIssueId !== source.id) return fail();
-        decided.push({ issue: anchor, human: ownerDecisionRequestsHuman(decision.decision.decision), eventId: decision.eventId });
+        decided.push({ issue: anchor, human: ownerDecisionRequestsHuman(decision.decision.decision), eventId: decision.eventId, decision });
       }
-      const nonhuman = decided.filter((entry) => !entry.human);
+      const nonhuman = decided.filter((entry) => !entry.human && (
+        stepRun.status === "failed"
+          ? nonhumanDecisionMatchesFailure(entry.decision, run, stepRun)
+          : nonhumanDecisionMatchesFailure(entry.decision, input.run, input.stepRun)
+      ));
       const human = decided.filter((entry) => entry.human);
       let closedLegacyHuman = false;
       if (!current && human.length === 1) {

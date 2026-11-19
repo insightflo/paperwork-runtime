@@ -15,6 +15,11 @@ import {
  * [불변식]
  *   - 도구 이름 allowlist/prose/env/client 로 effect 를 추론하지 않는다. manifest 도구 효과
  *     추론이 아니라 "검토된 그래프 + 정확한 live registry binding" 이 권위다.
+ *   - 매칭 키: exact (companyId, definitionHash) 가 우선이다. definitionHash 는 해시
+ *     payload 에 workflowRunId·provenance 를 포함해 run 마다 유일하므로(2026-11-15 실증 —
+ *     동일 steps 라도 run 이 다르면 해시가 다르다), stepsHash 를 선언한 엔트리는
+ *     resumeStepsHash({executionMode, steps}) 로 동일 그래프 형태의 모든 run 에 적용된다.
+ *     두 경로 모두 유일 매치(0 또는 2+ 포함)가 아니면 policy 부재로 fail-closed 한다.
  *   - binding 해석: id/updatedAt(ISO)/configHash/enabled=true 전부 현재 행과 정확 일치해야
  *     한다. 하나라도 어기면 그 step effect 는 unknown 으로 실패한다(same-name 다른-config 행도
  *     거부된다 — configHash 대조).
@@ -32,24 +37,32 @@ export interface ResumedPolicyView {
   policyMissing: boolean;
 }
 
-/** 현재 registry 전체 행(company scope, id 오름차순)과 매치 policy 를 조회한다. */
+/** 현재 registry 전체 행(company scope, id 오름차순)과 매치 policy 를 조회한다.
+ *  definition 은 재개 대상 run 의 frozen 실행정의다(definitionHash/executionMode/steps). */
 export async function loadResumedPolicy(
   tx: Pick<Db, "select">,
   companyId: string,
-  definitionHash: string,
+  definition: { definitionHash: string; executionMode: string; steps: unknown[] },
 ): Promise<ResumedPolicyView> {
   const registryRows = await tx.select().from(toolDefinitions)
     .where(eq(toolDefinitions.companyId, companyId))
     .orderBy(toolDefinitions.id);
-  const matched = REVIEWED_RESUME_POLICIES.filter((policy) =>
-    policy.schemaVersion === 1
-    && policy.companyId === companyId
-    && policy.definitionHash === definitionHash);
-  if (matched.length !== 1) {
+  const scoped = REVIEWED_RESUME_POLICIES.filter((policy) =>
+    policy.schemaVersion === 1 && policy.companyId === companyId);
+  const byRun = scoped.filter((policy) => policy.definitionHash === definition.definitionHash);
+  const byShape = byRun.length === 1 ? byRun : scoped.filter((policy) =>
+    policy.stepsHash !== undefined && policy.stepsHash === resumeStepsHash(definition));
+  if (byShape.length !== 1) {
     // 0 개 = 미검토, 2 개 이상 = 모순된 매니페스트 — 둘 다 policy 부재로 fail-closed.
     return { policy: null, registryRows, policyMissing: true };
   }
-  return { policy: matched[0]!, registryRows, policyMissing: false };
+  return { policy: byShape[0]!, registryRows, policyMissing: false };
+}
+
+/** 그래프 형태 안정 해시 — workflowRunId/provenance 제외. capture 저장 steps(jsonb)와
+ *  동일 값으로 계산하면 동일 정의 버전의 모든 run 이 같은 해시를 갖는다. */
+export function resumeStepsHash(definition: { executionMode: string; steps: unknown[] }): string {
+  return hashStructuredValue({ executionMode: definition.executionMode, steps: definition.steps });
 }
 
 function registryBindingHash(row: typeof toolDefinitions.$inferSelect): string {
@@ -61,6 +74,10 @@ function registryBindingHash(row: typeof toolDefinitions.$inferSelect): string {
     inputSchema: row.inputSchema,
   });
 }
+
+// [주의] scripts/resume-policy-bindings.ts 가 이 파일의 resumeStepsHash 와 hash 규칙을
+//   import 해 재사용한다 — registryBindingHash/stepsHash 규칙을 바꾸면 스크립트 검증도
+//   함께 갱신해야 한다(바인딩 채취·검증은 스크립트가 단일 소스다).
 
 /** binding 이 현재 registry 행과 정확히 resolve 되는가(id/updatedAt/configHash/enabled). */
 export function bindingResolves(

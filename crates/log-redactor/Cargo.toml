@@ -1,0 +1,14 @@
+[package]
+name = "paperclip-log-redactor"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "paperclip_log_redactor"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+aho-corasick = "1"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }

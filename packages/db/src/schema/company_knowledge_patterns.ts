@@ -2,6 +2,7 @@ import {
   pgTable,
   uuid,
   text,
+  integer,
   timestamp,
   jsonb,
   index,
@@ -17,11 +18,19 @@ import { companies } from "./companies.js";
 //   audience 게이트와 동일 원칙).
 // [불변식] append-only — 앱 계층이 insert/select만 노출하고 수정은 supersede 체인으로만
 //   대체한다(새 카드 발행 + 이전 카드의 superseded_by_id 갱신). 실패한 지식도 남아 다음
-//   진단이 같은 실수를 반복하지 않게 한다. 유일한 예외적 상태 전이: draft→active 승인
-//   (사람이 자동 초안 카드를 검토·활성화 — 내용 불변, status 필드만 전이).
-//   status='draft'(자동 초안, 승인 전) | 'active'(기존 전체 + 승인된 초안).
+//   진단이 같은 실수를 반복하지 않게 한다. 예외적 상태 전이 2종: draft→active 승인
+//   (사람이 자동 초안 카드를 검토·활성화 — 내용 불변, status 필드만 전이)와
+//   active/draft→retired 은퇴(쓸모없어진 카드를 삭제 대신 말단으로 보냄 — 내용 불변,
+//   status+supersede_reason만 전이, 라이프사이클은 services/knowledge-pattern-lifecycle.ts).
+//   status='draft'(자동 초안, 승인 전) | 'active'(기존 전체 + 승인된 초안) |
+//   'retired'(은퇴 — 주입·검색 기본 제외, superseded와 달리 체인 말단).
 // [외부 연결] FK: companies(cascade) / agents(set null, 컴파일한 오너 에이전트).
 //   service: server/src/services/knowledge-patterns.ts. routes: routes/knowledge-patterns.ts.
+// [구조화 결함 결합 메타데이터 — 2026-11-14 mistology 흡수 T1a] 카드에 기계 판독용
+//   엔티티 메타데이터(files/symbols/coupled/error_signatures) 4종을 추가한다.
+//   어떤 소스 파일·심볼·결합 모듈·오류 서명에 관한 패턴인지를 구조화해 남기며,
+//   소비는 T1c의 검색 랭킹이 한다(실행 컨텍스트 주입 아님). 공유 계약은
+//   packages/shared/src/validators/knowledge-pattern.ts.
 // [수정시 주의] 스키마 변경 시 수기 마이그레이션 규약 준수(journal drift — 0096 참조).
 export const companyKnowledgePatterns = pgTable(
   "company_knowledge_patterns",
@@ -37,17 +46,33 @@ export const companyKnowledgePatterns = pgTable(
     rootCause: text("root_cause"),
     whatWorked: text("what_worked"),
     scopeTags: text("scope_tags").array().notNull().default([]),
+    // [구조화 결함 결합 메타데이터 T1a] 카드가 다루는 소스 엔티티(모두 정규화된 값).
+    //   files: 소스 파일 상대경로 / symbols: 함수·클래스·상수 심볼명 /
+    //   coupled: 함께 변경되어야 하는 모듈·파일 결합 엔티티 /
+    //   errorSignatures: 정규화 오류 서명(스택트레이스 첫 프레임, HTTP 상태+엔드포인트 등).
+    files: text("files").array().notNull().default([]),
+    symbols: text("symbols").array().notNull().default([]),
+    coupled: text("coupled").array().notNull().default([]),
+    errorSignatures: text("error_signatures").array().notNull().default([]),
     source: text("source").notNull(), // mission_owner_compile | agent_candidate | operator | auto_rework_draft
     // [P1 자동 초안] 기계적 QA 교정(remediation)이 동일 결함 서명 2회째 감지됐을 때의 서명 해시.
     //   사람이 만든 카드는 null. (company_id, defect_signature) 부분 유일 인덱스로 초안 중복 방지.
     defectSignature: text("defect_signature"),
-    // draft = 자동 생성 초안(주입/검색 기본 제외, 사람 승인 필요) / active = 승인됨(기본값).
+    // draft = 자동 생성 초안(주입/검색 기본 제외, 사람 승인 필요) / active = 승인됨(기본값) /
+    //   retired = 은퇴(주입·검색 기본 제외 — superseded와 달리 체인 말단, 내용 불변·status만 전이).
     status: text("status").notNull().default("active"),
     // [P2 주입 게이트 — fail-closed] 'agent'로 큐레이션된 카드만 실행 프롬프트 주입 대상.
     //   기본 'ops' = 주입 없음(WikiSkill ablation 역효과 방지 — agent_wiki_entries.audience와 동일 원칙).
     audience: text("audience").notNull().default("ops"),
     createdByAgentId: uuid("created_by_agent_id").references(() => agents.id, { onDelete: "set null" }),
     supersededById: uuid("superseded_by_id"),
+    // [T2a supersede 계보·은퇴 — mistology 흡수] 폐기된 오답 교훈과 체인 계보 보존.
+    //   pitfalls: 폐기된 오답에서 얻은 "하지 말 것" 격리 — 주입 브리핑에 '피할 오답'으로만
+    //   표시되며 랭킹 점수에는 기여하지 않는다. versionNumber: supersede 체인 깊이(대체마다 +1).
+    //   supersedeReason: 왜 대체/은퇴됐는지 한 줄(retire·supersedeWithLineage가 기록).
+    pitfalls: text("pitfalls").array().notNull().default([]),
+    versionNumber: integer("version_number").notNull().default(1),
+    supersedeReason: text("supersede_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({

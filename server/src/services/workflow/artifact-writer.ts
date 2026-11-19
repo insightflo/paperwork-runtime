@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
-import type { ArtifactRoot } from "./artifact-files.js";
+import { resolveArtifactIoBin, type ArtifactRoot } from "./artifact-files.js";
 
 type Directory = { name: string; exclusive: boolean; readonly: boolean; target: boolean;
   directories: Directory[]; files: { name: string; base64: string }[] };
@@ -133,8 +133,13 @@ export async function writeArtifactFile(root: ArtifactRoot, name: string, bytes:
 }
 
 async function runWriter(root: ArtifactRoot, tree: Directory) {
+  const rustBin = resolveArtifactIoBin();
   return new Promise<{ dev: number; ino: number }>((resolve, reject) => {
-    const child = spawn(process.execPath, ["-e", writer], { cwd: root.path, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(
+      rustBin ?? process.execPath,
+      rustBin ? ["write"] : ["-e", writer],
+      { cwd: root.path, stdio: ["pipe", "pipe", "pipe"] },
+    );
     let stdout = "", stderr = "";
     child.stdout.on("data", chunk => { stdout += chunk; });
     child.stderr.on("data", chunk => { stderr = (stderr + chunk).slice(-65536); });
@@ -143,6 +148,9 @@ async function runWriter(root: ArtifactRoot, tree: Directory) {
       if (code !== 0) return reject(new Error(stderr || "artifact_directory_write_failed"));
       try { resolve(JSON.parse(stdout)); } catch (error) { reject(error); }
     });
-    child.stdin.end(JSON.stringify({ node: tree, dev: root.dev, ino: root.ino, program: writer }));
+    const payload = rustBin
+      ? { node: tree, dev: root.dev, ino: root.ino }
+      : { node: tree, dev: root.dev, ino: root.ino, program: writer };
+    child.stdin.end(JSON.stringify(payload));
   });
 }
