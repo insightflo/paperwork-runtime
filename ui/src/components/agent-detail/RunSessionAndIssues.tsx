@@ -5,12 +5,30 @@ import { ChevronRight } from "lucide-react";
 import type { HeartbeatRun } from "@paperclipai/shared";
 import { agentsApi, type ClaudeLoginResult } from "../../api/agents";
 import { activityApi } from "../../api/activity";
+import { heartbeatsApi } from "../../api/heartbeats";
 import { queryKeys } from "../../lib/queryKeys";
 import { cn } from "../../lib/utils";
 import { Button } from "@/components/ui/button";
 import { CopyText } from "../CopyText";
 import { StatusBadge } from "../StatusBadge";
 import { ErrorReferenceChip } from "../ErrorReferenceChip";
+import { QueuePanel } from "../QueuePanel";
+import { AgentStepsDisclosure, SubagentDock, type AgentStep, type SubagentEntry } from "../SubagentDockAndSteps";
+
+function extractRunSteps(run: HeartbeatRun): AgentStep[] {
+  const raw = (run.contextSnapshot as { steps?: unknown[] } | null)?.steps
+    ?? (run.resultJson as { steps?: unknown[] } | null)?.steps
+    ?? [];
+  return raw
+    .filter((s): s is Record<string, unknown> => typeof s === "object" && s !== null)
+    .map((s, i) => ({
+      id: String(s.id ?? `step-${i}`),
+      kind: (["model", "tool", "waiting", "handoff"].includes(String(s.kind)) ? s.kind : "tool") as AgentStep["kind"],
+      label: String(s.label ?? s.name ?? s.kind ?? `step ${i + 1}`),
+      durationMs: typeof s.durationMs === "number" ? s.durationMs : null,
+      failed: s.failed === true || s.status === "failed",
+    }));
+}
 
 export function RunSessionAndIssues({ run, adapterType }: { run: HeartbeatRun; adapterType: string }) {
   const queryClient = useQueryClient();
@@ -29,6 +47,28 @@ export function RunSessionAndIssues({ run, adapterType }: { run: HeartbeatRun; a
     () => Array.from(new Set((touchedIssues ?? []).map((issue) => issue.issueId))),
     [touchedIssues],
   );
+
+  const { data: liveRuns } = useQuery({
+    queryKey: queryKeys.liveRuns(run.companyId),
+    queryFn: () => heartbeatsApi.liveRunsForCompany(run.companyId),
+    enabled: run.status === "running",
+    refetchInterval: run.status === "running" ? 5_000 : false,
+  });
+  const subagents = useMemo<SubagentEntry[]>(
+    () => (liveRuns ?? [])
+      .filter((r) => r.id !== run.id)
+      .map((r) => ({
+        runId: r.id,
+        agentId: r.agentId,
+        agentName: r.agentName,
+        status: r.status === "running" ? "running" : "waiting",
+        startedAt: r.startedAt,
+      })),
+    [liveRuns, run.id],
+  );
+  const runSteps = useMemo(() => extractRunSteps(run), [run]);
+  const pendingModel = (run.contextSnapshot as { pendingModel?: unknown } | null)?.pendingModel;
+  const pendingModelLabel = typeof pendingModel === "string" && pendingModel ? pendingModel : null;
 
   const clearSessionsForTouchedIssues = useMutation({
     mutationFn: async () => {
@@ -137,6 +177,16 @@ export function RunSessionAndIssues({ run, adapterType }: { run: HeartbeatRun; a
                 </div>
               )}
             </div>
+          )}
+        </div>
+      )}
+
+      {(subagents.length > 0 || runSteps.length > 0 || run.status === "running") && (
+        <div className="border-t border-border px-4 py-3 space-y-2">
+          {subagents.length > 0 && <SubagentDock entries={subagents} />}
+          {runSteps.length > 0 && <AgentStepsDisclosure steps={runSteps} />}
+          {run.status === "running" && (
+            <QueuePanel companyId={run.companyId} agentId={run.agentId} pendingModel={pendingModelLabel} />
           )}
         </div>
       )}
