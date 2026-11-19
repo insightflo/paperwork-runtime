@@ -24,10 +24,7 @@ function fixture(overrides: Partial<Options> = {}) {
   const summary = { bytes: 123, sha256: "actual-file-hash", compressed: false };
   const writes: Record<string, unknown>[] = [];
   const where = vi.fn(async (): Promise<void> => undefined);
-  const set = vi.fn((values: Record<string, unknown>) => {
-    writes.push(values);
-    return { where };
-  });
+  const set = vi.fn((values: Record<string, unknown>) => { writes.push(values); return { where }; });
   const db = { update: vi.fn(() => ({ set })) } as unknown as Db;
   const store: RunLogStore = {
     begin: vi.fn(async () => handle),
@@ -37,13 +34,8 @@ function fixture(overrides: Partial<Options> = {}) {
   };
   let seq = 2; // The caller's run-start event has already consumed sequence 1.
   const events: Array<{ seq: number; value: unknown }> = [];
-  const appendEvent = vi.fn(async (value: Parameters<Options["appendEvent"]>[0]) => {
-    events.push({ seq: seq++, value });
-  });
-  const appendBroadScanEvent = vi.fn(async (value: Parameters<Options["appendBroadScanEvent"]>[0]) => {
-    events.push({ seq, value });
-    seq++;
-  });
+  const appendEvent = vi.fn(async (value: Parameters<Options["appendEvent"]>[0]) => { events.push({ seq: seq++, value }); });
+  const appendBroadScanEvent = vi.fn(async (value: Parameters<Options["appendBroadScanEvent"]>[0]) => { events.push({ seq: seq++, value }); });
   const log = createHeartbeatRunLog({
     db, getRun: () => run, adapterType: "opencode_local", context: {},
     config: { runawayLogLimitBytes: 0 }, store,
@@ -53,30 +45,14 @@ function fixture(overrides: Partial<Options> = {}) {
   return { log, store, handle, summary, writes, where, events, appendEvent, appendBroadScanEvent };
 }
 
-beforeEach(() => {
-  vi.useFakeTimers();
-  vi.setSystemTime(20_000);
-  vi.mocked(evaluateRuntimeBroadScanHook).mockReset().mockResolvedValue({ intercepted: false });
-  progress.mockReset().mockResolvedValue(undefined);
-});
-afterEach(() => {
-  runningProcesses.clear();
-  vi.useRealTimers();
-  vi.clearAllMocks();
-});
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(20_000); vi.mocked(evaluateRuntimeBroadScanHook).mockReset().mockResolvedValue({ intercepted: false }); progress.mockReset().mockResolvedValue(undefined); });
+afterEach(() => { runningProcesses.clear(); vi.useRealTimers(); vi.clearAllMocks(); });
 
 describe("C07 run-log extraction preserves the existing output contract", () => {
   it("begins storage before recording its reference, then loads redaction settings", async () => {
     const order: string[] = [];
-    const h = fixture({ getRedactionOptions: async () => {
-      order.push("settings");
-      return { enabled: false };
-    } });
-    vi.mocked(h.store.begin).mockImplementation(async input => {
-      expect(input).toEqual({ companyId: "company", agentId: "agent", runId: "run" });
-      order.push("begin");
-      return h.handle;
-    });
+    const h = fixture({ getRedactionOptions: async () => { order.push("settings"); return { enabled: false }; } });
+    vi.mocked(h.store.begin).mockImplementation(async input => { expect(input).toEqual({ companyId: "company", agentId: "agent", runId: "run" }); order.push("begin"); return h.handle; });
     h.where.mockImplementation(async () => { order.push("reference"); });
     await h.log.begin();
     expect(order).toEqual(["begin", "reference", "settings"]);
@@ -84,9 +60,7 @@ describe("C07 run-log extraction preserves the existing output contract", () => 
   });
 
   it("redacts before storage, caps each excerpt/live tail, and touches activity only at receipt intervals", async () => {
-    const h = fixture({ getRedactionOptions: async () => ({
-      userNames: ["fixtureuser"], homeDirs: ["/home/fixtureuser"],
-    }) });
+    const h = fixture({ getRedactionOptions: async () => ({ userNames: ["fixtureuser"], homeDirs: ["/home/fixtureuser"] }) });
     await h.log.begin();
     const first = "fixtureuser\n";
     const tail = "x".repeat(MAX_EXCERPT_BYTES + 5);
@@ -199,17 +173,13 @@ describe("C07 run-log extraction preserves the existing output contract", () => 
     await h.log.onLog(stream, "blocked");
     const writes = h.writes.length;
     const liveCount = vi.mocked(publishLiveEvent).mock.calls.length;
-    vi.mocked(evaluateRuntimeBroadScanHook).mockResolvedValueOnce({
-      intercepted: true, syntheticOutput: "audit".repeat(20),
-    });
+    vi.mocked(evaluateRuntimeBroadScanHook).mockResolvedValueOnce({ intercepted: true, syntheticOutput: "audit".repeat(20) });
     vi.mocked(h.store.append).mockRejectedValueOnce(new Error("audit storage unavailable"));
     await h.log.flushRuntimeGuardLines();
     expect(vi.mocked(h.store.append).mock.calls[1][1]).toEqual({
       stream: "stdout", chunk: "audit".repeat(20), ts: new Date().toISOString(),
     });
-    expect(h.events).toEqual([{ seq: 2, value: expect.objectContaining({
-      phase: "runtime_hook", line: "blocked",
-    }) }]);
+    expect(h.events).toEqual([{ seq: 2, value: expect.objectContaining({ phase: "runtime_hook", line: "blocked" }) }]);
     expect(h.log.stdoutExcerpt).toBe(stream === "stdout" ? "blocked" : "");
     expect(h.log.stderrExcerpt).toBe(stream === "stderr" ? "blocked" : "");
     expect(h.log.runawayTriggered).toBe(false);
@@ -260,6 +230,38 @@ describe("C07 run-log extraction preserves the existing output contract", () => 
     expect(vi.mocked(h.store.finalize).mock.calls).toEqual([[h.handle], [h.handle], [h.handle]]);
   });
 
+  it("drops appends after a successful finalize while excerpts and live events continue", async () => {
+    const h = fixture();
+    await h.log.begin();
+    await h.log.finalize();
+    await h.log.onLog("stdout", "after\n");
+    expect(h.store.append).not.toHaveBeenCalled();
+    expect(h.log.stdoutExcerpt).toBe("after\n");
+    expect(publishLiveEvent).toHaveBeenCalledTimes(1);
+  });
+
+  it("settles in-flight appends before store.finalize and keeps failed finalize retryable", async () => {
+    const h = fixture();
+    await h.log.begin();
+    const order: string[] = [];
+    vi.mocked(h.store.append).mockImplementation(async () => {
+      order.push("append:start");
+      await new Promise(resolve => setTimeout(resolve, 10));
+      order.push("append:end");
+    });
+    const error = new Error("finalize unavailable");
+    vi.mocked(h.store.finalize).mockRejectedValueOnce(error).mockImplementation(async () => { order.push("store:finalize"); return h.summary; });
+    const onLogDone = h.log.onLog("stdout", "slow\n");
+    await vi.advanceTimersByTimeAsync(0); // Let the append enter flight before finalizing.
+    const failingFinalize = h.log.finalize().catch(err => err);
+    await vi.advanceTimersByTimeAsync(10);
+    await onLogDone;
+    expect(await failingFinalize).toBe(error);
+    expect(order).toEqual(["append:start", "append:end"]);
+    expect(await h.log.finalizeAfterError()).toBe(h.summary);
+    expect(order).toEqual(["append:start", "append:end", "store:finalize"]);
+  });
+
   it("finalizes an opened handle even when persisting its reference fails", async () => {
     const h = fixture();
     h.where.mockRejectedValueOnce(new Error("reference unavailable"));
@@ -273,9 +275,7 @@ describe("C07 run-log extraction preserves the existing output contract", () => 
   });
 
   it("throttles Hermes stdout progress independently and tolerates progress write failure", async () => {
-    const h = fixture({ adapterType: "hermes_local", context: {
-      paperclipHermesChat: { assistantMessageId: "assistant" },
-    } });
+    const h = fixture({ adapterType: "hermes_local", context: { paperclipHermesChat: { assistantMessageId: "assistant" } } });
     await h.log.begin();
     progress.mockRejectedValueOnce(new Error("chat unavailable"));
     await h.log.onLog("stdout", "    알겠습니다. 구조를 확인하고 영향도를 파악하겠습니다.\n");
