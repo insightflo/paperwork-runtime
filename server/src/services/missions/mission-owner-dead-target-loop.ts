@@ -12,25 +12,17 @@
 // [수정시 주의] 마커/claim 키는 (company, owner-action, 결정종류, 대상) 조합으로만 구성 — 특정
 //   이슈 하드코딩 금지. 살아있는 대상 재시도·owner 수동 결정 자유·감시 주기는 이 모듈이 바꾸지 않는다.
 import { createHash } from "node:crypto";
-import { and, desc, eq, gt, inArray, isNull, like, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, like, or, sql } from "drizzle-orm";
 import {
   issues,
   operatorDecisions,
   workflowRuns,
-  workflowStepRuns,
   workflowTransitionEvents,
   type Db,
 } from "@paperclipai/db";
 import { createMissionOwnerHumanInputDecisionCard } from "./mission-owner-human-input-card.js";
-import {
-  DEAD_TARGET_RECOVERY_ACTION_OPTIONS,
-  hasEnoughActionableOptions,
-} from "./terminal-recovery-card-options.js";
-import {
-  WORKFLOW_RESTART_FROM_START_OPTION_DESCRIPTION,
-  WORKFLOW_RESTART_FROM_START_OPTION_ID,
-  WORKFLOW_RESTART_FROM_START_OPTION_LABEL,
-} from "./workflow-restart-option.js";
+import { resolveDeadTargetCardContext } from "./dead-target-card-context.js";
+import { hasEnoughActionableOptions } from "./terminal-recovery-card-options.js";
 
 export const OWNER_DECISION_NOT_APPLIED_EVENT = "mission_owner_decision_not_applied";
 export const OWNER_DEAD_TARGET_ESCALATION_EVENT = "mission_owner_dead_target_escalation";
@@ -118,68 +110,6 @@ export async function countOwnerDecisionNotApplied(db: Db, input: {
 
 // 표시용 다음 행동. 실행 선택지는 아래의 구조화 binding 조회 결과에서만 만든다.
 const DEAD_TARGET_NEXT_ACTION_EN = "Select a recovery path for the unusable retry target (replan the mission, retry a different live source, record an explicit recovery target, or cancel this recovery)";
-
-async function resolveDeadTargetCardBinding(db: Db, input: {
-  companyId: string; missionId: string; sourceIssueId: string | null;
-}) {
-  const noRunBinding = {
-    workflowRunId: null as string | null,
-    structuredOptions: DEAD_TARGET_RECOVERY_ACTION_OPTIONS.map((option) => ({ ...option })),
-    recommendedOptionId: null as string | null,
-    recommendationReason: null as string | null,
-    prerequisiteNotice: "종결된 원천은 재실행할 수 없어 아래 복구 방법 중 하나를 선택해야 합니다.",
-  };
-  if (!input.sourceIssueId) return noRunBinding;
-  const [source] = await db.select({ id: workflowRuns.id, workflowId: workflowRuns.workflowId })
-    .from(workflowStepRuns)
-    .innerJoin(workflowRuns, eq(workflowRuns.id, workflowStepRuns.workflowRunId))
-    .where(and(
-      eq(workflowStepRuns.issueId, input.sourceIssueId),
-      eq(workflowRuns.companyId, input.companyId),
-      eq(workflowRuns.missionId, input.missionId),
-      eq(workflowRuns.status, "failed"),
-      isNull(workflowRuns.parentRunId),
-    ))
-    .orderBy(desc(workflowRuns.createdAt))
-    .limit(1);
-  if (!source) return noRunBinding;
-  const [activeReplacement] = await db.select({ id: workflowRuns.id }).from(workflowRuns)
-    .where(and(
-      eq(workflowRuns.companyId, input.companyId),
-      eq(workflowRuns.missionId, input.missionId),
-      eq(workflowRuns.workflowId, source.workflowId),
-      isNull(workflowRuns.parentRunId),
-      ne(workflowRuns.id, source.id),
-      or(
-        inArray(workflowRuns.status, ["pending", "running"]),
-        sql`${workflowRuns.metadata}->'operatorDecisionRestart'->>'sourceWorkflowRunId' = ${source.id}`,
-      ),
-    ))
-    .limit(1);
-  if (activeReplacement) {
-    return {
-      workflowRunId: null as string | null,
-      structuredOptions: [] as { id: string; label: string; description?: string }[],
-      recommendedOptionId: null as string | null,
-      recommendationReason: null as string | null,
-      prerequisiteNotice: null as string | null,
-    };
-  }
-  return {
-    workflowRunId: source.id,
-    structuredOptions: [
-      {
-        id: WORKFLOW_RESTART_FROM_START_OPTION_ID,
-        label: WORKFLOW_RESTART_FROM_START_OPTION_LABEL,
-        description: WORKFLOW_RESTART_FROM_START_OPTION_DESCRIPTION,
-      },
-      ...DEAD_TARGET_RECOVERY_ACTION_OPTIONS.map((option) => ({ ...option })),
-    ],
-    recommendedOptionId: WORKFLOW_RESTART_FROM_START_OPTION_ID,
-    recommendationReason: "종결된 원천을 다시 열지 않고 같은 미션의 새 최상위 실행을 시작합니다.",
-    prerequisiteNotice: null as string | null,
-  };
-}
 
 /** baseClaimKey 로 기존 에스컬레이션 이벤트(본키 + `:after:` 세대키 중 최신)와 그 requestKey 카드를
  *  찾는다(멱등 재확인 공용). 카드 상태·종결 시각까지 함께 반환해 resolved/cancelled 카드를
@@ -329,12 +259,17 @@ export async function ensureDeadTargetHumanEscalation(db: Db, input: {
   });
   // 실행 선택지가 2개 미만(대체 실행 진행 등)이면 새 에스컬레이션 이벤트·카드를 만들지 않는다.
   //   기존 카드 멱등 재확인은 pending 카드에만 유지 — resolved/cancelled 카드는 "존재"로 세지 않는다.
-  const binding = await resolveDeadTargetCardBinding(db, {
+  const cardContext = await resolveDeadTargetCardContext(db, {
     companyId: input.companyId,
     missionId: input.missionId,
+    loopKey: input.loopKey,
+    ownerActionIssueId: input.ownerActionIssueId,
+    anchorId: anchor.id,
     sourceIssueId: input.sourceIssueId,
+    reason: input.reason,
+    evidence: input.evidence,
   });
-  if (!hasEnoughActionableOptions(binding.structuredOptions)) {
+  if (!hasEnoughActionableOptions(cardContext.structuredOptions)) {
     const existing = await findDeadTargetClaimCard(db, input.companyId, baseClaimKey);
     if (existing?.cardId && existing.cardStatus === "pending") {
       return { ensured: true, reason: "card-exists" };
@@ -392,13 +327,17 @@ export async function ensureDeadTargetHumanEscalation(db: Db, input: {
       ownerActionIssueStatus: anchor.status,
       requestedByAgentId: input.ownerAgentId,
       actorType: "system",
-      reason: input.reason.slice(0, 2_000),
+      reason: cardContext.cardReason,
       nextAction: DEAD_TARGET_NEXT_ACTION_EN,
-      evidence: input.evidence.slice(0, 2_000),
+      evidence: cardContext.cardEvidence,
       issueTitle: anchor.title,
       issueIdentifier: anchor.identifier,
-      sourceIssueId: input.sourceIssueId,
-      ...binding,
+      sourceIssueId: cardContext.effectiveSourceIssueId,
+      workflowRunId: cardContext.workflowRunId,
+      structuredOptions: cardContext.structuredOptions,
+      recommendedOptionId: cardContext.recommendedOptionId,
+      recommendationReason: cardContext.recommendationReason,
+      prerequisiteNotice: cardContext.prerequisiteNotice,
     });
     return { ensured: true, reason: "card-created" };
   } catch (error) {

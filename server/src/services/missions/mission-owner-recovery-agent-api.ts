@@ -13,8 +13,14 @@ import { MISSION_OWNER_DECISION_OPTIONS } from "./mission-owner-recovery-events.
 import { publishHumanOperatorRequestEvent } from "./human-operator-alert-events.js";
 import { completeUnblockActionWithSourceHandback } from "./owner-action-completion.js";
 import { extractQaCapProducerIssueRef, isQaReworkCapOversightIssue } from "./qa-rework-cap-oversight.js";
-import { createMissionOwnerHumanInputDecisionCard, findPendingMissionHumanCard,
-  bumpPendingMissionHumanCard } from "./mission-owner-human-input-card.js";
+import {
+  bumpPendingMissionHumanCard,
+  createMissionOwnerHumanInputDecisionCard,
+  findPendingMissionHumanCard,
+  hasConcreteKoreanHumanReason,
+  isGenericFallbackMissionHumanCard,
+  withdrawPendingMissionHumanCard,
+} from "./mission-owner-human-input-card.js";
 import { admitHumanCardForSource } from "./human-card-admission.js";
 import { isExactOwnerHumanReplay } from "./owner-human-request-submit.js";
 import {
@@ -129,18 +135,25 @@ export async function submitMissionOwnerDecision(input: {
     if (needsHumanAlert && humanAuthority && effectiveSubmission.humanRequest) {
       const pendingCard = await findPendingMissionHumanCard(tx, issue.companyId, humanAuthority.scope.missionId);
       if (pendingCard && !(await isExactOwnerHumanReplay(humanAuthority, effectiveSubmission))) {
-        await bumpPendingMissionHumanCard(input.db, issue.companyId, humanAuthority.scope.missionId)
-          .catch(() => undefined); // 진단 메타데이터 — 거부 처리에는 영향 없음
-        throw unprocessable(
-          "이 미션에는 답변 대기 중인 사람 결정 카드가 있습니다. 새 카드 대신 기존 카드가 처리될 때까지 기다려 주세요.",
-          {
-            code: "mission_owner_human_input_card_pending",
-            pendingOperatorDecisionId: pendingCard.id,
-            pendingRequestKey: pendingCard.requestKey,
-            missionId: humanAuthority.scope.missionId,
-            decision: effectiveSubmission.decision,
-          },
-        );
+        if (hasConcreteKoreanHumanReason(effectiveSubmission.reason) && isGenericFallbackMissionHumanCard(pendingCard)) {
+          await withdrawPendingMissionHumanCard(tx, issue.companyId, humanAuthority.scope.missionId, {
+            actorId: input.actor.agentId ?? input.actor.actorId,
+            reason: "superseded_by_concrete_owner_diagnosis",
+          });
+        } else {
+          await bumpPendingMissionHumanCard(input.db, issue.companyId, humanAuthority.scope.missionId)
+            .catch(() => undefined); // 진단 메타데이터 — 거부 처리에는 영향 없음
+          throw unprocessable(
+            "이 미션에는 답변 대기 중인 사람 결정 카드가 있습니다. 새 카드 대신 기존 카드가 처리될 때까지 기다려 주세요.",
+            {
+              code: "mission_owner_human_input_card_pending",
+              pendingOperatorDecisionId: pendingCard.id,
+              pendingRequestKey: pendingCard.requestKey,
+              missionId: humanAuthority.scope.missionId,
+              decision: effectiveSubmission.decision,
+            },
+          );
+        }
       }
     }
     const human = needsHumanAlert
