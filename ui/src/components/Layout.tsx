@@ -5,7 +5,7 @@ import { CompanyRail } from "./CompanyRail";
 import { Sidebar } from "./Sidebar";
 import { InstanceSidebar } from "./InstanceSidebar";
 import { BreadcrumbBar } from "./BreadcrumbBar";
-import { PropertiesPanel } from "./PropertiesPanel";
+import { PropertiesPanel, useInspectorController } from "./PropertiesPanel";
 import { CommandPalette } from "./CommandPalette";
 import { ToastViewport } from "./ToastViewport";
 import { MobileBottomNav } from "./MobileBottomNav";
@@ -13,7 +13,6 @@ import { BoundaryDragHandle, useMobileEdgeSwipe } from "./BoundaryDragHandle";
 import { WorktreeBanner } from "./WorktreeBanner";
 import { DevRestartBanner } from "./DevRestartBanner";
 import { useDialog } from "../context/DialogContext";
-import { usePanel } from "../context/PanelContext";
 import { useCompany } from "../context/CompanyContext";
 import { useSidebar } from "../context/SidebarContext";
 import { useTheme } from "../context/ThemeContext";
@@ -42,7 +41,7 @@ import {
 export function Layout() {
   const { sidebarOpen, setSidebarOpen, toggleSidebar, isMobile } = useSidebar();
   const { openNewIssue, openOnboarding } = useDialog();
-  const { panelContent, panelVisible, togglePanelVisible } = usePanel();
+  const inspector = useInspectorController();
   const {
     companies,
     loading: companiesLoading,
@@ -63,7 +62,7 @@ export function Layout() {
   const [hermesPanelOpen, setHermesPanelOpenState] = useState(() => readRememberedHermesPanelOpen());
   const heavyPanelsReady = useAfterInitialPaint(900);
   const nextTheme = theme === "dark" ? "light" : "dark";
-  const rightPanelWidth = (panelVisible ? 360 : 0) + (hermesPanelOpen && !isMobile ? 384 : 0);
+  const rightPanelWidth = (!isMobile ? (inspector.isExpanded ? 360 : 44) : 0) + (hermesPanelOpen && !isMobile ? 384 : 0);
   const slide = useSidebarSlideController({ isMobile, sidebarOpen, setSidebarOpen, rightPanelWidth });
 
   const matchedCompany = useMemo(() => {
@@ -128,7 +127,7 @@ export function Layout() {
   useKeyboardShortcuts({
     onNewIssue: () => openNewIssue(),
     onToggleSidebar: isMobile ? toggleSidebar : slide.toggleNav,
-    onTogglePanel: togglePanelVisible,
+    onTogglePanel: inspector.toggleInspector,
   });
 
   useMobileEdgeSwipe(isMobile, sidebarOpen, setSidebarOpen);
@@ -275,7 +274,7 @@ export function Layout() {
                 <Outlet />
               )}
             </main>
-            <PropertiesPanel />
+            <PropertiesPanel controller={inspector} />
             {!isMobile && (
               <DesktopHermesAside open={hermesPanelOpen} heavyPanelsReady={heavyPanelsReady} onOpen={() => setHermesPanelOpen(true)} onClose={() => setHermesPanelOpen(false)} />
             )}

@@ -19,6 +19,7 @@ import { missionsApi } from "../api/missions";
 import { operatorDecisionsApi } from "../api/operator-decisions";
 import { queryKeys } from "../lib/queryKeys";
 import { formatCents } from "../lib/utils";
+import { INSPECTOR_TOGGLE_EVENT } from "./PropertiesPanel";
 import { normalizeQueueItems } from "./QueuePanel";
 
 export interface CommandKpis {
@@ -51,19 +52,17 @@ const TONE_VARS: Record<WaitEntry["tone"], { fg: string; bg: string }> = {
 export function DashboardCommandHeader(props: { companyId: string; kpis?: CommandKpis }) {
   const { companyId } = props;
 
-  const { data: summary } = useQuery({
+  const { data: summary, isError: summaryError } = useQuery({
     queryKey: queryKeys.dashboard(companyId),
     queryFn: () => dashboardApi.summary(companyId),
     enabled: !props.kpis && Boolean(companyId),
     refetchInterval: 30_000,
-    retry: false,
   });
-  const { data: missionsList } = useQuery({
+  const { data: missionsList, isError: missionsError } = useQuery({
     queryKey: queryKeys.missions.list(companyId),
     queryFn: () => missionsApi.list(companyId),
     enabled: !props.kpis && Boolean(companyId),
     refetchInterval: 30_000,
-    retry: false,
   });
   const { data: pending } = useQuery({
     queryKey: queryKeys.operatorDecisions.list(companyId, "pending"),
@@ -77,6 +76,10 @@ export function DashboardCommandHeader(props: { companyId: string; kpis?: Comman
     refetchInterval: 15_000,
     retry: false,
   });
+
+  const hasSummary = Boolean(props.kpis || summary);
+  const hasMissions = Boolean(props.kpis || missionsList);
+  const summaryPlaceholderSub = summaryError ? "조회 실패" : "불러오는 중";
 
   const kpis: CommandKpis = props.kpis ?? {
     runningAgents: summary?.agents.running ?? 0,
@@ -95,7 +98,7 @@ export function DashboardCommandHeader(props: { companyId: string; kpis?: Comman
   const pendingCards = pending?.data ?? [];
   const waitCount = computeWaitCount(pendingCards.length, queueItems.length);
   const hasMore = Boolean(pending?.page?.nextCursor);
-  const waitDisplay = pending ? `${waitCount}${hasMore ? "+" : ""}` : String(kpis.waitCount);
+  const waitDisplay = pending ? `${waitCount}${hasMore ? "+" : ""}` : hasSummary ? String(kpis.waitCount) : "—";
 
   const waits = useMemo<WaitEntry[]>(() => {
     const entries: WaitEntry[] = pendingCards.slice(0, 6).map((d) => ({
@@ -114,11 +117,11 @@ export function DashboardCommandHeader(props: { companyId: string; kpis?: Comman
   }, [pendingCards, queueItems]);
 
   const tiles = [
-    { icon: Bot, label: "가동 에이전트", value: String(kpis.runningAgents), sub: `${kpis.enabledAgents} 활성`, to: "/agents" },
-    { icon: CircleDot, label: "진행 작업", value: String(kpis.inProgressTasks), sub: `${kpis.blockedTasks} 차단됨`, to: "/issues" },
-    { icon: Rocket, label: "활성 미션", value: String(kpis.activeMissions), sub: "missions", to: "/missions" },
-    { icon: DollarSign, label: "월간 비용", value: formatCents(kpis.monthSpendCents), sub: kpis.monthBudgetCents > 0 ? `예산 ${formatCents(kpis.monthBudgetCents)}` : "무제한", to: "/costs" },
-    { icon: Hourglass, label: "대기/차단 현황", value: waitDisplay, sub: pending ? `결정 ${pendingCards.length}${hasMore ? "+" : ""} · 큐 ${queueItems.length}` : "승인+큐", to: "/human-operator" },
+    { icon: Bot, label: "가동 에이전트", value: hasSummary ? String(kpis.runningAgents) : "—", sub: hasSummary ? `${kpis.enabledAgents} 활성` : summaryPlaceholderSub, to: "/agents" },
+    { icon: CircleDot, label: "진행 작업", value: hasSummary ? String(kpis.inProgressTasks) : "—", sub: hasSummary ? `${kpis.blockedTasks} 차단됨` : summaryPlaceholderSub, to: "/issues" },
+    { icon: Rocket, label: "활성 미션", value: hasMissions ? String(kpis.activeMissions) : "—", sub: hasMissions ? "missions" : (missionsError ? "조회 실패" : "불러오는 중"), to: "/missions" },
+    { icon: DollarSign, label: "월간 비용", value: hasSummary ? formatCents(kpis.monthSpendCents) : "—", sub: hasSummary ? (kpis.monthBudgetCents > 0 ? `예산 ${formatCents(kpis.monthBudgetCents)}` : "무제한") : summaryPlaceholderSub, to: "/costs" },
+    { icon: Hourglass, label: "대기/차단 현황", value: waitDisplay, sub: pending ? `결정 ${pendingCards.length}${hasMore ? "+" : ""} · 큐 ${queueItems.length}` : (hasSummary ? "승인+큐" : summaryPlaceholderSub), to: "/human-operator" },
   ];
 
   const pillStyle = {
@@ -160,7 +163,7 @@ export function DashboardCommandHeader(props: { companyId: string; kpis?: Comman
           </Link>
           <button
             type="button"
-            onClick={() => typeof window !== "undefined" && window.dispatchEvent(new CustomEvent("openbot:toggle-inspector"))}
+            onClick={() => typeof window !== "undefined" && window.dispatchEvent(new CustomEvent(INSPECTOR_TOGGLE_EVENT))}
             className="hidden md:inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors hover:brightness-110 cursor-pointer"
             style={pillStyle}
           >

@@ -207,6 +207,7 @@ describe("Missions", () => {
     expect(html).toContain("명령 헤더");
     expect(html).toContain("가동 에이전트");
     expect(html).toContain("대기/차단 현황");
+    expect(html).toContain(">—<");
     expect(html).toContain('href="/worktree/rules"');
     expect(html).toContain('href="/channels"');
     expect(html).toContain('href="/human-operator"');
