@@ -1,9 +1,19 @@
-import { createReadStream, promises as fs } from "node:fs";
+import { constants as fsConstants, createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { notFound } from "../errors.js";
 import { resolvePaperclipInstanceRoot } from "../home-paths.js";
+import {
+  normalizeRunLogReadRange,
+  readGzipFileRangeNodeFallback,
+  resolveRunLogBin,
+  RunLogHelperNotFoundError,
+  runRustLogFinalize,
+  runRustLogReadRange,
+  sha256GzipFileNodeFallback,
+} from "./run-log-rust-client.js";
 
+const NOT_FOUND_MESSAGE = "Workspace operation log not found";
 export type WorkspaceOperationLogStoreType = "local_file";
 
 export interface WorkspaceOperationLogHandle {
@@ -50,15 +60,22 @@ function resolveWithin(basePath: string, relativePath: string) {
   return resolved;
 }
 
-function createLocalFileWorkspaceOperationLogStore(basePath: string): WorkspaceOperationLogStore {
+function isEnoent(err: unknown): boolean {
+  return (err as { code?: string })?.code === "ENOENT";
+}
+
+function warnFallback(scope: string, err: unknown): void {
+  console.warn(`[workspace-operation-log-store] ${scope}: ${err instanceof Error ? err.message : String(err)}`);
+}
+
+export function createLocalFileWorkspaceOperationLogStore(basePath: string): WorkspaceOperationLogStore {
   async function ensureDir(relativeDir: string) {
     const dir = resolveWithin(basePath, relativeDir);
     await fs.mkdir(dir, { recursive: true });
   }
 
   async function readFileRange(filePath: string, offset: number, limitBytes: number): Promise<WorkspaceOperationLogReadResult> {
-    const stat = await fs.stat(filePath).catch(() => null);
-    if (!stat) throw notFound("Workspace operation log not found");
+    const stat = await fs.stat(filePath); // ENOENT propagates → caller tries the .gz sibling
 
     const start = Math.max(0, Math.min(offset, stat.size));
     const end = Math.max(start, Math.min(start + limitBytes - 1, stat.size - 1));
@@ -92,6 +109,31 @@ function createLocalFileWorkspaceOperationLogStore(basePath: string): WorkspaceO
     });
   }
 
+  async function readNodeFallback(absPath: string, offset: number, limitBytes: number): Promise<WorkspaceOperationLogReadResult> {
+    try {
+      return await readFileRange(absPath, offset, limitBytes);
+    } catch (err) {
+      if (isEnoent(err)) {
+        return readGzipFileRangeNodeFallback(`${absPath}.gz`, offset, limitBytes, NOT_FOUND_MESSAGE);
+      }
+      throw err;
+    }
+  }
+
+  async function finalizeNodeFallback(absPath: string): Promise<WorkspaceOperationLogFinalizeSummary> {
+    const stat = await fs.stat(absPath).catch(() => null);
+    if (stat) {
+      const sha256 = await sha256File(absPath);
+      return { bytes: stat.size, sha256, compressed: false };
+    }
+    // The Rust helper may have renamed to .gz before a transient failure — stay idempotent.
+    if (await fs.stat(`${absPath}.gz`).catch(() => null)) {
+      const { bytes, sha256 } = await sha256GzipFileNodeFallback(`${absPath}.gz`);
+      return { bytes, sha256, compressed: true };
+    }
+    throw notFound(NOT_FOUND_MESSAGE);
+  }
+
   return {
     async begin(input) {
       const [companyId] = safeSegments(input.companyId);
@@ -109,12 +151,23 @@ function createLocalFileWorkspaceOperationLogStore(basePath: string): WorkspaceO
     async append(handle, event) {
       if (handle.store !== "local_file") return;
       const absPath = resolveWithin(basePath, handle.logRef);
-      const line = JSON.stringify({
-        ts: event.ts,
-        stream: event.stream,
-        chunk: event.chunk,
-      });
-      await fs.appendFile(absPath, `${line}\n`, "utf8");
+      let fh;
+      try {
+        // No O_CREAT: a vanished log must never resurrect into a ghost .ndjson.
+        fh = await fs.open(absPath, fsConstants.O_WRONLY | fsConstants.O_APPEND);
+      } catch (err) {
+        if (isEnoent(err) && (await fs.stat(`${absPath}.gz`).catch(() => null))) {
+          warnFallback("append dropped: log already finalized to .gz", err);
+          return;
+        }
+        throw err;
+      }
+      try {
+        const line = JSON.stringify({ ts: event.ts, stream: event.stream, chunk: event.chunk });
+        await fh.writeFile(`${line}\n`, "utf8");
+      } finally {
+        await fh.close();
+      }
     },
 
     async finalize(handle) {
@@ -122,25 +175,34 @@ function createLocalFileWorkspaceOperationLogStore(basePath: string): WorkspaceO
         return { bytes: 0, compressed: false };
       }
       const absPath = resolveWithin(basePath, handle.logRef);
-      const stat = await fs.stat(absPath).catch(() => null);
-      if (!stat) throw notFound("Workspace operation log not found");
-
-      const hash = await sha256File(absPath);
-      return {
-        bytes: stat.size,
-        sha256: hash,
-        compressed: false,
-      };
+      const bin = resolveRunLogBin();
+      if (bin) {
+        try {
+          return await runRustLogFinalize(bin, absPath);
+        } catch (err) {
+          if (err instanceof RunLogHelperNotFoundError) throw notFound(NOT_FOUND_MESSAGE);
+          warnFallback("rust finalize failed; using Node fallback", err);
+        }
+      }
+      return finalizeNodeFallback(absPath);
     },
 
     async read(handle, opts) {
       if (handle.store !== "local_file") {
-        throw notFound("Workspace operation log not found");
+        throw notFound(NOT_FOUND_MESSAGE);
       }
       const absPath = resolveWithin(basePath, handle.logRef);
-      const offset = opts?.offset ?? 0;
-      const limitBytes = opts?.limitBytes ?? 256_000;
-      return readFileRange(absPath, offset, limitBytes);
+      const { offset, limitBytes } = normalizeRunLogReadRange(opts);
+      const bin = resolveRunLogBin();
+      if (bin) {
+        try {
+          return await runRustLogReadRange(bin, absPath, offset, limitBytes);
+        } catch (err) {
+          if (err instanceof RunLogHelperNotFoundError) throw notFound(NOT_FOUND_MESSAGE);
+          warnFallback("rust read-range failed; using Node fallback", err);
+        }
+      }
+      return readNodeFallback(absPath, offset, limitBytes);
     },
   };
 }
