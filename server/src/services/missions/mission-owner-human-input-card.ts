@@ -83,6 +83,8 @@ export type MissionOwnerHumanInputCardSpec = {
   /** [C4a] 전제·안내 문구 — 선택지로 노출하지 않고 카드 안내줄(unresolvedFacts)로만 표시한다.
    *  structuredOptions 안에 전제 문구가 섞여 들어와도 같은 안내줄로 이동한다. */
   readonly prerequisiteNotice?: string | null;
+  /** 제출 경로에서 기존 폴백(blank moi1) 카드를 후속 카드 생성 트랜잭션 안에서 원자 교체할지 여부. */
+  readonly allowSupersedeFallback?: boolean;
 };
 
 const clip = (value: string, max: number) => value.length > max ? value.slice(0, max) : value;
@@ -430,50 +432,60 @@ function shouldSupersedeFallbackCard(
   existing: { requestKey: string; definition?: unknown },
   incomingRequestKey: string,
 ): boolean {
-  return existing.requestKey !== incomingRequestKey
+  if (existing.requestKey === incomingRequestKey) return false;
+  if (!isGenericFallbackMissionHumanCard(existing)) return false;
+  if (spec.allowSupersedeFallback) return true;
+  return !incomingRequestKey.startsWith("moi2:")
     && spec.actorType !== "system"
-    && hasConcreteKoreanHumanReason(spec.reason)
-    && isGenericFallbackMissionHumanCard(existing);
+    && hasConcreteKoreanHumanReason(spec.reason);
 }
 
-const SUPERSEDE_FALLBACK_REASON = "superseded_by_concrete_owner_diagnosis";
+export const SUPERSEDE_FALLBACK_REASON = "superseded_by_concrete_owner_diagnosis";
 
 /** Merge an equivalent pending request, supersede a blank fallback card with concrete diagnosis, or create normally. */
 export async function createMissionOwnerHumanInputDecisionCard(db: Db, spec: MissionOwnerHumanInputCardSpec) {
   const cardInput = buildMissionOwnerHumanInputDecisionCard(spec);
   const createCard = () =>
     operatorDecisionWriteService(db).create(spec.companyId, cardInput, { type: "agent", id: spec.requestedByAgentId });
-  try {
-    const merged = await tryMergePendingHumanInputCard(db, spec, cardInput);
-    if (merged) return merged;
-    const historicalReplay = await replayHistoricalDefaultHumanInputCard(db, spec, cardInput);
-    if (historicalReplay) return historicalReplay;
-    if (!cardInput.requestKey.startsWith("moi2:") && spec.actorType !== "system" && hasConcreteKoreanHumanReason(spec.reason)) {
-      const pending = await findPendingMissionHumanCard(db, spec.companyId, spec.missionId);
-      if (pending && shouldSupersedeFallbackCard(spec, pending, cardInput.requestKey)) {
-        await withdrawPendingMissionHumanCard(db, spec.companyId, spec.missionId, {
+  const supersedeAndCreate = () =>
+    db.transaction(async (tx) => {
+      const current = await findPendingMissionHumanCard(tx, spec.companyId, spec.missionId);
+      if (current && shouldSupersedeFallbackCard(spec, current, cardInput.requestKey)) {
+        await withdrawPendingMissionHumanCard(tx, spec.companyId, spec.missionId, {
           actorId: spec.requestedByAgentId,
           reason: SUPERSEDE_FALLBACK_REASON,
           details: { newRequestKey: cardInput.requestKey },
         });
       }
+      return operatorDecisionWriteService(tx as unknown as Db).create(spec.companyId, cardInput, {
+        type: "agent",
+        id: spec.requestedByAgentId,
+      });
+    });
+  try {
+    const merged = await tryMergePendingHumanInputCard(db, spec, cardInput);
+    if (merged) return merged;
+    const historicalReplay = await replayHistoricalDefaultHumanInputCard(db, spec, cardInput);
+    if (historicalReplay) return historicalReplay;
+    const canCheckSupersede = Boolean(spec.allowSupersedeFallback)
+      || (!cardInput.requestKey.startsWith("moi2:") && spec.actorType !== "system" && hasConcreteKoreanHumanReason(spec.reason));
+    if (canCheckSupersede) {
+      const pending = await findPendingMissionHumanCard(db, spec.companyId, spec.missionId);
+      if (pending && shouldSupersedeFallbackCard(spec, pending, cardInput.requestKey)) {
+        return await supersedeAndCreate();
+      }
     }
     return await createCard();
   } catch (error) {
     // [C1 2026-11-08] 미션당 pending 카드 1장 부분 고유 인덱스 위반 — 시스템 기본 폴백 카드를
-    //   에이전트의 구체적 한국어 진단으로 교체하는 경우에만 1회 회수 후 재시도하고, 그 외는
-    //   기존 pending 카드에 사유를 누적한다(repeatCount).
+    //   에이전트의 구체적 한국어 진단으로 교체하는 경우에만 단일 트랜잭션으로 회수+재시도하고,
+    //   그 외는 기존 pending 카드에 사유를 누적한다(repeatCount).
     if (!isPendingMissionHumanCardUniqueViolation(error)) throw error;
-    if (cardInput.requestKey.startsWith("moi2:")) throw error;
+    if (cardInput.requestKey.startsWith("moi2:") && !spec.allowSupersedeFallback) throw error;
     const racePending = await findPendingMissionHumanCard(db, spec.companyId, spec.missionId);
     if (racePending && shouldSupersedeFallbackCard(spec, racePending, cardInput.requestKey)) {
-      await withdrawPendingMissionHumanCard(db, spec.companyId, spec.missionId, {
-        actorId: spec.requestedByAgentId,
-        reason: SUPERSEDE_FALLBACK_REASON,
-        details: { newRequestKey: cardInput.requestKey },
-      });
       try {
-        return await createCard();
+        return await supersedeAndCreate();
       } catch (retryError) {
         if (!isPendingMissionHumanCardUniqueViolation(retryError)) throw retryError;
       }

@@ -19,7 +19,6 @@ import {
   findPendingMissionHumanCard,
   hasConcreteKoreanHumanReason,
   isGenericFallbackMissionHumanCard,
-  withdrawPendingMissionHumanCard,
 } from "./mission-owner-human-input-card.js";
 import { admitHumanCardForSource } from "./human-card-admission.js";
 import { isExactOwnerHumanReplay } from "./owner-human-request-submit.js";
@@ -132,28 +131,32 @@ export async function submitMissionOwnerDecision(input: {
     // missionId+원인분류). 카드 생성/갱신 계약(C08)은 그대로 두고 제출 경로에서만 차단한다.
     // 동일 요청의 재전송(replay)은 기존 카드의 멱등 재생성이므로 통과시키고, legacy(무효)
     // 제출은 기존 identityRequired 계약을 그대로 따른다(moi1 중복 병합 계약이 이미 존재).
+    let supersedeFallbackPending = false;
     if (needsHumanAlert && humanAuthority && effectiveSubmission.humanRequest) {
       const pendingCard = await findPendingMissionHumanCard(tx, issue.companyId, humanAuthority.scope.missionId);
-      if (pendingCard && !(await isExactOwnerHumanReplay(humanAuthority, effectiveSubmission))) {
-        if (hasConcreteKoreanHumanReason(effectiveSubmission.reason) && isGenericFallbackMissionHumanCard(pendingCard)) {
-          await withdrawPendingMissionHumanCard(tx, issue.companyId, humanAuthority.scope.missionId, {
-            actorId: input.actor.agentId ?? input.actor.actorId,
-            reason: "superseded_by_concrete_owner_diagnosis",
-          });
-        } else {
-          await bumpPendingMissionHumanCard(input.db, issue.companyId, humanAuthority.scope.missionId)
-            .catch(() => undefined); // 진단 메타데이터 — 거부 처리에는 영향 없음
-          throw unprocessable(
-            "이 미션에는 답변 대기 중인 사람 결정 카드가 있습니다. 새 카드 대신 기존 카드가 처리될 때까지 기다려 주세요.",
-            {
-              code: "mission_owner_human_input_card_pending",
-              pendingOperatorDecisionId: pendingCard.id,
-              pendingRequestKey: pendingCard.requestKey,
-              missionId: humanAuthority.scope.missionId,
-              decision: effectiveSubmission.decision,
-            },
-          );
-        }
+      const canSupersedeFallback = Boolean(
+        pendingCard
+          && hasConcreteKoreanHumanReason(effectiveSubmission.reason)
+          && isGenericFallbackMissionHumanCard(pendingCard),
+      );
+      if (canSupersedeFallback) {
+        // [폴백 카드 교체 안전화] 커밋 전 트랜잭션에서 기존 카드를 미리 취소하지 않는다 —
+        //   커밋 후 createMissionOwnerHumanInputDecisionCard 가 단일 트랜잭션에서 회수+생성을
+        //   원자 수행하여 생성 실패 시에도 기존 pending 카드가 유실되지 않게 한다(재전송 replay 포함).
+        supersedeFallbackPending = true;
+      } else if (pendingCard && !(await isExactOwnerHumanReplay(humanAuthority, effectiveSubmission))) {
+        await bumpPendingMissionHumanCard(input.db, issue.companyId, humanAuthority.scope.missionId)
+          .catch(() => undefined); // 진단 메타데이터 — 거부 처리에는 영향 없음
+        throw unprocessable(
+          "이 미션에는 답변 대기 중인 사람 결정 카드가 있습니다. 새 카드 대신 기존 카드가 처리될 때까지 기다려 주세요.",
+          {
+            code: "mission_owner_human_input_card_pending",
+            pendingOperatorDecisionId: pendingCard.id,
+            pendingRequestKey: pendingCard.requestKey,
+            missionId: humanAuthority.scope.missionId,
+            decision: effectiveSubmission.decision,
+          },
+        );
       }
     }
     const human = needsHumanAlert
@@ -166,16 +169,21 @@ export async function submitMissionOwnerDecision(input: {
       sourceIssueId,
       heartbeatRunId: input.actor.runId,
     });
-    return { recorded, human, issue, sourceIssueOriginKind, submission };
+    return { recorded, human, issue, sourceIssueOriginKind, submission, supersedeFallbackPending };
   });
-  const { recorded, human, issue, sourceIssueOriginKind, submission } = committed;
+  const { recorded, human, issue, sourceIssueOriginKind, submission, supersedeFallbackPending } = committed;
   if (human?.humanInserted && human.humanPayload) {
     publishHumanOperatorRequestEvent(issue.companyId, human.humanPayload);
   }
   let operatorDecisionId: string | undefined;
   if (human) {
     try {
-      const card = await createMissionOwnerHumanInputDecisionCard(input.db, human.humanInputCardSpec);
+      const card = await createMissionOwnerHumanInputDecisionCard(
+        input.db,
+        supersedeFallbackPending
+          ? { ...human.humanInputCardSpec, allowSupersedeFallback: true }
+          : human.humanInputCardSpec,
+      );
       operatorDecisionId = card.decision.id;
     } catch (error) {
       throw new HttpError(500, "Operator decision card creation failed after the decision was committed. Resubmit the same decision — the ledger dedup returns the same event and the card is recreated by its idempotent request key.", {
