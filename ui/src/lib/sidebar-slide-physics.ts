@@ -51,15 +51,16 @@ export function calculateSidebarSlideMetrics(
   const collapseProgress = clamp(Number((1 - navVisibleWidth / NAV_EXPANDED_WIDTH_PX).toFixed(4)), 0, 1);
   const depthBlurEnabled = opts?.depthBlurEnabled ?? true;
   const isHoveringSubNav = opts?.isHoveringSubNav ?? false;
+  const isSnappedCompact = Math.abs(navVisibleWidth - NAV_COMPACT_WIDTH_PX) <= 8;
   const subNavBlurPx =
-    !depthBlurEnabled || isHoveringSubNav || collapseProgress <= 0.04
+    !depthBlurEnabled || isHoveringSubNav || isSnappedCompact || collapseProgress <= 0.04
       ? 0
       : Number(clamp(collapseProgress * 6.2, 1.4, 6.0).toFixed(2));
   return {
     collapseProgress,
     subNavBlurPx,
-    subNavScale: Number((1 - collapseProgress * 0.035).toFixed(4)),
-    subNavOpacity: Number(clamp(1 - Math.pow(collapseProgress, 1.35) * 0.65, 0.2, 1).toFixed(3)),
+    subNavScale: isSnappedCompact ? 1 : Number((1 - collapseProgress * 0.035).toFixed(4)),
+    subNavOpacity: isSnappedCompact ? 1 : Number(clamp(1 - Math.pow(collapseProgress, 1.35) * 0.65, 0.2, 1).toFixed(3)),
     sheetShadowAlpha: Number(clamp(0.065 + collapseProgress * 0.065, 0.05, 0.14).toFixed(3)),
     canvasDensityTier: navVisibleWidth <= 88 ? "ultra-wide" : navVisibleWidth <= 205 ? "expanded" : "standard",
     visibleKpiColumns: navVisibleWidth <= 88 ? 5 : navVisibleWidth <= 205 ? 4 : 3,
@@ -102,6 +103,7 @@ export interface SidebarSlideController {
   previewNavWidth: (width: number) => void;
   commitNavWidth: (width: number, velocityPxPerMs: number) => SidebarSnapTarget;
   toggleNav: () => void;
+  toggleCompact: () => void;
 }
 
 export function useSidebarSlideController(opts: {
@@ -167,10 +169,15 @@ export function useSidebarSlideController(opts: {
     applyWidth(isCurrentlyOpen ? 0 : lastExpanded.current || NAV_EXPANDED_WIDTH_PX, true);
   }, [applyWidth, effectiveNavWidth, opts.sidebarOpen]);
 
+  const toggleCompact = useCallback(() => {
+    const shouldExpand = !opts.sidebarOpen || effectiveNavWidth <= NAV_COMPACT_WIDTH_PX;
+    applyWidth(shouldExpand ? NAV_EXPANDED_WIDTH_PX : NAV_COMPACT_WIDTH_PX, true);
+  }, [applyWidth, effectiveNavWidth, opts.sidebarOpen]);
+
   const density = useMemo(
     () => ({ width: effectiveNavWidth, compact: effectiveNavWidth <= NAV_COMPACT_WIDTH_PX }),
     [effectiveNavWidth],
   );
 
-  return { navWidth, effectiveNavWidth, metrics, density, autoCompacted, setHoveringSubNav: setHovering, previewNavWidth, commitNavWidth, toggleNav };
+  return { navWidth, effectiveNavWidth, metrics, density, autoCompacted, setHoveringSubNav: setHovering, previewNavWidth, commitNavWidth, toggleNav, toggleCompact };
 }
