@@ -49,6 +49,8 @@ function normalizeExperimentalSettings(raw: unknown): InstanceExperimentalSettin
       broadSearchAllowedAgentIdsV1: parsed.data.broadSearchAllowedAgentIdsV1 ?? [],
       enableStaleSourceIssueWakeupV1: parsed.data.enableStaleSourceIssueWakeupV1 ?? false,
       staleSourceIssueWakeupAllowedMissionIdsV1: parsed.data.staleSourceIssueWakeupAllowedMissionIdsV1 ?? [],
+      enableResumeReviewReliefV1: parsed.data.enableResumeReviewReliefV1 ?? false,
+      resumeReviewReliefAllowedMissionIdsV1: parsed.data.resumeReviewReliefAllowedMissionIdsV1 ?? [],
     };
   }
   return {
@@ -70,6 +72,8 @@ function normalizeExperimentalSettings(raw: unknown): InstanceExperimentalSettin
     broadSearchAllowedAgentIdsV1: [],
     enableStaleSourceIssueWakeupV1: false,
     staleSourceIssueWakeupAllowedMissionIdsV1: [],
+    enableResumeReviewReliefV1: false,
+    resumeReviewReliefAllowedMissionIdsV1: [],
   };
 }
 

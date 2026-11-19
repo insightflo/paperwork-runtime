@@ -34,6 +34,7 @@ import {
   operatorDecisions,
   type Db,
 } from "@paperclipai/db";
+import type { ResumeReliefBasis } from "@paperclipai/shared/types/workflow-resume";
 import type { ResumeWorkspaceMissionHistory } from "./read-model-workspaces.js";
 import type { ResumePreviewBlocker } from "./preview-facts.js";
 import {
@@ -44,7 +45,7 @@ import {
 
 const DEFAULT_SINGLETON_KEY = "default";
 
-export type ResumeReliefBasisName = "human_approval" | "stuck";
+export type ResumeReliefBasisName = ResumeReliefBasis;
 
 export interface ReviewReliefClassifyInput {
   readonly blockers: readonly ResumePreviewBlocker[];
@@ -80,10 +81,31 @@ export async function isResumeReviewReliefEnabled(
 }
 
 /**
+ * 사람 승인 비교 기준 시각 — completedAt 이 있는 종결 런은 completedAt, running+stuck 런은
+ *   selected run 소속 stuck 스텝에 바인딩된 하트비트의 마지막 활동 시각으로 고정한다.
+ *   둘 다 없으면 승인 시점의 후행성을 증명할 수 없으므로 null(fail-closed).
+ */
+export function approvalAnchorForRun(
+  history: ResumeWorkspaceMissionHistory,
+  stuckStepRunIds: ReadonlySet<string>,
+): Date | null {
+  if (history.selected.run.completedAt !== null) return history.selected.run.completedAt;
+  if (history.selected.run.status !== "running" || stuckStepRunIds.size === 0) return null;
+  const selectedStepIds = new Set(history.selected.steps.map((row) => row.id));
+  let maxMs = 0;
+  for (const hb of history.history.heartbeats) {
+    if (hb.workflowStepRunId === null) continue;
+    if (!stuckStepRunIds.has(hb.workflowStepRunId) || !selectedStepIds.has(hb.workflowStepRunId)) continue;
+    const ms = (hb.finishedAt ?? hb.updatedAt)?.getTime() ?? 0;
+    if (ms > maxMs) maxMs = ms;
+  }
+  return maxMs > 0 ? new Date(maxMs) : null;
+}
+
+/**
  * [사람 승인 = 구조화 복구 판정] 미션 소속 이슈에 붙은 사람 결정 카드가 resolve 되고
  *   continuation 이 accepted(웨이크 실제 전달)까지 간 기록만 인정한다(#721 과 동일 어휘).
- *   카드 본문·선택지 자연어는 읽지 않는다. since(실패 런 종료 시각) 이전 승인은 이 실패에
- *   대한 판단이 아니므로 인정하지 않는다.
+ *   카드 본문·선택지 자연어는 읽지 않는다. since(기준 시각)가 없거나 그 이전 승인은 인정하지 않는다.
  */
 export async function hasAcceptedHumanApprovalForMission(
   db: Pick<Db, "select">,
@@ -93,15 +115,8 @@ export async function hasAcceptedHumanApprovalForMission(
     readonly since: Date | null;
   },
 ): Promise<boolean> {
-  const missionIssues = await db
-    .select({ id: issues.id })
-    .from(issues)
-    .where(and(
-      eq(issues.companyId, input.companyId),
-      eq(issues.missionId, input.missionId),
-    ))
-    .limit(500);
-  if (missionIssues.length === 0) return false;
+  // 앵커 시각이 없으면 승인 창을 증명할 수 없으므로 fail-closed(과거 승인 재사용 차단).
+  if (input.since === null) return false;
   const [row] = await db
     .select({ id: operatorDecisions.id })
     .from(operatorDecisions)
@@ -112,13 +127,23 @@ export async function hasAcceptedHumanApprovalForMission(
     .where(and(
       eq(operatorDecisions.companyId, input.companyId),
       eq(operatorDecisions.status, "resolved"),
-      inArray(operatorDecisions.issueId, missionIssues.map((issue) => issue.id)),
       eq(operatorDecisionContinuations.companyId, input.companyId),
       eq(operatorDecisionContinuations.state, "accepted"),
-      ...(input.since ? [gte(operatorDecisionContinuations.acceptedAt, input.since)] : []),
+      gte(operatorDecisionContinuations.acceptedAt, input.since),
+      inArray(
+        operatorDecisions.issueId,
+        db.select({ id: issues.id }).from(issues).where(and(
+          eq(issues.companyId, input.companyId),
+          eq(issues.missionId, input.missionId),
+        )),
+      ),
     ))
     .limit(1);
   return Boolean(row);
+}
+
+function refsTerminal(id: string | null, terminal: ReadonlySet<string>, statuses: Map<string, string>): boolean {
+  return id === null || (statuses.has(id) && terminal.has(statuses.get(id)!));
 }
 
 /** 종말 스텝(failed/skipped)의 owner 참조가 전부 종말(또는 null)인 잔재인가 — 활성이면 false. */
@@ -127,8 +152,6 @@ function terminalStepOwnerResidue(history: ResumeWorkspaceMissionHistory, stepRu
   if (!step || !TERMINAL_STEP_STATUSES.has(step.status)) return false;
   const wakeupStatusById = new Map(history.history.wakeups.map((row) => [row.id, row.status]));
   const heartbeatStatusById = new Map(history.history.heartbeats.map((row) => [row.id, row.status]));
-  const refsTerminal = (id: string | null, terminal: ReadonlySet<string>, statuses: Map<string, string>): boolean =>
-    id === null || (statuses.has(id) && terminal.has(statuses.get(id)!));
   return refsTerminal(step.dispatchOwnerWakeupRequestId, TERMINAL_WAKEUP_STATUSES, wakeupStatusById)
     && refsTerminal(step.dispatchOwnerHeartbeatRunId, TERMINAL_HEARTBEAT_STATUSES, heartbeatStatusById);
 }
@@ -138,14 +161,13 @@ function terminalIssueResidue(history: ResumeWorkspaceMissionHistory, issueId: s
   const issue = history.history.issues.find((row) => row.id === issueId);
   if (!issue || issue.status !== "in_progress") return false;
   const heartbeatStatusById = new Map(history.history.heartbeats.map((row) => [row.id, row.status]));
-  const refsTerminal = (id: string | null): boolean =>
-    id === null || (heartbeatStatusById.has(id) && TERMINAL_HEARTBEAT_STATUSES.has(heartbeatStatusById.get(id)!));
-  return refsTerminal(issue.checkoutRunId) && refsTerminal(issue.executionRunId);
+  return refsTerminal(issue.checkoutRunId, TERMINAL_HEARTBEAT_STATUSES, heartbeatStatusById)
+    && refsTerminal(issue.executionRunId, TERMINAL_HEARTBEAT_STATUSES, heartbeatStatusById);
 }
 
 /**
  * 차단 분류(순수) — 완화 기반이 성립한 경우만 오탐성 보수 차단을 경고로 내린다.
- *   - external_effect_unknown(전역, policyMissing): 경고(양 기반).
+ *   - external_effect_unknown(전역, policyManifestMissing): 경고(양 기반).
  *   - external_effect_unknown / control_tool_effects_unverified(스텝): 사람 승인일 때만 경고.
  *   - missing_evidence(선행 산출물 미검증): 경고(양 기반).
  *   - active_work(스텝 owner 잔재·이슈 잔재): 참조가 전부 종말인 잔재일 때만 경고(양 기반).
@@ -166,8 +188,8 @@ export function classifyReviewRelief(input: ReviewReliefClassifyInput): ReviewRe
     const stepId = typeof blocker.detail?.stepId === "string" ? blocker.detail.stepId : undefined;
     const issueId = typeof blocker.detail?.issueId === "string" ? blocker.detail.issueId : undefined;
     let relieved = false;
-    if (blocker.code === "external_effect_unknown" && stepId === undefined && stepRunId === undefined) {
-      // 전역 매니페스트 미등록(policyMissing)차단 — 스텝을 특정하지 않는 전역 보수 게이트.
+    if (blocker.code === "external_effect_unknown" && blocker.detail?.policyManifestMissing === true) {
+      // 명시적 policyManifestMissing 마커가 있는 전역 매니페스트 미등록 차단만 양 기반으로 완화한다.
       relieved = input.policyMissing;
     } else if (blocker.code === "external_effect_unknown" || blocker.code === "control_tool_effects_unverified") {
       relieved = input.humanApproval; // 계약 1 — external 효과 미확인은 사람 승인일 때만.
@@ -189,5 +211,6 @@ function historyStepRunIdFor(
   stepId: string | undefined,
 ): string | undefined {
   if (stepId === undefined) return undefined;
-  return history.missionSteps.find((row) => row.stepId === stepId)?.id;
+  // per-step active_work 차단은 selected run 의 스텝 기준으로 발행되므로 형제 run 행을 섞지 않는다.
+  return history.selected.steps.find((row) => row.stepId === stepId)?.id;
 }
