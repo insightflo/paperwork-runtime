@@ -32,24 +32,37 @@ const VALUE_MARKER = "__paperclip_registered_value__";
 const LABEL_MARKER = "__paperclip_registered_secret_authorization";
 const MARKERS = new RegExp(`${VALUE_MARKER}|${LABEL_MARKER}`, "gu");
 
+type RedactOptions = { emails?: boolean; keepUnscanned?: boolean };
+
 const registeredSecrets = new Set<string>();
 let registeredSecretPattern: RegExp | null = null;
 
+/** Native driver contract: registration hooks receive raw runtime values and derive
+ *  JSON-escaped/URI-encoded forms themselves; literal pushes are exact pre-derived
+ *  strings. Matching is longest-first across all registered forms. */
 export interface NativeSecretRedactorDriver {
-  setRegisteredLiteralSecrets?: (literals: string[]) => void;
-  registerRuntimeSecrets?: (values: string[], allowShort: boolean) => void;
-  clearRegisteredRuntimeSecrets?: () => void;
+  setRegisteredLiteralSecrets: (literals: string[]) => void;
+  registerRuntimeSecrets: (values: string[], allowShort: boolean) => void;
+  clearRegisteredRuntimeSecrets: () => void;
   redactSensitiveText: (value: string, emails: boolean, keepUnscanned: boolean) => string | null;
   redactEmbeddedJson: (value: string, emails: boolean, keepUnscanned: boolean) => string | null;
 }
 let nativeDriver: NativeSecretRedactorDriver | null = null;
+let nativeFailureWarned = false;
 export function setNativeSecretRedactorDriver(driver: NativeSecretRedactorDriver | null): void {
+  try { nativeDriver?.clearRegisteredRuntimeSecrets(); } catch { /* ignore stale driver */ }
+  if (driver) {
+    if ([driver.setRegisteredLiteralSecrets, driver.registerRuntimeSecrets, driver.clearRegisteredRuntimeSecrets, driver.redactSensitiveText, driver.redactEmbeddedJson].some((fn) => typeof fn !== "function")) { nativeDriver = null; return; }
+    // Push already-derived literals verbatim; registering them again would double-URI-encode.
+    try { if (registeredSecrets.size > 0) driver.setRegisteredLiteralSecrets([...registeredSecrets]); } catch { nativeDriver = null; return; } // never leave a half-initialized driver active
+  }
   nativeDriver = driver;
-  // Push already-derived literals verbatim; registering them again would double-URI-encode.
-  if (driver && registeredSecrets.size > 0) driver.setRegisteredLiteralSecrets?.([...registeredSecrets]);
 }
 function tryNative(call: (d: NativeSecretRedactorDriver) => string | null): string | null {
-  try { return nativeDriver ? call(nativeDriver) : null; } catch { return null; }
+  try { return nativeDriver ? call(nativeDriver) : null; } catch (err) {
+    if (!nativeFailureWarned) { nativeFailureWarned = true; console.warn("[secret-redactor] native driver failed; falling back to JS", err); }
+    return null;
+  }
 }
 
 function uriEncoded(value: string): string | null {
@@ -61,23 +74,20 @@ export function registerRuntimeSecrets(values: Iterable<string>, options: { allo
   const before = registeredSecrets.size;
   for (const value of vals) {
     if (!value || (!options.allowShort && value.length < MIN_REGISTERED_SECRET_LENGTH)) continue;
-    for (const form of [value, JSON.stringify(value).slice(1, -1), uriEncoded(value)]) {
+    for (const form of [value, JSON.stringify(value).slice(1, -1), uriEncoded(value)])
       if (form !== null && form.length > 0) registeredSecrets.add(form);
-    }
   }
   if (registeredSecrets.size === before) return;
-  const alternatives = [...registeredSecrets]
-    .sort((a, b) => b.length - a.length)
-    .map((item) => item.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
+  const alternatives = [...registeredSecrets].sort((a, b) => b.length - a.length).map((item) => item.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
   registeredSecretPattern = alternatives.length > 0 ? new RegExp(alternatives.join("|"), "gu") : null;
   // Forward raw values; the native side derives JSON-escaped/URI-encoded forms itself.
-  nativeDriver?.registerRuntimeSecrets?.(vals, options.allowShort ?? false);
+  try { nativeDriver?.registerRuntimeSecrets(vals, options.allowShort ?? false); } catch { nativeDriver = null; }
 }
 
 export function clearRegisteredRuntimeSecretsForTests(): void {
   registeredSecrets.clear();
   registeredSecretPattern = null;
-  nativeDriver?.clearRegisteredRuntimeSecrets?.();
+  try { nativeDriver?.clearRegisteredRuntimeSecrets(); } catch { nativeDriver = null; }
 }
 
 function urlHosts(value: string): Uint8Array {
@@ -227,7 +237,7 @@ function parseRedactedJson(candidate: string, emails: boolean): string | null {
   } catch { return null; }
 }
 
-export function redactEmbeddedJson(value: string, options: { emails?: boolean; keepUnscanned?: boolean } = {}): string {
+export function redactEmbeddedJson(value: string, options: RedactOptions = {}): string {
   const emails = options.emails ?? false;
   const keepUnscanned = options.keepUnscanned ?? false;
   const native = tryNative((d) => d.redactEmbeddedJson(value, emails, keepUnscanned));
@@ -271,7 +281,7 @@ function redactCore(value: string, emails: boolean, keepUnscanned: boolean): str
   return marked === value ? redacted : redacted.replace(MARKERS, "[redacted]");
 }
 
-export function redactSensitiveText(value: string, options: { emails?: boolean; keepUnscanned?: boolean } = {}): string {
+export function redactSensitiveText(value: string, options: RedactOptions = {}): string {
   const emails = options.emails ?? false;
   const keepUnscanned = options.keepUnscanned ?? false;
   const native = tryNative((d) => d.redactSensitiveText(value, emails, keepUnscanned));
@@ -279,11 +289,7 @@ export function redactSensitiveText(value: string, options: { emails?: boolean; 
   return redactCore(value, emails, keepUnscanned);
 }
 
-export function redactBeforeTruncate(
-  value: string,
-  maxChars: number,
-  options: { emails?: boolean; keepUnscanned?: boolean } = {},
-): string {
+export function redactBeforeTruncate(value: string, maxChars: number, options: RedactOptions = {}): string {
   const redacted = redactSensitiveText(value, options);
   if (maxChars <= 0) return "";
   if (redacted.length <= maxChars) return redacted;

@@ -90,15 +90,17 @@ function defaultHomeDirs(userNames: string[]) {
 const userNamePatterns = new Map<string, RegExp>();
 const MAX_CACHED_PATTERNS = 64;
 
+// The "g"-flagged patterns below are stateful (lastIndex); safe only because they
+// are used exclusively with String.replace, which resets lastIndex per call.
 function patternForUserName(userName: string): RegExp {
-  let pattern = userNamePatterns.get(userName);
-  if (!pattern) {
-    pattern = new RegExp(`(?<![A-Za-z0-9._-])${escapeRegExp(userName)}(?![A-Za-z0-9._-])`, "g");
-    if (userNamePatterns.size >= MAX_CACHED_PATTERNS) {
-      userNamePatterns.delete(userNamePatterns.keys().next().value!);
-    }
-    userNamePatterns.set(userName, pattern);
+  const cached = userNamePatterns.get(userName);
+  if (cached) { userNamePatterns.delete(userName); userNamePatterns.set(userName, cached); return cached; }
+  const pattern = new RegExp(`(?<![A-Za-z0-9._-])${escapeRegExp(userName)}(?![A-Za-z0-9._-])`, "g");
+  if (userNamePatterns.size >= MAX_CACHED_PATTERNS) {
+    const oldest = userNamePatterns.keys().next();
+    if (!oldest.done) userNamePatterns.delete(oldest.value);
   }
+  userNamePatterns.set(userName, pattern);
   return pattern;
 }
 
