@@ -84,6 +84,16 @@ pub(crate) fn validate_abs_path(p: &str) -> Result<&Path, RunLogError> {
 }
 
 fn open_regular(path: &Path) -> Result<Option<File>, RunLogError> {
+    // Pre-open check keeps FIFOs and symlinked non-files from blocking File::open;
+    // symlink_metadata inspects only the final path component.
+    match fs::symlink_metadata(path) {
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(err) => return Err(RunLogError::Io(err)),
+        Ok(meta) if !meta.file_type().is_file() => {
+            return Err(RunLogError::InvalidInput("log_path_not_regular_file".to_string()));
+        }
+        Ok(_) => {}
+    }
     match File::open(path) {
         Ok(file) => {
             if !file.metadata()?.is_file() {
@@ -127,7 +137,11 @@ fn create_unique_temp(gz_path_str: &str) -> Result<(PathBuf, File), RunLogError>
         .as_nanos();
     for attempt in 0..TEMP_ATTEMPTS {
         let candidate = PathBuf::from(format!("{gz_path_str}.{pid}.{}.tmp", base_nanos + attempt));
-        match OpenOptions::new().write(true).create_new(true).open(&candidate) {
+        let mut opts = OpenOptions::new();
+        opts.write(true).create_new(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut opts, 0o600);
+        match opts.open(&candidate) {
             Ok(file) => return Ok((candidate, file)),
             Err(err) if err.kind() == io::ErrorKind::AlreadyExists => continue,
             Err(err) => return Err(RunLogError::Io(err)),
@@ -175,6 +189,7 @@ fn compress_and_replace(
 ) -> Result<FinalizeResponse, RunLogError> {
     let gz_path = Path::new(gz_path_str);
     let (tmp_path, tmp_file) = create_unique_temp(gz_path_str)?;
+    let src_mode = src_file.metadata().ok().map(|m| m.permissions());
     // Guard declared before encoder so encoder/file drops before cleanup on error.
     let mut guard = TempGuard { path: tmp_path.clone(), armed: true };
 
@@ -187,6 +202,13 @@ fn compress_and_replace(
 
     let mut buf_writer = encoder.finish()?;
     buf_writer.flush()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // Never widen beyond the source: src 0o600 → gz 0o600, src 0o644 → gz 0o600.
+        let capped = src_mode.map(|m| m.mode() & 0o600).unwrap_or(0o600);
+        fs::set_permissions(&tmp_path, fs::Permissions::from_mode(capped))?;
+    }
     let synced_file = buf_writer.into_inner().map_err(io::Error::from)?;
     synced_file.sync_all()?;
     drop(synced_file);

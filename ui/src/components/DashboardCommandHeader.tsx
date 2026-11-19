@@ -40,7 +40,7 @@ export function DashboardCommandHeader(props: { companyId: string; kpis: Command
 
   const { data: pending } = useQuery({
     queryKey: queryKeys.operatorDecisions.list(companyId, "pending"),
-    queryFn: () => operatorDecisionsApi.list(companyId, "pending", 20),
+    queryFn: () => operatorDecisionsApi.list(companyId, "pending", 50),
     refetchInterval: 30_000,
     retry: false,
   });
@@ -54,6 +54,8 @@ export function DashboardCommandHeader(props: { companyId: string; kpis: Command
   const queueItems = useMemo(() => normalizeQueueItems(queueRaw), [queueRaw]);
   const pendingCards = pending?.data ?? [];
   const waitCount = computeWaitCount(pendingCards.length, queueItems.length);
+  const hasMore = Boolean(pending?.page?.nextCursor);
+  const waitDisplay = pending ? `${waitCount}${hasMore ? "+" : ""}` : String(kpis.waitCount);
 
   const waits = useMemo<WaitEntry[]>(() => {
     const entries: WaitEntry[] = pendingCards.slice(0, 6).map((d) => ({
@@ -76,7 +78,7 @@ export function DashboardCommandHeader(props: { companyId: string; kpis: Command
     { icon: CircleDot, label: "진행 작업", value: String(kpis.inProgressTasks), sub: `${kpis.blockedTasks} 차단됨`, to: "/issues" },
     { icon: Rocket, label: "활성 미션", value: String(kpis.activeMissions), sub: "missions", to: "/missions" },
     { icon: DollarSign, label: "월간 비용", value: formatCents(kpis.monthSpendCents), sub: kpis.monthBudgetCents > 0 ? `예산 ${formatCents(kpis.monthBudgetCents)}` : "무제한", to: "/costs" },
-    { icon: Hourglass, label: "대기/차단 현황", value: String(Math.max(kpis.waitCount, waitCount)), sub: "승인+큐", to: "/human-operator" },
+    { icon: Hourglass, label: "대기/차단 현황", value: waitDisplay, sub: pending ? `결정 ${pendingCards.length}${hasMore ? "+" : ""} · 큐 ${queueItems.length}` : "승인+큐", to: "/human-operator" },
   ];
 
   return (

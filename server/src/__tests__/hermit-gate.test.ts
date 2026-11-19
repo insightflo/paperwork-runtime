@@ -6,11 +6,11 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { agentWakeupRequests, agents, companies, createDb } from "@paperclipai/db";
+import { agentWakeupRequests, agents, companies, createDb, heartbeatRuns } from "@paperclipai/db";
 import type { Db } from "@paperclipai/db";
 import { createHermitGateService, normalizeRepoPath, pathsOverlap } from "../services/hermit-gate.js";
 import {
@@ -32,6 +32,9 @@ describe("hermit gate — paths", () => {
   it("normalizes repo paths and detects ancestor/descendant overlap", () => {
     expect(normalizeRepoPath("/server//src/")).toBe("server/src");
     expect(normalizeRepoPath("./server/src")).toBe("server/src");
+    expect(normalizeRepoPath("a/./b")).toBe("a/b");
+    expect(() => normalizeRepoPath("/")).toThrow();
+    expect(() => normalizeRepoPath("//./")).toThrow();
     expect(() => normalizeRepoPath("../etc/passwd")).toThrow();
     expect(pathsOverlap("server/src", "server/src/routes/worktree.ts")).toBe(true);
     expect(pathsOverlap("server/src/routes/worktree.ts", "server/src")).toBe(true);
@@ -156,13 +159,41 @@ describe("r60 scenario 4 — consequential decision ledger", () => {
   });
 });
 
-describe("r60 scenario 5a — ops console telemetry safety", () => {
-  const gate = createHermitGateService({ stateDir: tempDir("hg-tel-") });
+describe("r60 scenario 5a — ops console telemetry safety & gate TTL/audit hardening", () => {
+  const dir = tempDir("hg-tel-");
+  const gate = createHermitGateService({ stateDir: dir });
   const telemetry = opsConsoleTelemetryService({} as unknown as Db, gate);
 
-  it("rejects stopping pid 1 and the server's own pid", () => {
-    expect(telemetry.stopBackgroundProcess(1).ok).toBe(false);
-    expect(telemetry.stopBackgroundProcess(process.pid).ok).toBe(false);
+  it("rejects stopping pid 1 and the server's own pid", async () => {
+    expect((await telemetry.stopBackgroundProcess("co-5", 1)).ok).toBe(false);
+    expect((await telemetry.stopBackgroundProcess("co-5", process.pid)).ok).toBe(false);
+  });
+
+  it("rejects sentinel 'audit-head' or empty-window completeAudit and prunes expired TTL claims", async () => {
+    await expect(gate.completeAudit("co-empty", "audit-head")).rejects.toThrow();
+    await expect(gate.completeAudit("co-empty", "deadbeef")).rejects.toThrow(/누적 병합/);
+
+    const claimed = await gate.claimPaths("co-ttl", {
+      taskId: "stale-task",
+      worktreeName: "wt-stale",
+      paths: ["ui/src/pages"],
+      ttlMinutes: 1,
+    });
+    expect(claimed.ok).toBe(true);
+    if (claimed.ok) expect(claimed.claim.expiresAt).toBeTruthy();
+
+    const stateFile = path.join(dir, "hermit-gate-co-ttl.json");
+    const parsed = JSON.parse(readFileSync(stateFile, "utf8")) as { claims: Array<{ expiresAt?: string }> };
+    parsed.claims[0].expiresAt = "2000-01-01T00:00:00.000Z";
+    writeFileSync(stateFile, JSON.stringify(parsed, null, 2), "utf8");
+
+    const fresh = await gate.claimPaths("co-ttl", {
+      taskId: "fresh-task",
+      worktreeName: "wt-fresh",
+      paths: ["ui/src/pages/Dashboard.tsx"],
+    });
+    expect(fresh.ok).toBe(true);
+    expect((await gate.getState("co-ttl")).claims.map((c) => c.taskId)).toEqual(["fresh-task"]);
   });
 
   it("clamps thresholds to [10, 99] and snapshots reflect them", async () => {
@@ -195,10 +226,11 @@ describe("r60 scenario 5a — ops console telemetry safety", () => {
   });
 });
 
-describeDb("r60 scenario 5b — operator queue view (db)", () => {
+describeDb("r60 scenario 5b — operator queue view & process tenant isolation (db)", () => {
   let db: Db;
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
   let companyId = "";
+  let otherCompanyId = "";
   let agentId = "";
   let queue: ReturnType<typeof operatorQueueViewService>;
 
@@ -207,13 +239,23 @@ describeDb("r60 scenario 5b — operator queue view (db)", () => {
     db = createDb(tempDb.connectionString);
     queue = operatorQueueViewService(db);
     companyId = randomUUID();
-    await db.insert(companies).values({
-      id: companyId,
-      name: `HG Co ${companyId.slice(0, 8)}`,
-      issuePrefix: `HG${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
-      timezone: "UTC",
-      requireBoardApprovalForNewAgents: false,
-    });
+    otherCompanyId = randomUUID();
+    await db.insert(companies).values([
+      {
+        id: companyId,
+        name: `HG Co ${companyId.slice(0, 8)}`,
+        issuePrefix: `HG${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+        timezone: "UTC",
+        requireBoardApprovalForNewAgents: false,
+      },
+      {
+        id: otherCompanyId,
+        name: `HG Other ${otherCompanyId.slice(0, 8)}`,
+        issuePrefix: `HO${otherCompanyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+        timezone: "UTC",
+        requireBoardApprovalForNewAgents: false,
+      },
+    ]);
     agentId = randomUUID();
     await db.insert(agents).values({ id: agentId, companyId, name: "hermit-agent" });
   }, 120_000);
@@ -230,25 +272,47 @@ describeDb("r60 scenario 5b — operator queue view (db)", () => {
     return row.id;
   }
 
-  it("lists, reorders, edits, and cancels queued wakeups (agent_wakeup_requests only)", async () => {
+  it("lists, reorders, edits, and cancels queued wakeups safely across malformed queueOrder", async () => {
     const legacy = await seedWakeup({ prompt: "legacy" }, "queued");
+    const badOrder = await seedWakeup({ prompt: "bad-order", queueOrder: "high" }, "queued");
     const second = await seedWakeup({ prompt: "second", queueOrder: 2 }, "queued");
     const first = await seedWakeup({ prompt: "first", queueOrder: 1 }, "held_fanout");
-    await seedWakeup({ prompt: "done" }, "completed");
+    const completed = await seedWakeup({ prompt: "done" }, "completed");
 
     let items = await queue.listCompanyQueue(companyId);
-    expect(items.map((i) => i.promptPreview)).toEqual(["first", "second", "legacy"]);
+    expect(items.map((i) => i.promptPreview)).toEqual(["first", "second", "legacy", "bad-order"]);
 
-    items = await queue.reorderQueue(companyId, [legacy, second, first]);
-    expect(items.map((i) => i.id)).toEqual([legacy, second, first]);
-    expect(items.map((i) => i.queueOrder)).toEqual([1, 2, 3]);
+    // Partial orderedIds rewrites all active company rows sequentially (no stale queueOrder collision).
+    items = await queue.reorderQueue(companyId, [legacy, second]);
+    expect(items.map((i) => i.queueOrder)).toEqual([1, 2, 3, 4]);
+    expect(items.slice(0, 2).map((i) => i.id)).toEqual([legacy, second]);
 
     const edited = await queue.editQueuedWakeup(companyId, second, { prompt: "  edited prompt  " });
     expect(edited.promptPreview).toBe("edited prompt");
+    await expect(queue.editQueuedWakeup(companyId, completed, { prompt: "nope" })).rejects.toThrow();
 
     expect(await queue.cancelQueuedWakeup(companyId, first)).toBe(true);
     expect(await queue.cancelQueuedWakeup(companyId, first)).toBe(false);
+    expect(await queue.cancelQueuedWakeup(companyId, badOrder)).toBe(true);
     const remaining = (await queue.listCompanyQueue(companyId)).map((i) => i.id).sort();
     expect(remaining).toEqual([legacy, second].sort());
+  });
+
+  it("rejects stopping a PID owned by another company", async () => {
+    const fakeChildPid = 424242;
+    await db.insert(heartbeatRuns).values({
+      id: randomUUID(),
+      companyId,
+      agentId,
+      invocationSource: "on_demand",
+      status: "running",
+      processPid: fakeChildPid,
+    });
+    const gate = createHermitGateService({ stateDir: tempDir("hg-tenant-") });
+    const telemetry = opsConsoleTelemetryService(db, gate);
+    const denied = await telemetry.stopBackgroundProcess(otherCompanyId, fakeChildPid);
+    expect(denied.ok).toBe(false);
+    if (!denied.ok) expect(denied.reason).toContain("소유 프로세스가 아닙니다");
+    expect(await telemetry.listBackgroundProcesses(otherCompanyId)).toEqual([]);
   });
 });

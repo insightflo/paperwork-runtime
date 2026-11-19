@@ -17,15 +17,18 @@ export const DEEP_IMPORT_PATTERNS: RegExp[] = [
   /\.\.\/\.\.\/packages\/[^/]+\/src\//,
 ];
 
-/** 저장소 경로 정규화 — `//` 축소, 선행 `./`·`/` 제거, `..` 트래버설 거부. */
+/** 저장소 경로 정규화 — `//`·`.` 축소, 선행/후행 `/` 제거, `..` 트래버설 및 빈 결과 거부. */
 export function normalizeRepoPath(p: string): string {
   if (typeof p !== "string" || p.length === 0) throw badRequest("경로가 비어 있습니다");
-  if (p.split("/").some((segment) => segment === "..")) {
+  const segments = p.split("/");
+  if (segments.some((segment) => segment === "..")) {
     throw badRequest(`경로 트래버설은 허용되지 않습니다: ${p}`);
   }
-  let norm = p.replace(/\/+/g, "/").replace(/\/+$/, "");
-  while (norm.startsWith("./")) norm = norm.slice(2);
-  return norm.replace(/^\//, "");
+  const norm = segments.filter((segment) => segment.length > 0 && segment !== ".").join("/");
+  if (norm.length === 0) {
+    throw badRequest(`유효한 저장소 상대 경로가 아닙니다: ${p}`);
+  }
+  return norm;
 }
 
 /** 조상-후손 포함 겹침 판정: a === b || a가 b 하위 || b가 a 하위. */
@@ -35,7 +38,10 @@ export function pathsOverlap(a: string, b: string): boolean {
   return na === nb || na.startsWith(nb + "/") || nb.startsWith(na + "/");
 }
 
-/** 자식 경로가 조상 범위 안인지(같음 또는 하위) — 변경 검증용 단방향 판정. */
+/**
+ * 자식 경로가 조상 범위 안인지(같음 또는 하위) — 변경 검증용 단방향 판정.
+ * 호출자는 반드시 `normalizeRepoPath` 로 정규화된 경로를 전달해야 한다.
+ */
 export function pathWithin(child: string, ancestor: string): boolean {
   return child === ancestor || child.startsWith(ancestor + "/");
 }
@@ -60,6 +66,7 @@ export const ClaimRequestSchema = z.object({
   worktreeName: z.string().min(1),
   agentId: z.string().optional(),
   paths: z.array(z.string().min(1)).min(1),
+  ttlMinutes: z.number().int().min(1).max(10_080).optional(),
 });
 
 export interface PathClaim {
@@ -69,6 +76,8 @@ export interface PathClaim {
   agentId?: string;
   paths: string[];
   createdAt: string;
+  /** 클레임 만료 시각(ISO 8601) — 비정상 종료 태스크의 스테일 선점 자동 회수 기준. */
+  expiresAt?: string;
 }
 
 export type ClaimResult =
