@@ -36,6 +36,7 @@ import {
   FormInput,
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { HermitGateAndOpsPanel } from "../components/HermitGateAndOpsPanel";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -583,6 +584,7 @@ export function WorktreeRules() {
   const [severityFilter, setSeverityFilter] = useState<RuleSeverity | "all">("all");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [mainTab, setMainTab] = useState<"rules" | "ops">("rules");
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Worktree Rules" }]);
@@ -630,6 +632,32 @@ export function WorktreeRules() {
         </p>
       )}
 
+      {/* Segmented main tabs */}
+      <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40">
+        {([
+          { id: "rules", label: "실행 규칙" },
+          { id: "ops", label: "Hermit Gate & 리소스 콘솔" },
+        ] as const).map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setMainTab(tab.id)}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              mainTab === tab.id
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {mainTab === "ops" && <HermitGateAndOpsPanel companyId={selectedCompanyId} />}
+
+      {mainTab === "rules" && (
+      <>
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {/* Severity filter tabs */}
@@ -696,6 +724,8 @@ export function WorktreeRules() {
             <RuleRow key={rule.id} rule={rule} companyId={selectedCompanyId} />
           ))}
         </div>
+      )}
+      </>
       )}
     </div>
   );

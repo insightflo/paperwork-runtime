@@ -19,6 +19,7 @@ import {
   Save,
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { ChannelCollaborationBoard } from "../components/ChannelCollaborationBoard";
 
 // ---------------------------------------------------------------------------
 // Query keys (local — no cross-page sharing needed)
@@ -333,6 +334,7 @@ function TelegramSection({ companyId, config }: TelegramSectionProps) {
 export function ChannelConfig() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const [channelTab, setChannelTab] = useState<"board" | "telegram">("board");
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Channel" }]);
@@ -368,27 +370,55 @@ export function ChannelConfig() {
         </p>
       </div>
 
+      {/* Segmented tabs */}
+      <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40">
+        {([
+          { id: "board", label: "협업 채널 보드" },
+          { id: "telegram", label: "Telegram 연동 설정" },
+        ] as const).map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setChannelTab(tab.id)}
+            className={cn(
+              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              channelTab === tab.id
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       <Separator />
 
-      {/* Telegram section */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-medium">Telegram</h2>
-          {config?.enabled && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
-              Enabled
-            </span>
-          )}
-          {config && !config.enabled && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-              Disabled
-            </span>
-          )}
-        </div>
+      {channelTab === "board" && (
+        <ChannelCollaborationBoard companyId={selectedCompanyId} />
+      )}
 
-        <TelegramSection companyId={selectedCompanyId} config={config ?? null} />
-      </div>
+      {channelTab === "telegram" && (
+        /* Telegram section */
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-medium">Telegram</h2>
+            {config?.enabled && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                Enabled
+              </span>
+            )}
+            {config && !config.enabled && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                Disabled
+              </span>
+            )}
+          </div>
+
+          <TelegramSection companyId={selectedCompanyId} config={config ?? null} />
+        </div>
+      )}
     </div>
   );
 }
