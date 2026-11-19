@@ -48,7 +48,8 @@ export function SidebarAgents() {
   const { openNewAgent } = useDialog();
   const { isMobile, setSidebarOpen } = useSidebar();
   const location = useLocation();
-  const { compact } = useSidebarDensity();
+  const { compact: rawCompact } = useSidebarDensity();
+  const compact = rawCompact && !isMobile;
 
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
@@ -92,32 +93,49 @@ export function SidebarAgents() {
 
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <div className="group">
-        <div className="flex items-center px-3 py-1.5">
-          <CollapsibleTrigger className="flex items-center gap-1 flex-1 min-w-0">
-            <ChevronRight
-              className={cn(
-                "h-3 w-3 text-muted-foreground/60 transition-transform opacity-0 group-hover:opacity-100",
-                open && "rotate-90"
-              )}
-            />
-            <span className="text-[10px] font-medium uppercase tracking-widest font-mono text-muted-foreground/60">
-              Agents
-            </span>
-          </CollapsibleTrigger>
+    <Collapsible open={compact ? true : open} onOpenChange={setOpen}>
+      {compact ? (
+        <div className="flex justify-center border-t pt-1.5" style={{ borderColor: "var(--openbot-subnav-border)" }}>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               openNewAgent();
             }}
-            className="flex items-center justify-center h-4 w-4 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent/50 transition-colors"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors"
             aria-label="New agent"
+            title="New agent"
           >
-            <Plus className="h-3 w-3" />
+            <Plus className="h-3.5 w-3.5" />
           </button>
         </div>
-      </div>
+      ) : (
+        <div className="group">
+          <div className="flex items-center px-3 py-1.5">
+            <CollapsibleTrigger className="flex items-center gap-1 flex-1 min-w-0">
+              <ChevronRight
+                className={cn(
+                  "h-3 w-3 text-muted-foreground/60 transition-transform opacity-0 group-hover:opacity-100",
+                  open && "rotate-90"
+                )}
+              />
+              <span className="text-[10px] font-medium uppercase tracking-widest font-mono text-muted-foreground/60">
+                Agents
+              </span>
+            </CollapsibleTrigger>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                openNewAgent();
+              }}
+              className="flex items-center justify-center h-4 w-4 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent/50 transition-colors"
+              aria-label="New agent"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+      )}
 
       <CollapsibleContent>
         <div className="flex flex-col gap-0.5 mt-0.5">
@@ -132,6 +150,8 @@ export function SidebarAgents() {
               <NavLink
                 key={agent.id}
                 to={activeTab ? `${agentUrl(agent)}/${activeTab}` : agentUrl(agent)}
+                title={compact ? agent.name : undefined}
+                aria-label={compact ? agent.name : undefined}
                 onClick={() => {
                   if (isMobile) setSidebarOpen(false);
                 }}

@@ -51,7 +51,7 @@ export function calculateSidebarSlideMetrics(
   const collapseProgress = clamp(Number((1 - navVisibleWidth / NAV_EXPANDED_WIDTH_PX).toFixed(4)), 0, 1);
   const depthBlurEnabled = opts?.depthBlurEnabled ?? true;
   const isHoveringSubNav = opts?.isHoveringSubNav ?? false;
-  const isSnappedCompact = Math.abs(navVisibleWidth - NAV_COMPACT_WIDTH_PX) <= 8;
+  const isSnappedCompact = navVisibleWidth <= NAV_COMPACT_WIDTH_PX && navVisibleWidth >= NAV_COMPACT_WIDTH_PX - 2;
   const subNavBlurPx =
     !depthBlurEnabled || isHoveringSubNav || isSnappedCompact || collapseProgress <= 0.04
       ? 0
@@ -170,13 +170,14 @@ export function useSidebarSlideController(opts: {
   }, [applyWidth, effectiveNavWidth, opts.sidebarOpen]);
 
   const toggleCompact = useCallback(() => {
+    if (opts.isMobile || autoCompacted) return;
     const shouldExpand = !opts.sidebarOpen || effectiveNavWidth <= NAV_COMPACT_WIDTH_PX;
     applyWidth(shouldExpand ? NAV_EXPANDED_WIDTH_PX : NAV_COMPACT_WIDTH_PX, true);
-  }, [applyWidth, effectiveNavWidth, opts.sidebarOpen]);
+  }, [applyWidth, autoCompacted, effectiveNavWidth, opts.isMobile, opts.sidebarOpen]);
 
   const density = useMemo(
-    () => ({ width: effectiveNavWidth, compact: effectiveNavWidth <= NAV_COMPACT_WIDTH_PX }),
-    [effectiveNavWidth],
+    () => ({ width: effectiveNavWidth, compact: !opts.isMobile && effectiveNavWidth <= NAV_COMPACT_WIDTH_PX }),
+    [effectiveNavWidth, opts.isMobile],
   );
 
   return { navWidth, effectiveNavWidth, metrics, density, autoCompacted, setHoveringSubNav: setHovering, previewNavWidth, commitNavWidth, toggleNav, toggleCompact };

@@ -18,6 +18,43 @@ interface SidebarNavItemProps {
   liveCount?: number;
 }
 
+function renderCompactIndicator(opts: {
+  badge?: number;
+  badgeTone: "default" | "danger";
+  alert: boolean;
+  liveCount?: number;
+  textBadgeTone: "default" | "amber";
+  hasTextBadge: boolean;
+}) {
+  if (opts.badge != null && opts.badge > 0) {
+    return (
+      <span
+        className={cn(
+          "absolute -right-1 -top-1 min-w-4 rounded-full px-1 text-center text-[10px] font-semibold leading-4",
+          opts.badgeTone === "danger" ? "bg-red-600/90 text-red-50" : "bg-primary text-primary-foreground",
+        )}
+      >
+        {opts.badge > 99 ? "99+" : opts.badge}
+      </span>
+    );
+  }
+  if (opts.alert) {
+    return <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500 shadow-[0_0_0_2px_hsl(var(--background))]" />;
+  }
+  if (opts.hasTextBadge && opts.textBadgeTone === "amber") {
+    return (
+      <span
+        className="absolute right-1 top-1 h-2 w-2 rounded-full shadow-[0_0_0_2px_hsl(var(--background))]"
+        style={{ backgroundColor: "var(--openbot-wait-question)" }}
+      />
+    );
+  }
+  if (opts.liveCount != null && opts.liveCount > 0) {
+    return <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-blue-500 animate-pulse" />;
+  }
+  return null;
+}
+
 export function SidebarNavItem({
   to,
   label,
@@ -36,12 +73,13 @@ export function SidebarNavItem({
   const showCompactMode = compact && !isMobile;
 
   if (showCompactMode) {
+    const compactTitle = textBadge ? `${label} (${textBadge})` : label;
     return (
       <NavLink
         to={to}
         end={end}
-        title={label}
-        aria-label={label}
+        title={compactTitle}
+        aria-label={compactTitle}
         onClick={() => { if (isMobile) setSidebarOpen(false); }}
         style={({ isActive }) =>
           isActive
@@ -62,20 +100,7 @@ export function SidebarNavItem({
         }
       >
         <Icon className="h-4 w-4 shrink-0" />
-        {badge != null && badge > 0 ? (
-          <span
-            className={cn(
-              "absolute -right-1 -top-1 min-w-4 rounded-full px-1 text-center text-[10px] font-semibold leading-4",
-              badgeTone === "danger" ? "bg-red-600/90 text-red-50" : "bg-primary text-primary-foreground",
-            )}
-          >
-            {badge > 99 ? "99+" : badge}
-          </span>
-        ) : alert ? (
-          <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500 shadow-[0_0_0_2px_hsl(var(--background))]" />
-        ) : liveCount != null && liveCount > 0 ? (
-          <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
-        ) : null}
+        {renderCompactIndicator({ badge, badgeTone, alert, liveCount, textBadgeTone, hasTextBadge: Boolean(textBadge) })}
       </NavLink>
     );
   }

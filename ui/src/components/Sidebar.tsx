@@ -30,6 +30,7 @@ import { SidebarProjects } from "./SidebarProjects";
 import { SidebarAgents } from "./SidebarAgents";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
+import { useSidebar } from "../context/SidebarContext";
 import { heartbeatsApi } from "../api/heartbeats";
 import { missionsApi } from "../api/missions";
 import { operatorDecisionsApi } from "../api/operator-decisions";
@@ -50,7 +51,9 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact }: SidebarProps) {
-  const { compact } = useSidebarDensity();
+  const { compact: rawCompact } = useSidebarDensity();
+  const { isMobile } = useSidebar();
+  const compact = rawCompact && !isMobile;
   const { openNewIssue, openNewMission } = useDialog();
   const { selectedCompanyId, selectedCompany } = useCompany();
   const sidebarDataReady = useAfterInitialPaint(900);
@@ -175,16 +178,18 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
           >
             <Search className="h-4 w-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground shrink-0"
-            onClick={onToggleCompact}
-            aria-label="아이콘 미니바로 접기"
-            title="아이콘 미니바로 접기"
-          >
-            <PanelLeftClose className="h-4 w-4" />
-          </Button>
+          {!isMobile && onToggleCompact && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="text-muted-foreground shrink-0"
+              onClick={onToggleCompact}
+              aria-label="아이콘 미니바로 접기"
+              title="아이콘 미니바로 접기"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </Button>
+          )}
         </div>
       )}
 
@@ -236,7 +241,7 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
             badgeTone={inboxBadge.failedRuns > 0 ? "danger" : "default"}
             alert={inboxBadge.failedRuns > 0}
           />
-          {!compact && (
+          <div className={compact ? "hidden" : undefined}>
             <PluginSlotOutlet
               slotTypes={["sidebar"]}
               context={pluginContext}
@@ -245,7 +250,7 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
               itemClassName="text-[13px] font-medium"
               missingBehavior="placeholder"
             />
-          )}
+          </div>
         </div>
 
         <div className={compact ? "openbot-compact-section border-t pt-1.5" : undefined} style={compact ? { borderColor: "var(--openbot-subnav-border)" } : undefined}>
@@ -256,7 +261,9 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
           </SidebarSection>
         </div>
 
-        {!compact && <SidebarProjects />}
+        <div className={compact ? "hidden" : undefined}>
+          <SidebarProjects />
+        </div>
 
         <SidebarAgents />
 
@@ -304,7 +311,7 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
           </SidebarSection>
         </div>
 
-        {!compact && (
+        <div className={compact ? "hidden" : undefined}>
           <PluginSlotOutlet
             slotTypes={["sidebarPanel"]}
             context={pluginContext}
@@ -313,7 +320,7 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
             itemClassName="rounded-lg border border-border p-3"
             missingBehavior="placeholder"
           />
-        )}
+        </div>
       </nav>
     </aside>
   );
