@@ -119,7 +119,7 @@ fn write_dump(tx: &mut Transaction<'_>, out: &mut Out, p: &BackupParams) -> Resu
     out.stmt("SET LOCAL client_min_messages = warning;")?;
     out.emit("")?;
     let raw_tables: Vec<(String, String)> = tx.query("SELECT table_schema::text AS s, table_name::text AS t FROM information_schema.tables WHERE table_type = 'BASE TABLE' AND (table_schema = 'public' OR ($1::boolean AND table_schema = 'drizzle' AND table_name = '__drizzle_migrations')) ORDER BY table_schema, table_name", &[&include])?.iter().map(|r| (r.get::<_, String>(0), r.get::<_, String>(1))).collect();
-    let tables: Vec<&(String, String)> = raw_tables.iter().filter(|(_, t)| !p.exclude_tables.contains(t.as_str())).collect();
+    let tables: Vec<&(String, String)> = raw_tables.iter().collect();
     let included: HashSet<String> = tables.iter().map(|(s, t)| format!("{s}.{t}")).collect();
     let enums: Vec<(String, Vec<String>)> = tx.query("SELECT t.typname::text AS n, array_agg(e.enumlabel::text ORDER BY e.enumsortorder)::text[] AS l FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = 'public' GROUP BY t.typname ORDER BY t.typname", &[])?.iter().map(|r| (r.get::<_, String>(0), r.get::<_, Vec<String>>(1))).collect();
     for (name, labels) in &enums {
