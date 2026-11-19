@@ -1,8 +1,21 @@
 import { useMemo } from "react";
 import { Link } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
-import { Bot, CircleDot, DollarSign, Hourglass, Inbox, Rocket } from "lucide-react";
+import {
+  Bot,
+  CircleDot,
+  DollarSign,
+  Hourglass,
+  Inbox,
+  MessageSquare,
+  PanelRightOpen,
+  Rocket,
+  ShieldCheck,
+  UserRoundCheck,
+} from "lucide-react";
 import { api } from "../api/client";
+import { dashboardApi } from "../api/dashboard";
+import { missionsApi } from "../api/missions";
 import { operatorDecisionsApi } from "../api/operator-decisions";
 import { queryKeys } from "../lib/queryKeys";
 import { formatCents } from "../lib/utils";
@@ -35,9 +48,23 @@ const TONE_VARS: Record<WaitEntry["tone"], { fg: string; bg: string }> = {
   queue: { fg: "--openbot-info-text", bg: "--openbot-info-soft" },
 };
 
-export function DashboardCommandHeader(props: { companyId: string; kpis: CommandKpis }) {
-  const { companyId, kpis } = props;
+export function DashboardCommandHeader(props: { companyId: string; kpis?: CommandKpis }) {
+  const { companyId } = props;
 
+  const { data: summary } = useQuery({
+    queryKey: queryKeys.dashboard(companyId),
+    queryFn: () => dashboardApi.summary(companyId),
+    enabled: !props.kpis && Boolean(companyId),
+    refetchInterval: 30_000,
+    retry: false,
+  });
+  const { data: missionsList } = useQuery({
+    queryKey: queryKeys.missions.list(companyId),
+    queryFn: () => missionsApi.list(companyId),
+    enabled: !props.kpis && Boolean(companyId),
+    refetchInterval: 30_000,
+    retry: false,
+  });
   const { data: pending } = useQuery({
     queryKey: queryKeys.operatorDecisions.list(companyId, "pending"),
     queryFn: () => operatorDecisionsApi.list(companyId, "pending", 50),
@@ -50,6 +77,19 @@ export function DashboardCommandHeader(props: { companyId: string; kpis: Command
     refetchInterval: 15_000,
     retry: false,
   });
+
+  const kpis: CommandKpis = props.kpis ?? {
+    runningAgents: summary?.agents.running ?? 0,
+    enabledAgents: summary
+      ? summary.agents.active + summary.agents.running + summary.agents.paused + summary.agents.error
+      : 0,
+    inProgressTasks: summary?.tasks.inProgress ?? 0,
+    blockedTasks: summary?.tasks.blocked ?? 0,
+    activeMissions: missionsList?.filter((m) => m.status === "active").length ?? 0,
+    monthSpendCents: summary?.costs.monthSpendCents ?? 0,
+    monthBudgetCents: summary?.costs.monthBudgetCents ?? 0,
+    waitCount: summary ? summary.pendingApprovals + summary.budgets.pendingApprovals : 0,
+  };
 
   const queueItems = useMemo(() => normalizeQueueItems(queueRaw), [queueRaw]);
   const pendingCards = pending?.data ?? [];
@@ -81,16 +121,55 @@ export function DashboardCommandHeader(props: { companyId: string; kpis: Command
     { icon: Hourglass, label: "대기/차단 현황", value: waitDisplay, sub: pending ? `결정 ${pendingCards.length}${hasMore ? "+" : ""} · 큐 ${queueItems.length}` : "승인+큐", to: "/human-operator" },
   ];
 
+  const pillStyle = {
+    backgroundColor: "var(--openbot-surface-25d-raised)",
+    borderColor: "var(--openbot-surface-25d-border)",
+    color: "var(--openbot-text-secondary)",
+  };
+
   return (
     <section
       aria-label="명령 헤더"
-      className="rounded-xl border p-3 space-y-3"
+      className="rounded-xl border p-3.5 space-y-3"
       style={{
         backgroundColor: "var(--openbot-surface-25d-bg)",
         borderColor: "var(--openbot-surface-25d-border)",
         boxShadow: "var(--openbot-surface-25d-shadow)",
       }}
     >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span
+          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+          style={{ backgroundColor: "var(--openbot-accent-soft)", color: "var(--openbot-accent-text)" }}
+        >
+          <Rocket className="h-3.5 w-3.5" />
+          실시간 운영 현황
+        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Link to="/human-operator" className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium no-underline transition-colors hover:brightness-110" style={pillStyle}>
+            <UserRoundCheck className="h-3.5 w-3.5" />
+            결정함{waitCount > 0 ? ` ${waitDisplay}` : ""}
+          </Link>
+          <Link to="/worktree/rules" className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium no-underline transition-colors hover:brightness-110" style={pillStyle}>
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Hermit Gate · 실행 규칙
+          </Link>
+          <Link to="/channels" className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium no-underline transition-colors hover:brightness-110" style={pillStyle}>
+            <MessageSquare className="h-3.5 w-3.5" />
+            채널 협업 보드
+          </Link>
+          <button
+            type="button"
+            onClick={() => typeof window !== "undefined" && window.dispatchEvent(new CustomEvent("openbot:toggle-inspector"))}
+            className="hidden md:inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors hover:brightness-110 cursor-pointer"
+            style={pillStyle}
+          >
+            <PanelRightOpen className="h-3.5 w-3.5" />
+            우측 인스펙터
+          </button>
+        </div>
+      </div>
+
       <div className="openbot-kpi-grid">
         {tiles.map((tile) => (
           <Link
