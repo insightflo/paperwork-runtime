@@ -47,11 +47,15 @@ import { runDatabaseBackup } from "./backup-lib.js";
 let tempDir = "";
 let backupDir = "";
 let existingBackup = "";
+let savedBackupBin: string | undefined;
 
 beforeEach(() => {
   controls.beginError = null;
   controls.queryError = null;
   controls.compressionError = null;
+  // Force the JS path even when the shell exports a Rust helper binary.
+  savedBackupBin = process.env.PAPERCLIP_DB_BACKUP_BIN;
+  delete process.env.PAPERCLIP_DB_BACKUP_BIN;
   tempDir = mkdtempSync(join(tmpdir(), "paperclip-backup-errors-"));
   backupDir = join(tempDir, "backups");
   mkdirSync(backupDir);
@@ -61,6 +65,8 @@ beforeEach(() => {
 
 afterEach(() => {
   rmSync(tempDir, { recursive: true, force: true });
+  if (savedBackupBin === undefined) delete process.env.PAPERCLIP_DB_BACKUP_BIN;
+  else process.env.PAPERCLIP_DB_BACKUP_BIN = savedBackupBin;
 });
 
 function backup() {
