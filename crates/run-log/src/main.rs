@@ -1,6 +1,6 @@
 mod ops;
 
-use std::io::{self, Read, Write};
+use std::io::{self, IsTerminal, Read, Write};
 use std::process;
 
 use serde::{Deserialize, Serialize};
@@ -47,7 +47,7 @@ fn read_stdin_bounded(max_bytes: usize) -> Result<Vec<u8>, RunLogError> {
 
 fn write_json_stdout<T: Serialize>(value: &T) -> Result<(), RunLogError> {
     let encoded =
-        serde_json::to_string(value).map_err(|err| RunLogError::InvalidInput(err.to_string()))?;
+        serde_json::to_string(value).map_err(|err| RunLogError::Io(io::Error::other(err.to_string())))?;
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "{encoded}")?;
     stdout.flush()?;
@@ -56,7 +56,11 @@ fn write_json_stdout<T: Serialize>(value: &T) -> Result<(), RunLogError> {
 
 fn run() -> Result<(), RunLogError> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.len() != 1 {
+    if args.len() != 1 || !matches!(args[0].as_str(), "finalize" | "read-range") {
+        // Drain piped stdin so writers never hit EPIPE when we exit early.
+        if !io::stdin().is_terminal() {
+            let _ = read_stdin_bounded(MAX_STDIN_BYTES);
+        }
         return Err(RunLogError::InvalidInput(
             "usage: paperclip-run-log <finalize|read-range>".to_string(),
         ));

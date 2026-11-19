@@ -1,18 +1,21 @@
-import { constants as fsConstants, createReadStream, promises as fs } from "node:fs";
+import { promises as fs } from "node:fs";
 import path from "node:path";
-import { createHash } from "node:crypto";
 import { notFound } from "../errors.js";
 import { resolvePaperclipInstanceRoot } from "../home-paths.js";
 import {
+  finalizeRunLogNodeFallback,
+  isRunLogEnoent,
   normalizeRunLogReadRange,
-  readGzipFileRangeNodeFallback,
+  openAppendNoCreate,
+  readRunLogNodeFallback,
   resolveRunLogBin,
   RunLogHelperNotFoundError,
   runRustLogFinalize,
   runRustLogReadRange,
-  sha256GzipFileNodeFallback,
+  warnRunLogFallback,
 } from "./run-log-rust-client.js";
 
+const STORE_LABEL = "workspace-operation-log-store";
 const NOT_FOUND_MESSAGE = "Workspace operation log not found";
 export type WorkspaceOperationLogStoreType = "local_file";
 
@@ -60,78 +63,10 @@ function resolveWithin(basePath: string, relativePath: string) {
   return resolved;
 }
 
-function isEnoent(err: unknown): boolean {
-  return (err as { code?: string })?.code === "ENOENT";
-}
-
-function warnFallback(scope: string, err: unknown): void {
-  console.warn(`[workspace-operation-log-store] ${scope}: ${err instanceof Error ? err.message : String(err)}`);
-}
-
 export function createLocalFileWorkspaceOperationLogStore(basePath: string): WorkspaceOperationLogStore {
   async function ensureDir(relativeDir: string) {
     const dir = resolveWithin(basePath, relativeDir);
     await fs.mkdir(dir, { recursive: true });
-  }
-
-  async function readFileRange(filePath: string, offset: number, limitBytes: number): Promise<WorkspaceOperationLogReadResult> {
-    const stat = await fs.stat(filePath); // ENOENT propagates → caller tries the .gz sibling
-
-    const start = Math.max(0, Math.min(offset, stat.size));
-    const end = Math.max(start, Math.min(start + limitBytes - 1, stat.size - 1));
-
-    if (start > end) {
-      return { content: "", nextOffset: start };
-    }
-
-    const chunks: Buffer[] = [];
-    await new Promise<void>((resolve, reject) => {
-      const stream = createReadStream(filePath, { start, end });
-      stream.on("data", (chunk) => {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      });
-      stream.on("error", reject);
-      stream.on("end", () => resolve());
-    });
-
-    const content = Buffer.concat(chunks).toString("utf8");
-    const nextOffset = end + 1 < stat.size ? end + 1 : undefined;
-    return { content, nextOffset };
-  }
-
-  async function sha256File(filePath: string): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-      const hash = createHash("sha256");
-      const stream = createReadStream(filePath);
-      stream.on("data", (chunk) => hash.update(chunk));
-      stream.on("error", reject);
-      stream.on("end", () => resolve(hash.digest("hex")));
-    });
-  }
-
-  async function readNodeFallback(absPath: string, offset: number, limitBytes: number): Promise<WorkspaceOperationLogReadResult> {
-    try {
-      return await readFileRange(absPath, offset, limitBytes);
-    } catch (err) {
-      if (isEnoent(err)) {
-        return readGzipFileRangeNodeFallback(`${absPath}.gz`, offset, limitBytes, NOT_FOUND_MESSAGE);
-      }
-      throw err;
-    }
-  }
-
-  async function finalizeNodeFallback(absPath: string): Promise<WorkspaceOperationLogFinalizeSummary> {
-    const stat = await fs.stat(absPath).catch(() => null);
-    if (stat) {
-      const sha256 = await sha256File(absPath);
-      return { bytes: stat.size, sha256, compressed: false };
-    }
-    // The Rust helper may have renamed to .gz before a transient failure — stay idempotent.
-    if (await fs.stat(`${absPath}.gz`).catch(() => null)) {
-      const { bytes, sha256 } = await sha256GzipFileNodeFallback(`${absPath}.gz`);
-      return { bytes, sha256, compressed: true };
-    }
-    throw notFound(NOT_FOUND_MESSAGE);
   }
 
   return {
@@ -151,13 +86,14 @@ export function createLocalFileWorkspaceOperationLogStore(basePath: string): Wor
     async append(handle, event) {
       if (handle.store !== "local_file") return;
       const absPath = resolveWithin(basePath, handle.logRef);
-      let fh;
+      let fh: fs.FileHandle;
       try {
-        // No O_CREAT: a vanished log must never resurrect into a ghost .ndjson.
-        fh = await fs.open(absPath, fsConstants.O_WRONLY | fsConstants.O_APPEND);
+        fh = await openAppendNoCreate(absPath);
       } catch (err) {
-        if (isEnoent(err) && (await fs.stat(`${absPath}.gz`).catch(() => null))) {
-          warnFallback("append dropped: log already finalized to .gz", err);
+        // Whether finalized to .gz or vanished cleanly, never resurrect a ghost
+        // .ndjson and never throw ENOENT into the workspace-operations catch.
+        if (isRunLogEnoent(err)) {
+          warnRunLogFallback(STORE_LABEL, "append dropped: log missing or already finalized", err);
           return;
         }
         throw err;
@@ -165,9 +101,11 @@ export function createLocalFileWorkspaceOperationLogStore(basePath: string): Wor
       try {
         const line = JSON.stringify({ ts: event.ts, stream: event.stream, chunk: event.chunk });
         await fh.writeFile(`${line}\n`, "utf8");
-      } finally {
-        await fh.close();
+      } catch (writeErr) {
+        await fh.close().catch(() => undefined);
+        throw writeErr;
       }
+      await fh.close();
     },
 
     async finalize(handle) {
@@ -181,10 +119,10 @@ export function createLocalFileWorkspaceOperationLogStore(basePath: string): Wor
           return await runRustLogFinalize(bin, absPath);
         } catch (err) {
           if (err instanceof RunLogHelperNotFoundError) throw notFound(NOT_FOUND_MESSAGE);
-          warnFallback("rust finalize failed; using Node fallback", err);
+          warnRunLogFallback(STORE_LABEL, "rust finalize failed; using Node fallback", err);
         }
       }
-      return finalizeNodeFallback(absPath);
+      return finalizeRunLogNodeFallback(absPath, NOT_FOUND_MESSAGE);
     },
 
     async read(handle, opts) {
@@ -199,10 +137,10 @@ export function createLocalFileWorkspaceOperationLogStore(basePath: string): Wor
           return await runRustLogReadRange(bin, absPath, offset, limitBytes);
         } catch (err) {
           if (err instanceof RunLogHelperNotFoundError) throw notFound(NOT_FOUND_MESSAGE);
-          warnFallback("rust read-range failed; using Node fallback", err);
+          warnRunLogFallback(STORE_LABEL, "rust read-range failed; using Node fallback", err);
         }
       }
-      return readNodeFallback(absPath, offset, limitBytes);
+      return readRunLogNodeFallback(absPath, offset, limitBytes, NOT_FOUND_MESSAGE);
     },
   };
 }
