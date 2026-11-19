@@ -473,11 +473,12 @@ export function worktreeRoutes(db: Db) {
   router.get("/companies/:companyId/ops-console/overview", async (req, res) => {
     const { companyId } = req.params;
     assertCompanyAccess(req, companyId);
-    const [resources, openWaits] = await Promise.all([
+    const [resources, backgroundProcesses, openWaits] = await Promise.all([
       telemetry.getResourceSnapshot(companyId),
+      telemetry.listBackgroundProcesses(companyId),
       telemetry.getOpenWaits(companyId),
     ]);
-    res.json({ resources, backgroundProcesses: telemetry.listBackgroundProcesses(companyId), openWaits });
+    res.json({ resources, backgroundProcesses, openWaits });
   });
 
   router.put("/companies/:companyId/ops-console/thresholds", async (req, res) => {
@@ -494,7 +495,7 @@ export function worktreeRoutes(db: Db) {
     assertCompanyAccess(req, companyId);
     const pidNumber = Number(pid);
     if (!Number.isInteger(pidNumber)) throw badRequest("pid 는 정수여야 합니다");
-    const result = telemetry.stopBackgroundProcess(pidNumber);
+    const result = await telemetry.stopBackgroundProcess(companyId, pidNumber);
     if (result.ok) {
       await audit(req, companyId, "ops_console", "ops_console.process.stopped", String(pidNumber), { pid: pidNumber });
       res.json(result);

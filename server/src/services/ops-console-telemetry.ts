@@ -9,22 +9,22 @@
  *   run 상태(heartbeat_runs/workflow_runs)는 건드리지 않는다.
  */
 
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agentWakeupRequests, operatorDecisions } from "@paperclipai/db";
+import { agentWakeupRequests, heartbeatRuns, operatorDecisions } from "@paperclipai/db";
 import type { ResourceThresholds } from "./hermit-gate-types.js";
 import type { HermitGateService } from "./hermit-gate.js";
 import { QUEUED_WAKEUP_STATUSES, buildPromptPreview } from "./operator-queue-view.js";
 
-const DEFAULT_THRESHOLDS: ResourceThresholds = { cpuPct: 85, memPct: 85, diskPct: 90 };
+const execFileAsync = promisify(execFile);
 
-/** 개발·워커 관련 명령만 목록에 남긴다(직계 자식은 항상 포함). */
-const RELEVANT_COMMAND_RE = /node|pnpm|npm|tsx|vite|vitest|bun|cargo|python|pytest|jest|esbuild|turbo|playwright/i;
+const DEFAULT_THRESHOLDS: ResourceThresholds = { cpuPct: 85, memPct: 85, diskPct: 90 };
 
 const PROCESS_ROW_CAP = 25;
 
@@ -86,11 +86,27 @@ function persistThresholds(stateDir: string, companyId: string, thresholds: Reso
   fs.renameSync(tmp, file);
 }
 
-function runPs(args: string[]): string {
-  return execFileSync("ps", args, { encoding: "utf8" });
+async function runPs(args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync("ps", args, { encoding: "utf8", timeout: 5000 });
+  return stdout;
 }
 
 export function opsConsoleTelemetryService(db: Db, hermitGate: HermitGateService) {
+  /** 요청 회사가 현재 running 으로 소유한 프로세스 PID 집합만 조회한다(읽기 전용 SELECT). */
+  async function getCompanyOwnedPids(companyId: string): Promise<Set<number>> {
+    const rows = await db
+      .select({ processPid: heartbeatRuns.processPid })
+      .from(heartbeatRuns)
+      .where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.status, "running")));
+    const owned = new Set<number>();
+    for (const row of rows) {
+      if (typeof row.processPid === "number" && Number.isInteger(row.processPid) && row.processPid > 0) {
+        owned.add(row.processPid);
+      }
+    }
+    return owned;
+  }
+
   async function getResourceSnapshot(companyId: string): Promise<ResourceSnapshot> {
     const cpuCount = Math.max(1, os.cpus().length);
     const cpuPct = Math.min(100, Math.round((os.loadavg()[0] / cpuCount) * 100));
@@ -130,35 +146,68 @@ export function opsConsoleTelemetryService(db: Db, hermitGate: HermitGateService
     return clamped;
   }
 
-  function listBackgroundProcesses(_companyId: string): BackgroundProcessRow[] {
+  async function listBackgroundProcesses(companyId: string): Promise<BackgroundProcessRow[]> {
+    const ownedPids = await getCompanyOwnedPids(companyId);
+    if (ownedPids.size === 0) return [];
     let stdout: string;
     try {
-      stdout = runPs(["-eo", "pid=,ppid=,etime=,comm="]);
+      stdout = await runPs(["-eo", "pid=,ppid=,etime=,comm="]);
     } catch {
       return [];
     }
-    const rows: BackgroundProcessRow[] = [];
+    const parsed: Array<{ pid: number; ppid: number; elapsed: string; command: string }> = [];
     for (const line of stdout.split("\n")) {
       const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/);
       if (!match) continue;
       const pid = Number(match[1]);
       const ppid = Number(match[2]);
       if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) continue;
-      const owned = ppid === process.pid;
-      if (!owned && !RELEVANT_COMMAND_RE.test(match[4])) continue;
-      rows.push({ pid, ppid, elapsed: match[3], command: match[4], stoppable: owned && pid !== process.pid });
+      parsed.push({ pid, ppid, elapsed: match[3], command: match[4] });
+    }
+    const ownedTree = new Set(ownedPids);
+    let added = true;
+    while (added) {
+      added = false;
+      for (const entry of parsed) {
+        if (ownedTree.has(entry.ppid) && !ownedTree.has(entry.pid)) {
+          ownedTree.add(entry.pid);
+          added = true;
+        }
+      }
+    }
+    const rows: BackgroundProcessRow[] = [];
+    for (const entry of parsed) {
+      if (!ownedTree.has(entry.pid)) continue;
+      rows.push({
+        pid: entry.pid,
+        ppid: entry.ppid,
+        elapsed: entry.elapsed,
+        command: entry.command,
+        stoppable: entry.ppid === process.pid && ownedPids.has(entry.pid),
+      });
       if (rows.length >= PROCESS_ROW_CAP) break;
     }
     return rows;
   }
 
-  function stopBackgroundProcess(pid: number): { ok: true; pid: number } | { ok: false; reason: string } {
+  async function stopBackgroundProcess(
+    companyId: string,
+    pid: number,
+  ): Promise<{ ok: true; pid: number } | { ok: false; reason: string }> {
     if (!Number.isInteger(pid)) return { ok: false, reason: "pid 는 정수여야 합니다" };
     if (pid <= 1) return { ok: false, reason: "보호된 시스템 프로세스(pid <= 1)는 종료할 수 없습니다" };
     if (pid === process.pid) return { ok: false, reason: "API 서버 프로세스 자신은 종료할 수 없습니다" };
+    const ownedPids = await getCompanyOwnedPids(companyId);
+    if (!ownedPids.has(pid)) {
+      return { ok: false, reason: `프로세스 ${pid} 는 요청 회사의 활성 실행 소유 프로세스가 아닙니다` };
+    }
     let ppid: number;
     try {
-      ppid = Number(runPs(["-o", "ppid=", "-p", String(pid)]).trim());
+      const out = (await runPs(["-o", "ppid=", "-p", String(pid)])).trim();
+      ppid = Number(out);
+      if (!out || !Number.isInteger(ppid) || ppid <= 0) {
+        return { ok: false, reason: `프로세스 ${pid} 를 찾을 수 없습니다` };
+      }
     } catch {
       return { ok: false, reason: `프로세스 ${pid} 를 찾을 수 없습니다` };
     }

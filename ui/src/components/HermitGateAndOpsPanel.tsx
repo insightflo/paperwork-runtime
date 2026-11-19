@@ -36,14 +36,15 @@ function Unavailable({ name }: { name: string }) {
 function ResourceBar(props: {
   label: string;
   icon: ReactNode;
-  percent: number;
+  percent: number | null;
   threshold: number;
   canEdit: boolean;
   onThreshold: (v: number) => void;
   onCommitThreshold: () => void;
 }) {
-  const pct = Math.max(0, Math.min(100, props.percent));
-  const over = pct >= props.threshold;
+  const measured = props.percent !== null;
+  const pct = measured ? Math.max(0, Math.min(100, props.percent!)) : 0;
+  const over = measured && pct >= props.threshold;
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-1.5 text-[11px]">
@@ -52,7 +53,7 @@ function ResourceBar(props: {
         <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--openbot-ring-track)" }}>
           <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: over ? "var(--openbot-danger)" : "var(--openbot-success)" }} />
         </div>
-        <span className="w-10 text-right font-mono">{pct.toFixed(0)}%</span>
+        <span className="w-14 text-right font-mono">{measured ? `${pct.toFixed(0)}%` : "측정 불가"}</span>
       </div>
       <div className="flex items-center gap-2 text-[10px] text-muted-foreground pl-5">
         <span>알림 임계값 {props.threshold}%</span>
@@ -72,24 +73,27 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
   const queryClient = useQueryClient();
   const [claimForm, setClaimForm] = useState({ taskId: "", worktreeName: "", paths: "" });
   const [claimError, setClaimError] = useState<string | null>(null);
+  const [opsError, setOpsError] = useState<string | null>(null);
   const [pendingScope, setPendingScope] = useState("");
   const [decisionForm, setDecisionForm] = useState({ decision: "", rationale: "", impact: "", amendTarget: "" });
   const [thresholds, setThresholds] = useState<ResourceAlertThresholds>({ cpuPercent: 85, ramPercent: 85, diskPercent: 90 });
   const [thresholdsReady, setThresholdsReady] = useState(false);
   const [validateResult, setValidateResult] = useState<string | null>(null);
 
-  const claimsQ = useQuery({ queryKey: ["hg-claims", companyId], queryFn: () => hermitGateApi.claims(companyId), retry: false });
-  const auditQ = useQuery({ queryKey: ["hg-audit", companyId], queryFn: () => hermitGateApi.auditProgress(companyId), retry: false });
-  const decisionsQ = useQuery({ queryKey: ["hg-decisions", companyId], queryFn: () => hermitGateApi.decisions(companyId), retry: false });
-  const resourcesQ = useQuery({ queryKey: ["ops-resources", companyId], queryFn: () => opsConsoleApi.resources(companyId), refetchInterval: 10_000, retry: false });
-  const thresholdsQ = useQuery({ queryKey: ["ops-thresholds", companyId], queryFn: () => opsConsoleApi.thresholds(companyId), retry: false });
-  const processesQ = useQuery({ queryKey: ["ops-processes", companyId], queryFn: () => opsConsoleApi.processes(companyId), refetchInterval: 10_000, retry: false });
+  const stateQ = useQuery({ queryKey: ["hg-state", companyId], queryFn: () => hermitGateApi.state(companyId), retry: false });
+  const overviewQ = useQuery({ queryKey: ["ops-overview", companyId], queryFn: () => opsConsoleApi.overview(companyId), refetchInterval: 10_000, retry: false });
 
   useEffect(() => {
-    if (thresholdsQ.data) { setThresholds(thresholdsQ.data); setThresholdsReady(true); }
-  }, [thresholdsQ.data]);
+    if (overviewQ.data?.thresholds) {
+      setThresholds(overviewQ.data.thresholds);
+      setThresholdsReady(true);
+    }
+  }, [overviewQ.data?.thresholds]);
 
-  const invalidate = (key: string) => queryClient.invalidateQueries({ queryKey: [key, companyId] });
+  const invalidateState = () => queryClient.invalidateQueries({ queryKey: ["hg-state", companyId] });
+  const invalidateOverview = () => queryClient.invalidateQueries({ queryKey: ["ops-overview", companyId] });
+
+  const toErrorMsg = (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback);
 
   const submitClaim = async () => {
     const paths = claimForm.paths.split(",").map((p) => p.trim()).filter(Boolean);
@@ -98,15 +102,21 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
     try {
       await hermitGateApi.claim(companyId, { taskId: claimForm.taskId, worktreeName: claimForm.worktreeName, paths });
       setClaimForm({ taskId: "", worktreeName: "", paths: "" });
-      invalidate("hg-claims");
+      invalidateState();
     } catch (err) {
-      setClaimError(err instanceof Error ? err.message : "경로 클레임 충돌 또는 요청 실패");
+      setClaimError(toErrorMsg(err, "경로 클레임 충돌 또는 요청 실패"));
     }
   };
 
   const commitThresholds = async () => {
     if (!thresholdsReady) return;
-    try { await opsConsoleApi.updateThresholds(companyId, thresholds); } catch { /* noop */ }
+    setOpsError(null);
+    try {
+      await opsConsoleApi.updateThresholds(companyId, thresholds);
+      invalidateOverview();
+    } catch (err) {
+      setOpsError(toErrorMsg(err, "리소스 임계값 저장에 실패했습니다"));
+    }
   };
 
   const runValidate = async (stage: "pre-commit" | "pr") => {
@@ -121,23 +131,28 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
 
   const addDecision = async () => {
     if (!decisionForm.decision) return;
+    setOpsError(null);
     try {
       await hermitGateApi.createDecision(companyId, decisionForm);
       setDecisionForm({ decision: "", rationale: "", impact: "", amendTarget: "" });
-      invalidate("hg-decisions");
-    } catch { /* noop */ }
+      invalidateState();
+    } catch (err) {
+      setOpsError(toErrorMsg(err, "핵심 결정 기록에 실패했습니다"));
+    }
   };
 
-  const usage = resourcesQ.data;
-  const claims = claimsQ.data ?? [];
-  const decisions = decisionsQ.data ?? [];
-  const processes = processesQ.data ?? [];
-  const auditPct = Math.min(100, ((auditQ.data?.completed ?? 0) / (auditQ.data?.total ?? HERMIT_AUDIT_TOTAL)) * 100);
+  const usage = overviewQ.data?.resources;
+  const claims = stateQ.data?.claims ?? [];
+  const audit = stateQ.data?.audit;
+  const decisions = stateQ.data?.decisions ?? [];
+  const processes = overviewQ.data?.processes ?? [];
+  const auditPct = Math.min(100, ((audit?.completed ?? 0) / (audit?.total ?? HERMIT_AUDIT_TOTAL)) * 100);
 
   return (
     <div className="space-y-3">
+      {opsError && <p className="text-[11px] px-1" style={{ color: "var(--openbot-danger-text)" }}>{opsError}</p>}
       <Section title="Hermit 게이트 — 활성 경로 클레임">
-        {claimsQ.isError ? <Unavailable name="클레임" /> : (
+        {stateQ.isError ? <Unavailable name="클레임" /> : (
           <div className="space-y-1">
             {claims.length === 0 && <p className="text-[11px] text-muted-foreground">활성 클레임 없음.</p>}
             {claims.map((c) => (
@@ -146,7 +161,11 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
                 <span className="text-muted-foreground shrink-0">{c.worktreeName}</span>
                 <span className="flex-1 min-w-0 truncate text-muted-foreground">{c.paths.join(", ")}</span>
                 <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px] text-destructive"
-                  onClick={async () => { try { await hermitGateApi.releaseClaim(companyId, c.taskId); invalidate("hg-claims"); } catch { /* noop */ } }}>
+                  onClick={async () => {
+                    setOpsError(null);
+                    try { await hermitGateApi.releaseClaim(companyId, c.taskId); invalidateState(); }
+                    catch (err) { setOpsError(toErrorMsg(err, "클레임 해제에 실패했습니다")); }
+                  }}>
                   해제
                 </Button>
               </div>
@@ -162,8 +181,8 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
         {claimError && <p className="text-[11px]" style={{ color: "var(--openbot-danger-text)" }}>{claimError}</p>}
       </Section>
 
-      <Section title={`25-PR 누적 감사 — ${auditProgressText(auditQ.data)}`}>
-        {auditQ.isError ? <Unavailable name="감사 진행" /> : (
+      <Section title={`25-PR 누적 감사 — ${auditProgressText(audit)}`}>
+        {stateQ.isError ? <Unavailable name="감사 진행" /> : (
           <>
             <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--openbot-ring-track)" }}>
               <div className="h-full rounded-full" style={{ width: `${auditPct}%`, backgroundColor: "var(--openbot-ring-fill)" }} />
@@ -173,12 +192,18 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
               <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" disabled={!pendingScope.trim()}
                 onClick={async () => {
                   const scopes = pendingScope.split(",").map((s) => s.trim()).filter(Boolean);
-                  try { await hermitGateApi.completeAudit(companyId, { pendingScopes: scopes }); setPendingScope(""); invalidate("hg-audit"); } catch { /* noop */ }
+                  setOpsError(null);
+                  try { await hermitGateApi.completeAudit(companyId, { pendingScopes: scopes }); setPendingScope(""); invalidateState(); }
+                  catch (err) { setOpsError(toErrorMsg(err, "보류 범위 적용에 실패했습니다")); }
                 }}>
                 보류 범위 적용
               </Button>
-              <Button size="sm" className="h-7 px-2 text-[11px]" disabled={(auditQ.data?.completed ?? 0) === 0 && !auditQ.data?.auditActive}
-                onClick={async () => { try { await hermitGateApi.completeAudit(companyId, {}); invalidate("hg-audit"); } catch { /* noop */ } }}>
+              <Button size="sm" className="h-7 px-2 text-[11px]" disabled={(audit?.completed ?? 0) === 0 && !audit?.lastAuditMergeSha}
+                onClick={async () => {
+                  setOpsError(null);
+                  try { await hermitGateApi.completeAudit(companyId, {}); invalidateState(); }
+                  catch (err) { setOpsError(toErrorMsg(err, "감사 완료 처리에 실패했습니다")); }
+                }}>
                 감사 완료
               </Button>
             </div>
@@ -192,7 +217,7 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
       </Section>
 
       <Section title="핵심 결정 원장">
-        {decisionsQ.isError ? <Unavailable name="결정 원장" /> : (
+        {stateQ.isError ? <Unavailable name="결정 원장" /> : (
           <div className="space-y-1">
             {decisions.length === 0 && <p className="text-[11px] text-muted-foreground">기록된 결정 없음.</p>}
             {decisions.map((d: CoreDecision) => (
@@ -215,7 +240,7 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
       </Section>
 
       <Section title="시스템 리소스">
-        {resourcesQ.isError || !usage ? <Unavailable name="리소스" /> : (
+        {overviewQ.isError || !usage ? <Unavailable name="리소스" /> : (
           <div className="space-y-2">
             <ResourceBar label="CPU" icon={<Cpu className="h-3.5 w-3.5" />} percent={usage.cpuPercent} threshold={thresholds.cpuPercent}
               canEdit={thresholdsReady} onThreshold={(v) => setThresholds({ ...thresholds, cpuPercent: v })} onCommitThreshold={commitThresholds} />
@@ -228,7 +253,7 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
       </Section>
 
       <Section title="백그라운드 프로세스">
-        {processesQ.isError ? <Unavailable name="프로세스" /> : (
+        {overviewQ.isError ? <Unavailable name="프로세스" /> : (
           <div className="space-y-1">
             {processes.length === 0 && <p className="text-[11px] text-muted-foreground">실행 중인 프로세스 없음.</p>}
             {processes.map((p) => (
@@ -238,7 +263,11 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
                 <span className="flex-1 min-w-0 truncate">{p.command}</span>
                 {p.ownedChild && (
                   <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px] text-destructive"
-                    onClick={async () => { try { await opsConsoleApi.stopProcess(companyId, p.pid); invalidate("ops-processes"); } catch { /* noop */ } }}>
+                    onClick={async () => {
+                      setOpsError(null);
+                      try { await opsConsoleApi.stopProcess(companyId, p.pid); invalidateOverview(); }
+                      catch (err) { setOpsError(toErrorMsg(err, "프로세스 중지에 실패했습니다")); }
+                    }}>
                     <Square className="h-3 w-3 mr-0.5" />중지
                   </Button>
                 )}

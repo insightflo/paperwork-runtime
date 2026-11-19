@@ -41,7 +41,7 @@ export interface CoreDecision {
 export interface SystemResourceUsage {
   cpuPercent: number;
   ramPercent: number;
-  diskPercent: number;
+  diskPercent: number | null;
 }
 
 export interface ResourceAlertThresholds {
@@ -93,6 +93,15 @@ const oc = (companyId: string, suffix: string) => `/companies/${companyId}/ops-c
 const fetchGateState = (companyId: string) => api.get<BackendGateState>(hg(companyId, "/state"));
 const fetchOverview = (companyId: string) => api.get<BackendOpsOverview>(oc(companyId, "/overview"));
 
+const mapClaims = (claims: BackendGateState["claims"]): HermitPathClaim[] =>
+  claims.map((c) => ({
+    id: c.claimId,
+    taskId: c.taskId,
+    worktreeName: c.worktreeName,
+    paths: c.paths,
+    createdAt: c.createdAt,
+  }));
+
 const mapAudit = (a: BackendGateState["auditState"]): HermitAuditProgress => ({
   completed: a.mergedPrsSinceAudit.length,
   total: a.threshold,
@@ -101,17 +110,45 @@ const mapAudit = (a: BackendGateState["auditState"]): HermitAuditProgress => ({
   lastAuditMergeSha: a.lastAuditMergeSha,
 });
 
-export const hermitGateApi = {
-  claims: async (companyId: string): Promise<HermitPathClaim[]> => {
-    const state = await fetchGateState(companyId);
-    return state.claims.map((c) => ({
-      id: c.claimId,
-      taskId: c.taskId,
-      worktreeName: c.worktreeName,
-      paths: c.paths,
-      createdAt: c.createdAt,
-    }));
+const mapDecision = (d: BackendGateState["decisions"][number]): CoreDecision => ({
+  id: d.id,
+  taskId: d.taskId,
+  decision: d.decision,
+  rationale: d.rationaleAndAssumption,
+  impact: d.impact,
+  amendTarget: d.whereToChange,
+  createdAt: d.createdAt,
+});
+
+const mapOverview = (ov: BackendOpsOverview) => ({
+  resources: {
+    cpuPercent: ov.resources.cpuPct,
+    ramPercent: ov.resources.memUsedPct,
+    diskPercent: ov.resources.diskUsedPct ?? null,
   },
+  thresholds: {
+    cpuPercent: ov.resources.thresholds.cpuPct,
+    ramPercent: ov.resources.thresholds.memPct,
+    diskPercent: ov.resources.thresholds.diskPct,
+  },
+  processes: ov.backgroundProcesses.map((p) => ({
+    pid: p.pid,
+    etime: p.elapsed,
+    command: p.command,
+    ownedChild: p.stoppable,
+  })),
+});
+
+export const hermitGateApi = {
+  state: async (companyId: string) => {
+    const state = await fetchGateState(companyId);
+    return {
+      claims: mapClaims(state.claims),
+      audit: mapAudit(state.auditState),
+      decisions: state.decisions.map(mapDecision),
+    };
+  },
+  claims: async (companyId: string): Promise<HermitPathClaim[]> => mapClaims((await fetchGateState(companyId)).claims),
   claim: async (companyId: string, data: { taskId: string; worktreeName: string; paths: string[] }) => {
     const res = await api.post<{ ok: boolean; claim: BackendGateState["claims"][number] }>(hg(companyId, "/claims"), data);
     return { id: res.claim.claimId, ...res.claim };
@@ -119,10 +156,8 @@ export const hermitGateApi = {
   releaseClaim: (companyId: string, taskId: string) =>
     api.delete(hg(companyId, `/claims/${encodeURIComponent(taskId)}`)),
 
-  auditProgress: async (companyId: string): Promise<HermitAuditProgress> => {
-    const state = await fetchGateState(companyId);
-    return mapAudit(state.auditState);
-  },
+  auditProgress: async (companyId: string): Promise<HermitAuditProgress> =>
+    mapAudit((await fetchGateState(companyId)).auditState),
   completeAudit: async (companyId: string, data: { pendingScopes?: string[] }): Promise<HermitAuditProgress> => {
     if (data.pendingScopes && data.pendingScopes.length > 0) {
       const next = await api.post<BackendGateState["auditState"]>(hg(companyId, "/audit/scope"), {
@@ -132,7 +167,10 @@ export const hermitGateApi = {
     }
     const state = await fetchGateState(companyId);
     const tailSha =
-      state.auditState.mergedPrsSinceAudit.at(-1)?.mergeSha ?? state.auditState.lastAuditMergeSha ?? "audit-head";
+      state.auditState.mergedPrsSinceAudit.at(-1)?.mergeSha ?? state.auditState.lastAuditMergeSha;
+    if (!tailSha) {
+      throw new Error("감사 완료 기준 병합 커밋이 없습니다");
+    }
     const next = await api.post<BackendGateState["auditState"]>(hg(companyId, "/audit/complete"), {
       auditedThroughSha: tailSha,
     });
@@ -159,18 +197,8 @@ export const hermitGateApi = {
     };
   },
 
-  decisions: async (companyId: string): Promise<CoreDecision[]> => {
-    const state = await fetchGateState(companyId);
-    return state.decisions.map((d) => ({
-      id: d.id,
-      taskId: d.taskId,
-      decision: d.decision,
-      rationale: d.rationaleAndAssumption,
-      impact: d.impact,
-      amendTarget: d.whereToChange,
-      createdAt: d.createdAt,
-    }));
-  },
+  decisions: async (companyId: string): Promise<CoreDecision[]> =>
+    (await fetchGateState(companyId)).decisions.map(mapDecision),
   createDecision: async (companyId: string, data: Omit<CoreDecision, "id" | "createdAt">): Promise<CoreDecision> => {
     const d = await api.post<BackendGateState["decisions"][number]>(hg(companyId, "/decisions"), {
       taskId: data.taskId?.trim() || "operator",
@@ -179,35 +207,14 @@ export const hermitGateApi = {
       impact: data.impact.trim() || "-",
       whereToChange: data.amendTarget.trim() || "-",
     });
-    return {
-      id: d.id,
-      taskId: d.taskId,
-      decision: d.decision,
-      rationale: d.rationaleAndAssumption,
-      impact: d.impact,
-      amendTarget: d.whereToChange,
-      createdAt: d.createdAt,
-    };
+    return mapDecision(d);
   },
 };
 
 export const opsConsoleApi = {
-  resources: async (companyId: string): Promise<SystemResourceUsage> => {
-    const ov = await fetchOverview(companyId);
-    return {
-      cpuPercent: ov.resources.cpuPct,
-      ramPercent: ov.resources.memUsedPct,
-      diskPercent: ov.resources.diskUsedPct ?? 0,
-    };
-  },
-  thresholds: async (companyId: string): Promise<ResourceAlertThresholds> => {
-    const ov = await fetchOverview(companyId);
-    return {
-      cpuPercent: ov.resources.thresholds.cpuPct,
-      ramPercent: ov.resources.thresholds.memPct,
-      diskPercent: ov.resources.thresholds.diskPct,
-    };
-  },
+  overview: async (companyId: string) => mapOverview(await fetchOverview(companyId)),
+  resources: async (companyId: string): Promise<SystemResourceUsage> => mapOverview(await fetchOverview(companyId)).resources,
+  thresholds: async (companyId: string): Promise<ResourceAlertThresholds> => mapOverview(await fetchOverview(companyId)).thresholds,
   updateThresholds: async (companyId: string, data: ResourceAlertThresholds): Promise<ResourceAlertThresholds> => {
     const saved = await api.put<{ cpuPct: number; memPct: number; diskPct: number }>(oc(companyId, "/thresholds"), {
       cpuPct: data.cpuPercent,
@@ -216,15 +223,7 @@ export const opsConsoleApi = {
     });
     return { cpuPercent: saved.cpuPct, ramPercent: saved.memPct, diskPercent: saved.diskPct };
   },
-  processes: async (companyId: string): Promise<BackgroundProcess[]> => {
-    const ov = await fetchOverview(companyId);
-    return ov.backgroundProcesses.map((p) => ({
-      pid: p.pid,
-      etime: p.elapsed,
-      command: p.command,
-      ownedChild: p.stoppable,
-    }));
-  },
+  processes: async (companyId: string): Promise<BackgroundProcess[]> => mapOverview(await fetchOverview(companyId)).processes,
   stopProcess: (companyId: string, pid: number) =>
     api.post<{ ok: boolean }>(oc(companyId, `/processes/${pid}/stop`), {}),
   queue: (companyId: string) => api.get<unknown>(oc(companyId, "/queue")),
