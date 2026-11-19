@@ -33,7 +33,15 @@ function Unavailable({ name }: { name: string }) {
   return <p className="text-[11px] text-muted-foreground">{name} 엔드포인트 연결 불가 (백엔드 미배포 시 정상).</p>;
 }
 
-function ResourceBar(props: { label: string; icon: ReactNode; percent: number; threshold: number; onThreshold: (v: number) => void }) {
+function ResourceBar(props: {
+  label: string;
+  icon: ReactNode;
+  percent: number;
+  threshold: number;
+  canEdit: boolean;
+  onThreshold: (v: number) => void;
+  onCommitThreshold: () => void;
+}) {
   const pct = Math.max(0, Math.min(100, props.percent));
   const over = pct >= props.threshold;
   return (
@@ -42,21 +50,16 @@ function ResourceBar(props: { label: string; icon: ReactNode; percent: number; t
         {props.icon}
         <span className="w-8">{props.label}</span>
         <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--openbot-ring-track)" }}>
-          <div
-            className="h-full rounded-full transition-all"
-            style={{
-              width: `${pct}%`,
-              backgroundColor: over ? "var(--openbot-danger)" : "var(--openbot-success)",
-            }}
-          />
+          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: over ? "var(--openbot-danger)" : "var(--openbot-success)" }} />
         </div>
         <span className="w-10 text-right font-mono">{pct.toFixed(0)}%</span>
       </div>
       <div className="flex items-center gap-2 text-[10px] text-muted-foreground pl-5">
         <span>알림 임계값 {props.threshold}%</span>
         <input
-          type="range" min={50} max={100} step={5} value={props.threshold}
+          type="range" min={10} max={99} step={1} value={props.threshold} disabled={!props.canEdit}
           onChange={(e) => props.onThreshold(Number(e.target.value))}
+          onPointerUp={props.onCommitThreshold} onKeyUp={props.onCommitThreshold}
           className="w-24 h-1 accent-current" aria-label={`${props.label} 알림 임계값`}
         />
       </div>
@@ -68,9 +71,11 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
   const { companyId } = props;
   const queryClient = useQueryClient();
   const [claimForm, setClaimForm] = useState({ taskId: "", worktreeName: "", paths: "" });
+  const [claimError, setClaimError] = useState<string | null>(null);
   const [pendingScope, setPendingScope] = useState("");
   const [decisionForm, setDecisionForm] = useState({ decision: "", rationale: "", impact: "", amendTarget: "" });
-  const [thresholds, setThresholds] = useState<ResourceAlertThresholds>({ cpuPercent: 90, ramPercent: 90, diskPercent: 90 });
+  const [thresholds, setThresholds] = useState<ResourceAlertThresholds>({ cpuPercent: 85, ramPercent: 85, diskPercent: 90 });
+  const [thresholdsReady, setThresholdsReady] = useState(false);
   const [validateResult, setValidateResult] = useState<string | null>(null);
 
   const claimsQ = useQuery({ queryKey: ["hg-claims", companyId], queryFn: () => hermitGateApi.claims(companyId), retry: false });
@@ -81,7 +86,7 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
   const processesQ = useQuery({ queryKey: ["ops-processes", companyId], queryFn: () => opsConsoleApi.processes(companyId), refetchInterval: 10_000, retry: false });
 
   useEffect(() => {
-    if (thresholdsQ.data) setThresholds(thresholdsQ.data);
+    if (thresholdsQ.data) { setThresholds(thresholdsQ.data); setThresholdsReady(true); }
   }, [thresholdsQ.data]);
 
   const invalidate = (key: string) => queryClient.invalidateQueries({ queryKey: [key, companyId] });
@@ -89,30 +94,29 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
   const submitClaim = async () => {
     const paths = claimForm.paths.split(",").map((p) => p.trim()).filter(Boolean);
     if (!claimForm.taskId || !claimForm.worktreeName || paths.length === 0) return;
+    setClaimError(null);
     try {
       await hermitGateApi.claim(companyId, { taskId: claimForm.taskId, worktreeName: claimForm.worktreeName, paths });
       setClaimForm({ taskId: "", worktreeName: "", paths: "" });
       invalidate("hg-claims");
-    } catch { /* noop */ }
+    } catch (err) {
+      setClaimError(err instanceof Error ? err.message : "경로 클레임 충돌 또는 요청 실패");
+    }
   };
 
-  const saveThresholds = async (next: ResourceAlertThresholds) => {
-    setThresholds(next);
-    try { await opsConsoleApi.updateThresholds(companyId, next); } catch { /* noop */ }
+  const commitThresholds = async () => {
+    if (!thresholdsReady) return;
+    try { await opsConsoleApi.updateThresholds(companyId, thresholds); } catch { /* noop */ }
   };
 
   const runValidate = async (stage: "pre-commit" | "pr") => {
+    const paths = claimForm.paths.split(",").map((p) => p.trim()).filter(Boolean);
+    const resolved = paths.length > 0 ? paths : claims[0]?.paths ?? [];
+    if (resolved.length === 0) { setValidateResult("검증할 경로를 입력해 주세요"); return; }
     try {
-      const paths = claimForm.paths.split(",").map((p) => p.trim()).filter(Boolean);
-      const res = await hermitGateApi.validate(companyId, {
-        stage,
-        taskId: claimForm.taskId || claims[0]?.taskId,
-        paths: paths.length > 0 ? paths : claims[0]?.paths,
-      });
+      const res = await hermitGateApi.validate(companyId, { stage, taskId: claimForm.taskId || claims[0]?.taskId, paths: resolved });
       setValidateResult(res.ok ? "검증 통과" : `검증 실패: ${res.errors.join("; ") || "unknown"}`);
-    } catch {
-      setValidateResult("검증 엔드포인트 연결 불가");
-    }
+    } catch { setValidateResult("검증 엔드포인트 연결 불가"); }
   };
 
   const addDecision = async () => {
@@ -155,6 +159,7 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
           <Input className="h-7 flex-1 min-w-32 text-[11px]" placeholder="paths (쉼표 구분)" value={claimForm.paths} onChange={(e) => setClaimForm({ ...claimForm, paths: e.target.value })} />
           <Button size="sm" className="h-7 px-2 text-[11px]" onClick={submitClaim}>클레임</Button>
         </div>
+        {claimError && <p className="text-[11px]" style={{ color: "var(--openbot-danger-text)" }}>{claimError}</p>}
       </Section>
 
       <Section title={`25-PR 누적 감사 — ${auditProgressText(auditQ.data)}`}>
@@ -163,16 +168,17 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
             <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--openbot-ring-track)" }}>
               <div className="h-full rounded-full" style={{ width: `${auditPct}%`, backgroundColor: "var(--openbot-ring-fill)" }} />
             </div>
-            <div className="flex items-center gap-1.5">
-              <Input className="h-7 flex-1 text-[11px]" placeholder="보류 범위 (선택)" value={pendingScope} onChange={(e) => setPendingScope(e.target.value)} />
-              <Button size="sm" className="h-7 px-2 text-[11px]"
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Input className="h-7 flex-1 min-w-32 text-[11px]" placeholder="보류 범위 (쉼표 구분)" value={pendingScope} onChange={(e) => setPendingScope(e.target.value)} />
+              <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" disabled={!pendingScope.trim()}
                 onClick={async () => {
-                  try {
-                    await hermitGateApi.completeAudit(companyId, { pendingScopes: pendingScope ? [pendingScope] : [] });
-                    setPendingScope("");
-                    invalidate("hg-audit");
-                  } catch { /* noop */ }
+                  const scopes = pendingScope.split(",").map((s) => s.trim()).filter(Boolean);
+                  try { await hermitGateApi.completeAudit(companyId, { pendingScopes: scopes }); setPendingScope(""); invalidate("hg-audit"); } catch { /* noop */ }
                 }}>
+                보류 범위 적용
+              </Button>
+              <Button size="sm" className="h-7 px-2 text-[11px]" disabled={(auditQ.data?.completed ?? 0) === 0 && !auditQ.data?.auditActive}
+                onClick={async () => { try { await hermitGateApi.completeAudit(companyId, {}); invalidate("hg-audit"); } catch { /* noop */ } }}>
                 감사 완료
               </Button>
             </div>
@@ -212,11 +218,11 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
         {resourcesQ.isError || !usage ? <Unavailable name="리소스" /> : (
           <div className="space-y-2">
             <ResourceBar label="CPU" icon={<Cpu className="h-3.5 w-3.5" />} percent={usage.cpuPercent} threshold={thresholds.cpuPercent}
-              onThreshold={(v) => saveThresholds({ ...thresholds, cpuPercent: v })} />
+              canEdit={thresholdsReady} onThreshold={(v) => setThresholds({ ...thresholds, cpuPercent: v })} onCommitThreshold={commitThresholds} />
             <ResourceBar label="RAM" icon={<MemoryStick className="h-3.5 w-3.5" />} percent={usage.ramPercent} threshold={thresholds.ramPercent}
-              onThreshold={(v) => saveThresholds({ ...thresholds, ramPercent: v })} />
+              canEdit={thresholdsReady} onThreshold={(v) => setThresholds({ ...thresholds, ramPercent: v })} onCommitThreshold={commitThresholds} />
             <ResourceBar label="Disk" icon={<HardDrive className="h-3.5 w-3.5" />} percent={usage.diskPercent} threshold={thresholds.diskPercent}
-              onThreshold={(v) => saveThresholds({ ...thresholds, diskPercent: v })} />
+              canEdit={thresholdsReady} onThreshold={(v) => setThresholds({ ...thresholds, diskPercent: v })} onCommitThreshold={commitThresholds} />
           </div>
         )}
       </Section>

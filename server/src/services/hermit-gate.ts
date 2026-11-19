@@ -13,25 +13,12 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { unprocessable } from "../errors.js";
 import type {
-  ChangeVerificationInput,
-  ClaimRequest,
-  ClaimResult,
-  CompanyGateState,
-  ConsequentialDecision,
-  DecisionRecord,
-  GateVerdict,
-  GateViolation,
-  MergeRecordInput,
-  PathClaim,
+  ChangeVerificationInput, ClaimRequest, ClaimResult, CompanyGateState,
+  ConsequentialDecision, DecisionRecord, GateVerdict, GateViolation, MergeRecordInput, PathClaim,
 } from "./hermit-gate-types.js";
-import {
-  DEEP_IMPORT_PATTERNS,
-  defaultAuditState,
-  normalizeRepoPath,
-  pathWithin,
-  pathsOverlap,
-} from "./hermit-gate-types.js";
+import { DEEP_IMPORT_PATTERNS, defaultAuditState, normalizeRepoPath, pathWithin, pathsOverlap } from "./hermit-gate-types.js";
 
 export { normalizeRepoPath, pathsOverlap } from "./hermit-gate-types.js";
 
@@ -40,8 +27,9 @@ function stateFilePath(stateDir: string, companyId: string): string {
 }
 
 function loadCompanyState(stateDir: string, companyId: string): CompanyGateState {
+  const file = stateFilePath(stateDir, companyId);
   try {
-    const parsed = JSON.parse(fs.readFileSync(stateFilePath(stateDir, companyId), "utf8")) as Partial<CompanyGateState> | null;
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as Partial<CompanyGateState> | null;
     if (!parsed || typeof parsed !== "object") return { claims: [], audit: defaultAuditState(), decisions: [] };
     const auditInput = (parsed.audit ?? {}) as Partial<CompanyGateState["audit"]>;
     return {
@@ -55,7 +43,9 @@ function loadCompanyState(stateDir: string, companyId: string): CompanyGateState
       },
     };
   } catch {
-    // 파일 부재(첫 실행) 또는 손상 — 기본 상태로 복구.
+    if (fs.existsSync(file)) {
+      try { fs.renameSync(file, `${file}.corrupt-${Date.now()}`); } catch { /* noop */ }
+    }
     return { claims: [], audit: defaultAuditState(), decisions: [] };
   }
 }
@@ -70,7 +60,9 @@ function persistCompanyState(stateDir: string, companyId: string, state: Company
 
 export function createHermitGateService(options?: { stateDir?: string }) {
   const stateDir =
-    options?.stateDir ?? process.env.PAPERCLIP_HERMIT_STATE_DIR ?? path.join(os.tmpdir(), "paperclip-hermit-gate");
+    options?.stateDir ??
+    process.env.PAPERCLIP_HERMIT_STATE_DIR ??
+    (process.env.PAPERCLIP_HOME ? path.join(process.env.PAPERCLIP_HOME, "hermit-gate") : path.join(os.tmpdir(), "paperclip-hermit-gate"));
   const locks = new Map<string, Promise<unknown>>();
 
   /** 회사별 직렬화 — 선행 작업 성공/실패와 무관하게 순차 실행하고 꼬리를 정리한다. */
@@ -249,6 +241,9 @@ export function createHermitGateService(options?: { stateDir?: string }) {
       return mutate(companyId, (state) => {
         const audit = state.audit;
         const idx = audit.mergedPrsSinceAudit.findIndex((e) => e.mergeSha === auditedThroughSha);
+        if (audit.mergedPrsSinceAudit.length > 0 && idx < 0) {
+          throw unprocessable("감사 기준 커밋(auditedThroughSha)이 현재 감사 윈도우에 없습니다");
+        }
         // 감사 중 도착한 병합은 버리지 않는다: auditedThroughSha 이후 항목만 유지.
         audit.mergedPrsSinceAudit = idx >= 0 ? audit.mergedPrsSinceAudit.slice(idx + 1) : [];
         audit.lastAuditMergeSha = auditedThroughSha;

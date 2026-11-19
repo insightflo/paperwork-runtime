@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CornerDownRight, MoveRight, Plus, Send } from "lucide-react";
 import type { Agent } from "@paperclipai/shared";
@@ -100,6 +100,9 @@ const ACTION_LABEL: Record<ChannelCardAction, string> = {
 export function ChannelCollaborationBoard(props: { companyId: string }) {
   const { companyId } = props;
   const [cards, setCards] = useState<ChannelTaskCard[]>(() => loadChannelCards(companyId));
+  useEffect(() => {
+    setCards(loadChannelCards(companyId));
+  }, [companyId]);
   const [draft, setDraft] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -255,7 +258,13 @@ export function ChannelCollaborationBoard(props: { companyId: string }) {
                         <MoveRight className="h-3 w-3 mr-0.5" />
                         이관
                       </Button>
-                      <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => reply(card)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-1.5 text-[10px]"
+                        disabled={card.replies >= CHANNEL_REPLY_BADGE_MAX}
+                        onClick={() => reply(card)}
+                      >
                         <Send className="h-3 w-3 mr-0.5" />
                         회신
                       </Button>

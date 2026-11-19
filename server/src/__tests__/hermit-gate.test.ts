@@ -116,6 +116,8 @@ describe("r60 scenario 3 — 25-PR cumulative merge audit", () => {
       (await gate.checkMergeGate("co-3", { changedPaths: ["crates/run-log/src/lib.rs"], isAuditFix: true })).decision,
     ).toBe("proceed");
     await gate.recordMergedPr("co-3", { prNumber: 26, mergeSha: "sha-26", changedPaths: ["p/26"] });
+    await expect(gate.completeAudit("co-3", "nonexistent-sha")).rejects.toThrow(/감사 기준 커밋/);
+    expect((await gate.getState("co-3")).auditState.mergedPrsSinceAudit).toHaveLength(26);
     const completed = await gate.completeAudit("co-3", "sha-25");
     expect(completed.lastAuditMergeSha).toBe("sha-25");
     expect(completed.auditActive).toBe(false);

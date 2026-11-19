@@ -20,7 +20,7 @@
  */
 
 import { Router, type Request } from "express";
-import type { z } from "zod";
+import { z } from "zod";
 import type { Db } from "@paperclipai/db";
 import { ruleStore } from "../services/worktree/rule-store.js";
 import { proposalStore } from "../services/worktree/proposal-store.js";
@@ -417,6 +417,13 @@ export function worktreeRoutes(db: Db) {
       auditActive: result.auditState.auditActive,
     });
     res.status(result.duplicate ? 200 : 201).json(result);
+  });
+
+  router.post("/companies/:companyId/hermit-gate/merges/check", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const input = parseBody(z.object({ changedPaths: z.array(z.string()), isAuditFix: z.boolean().optional() }), req.body);
+    res.json(await gate.checkMergeGate(companyId, input));
   });
 
   router.post("/companies/:companyId/hermit-gate/audit/scope", async (req, res) => {
