@@ -40,6 +40,10 @@ afterAll(async () => {
   //   그 뒤 등록된 후속 실행(입장 홀드·데드락 재시도의 재깨움)이 행 드레인의 0-윈도를 계속 깬다
   //   (run 43279531666 serial: QaRemediationAdmissionHold 루프 + 40P01 로 45s 초과). 두 조건을
   //   동시에 감시하고(각 90s 상한) 종결 후 늦게 등록된 straggler 를 한 번 더 기다린다(15s 상한).
+  // [W3 2026-11-13] drainHeartbeatRuns 는 행 표면에 더해 wake 원천(queued/claimed/deferred) 서명
+  //   안정까지 종결 조건으로 본다(drain-heartbeat-runs.ts) — 드레인 예산 vs 정산 홀드 순서 계약:
+  //   ① 병렬 감시(tracked+행+wake)로 웨이브 트레인을 끝까지 대기 → ② executor 해제 → ③ DB 종결.
+  //   계약 위반(조기 종결)은 drain-heartbeat-runs-contract.test.ts 가 결정적으로 잡는다.
   await Promise.all([
     waitForHeartbeatExecutionsToDrain(db, 90_000),
     drainHeartbeatRuns(db, 240_000),
@@ -48,7 +52,7 @@ afterAll(async () => {
   setWorkflowToolStepExecutor(null);
   await db.$client.end({ timeout: 5 });
   await temp?.cleanup();
-}, 150_000);
+}, 270_000);
 
 it.each(["retry_step", "resume_run", "revise_plan", "recollect", "delegate_fix", "reassign"] as const)(
   "%s executes and proves the current result", async (operation) => {

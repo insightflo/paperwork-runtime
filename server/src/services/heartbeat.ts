@@ -4791,8 +4791,15 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       // The transaction/guard can reject before the adapter Promise settles. Wait only for
       // the actual Promise captured at adapter.execute; an uninvoked adapter stays unknown.
       const actual = await actualObservation.awaitSettled();
-      c5RefusalConfirmed = !c5AdmissionEntered || (!(err instanceof QaRemediationAdmissionHold)
-        && (err instanceof QaCorrectionClaimRejected || isC5PreInvocationRollback(err, db, captureQaCorrectionExecutionIdentity(run), "adapter_start")));
+      // [W3 2026-11-13] 롤백 증명(트랜잭션 관찰 롤백 + 어댑터 미호출, preInvocationRollbacks 등록)이 붙은
+      //   QaRemediationAdmissionHold 는 거부 확정로 인정한다 — 등록 사실이 db·identity·phase 로 검증된
+      //   구조적 증명이다. 미등록 홀드(owner_lost·owner_exit_unknown·transaction_outcome_unknown 등
+      //   모호 상태)만 기존대로 종결 보류(fail-open)를 유지한다. 등록 홀드를 보류로 두면 run 이 영구
+      //   running 으로 남아 회수(소유자 임대 만료·reaper) 없이는 어떤 drain 예산도 종결되지 않는다
+      //   (run 43279531666 서명의 근원 경로 — 부하 재현으로 확인).
+      c5RefusalConfirmed = !c5AdmissionEntered
+        || isC5PreInvocationRollback(err, db, captureQaCorrectionExecutionIdentity(run), "adapter_start")
+        || (!(err instanceof QaRemediationAdmissionHold) && err instanceof QaCorrectionClaimRejected);
       if (c5RefusalConfirmed && adapterStartScope && adapterStartIdentity && actual === null
         && !actualObservation.wasInvoked() && !executionFrame.adapterInvocationAttempted
         && isHeartbeatUnstartedDeferral(err, adapterStartScope, adapterStartIdentity, runtimeExecutionLifecycle)) {

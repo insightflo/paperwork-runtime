@@ -10,7 +10,7 @@
 //   [😎] wake 가 fire-and-forget executeRun 을 trigger 하므로 afterAll 에서 heartbeat_runs queued/running
 //   이 0 이 될 때까지 bounded poll 한 뒤 tempDb.cleanup() 한다(ECONNRESET/shutting-down 원천 차단).
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   agentWakeupRequests, agents, companies, createDb, heartbeatRuns, issueComments, issues,
   missions, workflowDefinitions, workflowRuns, workflowStepRuns, workflowTransitionEvents,
@@ -43,30 +43,9 @@ export async function startCapOverrideTestDb(): Promise<SharedTestDb> {
   return { db, cleanup: async () => { await tempDb.cleanup(); } };
 }
 
-// [😎] wake claims fire async executeRun() (heartbeat.ts) — executeRun 은 heartbeat_run 이 terminal
-//   된 뒤에도 후속 작업(stdout log append, final status write)을 잠시 더 한다. 따라서 queued/running
-//   이 0 이 된 직후에 cleanup 하면 후속 작업이 죽은 DB 를 쳐 ECONNREFUSED/shutting-down stderr 가 남는다.
-//   → queued/running=0 을 짧은 안정화 구간(settleMs) 동안 "연속"으로 확인한 뒤에 cleanup 한다.
-//   전체 timeout 초과 시 silent return 없이 throw(실행이 실제로 종료되지 않음을 실패로 드러냄).
-//   테스트 격리는 row 삭제가 아니라 seed 의 randomUUID company/issue 스코프(모든 쿼리 company-scoped)로 보장.
-// [2026-11-15 CI 느린 러너 대응] 기본 타임아웃 10초 → 30초. GitHub 러너가 느릴 때 afterAll drain이
-//   90초로 늘려도 안 찰 때가 있어 호출부(mission-owner-authority-flow 240초)와 함께 상향 — 빠른 환경은
-//   안정 창 통과로 조기 반환되므로 비용 0.
-export async function drainHeartbeatRuns(db: Db, timeoutMs = 30000, settleMs = 500): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  let zeroSince: number | null = null;
-  while (Date.now() < deadline) {
-    const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(heartbeatRuns).where(inArray(heartbeatRuns.status, ["queued", "running"]));
-    if ((row?.count ?? 0) === 0) {
-      if (zeroSince === null) zeroSince = Date.now();
-      if (Date.now() - zeroSince >= settleMs) return;   // continuous 0 over the stabilization window
-    } else {
-      zeroSince = null;                                  // new in-flight work appeared — restart the window
-    }
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error(`drainHeartbeatRuns timed out after ${timeoutMs}ms — in-flight heartbeat execution did not settle (queued/running did not stay at 0)`);
-}
+// [W3 2026-11-13] drainHeartbeatRuns 은 300줄 한도 준수를 위해 drain-heartbeat-runs.ts 로 분리했다.
+//   기존 호출자(10+ 스위트)의 import 경로 호환을 위해 여기서 그대로 재수출한다.
+export { drainHeartbeatRuns } from "./drain-heartbeat-runs.js";
 
 export interface SeedOpts {
   producerIteration?: number;
