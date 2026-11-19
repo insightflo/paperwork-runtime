@@ -9,6 +9,7 @@ import {
   hopBadgeText,
   isAtHopLimit,
   loadChannelCards,
+  pickNextTransferAssignee,
   resolveMentionRouting,
   saveChannelCards,
 } from "./ChannelCollaborationBoard";
@@ -48,7 +49,7 @@ describe("hop limit helpers", () => {
 });
 
 describe("channel card storage", () => {
-  it("is SSR-safe without localStorage and round-trips when available", () => {
+  it("is SSR-safe without localStorage, validates schema, and round-trips when available", () => {
     expect(loadChannelCards("co-x")).toEqual([]);
     const store = new Map<string, string>();
     (globalThis as Record<string, unknown>).localStorage = {
@@ -60,7 +61,23 @@ describe("channel card storage", () => {
     ]);
     expect(loadChannelCards("co-x")[0]?.id).toBe("c1");
     expect(loadChannelCards("co-other")).toEqual([]);
+    store.set("paperclip.channelBoard.co-corrupt", JSON.stringify([
+      null,
+      { id: "bad", title: "missing-hops", status: "open", lastAction: "assign", createdAt: "now" },
+      { id: "c2", title: "valid", assigneeAgentId: "a1", assigneeName: "백엔드봇", hops: 2, replies: 1, status: "done", lastAction: "result", createdAt: "now" },
+    ]));
+    expect(loadChannelCards("co-corrupt").map((c) => c.id)).toEqual(["c2"]);
     delete (globalThis as Record<string, unknown>).localStorage;
+  });
+});
+
+describe("pickNextTransferAssignee", () => {
+  it("cycles round-robin across agents and handles unassigned/single-agent cases", () => {
+    expect(pickNextTransferAssignee(agents, "a1")?.id).toBe("a2");
+    expect(pickNextTransferAssignee(agents, "a2")?.id).toBe("a3");
+    expect(pickNextTransferAssignee(agents, "a3")?.id).toBe("a1");
+    expect(pickNextTransferAssignee(agents, null)?.id).toBe("a1");
+    expect(pickNextTransferAssignee([agents[0]], "a1")).toBeUndefined();
   });
 });
 

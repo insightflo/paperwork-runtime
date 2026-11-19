@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
-import { QueuePanel, normalizeQueueItems, queueItemLabel, reorderQueueItems } from "./QueuePanel";
+import { QueuePanel, normalizeQueueItems, queueItemLabel, reorderQueueItems, shouldHandleQueueRowKey } from "./QueuePanel";
 
 const render = (el: Parameters<typeof renderToStaticMarkup>[0]) =>
   renderToStaticMarkup(createElement(QueryClientProvider, { client: new QueryClient() }, el));
@@ -56,5 +56,13 @@ describe("QueuePanel", () => {
     expect(queueItemLabel({ id: "x", payload: { message: "m" }, prompt: "p" })).toBe("m");
     expect(queueItemLabel({ id: "x", prompt: "p", reason: "r" })).toBe("p");
     expect(queueItemLabel({ id: "x", reason: "r" })).toBe("r");
+  });
+
+  it("blocks Alt+Arrow row shortcuts while inline prompt editing is active", () => {
+    expect(shouldHandleQueueRowKey("w1", true, "ArrowUp")).toBe(false);
+    expect(shouldHandleQueueRowKey("w1", true, "ArrowDown")).toBe(false);
+    expect(shouldHandleQueueRowKey(null, false, "ArrowUp")).toBe(false);
+    expect(shouldHandleQueueRowKey(null, true, "ArrowUp")).toBe(true);
+    expect(shouldHandleQueueRowKey(null, true, "ArrowDown")).toBe(true);
   });
 });
