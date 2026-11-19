@@ -107,7 +107,7 @@ export function QueuePanel(props: {
   const cancel = useCallback(async (id: string): Promise<boolean> => {
     if (!props.companyId) return false;
     setActionError(null);
-    try { await api.post(`/companies/${props.companyId}/ops-console/queue/${id}/cancel`, {}); invalidate(); return true; }
+    try { await api.post(`/companies/${props.companyId}/ops-console/queue/${encodeURIComponent(id)}/cancel`, {}); invalidate(); return true; }
     catch (err) { setActionError(err instanceof Error ? err.message : "큐 항목 취소에 실패했습니다"); return false; }
   }, [props.companyId, invalidate]);
 
@@ -116,7 +116,7 @@ export function QueuePanel(props: {
     savingRef.current = id;
     setActionError(null);
     try {
-      await api.patch(`/companies/${props.companyId}/ops-console/queue/${id}`, { prompt: editText.trim() });
+      await api.patch(`/companies/${props.companyId}/ops-console/queue/${encodeURIComponent(id)}`, { prompt: editText.trim() });
       setEditingId((curr) => (curr === id ? null : curr));
       invalidate();
     } catch (err) {

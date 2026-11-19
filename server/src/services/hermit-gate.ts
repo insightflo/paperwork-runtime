@@ -153,6 +153,7 @@ export function createHermitGateService(options?: { stateDir?: string }) {
 
     releaseTaskClaims(companyId: string, taskId: string) {
       return mutate(companyId, (state) => {
+        pruneExpiredClaims(state);
         const before = state.claims.length;
         state.claims = state.claims.filter((c) => c.taskId !== taskId);
         return before - state.claims.length;
@@ -161,6 +162,7 @@ export function createHermitGateService(options?: { stateDir?: string }) {
 
     verifyChanges(companyId: string, input: ChangeVerificationInput): Promise<GateVerdict> {
       return mutate(companyId, (state) => {
+        pruneExpiredClaims(state);
         const claimed = (state.claims.find((c) => c.taskId === input.taskId)?.paths ?? []).map(normalizeRepoPath);
         const withinScope = (target: string): boolean => {
           try {
