@@ -152,7 +152,7 @@ fn redact_assigned_value(caps: &Captures<'_>) -> String {
     let quote = if val.starts_with('"') { "\"" } else if val.starts_with('\'') { "'" } else { "" }; format!("{label}{quote}[redacted]{quote}")
 }
 fn apply_text_rules(value: &str, emails: bool) -> String {
-    let s = replace_caps_loop(value, &PEM_BEGIN_RE, |text, caps, _| {
+    let s = replace_caps_loop(value, &PEM_BEGIN_RE, |text, caps| {
         let bm = caps.get(0)?; let rest = &text[bm.end()..];
         let end = match PEM_END_RE.find(rest) {
             Some(em) if utf16_len_within(&rest[..em.start()], 16_384) => bm.end() + em.end(),
@@ -161,31 +161,28 @@ fn apply_text_rules(value: &str, emails: bool) -> String {
         };
         Some((bm.start(), end))
     });
-    let s = replace_caps_loop(&s, &COOKIE_PREFIX_RE, |text, caps, _| Some((caps.get(1)?.end(), caps.get(0)?.end() + scan_cookie_tail(&text[caps.get(0)?.end()..]))));
+    let s = replace_caps_loop(&s, &COOKIE_PREFIX_RE, |text, caps| Some((caps.get(1)?.end(), caps.get(0)?.end() + scan_cookie_tail(&text[caps.get(0)?.end()..]))));
     let s = JSON_BARE_KEY_RE.replace_all(&CREDENTIAL_RE.replace_all(&BEARER_RE.replace_all(&AUTH_HEADER_RE.replace_all(&s, "${1}[redacted]"), "[redacted]"), redact_assigned_value), redact_assigned_value).into_owned();
-    let s = replace_caps_loop(&s, &QUERY_PREFIX_RE, |_text, caps, _| {
+    let s = replace_caps_loop(&s, &QUERY_PREFIX_RE, |_text, caps| {
         let (full, pfx, val) = (caps.get(0)?, caps.get(1)?, caps.get(2)?.as_str()); (!val.as_bytes().get(..10).is_some_and(|b| b.eq_ignore_ascii_case(b"[redacted]")) && has_digit_within_256(val)).then_some((pfx.end(), full.end()))
     });
-    let s = replace_caps_loop(&s, &KNOWN_PREFIX_RE, |text, caps, prev_rej_end| {
+    let s = replace_caps_loop(&s, &KNOWN_PREFIX_RE, |text, caps| {
         let m = caps.get(0)?; let next_ok = !m.as_str().starts_with("ASIA") || text[m.end()..].chars().next().is_none_or(|c| !c.is_ascii_alphanumeric());
-        // A candidate starting exactly where the previous rejected candidate ended is a concatenated token (e.g. ASIA…ghp_…), not a token embedded in an arbitrary word.
-        let boundary_ok = no_prefix_word(text, m.start()) || m.start() == prev_rej_end;
-        (boundary_ok && next_ok).then_some((m.start(), m.end()))
+        (no_prefix_word(text, m.start()) && next_ok).then_some((m.start(), m.end()))
     });
-    let s = replace_caps_loop(&s, &JWT_RE, |text, caps, _| { let m = caps.get(0)?; no_prefix_word(text, m.start()).then_some((m.start(), m.end())) });
+    let s = replace_caps_loop(&s, &JWT_RE, |text, caps| { let m = caps.get(0)?; no_prefix_word(text, m.start()).then_some((m.start(), m.end())) });
     if emails { EMAIL_RE.replace_all(&s, "[redacted-email]").into_owned() } else { s.into_owned() }
 }
-/// `accept` also receives the end offset of the previous rejected candidate (`usize::MAX` if none).
-fn replace_caps_loop<'a>(text: &'a str, re: &Regex, mut accept: impl FnMut(&'a str, &Captures<'a>, usize) -> Option<(usize, usize)>) -> Cow<'a, str> {
-    let (mut out, mut last, mut cursor, mut rej_end) = (None::<String>, 0usize, 0usize, usize::MAX);
+fn replace_caps_loop<'a>(text: &'a str, re: &Regex, mut accept: impl FnMut(&'a str, &Captures<'a>) -> Option<(usize, usize)>) -> Cow<'a, str> {
+    let (mut out, mut last, mut cursor) = (None::<String>, 0usize, 0usize);
     while let Some(caps) = re.captures_at(text, cursor) {
         let Some(full) = caps.get(0) else { break };
-        if let Some((keep_end, skip_end)) = accept(text, &caps, rej_end) {
+        if let Some((keep_end, skip_end)) = accept(text, &caps) {
             let buf = out.get_or_insert_with(|| String::with_capacity(text.len()));
             buf.push_str(&text[last..keep_end]); buf.push_str("[redacted]");
             last = skip_end; cursor = skip_end;
         } else {
-            rej_end = full.end(); cursor = full.start() + text[full.start()..].chars().next().map_or(1, char::len_utf8);
+            cursor = full.start() + text[full.start()..].chars().next().map_or(1, char::len_utf8);
         }
     }
     match out { Some(mut buf) => { buf.push_str(&text[last..]); Cow::Owned(buf) } None => Cow::Borrowed(text) }

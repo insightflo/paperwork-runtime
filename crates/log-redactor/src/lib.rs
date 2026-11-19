@@ -274,7 +274,7 @@ mod tests {
         assert_eq!(reg.redact_sensitive_text("foo_whsec_12345678/ghp_12345678", false, false).as_deref(), Some("foo_whsec_12345678/[redacted]"));
         assert_eq!(reg.redact_sensitive_text("ASIAABCDEFGHIJKLMNOP", false, false).as_deref(), Some("[redacted]"));
         assert_eq!(reg.redact_sensitive_text("ASIAABCDEFGHIJKLMNOPx", false, false).as_deref(), Some("ASIAABCDEFGHIJKLMNOPx"));
-        assert_eq!(reg.redact_sensitive_text("ASIAABCDEFGHIJKLMNOPghp_12345678", false, false).as_deref(), Some("ASIAABCDEFGHIJKLMNOP[redacted]"));
+        assert_eq!(reg.redact_sensitive_text("ASIAABCDEFGHIJKLMNOPghp_12345678", false, false).as_deref(), Some("ASIAABCDEFGHIJKLMNOPghp_12345678"));
         assert_eq!(reg.redact_sensitive_text("Cookie: a=\"1\"; b=\"2\"\nkeep", false, false).as_deref(), Some("Cookie: [redacted]\nkeep"));
         assert_eq!(reg.redact_sensitive_text("-----BEGIN RSA PRIVATE KEY-----\nAAAA1234567890+/==", false, false).as_deref(), Some("[redacted]"));
         assert_eq!(reg.redact_sensitive_text("https://ex.com?code=1234abcd90&key=[redacted]&sig=abcdefghij", false, false).as_deref(), Some("https://ex.com?code=[redacted]&key=[redacted]&sig=abcdefghij"));
