@@ -42,6 +42,10 @@ export interface InstanceExperimentalSettings {
   enableStaleSourceIssueWakeupV1: boolean;
   /** [stale-source wakeup v1] 미션 단위 허용 목록. 기본 빈 목록. */
   staleSourceIssueWakeupAllowedMissionIdsV1: string[];
+  /** [resume review-relief v1] 실패 런 resume preview 의 보수 검토 차단 완화(전체). 기본 off. */
+  enableResumeReviewReliefV1: boolean;
+  /** [resume review-relief v1] 미션 단위 허용 목록. 기본 빈 목록. */
+  resumeReviewReliefAllowedMissionIdsV1: string[];
 }
 
 export interface InstanceSettings {
