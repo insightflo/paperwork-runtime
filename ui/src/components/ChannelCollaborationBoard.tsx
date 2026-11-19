@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CornerDownRight, MoveRight, Plus, Send } from "lucide-react";
 import type { Agent } from "@paperclipai/shared";
@@ -112,17 +112,33 @@ const ACTION_LABEL: Record<ChannelCardAction, string> = { assign: "할당", tran
 
 export function ChannelCollaborationBoard(props: { companyId: string }) {
   const { companyId } = props;
-  const [cards, setCards] = useState<ChannelTaskCard[]>(() => loadChannelCards(companyId));
-  useEffect(() => { setCards(loadChannelCards(companyId)); }, [companyId]);
+  const [board, setBoard] = useState<{ companyId: string; cards: ChannelTaskCard[] }>(() => ({
+    companyId,
+    cards: loadChannelCards(companyId),
+  }));
+  const activeCompanyRef = useRef(companyId);
+  activeCompanyRef.current = companyId;
+  useEffect(() => {
+    setBoard((prev) => (prev.companyId === companyId ? prev : { companyId, cards: loadChannelCards(companyId) }));
+  }, [companyId]);
+  useEffect(() => {
+    if (board.companyId === companyId) saveChannelCards(board.companyId, board.cards);
+  }, [companyId, board]);
+
   const [draft, setDraft] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
 
   const { data: agents } = useQuery({ queryKey: queryKeys.agents.list(companyId), queryFn: () => agentsApi.list(companyId) });
   const agentRefs = useMemo<ChannelAgentRef[]>(() => (agents ?? []).map((a: Agent) => ({ id: a.id, name: a.name, urlKey: a.urlKey ?? null })), [agents]);
   const routing = useMemo(() => resolveMentionRouting(draft, agentRefs), [draft, agentRefs]);
+  const visibleCards = board.companyId === companyId ? board.cards : loadChannelCards(companyId);
 
-  const update = (fn: (prev: ChannelTaskCard[]) => ChannelTaskCard[]) => {
-    setCards((prev) => { const next = fn(prev); saveChannelCards(companyId, next); return next; });
+  const applyToCompany = (targetCo: string, fn: (prev: ChannelTaskCard[]) => ChannelTaskCard[]) => {
+    if (activeCompanyRef.current === targetCo) {
+      setBoard((prev) => (prev.companyId === targetCo ? { companyId: targetCo, cards: fn(prev.cards) } : prev));
+    } else {
+      saveChannelCards(targetCo, fn(loadChannelCards(targetCo)));
+    }
   };
 
   const dispatchWakeup = async (agentId: string, message: string) => {
@@ -131,6 +147,7 @@ export function ChannelCollaborationBoard(props: { companyId: string }) {
   };
 
   const assign = async () => {
+    const targetCo = companyId;
     const target = routing.mentioned[0];
     const title = routing.body || draft.trim();
     if (!title) return;
@@ -139,31 +156,36 @@ export function ChannelCollaborationBoard(props: { companyId: string }) {
       issueId: null, title, assigneeAgentId: target?.id ?? null, assigneeName: target?.name ?? null,
       hops: 1, replies: 0, status: "open", lastAction: "assign", createdAt: new Date().toISOString(),
     };
-    update((prev) => [card, ...prev]);
+    applyToCompany(targetCo, (prev) => [card, ...prev]);
     setDraft("");
     if (target) {
       try {
-        const created = await issuesApi.create(companyId, { title, assigneeAgentId: target.id });
-        if (created?.id) update((prev) => prev.map((c) => (c.id === card.id ? { ...c, issueId: created.id } : c)));
+        const created = await issuesApi.create(targetCo, { title, assigneeAgentId: target.id });
+        if (created?.id) {
+          applyToCompany(targetCo, (prev) => prev.map((c) => (c.id === card.id ? { ...c, issueId: created.id } : c)));
+        }
       } catch { /* issue creation best-effort */ }
       await dispatchWakeup(target.id, `[협업 채널] ${title}`);
     }
   };
 
   const transfer = async (card: ChannelTaskCard) => {
+    const targetCo = companyId;
     if (!canTransfer(card)) return;
     const nextAgent = pickNextTransferAssignee(agentRefs, card.assigneeAgentId);
     if (!nextAgent) return;
-    update((prev) => prev.map((c) => c.id === card.id ? { ...c, hops: c.hops + 1, assigneeAgentId: nextAgent.id, assigneeName: nextAgent.name, lastAction: "transfer" as const } : c));
+    applyToCompany(targetCo, (prev) =>
+      prev.map((c) => (c.id === card.id ? { ...c, hops: c.hops + 1, assigneeAgentId: nextAgent.id, assigneeName: nextAgent.name, lastAction: "transfer" as const } : c)),
+    );
     await dispatchWakeup(nextAgent.id, `[협업 이관] ${card.title}`);
   };
 
   const reply = (card: ChannelTaskCard) => {
-    update((prev) => prev.map((c) => (c.id === card.id ? { ...c, replies: c.replies + 1, lastAction: "reply" } : c)));
+    applyToCompany(companyId, (prev) => prev.map((c) => (c.id === card.id ? { ...c, replies: c.replies + 1, lastAction: "reply" } : c)));
   };
 
   const reportDone = (card: ChannelTaskCard) => {
-    update((prev) => prev.map((c) => (c.id === card.id ? { ...c, status: "done" as const, lastAction: "result" } : c)));
+    applyToCompany(companyId, (prev) => prev.map((c) => (c.id === card.id ? { ...c, status: "done" as const, lastAction: "result" } : c)));
     if (card.issueId) issuesApi.update(card.issueId, { status: "done" }).catch(() => undefined);
   };
 
@@ -181,11 +203,11 @@ export function ChannelCollaborationBoard(props: { companyId: string }) {
 
       {notice && <p className="text-[11px]" style={{ color: "var(--openbot-warning-text)" }}>{notice}</p>}
 
-      {cards.length === 0 ? (
+      {visibleCards.length === 0 ? (
         <p className="text-xs text-muted-foreground px-1">아직 채널 작업 카드가 없습니다.</p>
       ) : (
         <div className="space-y-2">
-          {cards.map((card) => (
+          {visibleCards.map((card) => (
             <div key={card.id} className={cn("rounded-lg border px-3 py-2 space-y-1.5", card.status === "done" && "opacity-60")} style={{ backgroundColor: "var(--openbot-surface-25d-raised)", borderColor: "var(--openbot-surface-25d-border)" }}>
               <div className="flex items-center gap-2 text-sm">
                 <span className="flex-1 min-w-0 truncate font-medium">{card.title}</span>

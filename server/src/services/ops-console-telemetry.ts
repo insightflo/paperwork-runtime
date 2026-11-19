@@ -87,21 +87,45 @@ function persistThresholds(stateDir: string, companyId: string, thresholds: Reso
 }
 
 async function runPs(args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync("ps", args, { encoding: "utf8", timeout: 5000 });
+  const { stdout } = await execFileAsync("ps", args, {
+    encoding: "utf8",
+    timeout: 5000,
+    env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
+  });
   return stdout;
 }
 
+const PS_LSTART_RE = /^([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})$/;
+
+/** DB 기록 processStartedAt 과 ps UTC lstart 를 대조해 PID 재사용으로 인한 오종료를 차단한다. */
+export function matchesProcessStartTime(
+  psUtcLstart: string,
+  recordedStartedAt: Date | string | null | undefined,
+): boolean {
+  if (!recordedStartedAt) return false;
+  const recordedMs = new Date(recordedStartedAt).getTime();
+  const normalized = psUtcLstart.trim().replace(/\s+/g, " ");
+  if (!PS_LSTART_RE.test(normalized)) return false;
+  const psMs = Date.parse(`${normalized} UTC`);
+  return Number.isFinite(recordedMs) && Number.isFinite(psMs) && psMs <= recordedMs + 2_000 && recordedMs - psMs <= 10_000;
+}
+
 export function opsConsoleTelemetryService(db: Db, hermitGate: HermitGateService) {
-  /** 요청 회사가 현재 running 으로 소유한 프로세스 PID 집합만 조회한다(읽기 전용 SELECT). */
-  async function getCompanyOwnedPids(companyId: string): Promise<Set<number>> {
+  /** 요청 회사가 현재 running 으로 소유한 외부 OS 프로세스(pid + processStartedAt)만 조회한다(서버 자신의 pid 제외, 읽기 전용 SELECT). */
+  async function getCompanyOwnedRuns(companyId: string): Promise<Array<{ pid: number; processStartedAt: Date | null }>> {
     const rows = await db
-      .select({ processPid: heartbeatRuns.processPid })
+      .select({ processPid: heartbeatRuns.processPid, processStartedAt: heartbeatRuns.processStartedAt })
       .from(heartbeatRuns)
       .where(and(eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.status, "running")));
-    const owned = new Set<number>();
+    const owned: Array<{ pid: number; processStartedAt: Date | null }> = [];
     for (const row of rows) {
-      if (typeof row.processPid === "number" && Number.isInteger(row.processPid) && row.processPid > 0) {
-        owned.add(row.processPid);
+      if (
+        typeof row.processPid === "number" &&
+        Number.isInteger(row.processPid) &&
+        row.processPid > 1 &&
+        row.processPid !== process.pid
+      ) {
+        owned.push({ pid: row.processPid, processStartedAt: row.processStartedAt ?? null });
       }
     }
     return owned;
@@ -147,24 +171,36 @@ export function opsConsoleTelemetryService(db: Db, hermitGate: HermitGateService
   }
 
   async function listBackgroundProcesses(companyId: string): Promise<BackgroundProcessRow[]> {
-    const ownedPids = await getCompanyOwnedPids(companyId);
-    if (ownedPids.size === 0) return [];
+    const ownedRuns = await getCompanyOwnedRuns(companyId);
+    if (ownedRuns.length === 0) return [];
     let stdout: string;
     try {
-      stdout = await runPs(["-eo", "pid=,ppid=,etime=,comm="]);
+      stdout = await runPs(["-eo", "pid=,ppid=,etime=,lstart=,comm="]);
     } catch {
       return [];
     }
-    const parsed: Array<{ pid: number; ppid: number; elapsed: string; command: string }> = [];
+    const parsed: Array<{ pid: number; ppid: number; elapsed: string; lstart: string; command: string }> = [];
     for (const line of stdout.split("\n")) {
-      const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\S+)\s+(.+)$/);
+      const match = line
+        .trim()
+        .match(/^(\d+)\s+(\d+)\s+(\S+)\s+([A-Za-z]{3}\s+[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s+(.+)$/);
       if (!match) continue;
       const pid = Number(match[1]);
       const ppid = Number(match[2]);
       if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) continue;
-      parsed.push({ pid, ppid, elapsed: match[3], command: match[4] });
+      parsed.push({ pid, ppid, elapsed: match[3], lstart: match[4], command: match[5] });
     }
-    const ownedTree = new Set(ownedPids);
+    const verifiedRootPids = new Set<number>();
+    for (const entry of parsed) {
+      if (
+        entry.pid !== process.pid &&
+        ownedRuns.some((run) => run.pid === entry.pid && matchesProcessStartTime(entry.lstart, run.processStartedAt))
+      ) {
+        verifiedRootPids.add(entry.pid);
+      }
+    }
+    if (verifiedRootPids.size === 0) return [];
+    const ownedTree = new Set(verifiedRootPids);
     let added = true;
     while (added) {
       added = false;
@@ -183,7 +219,7 @@ export function opsConsoleTelemetryService(db: Db, hermitGate: HermitGateService
         ppid: entry.ppid,
         elapsed: entry.elapsed,
         command: entry.command,
-        stoppable: entry.ppid === process.pid && ownedPids.has(entry.pid),
+        stoppable: entry.ppid === process.pid && verifiedRootPids.has(entry.pid),
       });
       if (rows.length >= PROCESS_ROW_CAP) break;
     }
@@ -197,15 +233,18 @@ export function opsConsoleTelemetryService(db: Db, hermitGate: HermitGateService
     if (!Number.isInteger(pid)) return { ok: false, reason: "pid 는 정수여야 합니다" };
     if (pid <= 1) return { ok: false, reason: "보호된 시스템 프로세스(pid <= 1)는 종료할 수 없습니다" };
     if (pid === process.pid) return { ok: false, reason: "API 서버 프로세스 자신은 종료할 수 없습니다" };
-    const ownedPids = await getCompanyOwnedPids(companyId);
-    if (!ownedPids.has(pid)) {
+    const candidates = (await getCompanyOwnedRuns(companyId)).filter((run) => run.pid === pid);
+    if (candidates.length === 0) {
       return { ok: false, reason: `프로세스 ${pid} 는 요청 회사의 활성 실행 소유 프로세스가 아닙니다` };
     }
     let ppid: number;
+    let lstart: string;
     try {
-      const out = (await runPs(["-o", "ppid=", "-p", String(pid)])).trim();
-      ppid = Number(out);
-      if (!out || !Number.isInteger(ppid) || ppid <= 0) {
+      const out = (await runPs(["-o", "ppid=,lstart=", "-p", String(pid)])).trim();
+      const match = out.match(/^(\d+)\s+(.+)$/);
+      ppid = match ? Number(match[1]) : 0;
+      lstart = match ? match[2].trim() : "";
+      if (!match || !Number.isInteger(ppid) || ppid <= 0) {
         return { ok: false, reason: `프로세스 ${pid} 를 찾을 수 없습니다` };
       }
     } catch {
@@ -213,6 +252,9 @@ export function opsConsoleTelemetryService(db: Db, hermitGate: HermitGateService
     }
     if (ppid !== process.pid) {
       return { ok: false, reason: `프로세스 ${pid} 는 이 서버의 자식 프로세스가 아닙니다` };
+    }
+    if (!candidates.some((run) => matchesProcessStartTime(lstart, run.processStartedAt))) {
+      return { ok: false, reason: `프로세스 ${pid} 시작 시각이 기록된 실행과 일치하지 않습니다(PID 재사용 보호)` };
     }
     try {
       process.kill(pid, "SIGTERM");
