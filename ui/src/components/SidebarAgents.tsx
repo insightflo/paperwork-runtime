@@ -7,10 +7,13 @@ import { useDialog } from "../context/DialogContext";
 import { useSidebar } from "../context/SidebarContext";
 import { agentsApi } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
+import { operatorDecisionsApi } from "../api/operator-decisions";
 import { queryKeys } from "../lib/queryKeys";
+import { useSidebarDensity } from "../lib/sidebar-slide-physics";
 import { cn, agentRouteRef, agentUrl } from "../lib/utils";
 import { AgentIcon } from "./AgentIconPicker";
 import { BudgetSidebarMarker } from "./BudgetSidebarMarker";
+import { SidebarWaitChip, resolveAgentWaitState } from "./SidebarWaitChip";
 import {
   Collapsible,
   CollapsibleContent,
@@ -45,6 +48,7 @@ export function SidebarAgents() {
   const { openNewAgent } = useDialog();
   const { isMobile, setSidebarOpen } = useSidebar();
   const location = useLocation();
+  const { compact } = useSidebarDensity();
 
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
@@ -57,6 +61,14 @@ export function SidebarAgents() {
     queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
     enabled: !!selectedCompanyId,
     refetchInterval: 10_000,
+  });
+
+  const { data: pendingDecisions } = useQuery({
+    queryKey: queryKeys.operatorDecisions.list(selectedCompanyId!, "pending"),
+    queryFn: () => operatorDecisionsApi.list(selectedCompanyId!, "pending", 50),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 30_000,
+    retry: false,
   });
 
   const liveCountByAgent = useMemo(() => {
@@ -111,6 +123,11 @@ export function SidebarAgents() {
         <div className="flex flex-col gap-0.5 mt-0.5">
           {visibleAgents.map((agent: Agent) => {
             const runCount = liveCountByAgent.get(agent.id) ?? 0;
+            const waitState = resolveAgentWaitState({
+              agentId: agent.id,
+              pendingDecisions: pendingDecisions?.data,
+              liveRunCount: runCount,
+            });
             return (
               <NavLink
                 key={agent.id}
@@ -119,37 +136,30 @@ export function SidebarAgents() {
                   if (isMobile) setSidebarOpen(false);
                 }}
                 className={cn(
-                  "flex items-center gap-2.5 px-3 py-1.5 text-[13px] font-medium transition-colors",
+                  "flex items-center text-[13px] font-medium transition-colors",
+                  compact ? "justify-center gap-1 px-1.5 py-1.5" : "gap-2.5 px-3 py-1.5",
                   activeAgentId === agentRouteRef(agent)
                     ? "bg-accent text-foreground"
                     : "text-foreground/80 hover:bg-accent/50 hover:text-foreground"
                 )}
               >
                 <AgentIcon icon={agent.icon} className="shrink-0 h-3.5 w-3.5 text-muted-foreground" />
-                <span className="flex-1 min-w-0">
-                  <span className="block truncate">{agent.name}</span>
-                  {agent.title && (
-                    <span className="block truncate text-[10px] font-normal text-muted-foreground/60 leading-tight">
-                      {agent.title}
-                    </span>
-                  )}
-                </span>
-                {(agent.pauseReason === "budget" || runCount > 0) && (
-                  <span className="ml-auto flex items-center gap-1.5 shrink-0">
+                {!compact && (
+                  <span className="flex-1 min-w-0">
+                    <span className="block truncate">{agent.name}</span>
+                    {agent.title && (
+                      <span className="block truncate text-[10px] font-normal text-muted-foreground/60 leading-tight">
+                        {agent.title}
+                      </span>
+                    )}
+                  </span>
+                )}
+                {(agent.pauseReason === "budget" || waitState) && (
+                  <span className={cn("flex items-center gap-1.5 shrink-0", !compact && "ml-auto")}>
                     {agent.pauseReason === "budget" ? (
                       <BudgetSidebarMarker title="Agent paused by budget" />
                     ) : null}
-                    {runCount > 0 ? (
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
-                      </span>
-                    ) : null}
-                    {runCount > 0 ? (
-                      <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">
-                        {runCount} live
-                      </span>
-                    ) : null}
+                    <SidebarWaitChip state={waitState} provider={agent.adapterType} compact={compact} />
                   </span>
                 )}
               </NavLink>
