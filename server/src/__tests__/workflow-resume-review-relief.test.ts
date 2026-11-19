@@ -1,31 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Db } from "@paperclipai/db";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
-  agentWakeupRequests,
-  heartbeatRuns,
-  instanceSettings,
-  issues,
-  missions,
-  operatorDecisionContinuations,
-  operatorDecisions,
-  workflowStepRuns,
+  agentWakeupRequests, heartbeatRuns, instanceSettings, issues, missions,
+  operatorDecisionContinuations, operatorDecisions, workflowRuns, workflowStepRuns, type Db,
 } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport } from "./helpers/embedded-postgres.js";
 import {
-  applySigner,
-  boardActor,
-  resetReviewedPolicies,
-  seedResumeApplyScenario,
-  startExecutionDefinitionFixture,
-  type ExecutionDefinitionFixture,
-  type RawSql,
-  type ResumeApplyScenario,
+  applySigner, boardActor, resetReviewedPolicies, resumeApplyBody, seedResumeApplyScenario,
+  startExecutionDefinitionFixture, type ExecutionDefinitionFixture, type RawSql, type ResumeApplyScenario,
 } from "./helpers/workflow-resume-apply-fixture.js";
+import { instanceSettingsService } from "../services/instance-settings.js";
 import { previewResume } from "../services/workflow/resume/preview.js";
 import { applyResume } from "../services/workflow/resume/apply.js";
-import { resumeApplyBody } from "./helpers/workflow-resume-apply-fixture.js";
+import { classifyReviewRelief } from "../services/workflow/resume/review-relief.js";
+import type { ResumeWorkspaceMissionHistory } from "../services/workflow/resume/read-model-workspaces.js";
 import { seedPreviewGraph, previewScope } from "./helpers/workflow-resume-preview-fixture.js";
 
 /**
@@ -51,35 +40,29 @@ async function setReliefFlag(db: Db, experimental: Record<string, unknown>) {
 
 /** 미션 이슈 + resolved 결정 + accepted continuation(= #721 구조화 사람 승인 판정). */
 async function seedHumanApproval(db: Db, scenario: ResumeApplyScenario, acceptedAt: Date) {
-  const [issue] = await db.insert(issues).values({ companyId: scenario.companyId,
-    missionId: scenario.missionId, title: "Resume approval", status: "blocked",
-    assigneeAgentId: scenario.agentId }).returning();
+  const [issue] = await db.insert(issues).values({ companyId: scenario.companyId, missionId: scenario.missionId,
+    title: "Resume approval", status: "blocked", assigneeAgentId: scenario.agentId }).returning();
   const decisionId = randomUUID(), continuationWakeId = randomUUID();
   await db.insert(operatorDecisions).values({
     id: decisionId, companyId: scenario.companyId, requestKey: `relief:${randomUUID()}`,
     requestHash: "rh", interactionType: "single_select", priority: "high",
     title: "approve resume direction", sourceType: "mission_owner_human_input",
-    sourceId: randomUUID(), sourceContext: { missionId: scenario.missionId },
-    issueId: issue!.id, status: "resolved", continuationMode: "issue_current_assignee",
+    sourceId: randomUUID(), sourceContext: { missionId: scenario.missionId }, issueId: issue!.id,
+    status: "resolved", continuationMode: "issue_current_assignee",
     definition: { options: [], actions: [], selection: null,
-      comment: { mode: "disabled", label: null, placeholder: null, maxLength: 0 },
-      approvedScope: [], forbiddenScope: [] },
-    result: { actionId: "approve", outcome: "approved", selectedOptionIds: ["approve"],
-      comment: null, resolvedAt: acceptedAt.toISOString() },
+      comment: { mode: "disabled", label: null, placeholder: null, maxLength: 0 }, approvedScope: [], forbiddenScope: [] },
+    result: { actionId: "approve", outcome: "approved", selectedOptionIds: ["approve"], comment: null, resolvedAt: acceptedAt.toISOString() },
     resolvedByUserId: "board", resolvedAt: acceptedAt,
   });
-  // accepted continuation 은 실제 전달 웨이크업을 참조해야 한다(accepted_check 제약).
-  //   전달 후 처리까지 끝난 상태(completed = 종말)로 시드한다 — live wakeup 은 활성 실행
-  //   차단(contract ②)이 그대로 잡아야 하므로 종말 상태만이 사람 승인 판정의 정당한 동반 상태다.
+  // accepted continuation 은 실제 종말 전달 웨이크업을 참조해야 한다(accepted_check 제약).
   await db.insert(agentWakeupRequests).values({
     id: continuationWakeId, companyId: scenario.companyId, agentId: scenario.agentId,
     source: "system", triggerDetail: "system", reason: "operator_decision_continuation",
     payload: { issueId: issue!.id }, status: "completed", requestedAt: acceptedAt,
   });
   await db.insert(operatorDecisionContinuations).values({ companyId: scenario.companyId,
-    operatorDecisionId: decisionId, issueId: issue!.id, state: "accepted",
-    targetAgentId: scenario.agentId, wakeupRequestId: continuationWakeId,
-    idempotencyKey: `rc:${randomUUID()}`, acceptedAt });
+    operatorDecisionId: decisionId, issueId: issue!.id, state: "accepted", targetAgentId: scenario.agentId,
+    wakeupRequestId: continuationWakeId, idempotencyKey: `rc:${randomUUID()}`, acceptedAt });
   return issue!.id;
 }
 
@@ -94,9 +77,8 @@ async function seedTerminalOwnerResidue(db: Db, scenario: ResumeApplyScenario) {
     startedAt: new Date(NOW.getTime() - 3_600_000), finishedAt: new Date(NOW.getTime() - 3_000_000),
     error: "stream stall", workflowStepRunId: scenario.stepRunIds.redo,
   }).returning();
-  await db.update(workflowStepRuns).set({
-    dispatchOwnerWakeupRequestId: wakeup!.id, dispatchOwnerHeartbeatRunId: hb!.id,
-  }).where(eq(workflowStepRuns.id, scenario.stepRunIds.redo));
+  await db.update(workflowStepRuns).set({ dispatchOwnerWakeupRequestId: wakeup!.id, dispatchOwnerHeartbeatRunId: hb!.id })
+    .where(eq(workflowStepRuns.id, scenario.stepRunIds.redo));
   return { wakeupId: wakeup!.id, heartbeatId: hb!.id };
 }
 
@@ -117,14 +99,10 @@ describeEP("resume review-relief v1", () => {
     await db.delete(instanceSettings);
   });
 
-  function scopeOf(s: ResumeApplyScenario) {
-    return { companyId: s.companyId, missionId: s.missionId, workflowRunId: s.runId, startStepId: "gate" };
-  }
+  function scopeOf(s: ResumeApplyScenario) { return { companyId: s.companyId, missionId: s.missionId, workflowRunId: s.runId, startStepId: "gate" }; }
 
   async function reliefScenario(prefix: string) {
-    const scenario = await seedResumeApplyScenario(db, sql, prefix, {
-      missionStatus: "active", runStatus: "failed",
-    });
+    const scenario = await seedResumeApplyScenario(db, sql, prefix, { missionStatus: "active", runStatus: "failed" });
     resetReviewedPolicies(); // policy-missing 형상(라이브 7런과 동일)
     await seedTerminalOwnerResidue(db, scenario);
     return scenario;
@@ -136,10 +114,7 @@ describeEP("resume review-relief v1", () => {
     expect(result.preview.eligible).toBe(false);
     expect(result.preview.relief).toEqual({ active: false, bases: [] });
     expect(result.preview.warnings).toEqual([]);
-    const codes = result.preview.blockers.map((b) => b.code);
-    expect(codes).toEqual(expect.arrayContaining([
-      "external_effect_unknown", "control_tool_effects_unverified", "active_work",
-    ]));
+    expect(result.preview.blockers.map((b) => b.code)).toEqual(expect.arrayContaining(["external_effect_unknown", "control_tool_effects_unverified", "active_work"]));
   });
 
   it("flag ON + human approval — conservative blockers become warnings; resume opens", async () => {
@@ -150,10 +125,7 @@ describeEP("resume review-relief v1", () => {
     expect(result.preview.eligible).toBe(true);
     expect(result.preview.token).toBeTruthy();
     expect(result.preview.relief).toEqual({ active: true, bases: ["human_approval"] });
-    const warnCodes = result.preview.warnings!.map((w) => w.code);
-    expect(warnCodes).toEqual(expect.arrayContaining([
-      "external_effect_unknown", "control_tool_effects_unverified", "active_work",
-    ]));
+    expect(result.preview.warnings!.map((w) => w.code)).toEqual(expect.arrayContaining(["external_effect_unknown", "control_tool_effects_unverified", "active_work"]));
     expect(result.preview.blockers).toEqual([]);
     expect(result.preview.preservedStepIds).toEqual(["side"]);
     expect(result.preview.affectedStepIds.sort()).toEqual(["done", "gate", "redo"]);
@@ -229,14 +201,10 @@ describeEP("review-relief — live failed-run shapes (2026-11 7-run census)", ()
   beforeAll(async () => {
     fixture = await startExecutionDefinitionFixture("resume-shape-");
     if (!fixture.supported) throw new Error(fixture.reason);
-    db = fixture.db;
-    sql = fixture.sql;
+    db = fixture.db; sql = fixture.sql;
   }, 60_000);
   afterAll(async () => { if (fixture?.supported) await fixture.cleanup(); });
-  afterEach(async () => {
-    resetReviewedPolicies();
-    await db.delete(instanceSettings);
-  });
+  afterEach(async () => { resetReviewedPolicies(); await db.delete(instanceSettings); });
 
   const SHAPE_STEPS = [
     { id: "pred", name: "Completed predecessor", agentId: "", dependencies: [] },
@@ -258,6 +226,7 @@ describeEP("review-relief — live failed-run shapes (2026-11 7-run census)", ()
   /** 완료 선행 + 실패 스텝 + skipped 하류(라이브 73af4266/91a7881d/87b60e20/f08ed7ec 형상). */
   async function seedShape(missionStatus: string) {
     const graph = await seedPreviewGraph(sql, db, { stepsJson: SHAPE_STEPS, runStatus: "failed" });
+    await db.update(workflowRuns).set({ completedAt: RUN_COMPLETED_AT }).where(eq(workflowRuns.id, graph.runId));
     await setStepStatus(graph.runId, "pred", "completed");
     await setStepStatus(graph.runId, "s1", "failed");
     if (missionStatus !== "active") {
@@ -274,16 +243,12 @@ describeEP("review-relief — live failed-run shapes (2026-11 7-run census)", ()
     await setReliefFlag(db, {});
     const legacy = await previewResume(db, previewScope(graph, "s1"), applySigner(NOW));
     expect(legacy.preview.eligible).toBe(false);
-    expect(legacy.preview.blockers.map((b) => b.code)).toEqual(expect.arrayContaining([
-      "external_effect_unknown", "missing_evidence",
-    ]));
+    expect(legacy.preview.blockers.map((b) => b.code)).toEqual(expect.arrayContaining(["external_effect_unknown", "missing_evidence"]));
     // 수정 후(플래그 ON + 사람 승인): 완료 선행 재사용 + 실패 스텝부터 재개.
     await setReliefFlag(db, { enableResumeReviewReliefV1: true });
     const relieved = await previewResume(db, previewScope(graph, "s1"), applySigner(NOW));
     expect(relieved.preview.eligible).toBe(true);
-    expect(relieved.preview.warnings!.map((w) => w.code)).toEqual(expect.arrayContaining([
-      "external_effect_unknown", "missing_evidence",
-    ]));
+    expect(relieved.preview.warnings!.map((w) => w.code)).toEqual(expect.arrayContaining(["external_effect_unknown", "missing_evidence"]));
     expect(relieved.preview.preservedStepIds).toEqual(["pred"]);
     expect(relieved.preview.affectedStepIds.sort()).toEqual(["s1", "s2"]);
   });
@@ -295,5 +260,33 @@ describeEP("review-relief — live failed-run shapes (2026-11 7-run census)", ()
     const result = await previewResume(db, previewScope(graph, "s1"), applySigner(NOW));
     expect(result.preview.eligible).toBe(false);
     expect(result.preview.blockers.some((b) => b.code === "unsupported_status")).toBe(true);
+  });
+
+  it("completedAt null fails closed for human_approval; instanceSettings round-trips flags", async () => {
+    const graph = await seedShape("active");
+    await db.update(workflowRuns).set({ completedAt: null }).where(eq(workflowRuns.id, graph.runId));
+    const saved = await instanceSettingsService(db).updateExperimental({
+      enableResumeReviewReliefV1: true, resumeReviewReliefAllowedMissionIdsV1: [graph.missionId],
+    });
+    expect(saved.experimental.enableResumeReviewReliefV1).toBe(true);
+    expect(saved.experimental.resumeReviewReliefAllowedMissionIdsV1).toEqual([graph.missionId]);
+    await seedHumanApproval(db, scenarioLike(graph), new Date("2026-09-07T10:00:00.000Z"));
+    const result = await previewResume(db, previewScope(graph, "s1"), applySigner(NOW));
+    expect(result.preview.eligible).toBe(false);
+    expect(result.preview.relief?.bases).not.toContain("human_approval");
+  });
+
+  it("classifyReviewRelief scopes stepId active_work to selected.steps & requires policyManifestMissing marker", () => {
+    const history = {
+      selected: { steps: [{ id: "sel-sr", stepId: "s1", status: "running", dispatchOwnerWakeupRequestId: "w-live", dispatchOwnerHeartbeatRunId: null }] },
+      missionSteps: [{ id: "old-sr", stepId: "s1", status: "failed", dispatchOwnerWakeupRequestId: null, dispatchOwnerHeartbeatRunId: null }],
+      history: { wakeups: [{ id: "w-live", status: "queued" }], heartbeats: [], issues: [] },
+    } as unknown as ResumeWorkspaceMissionHistory;
+    const out = classifyReviewRelief({
+      blockers: [{ code: "active_work", message: "live", detail: { stepId: "s1" } }, { code: "external_effect_unknown", message: "untagged", detail: {} }],
+      humanApproval: false, stuck: true, policyMissing: true, history,
+    });
+    expect(out.hardBlockers.map((b) => b.code)).toEqual(["active_work", "external_effect_unknown"]);
+    expect(out.warnings).toEqual([]);
   });
 });

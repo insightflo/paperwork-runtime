@@ -9,6 +9,7 @@ import { forwardReachable } from "./graph.js";
 import { buildGraphNodes, kindOf } from "./preview-graph.js";
 import { projectResumePreview } from "./public-views.js";
 import {
+  approvalAnchorForRun,
   classifyReviewRelief,
   hasAcceptedHumanApprovalForMission,
   isResumeReviewReliefEnabled,
@@ -230,7 +231,8 @@ export async function assembleResumePreview(
   ];
   if (policyView.policyMissing) {
     blockers.push(previewBlocker("external_effect_unknown",
-      "검토된 resume 정책 매니페스트가 없어 도구 효과/publication 매핑을 확정할 수 없습니다", {}));
+      "검토된 resume 정책 매니페스트가 없어 도구 효과/publication 매핑을 확정할 수 없습니다",
+      { policyManifestMissing: true }));
   }
   if (policyView.policy !== null) {
     const bypassed = policyView.policy.requiredGateStepIds.filter((stepId) => !affectedSet.has(stepId));
@@ -294,11 +296,11 @@ export async function assembleResumePreview(
   //   미확인(무승인)·예산 등은 classifyReviewRelief 계약이 유지한다.
   let warnings: ResumePreviewBlocker[] = [];
   let reliefBases: ResumeReliefBasisName[] = [];
-  if (await isResumeReviewReliefEnabled(tx, validated.missionId)) {
+  if (blockers.length > 0 && await isResumeReviewReliefEnabled(tx, validated.missionId)) {
     const humanApproval = await hasAcceptedHumanApprovalForMission(tx, {
       companyId: validated.companyId,
       missionId: validated.missionId,
-      since: history.selected.run.completedAt,
+      since: approvalAnchorForRun(history, stuckStepRunIds),
     });
     const classified = classifyReviewRelief({
       blockers,
