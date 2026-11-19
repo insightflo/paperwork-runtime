@@ -1,9 +1,19 @@
-import { createReadStream, promises as fs } from "node:fs";
+import { constants as fsConstants, createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { notFound } from "../errors.js";
 import { resolvePaperclipInstanceRoot } from "../home-paths.js";
+import {
+  normalizeRunLogReadRange,
+  readGzipFileRangeNodeFallback,
+  resolveRunLogBin,
+  RunLogHelperNotFoundError,
+  runRustLogFinalize,
+  runRustLogReadRange,
+  sha256GzipFileNodeFallback,
+} from "./run-log-rust-client.js";
 
+const NOT_FOUND_MESSAGE = "Run log not found";
 export type RunLogStoreType = "local_file";
 
 export interface RunLogHandle {
@@ -36,10 +46,7 @@ export function serializeRunLogEvent(event: RunLogEvent): string {
 
 export interface RunLogStore {
   begin(input: { companyId: string; agentId: string; runId: string }): Promise<RunLogHandle>;
-  append(
-    handle: RunLogHandle,
-    event: RunLogEvent,
-  ): Promise<void>;
+  append(handle: RunLogHandle, event: RunLogEvent): Promise<void>;
   finalize(handle: RunLogHandle): Promise<RunLogFinalizeSummary>;
   read(handle: RunLogHandle, opts?: RunLogReadOptions): Promise<RunLogReadResult>;
 }
@@ -57,19 +64,24 @@ function resolveWithin(basePath: string, relativePath: string) {
   return resolved;
 }
 
-function createLocalFileRunLogStore(basePath: string): RunLogStore {
+function isEnoent(err: unknown): boolean {
+  return (err as { code?: string })?.code === "ENOENT";
+}
+
+function warnFallback(scope: string, err: unknown): void {
+  console.warn(`[run-log-store] ${scope}: ${err instanceof Error ? err.message : String(err)}`);
+}
+
+export function createLocalFileRunLogStore(basePath: string): RunLogStore {
   async function ensureDir(relativeDir: string) {
     const dir = resolveWithin(basePath, relativeDir);
     await fs.mkdir(dir, { recursive: true });
   }
 
   async function readFileRange(filePath: string, offset: number, limitBytes: number): Promise<RunLogReadResult> {
-    const stat = await fs.stat(filePath).catch(() => null);
-    if (!stat) throw notFound("Run log not found");
-
+    const stat = await fs.stat(filePath); // ENOENT propagates → caller tries the .gz sibling
     const start = Math.max(0, Math.min(offset, stat.size));
     const end = Math.max(start, Math.min(start + limitBytes - 1, stat.size - 1));
-
     if (start > end) {
       return { content: "", nextOffset: start };
     }
@@ -99,6 +111,31 @@ function createLocalFileRunLogStore(basePath: string): RunLogStore {
     });
   }
 
+  async function readNodeFallback(absPath: string, offset: number, limitBytes: number): Promise<RunLogReadResult> {
+    try {
+      return await readFileRange(absPath, offset, limitBytes);
+    } catch (err) {
+      if (isEnoent(err)) {
+        return readGzipFileRangeNodeFallback(`${absPath}.gz`, offset, limitBytes, NOT_FOUND_MESSAGE);
+      }
+      throw err;
+    }
+  }
+
+  async function finalizeNodeFallback(absPath: string): Promise<RunLogFinalizeSummary> {
+    const stat = await fs.stat(absPath).catch(() => null);
+    if (stat) {
+      const sha256 = await sha256File(absPath);
+      return { bytes: stat.size, sha256, compressed: false };
+    }
+    // The Rust helper may have renamed to .gz before a transient failure — stay idempotent.
+    if (await fs.stat(`${absPath}.gz`).catch(() => null)) {
+      const { bytes, sha256 } = await sha256GzipFileNodeFallback(`${absPath}.gz`);
+      return { bytes, sha256, compressed: true };
+    }
+    throw notFound(NOT_FOUND_MESSAGE);
+  }
+
   return {
     async begin(input) {
       const [companyId, agentId] = safeSegments(input.companyId, input.agentId);
@@ -116,7 +153,22 @@ function createLocalFileRunLogStore(basePath: string): RunLogStore {
     async append(handle, event) {
       if (handle.store !== "local_file") return;
       const absPath = resolveWithin(basePath, handle.logRef);
-      await fs.appendFile(absPath, serializeRunLogEvent(event), "utf8");
+      let fh;
+      try {
+        // No O_CREAT: a vanished log must never resurrect into a ghost .ndjson.
+        fh = await fs.open(absPath, fsConstants.O_WRONLY | fsConstants.O_APPEND);
+      } catch (err) {
+        if (isEnoent(err) && (await fs.stat(`${absPath}.gz`).catch(() => null))) {
+          warnFallback("append dropped: log already finalized to .gz", err);
+          return;
+        }
+        throw err;
+      }
+      try {
+        await fh.writeFile(serializeRunLogEvent(event), "utf8");
+      } finally {
+        await fh.close();
+      }
     },
 
     async finalize(handle) {
@@ -124,25 +176,34 @@ function createLocalFileRunLogStore(basePath: string): RunLogStore {
         return { bytes: 0, compressed: false };
       }
       const absPath = resolveWithin(basePath, handle.logRef);
-      const stat = await fs.stat(absPath).catch(() => null);
-      if (!stat) throw notFound("Run log not found");
-
-      const hash = await sha256File(absPath);
-      return {
-        bytes: stat.size,
-        sha256: hash,
-        compressed: false,
-      };
+      const bin = resolveRunLogBin();
+      if (bin) {
+        try {
+          return await runRustLogFinalize(bin, absPath);
+        } catch (err) {
+          if (err instanceof RunLogHelperNotFoundError) throw notFound(NOT_FOUND_MESSAGE);
+          warnFallback("rust finalize failed; using Node fallback", err);
+        }
+      }
+      return finalizeNodeFallback(absPath);
     },
 
     async read(handle, opts) {
       if (handle.store !== "local_file") {
-        throw notFound("Run log not found");
+        throw notFound(NOT_FOUND_MESSAGE);
       }
       const absPath = resolveWithin(basePath, handle.logRef);
-      const offset = opts?.offset ?? 0;
-      const limitBytes = opts?.limitBytes ?? 256_000;
-      return readFileRange(absPath, offset, limitBytes);
+      const { offset, limitBytes } = normalizeRunLogReadRange(opts);
+      const bin = resolveRunLogBin();
+      if (bin) {
+        try {
+          return await runRustLogReadRange(bin, absPath, offset, limitBytes);
+        } catch (err) {
+          if (err instanceof RunLogHelperNotFoundError) throw notFound(NOT_FOUND_MESSAGE);
+          warnFallback("rust read-range failed; using Node fallback", err);
+        }
+      }
+      return readNodeFallback(absPath, offset, limitBytes);
     },
   };
 }
@@ -155,4 +216,3 @@ export function getRunLogStore() {
   cachedStore = createLocalFileRunLogStore(basePath);
   return cachedStore;
 }
-
