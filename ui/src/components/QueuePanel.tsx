@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type DragEvent, type KeyboardEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { GripVertical, Send, X } from "lucide-react";
 import { api } from "../api/client";
@@ -33,7 +33,7 @@ export function normalizeQueueItems(raw: unknown): QueuedWakeupItem[] {
       status: (i.status ?? null) as string | null,
       reason: (i.reason ?? null) as string | null,
       prompt: (i.prompt ?? i.promptPreview ?? null) as string | null,
-      payload: (i.payload ?? null) as QueuedWakeupItem["payload"],
+      payload: i.prompt || i.promptPreview ? null : ((i.payload ?? null) as QueuedWakeupItem["payload"]),
     }))
     .filter((i) => i.id);
 }
@@ -66,9 +66,7 @@ export function QueuePanel(props: {
   const [editText, setEditText] = useState("");
   const [steerText, setSteerText] = useState("");
   const [steerApplied, setSteerApplied] = useState(false);
-  const dragIndex = { current: -1 } as { current: number };
-  const [, force] = useState(0);
-  const dragRef = dragIndex;
+  const dragRef = useRef(-1);
 
   const query = useQuery({
     queryKey: ["ops-console-queue", props.companyId ?? "none"],
@@ -198,7 +196,7 @@ export function QueuePanel(props: {
             key={item.id}
             draggable
             tabIndex={0}
-            onDragStart={(e) => { dragRef.current = index; e.dataTransfer.effectAllowed = "move"; force((v) => v + 1); }}
+            onDragStart={(e) => { dragRef.current = index; e.dataTransfer.effectAllowed = "move"; }}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => onDrop(e, index)}
             onKeyDown={(e) => onItemKeyDown(e, index)}

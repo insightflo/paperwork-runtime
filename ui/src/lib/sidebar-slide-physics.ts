@@ -144,6 +144,8 @@ export function useSidebarSlideController(opts: {
       if (width > 0) {
         lastExpanded.current = width;
         opts.setSidebarOpen(true);
+      } else if (persist) {
+        opts.setSidebarOpen(false);
       }
       setNavWidth(width);
       if (persist) writeNavWidthPreference(width);
@@ -160,10 +162,10 @@ export function useSidebarSlideController(opts: {
     },
     [applyWidth],
   );
-  const toggleNav = useCallback(
-    () => applyWidth(navWidth > 0 ? 0 : lastExpanded.current || NAV_EXPANDED_WIDTH_PX, true),
-    [applyWidth, navWidth],
-  );
+  const toggleNav = useCallback(() => {
+    const isCurrentlyOpen = opts.sidebarOpen && effectiveNavWidth > 0;
+    applyWidth(isCurrentlyOpen ? 0 : lastExpanded.current || NAV_EXPANDED_WIDTH_PX, true);
+  }, [applyWidth, effectiveNavWidth, opts.sidebarOpen]);
 
   const density = useMemo(
     () => ({ width: effectiveNavWidth, compact: effectiveNavWidth <= NAV_COMPACT_WIDTH_PX }),

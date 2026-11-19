@@ -51,8 +51,8 @@ export function normalizeQueuePayload(raw: unknown): QueueItem[] {
       agentId: (item.agentId ?? item.agent_id ?? null) as string | null,
       status: (item.status ?? null) as string | null,
       reason: (item.reason ?? null) as string | null,
-      prompt: (item.prompt ?? null) as string | null,
-      payload: (item.payload ?? null) as QueueItem["payload"],
+      prompt: (item.prompt ?? item.promptPreview ?? null) as string | null,
+      payload: item.prompt || item.promptPreview ? null : ((item.payload ?? null) as QueueItem["payload"]),
     }))
     .filter((item) => item.id);
 }
@@ -177,7 +177,7 @@ function InspectorBody(props: { companyId: string | null; issueId?: string | nul
             className="h-6 px-2 text-[11px] text-destructive"
             onClick={async () => {
               try {
-                await api.delete(`/companies/${props.companyId}/ops-console/queue/${item.id}`);
+                await api.post(`/companies/${props.companyId}/ops-console/queue/${item.id}/cancel`, {});
                 queryClient.invalidateQueries({ queryKey: ["ops-console-queue", props.companyId] });
               } catch {
                 // Keep item visible if cancel fails.

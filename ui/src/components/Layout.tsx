@@ -36,7 +36,6 @@ import {
   StickyLiveRunDock,
   readRememberedHermesPanelOpen,
   readRememberedInstanceSettingsPath,
-  useAutoCompactSidebar,
   writeHermesPanelPreference,
 } from "./LayoutChrome";
 
@@ -125,11 +124,10 @@ export function Layout() {
     if (isMobile) setSidebarOpen(false);
   }, [isMobile, setHermesPanelOpen, setSidebarOpen]);
 
-  useAutoCompactSidebar(isMobile, setSidebarOpen);
   useCompanyPageMemory();
   useKeyboardShortcuts({
     onNewIssue: () => openNewIssue(),
-    onToggleSidebar: toggleSidebar,
+    onToggleSidebar: isMobile ? toggleSidebar : slide.toggleNav,
     onTogglePanel: togglePanelVisible,
   });
 
