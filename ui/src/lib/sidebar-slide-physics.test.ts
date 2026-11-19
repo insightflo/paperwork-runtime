@@ -74,5 +74,6 @@ describe("calculateSidebarSlideMetrics", () => {
     expect(compactMetrics.subNavScale).toBe(1);
     expect(compactMetrics.canvasDensityTier).toBe("ultra-wide");
     expect(compactMetrics.visibleKpiColumns).toBe(5);
+    expect(calculateSidebarSlideMetrics(92).subNavBlurPx).toBeGreaterThan(0);
   });
 });

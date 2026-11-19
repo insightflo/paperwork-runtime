@@ -1,40 +1,71 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { PanelRightOpen } from "lucide-react";
 import { usePanel } from "../context/PanelContext";
 import { useCompany } from "../context/CompanyContext";
 import { InspectorSidePanel } from "./InspectorSidePanel";
 
 const WIDE_DESKTOP_BREAKPOINT_PX = 1280;
+export const INSPECTOR_TOGGLE_EVENT = "openbot:toggle-inspector";
 
-export function PropertiesPanel() {
+export interface InspectorController {
+  panelContent: ReactNode;
+  isExpanded: boolean;
+  toggleInspector: () => void;
+  setExpanded: (next: boolean) => void;
+}
+
+function getWideDesktopMediaQuery(): MediaQueryList | null {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return null;
+  return window.matchMedia(`(min-width: ${WIDE_DESKTOP_BREAKPOINT_PX}px)`);
+}
+
+export function useInspectorController(): InspectorController {
   const { panelContent, panelVisible, setPanelVisible, togglePanelVisible } = usePanel();
-  const { selectedCompanyId } = useCompany();
-  const [manualOpen, setManualOpen] = useState(false);
-  const [isWideDesktop, setIsWideDesktop] = useState(() =>
-    typeof window === "undefined" ? true : window.innerWidth >= WIDE_DESKTOP_BREAKPOINT_PX,
-  );
+  const [narrowOpen, setNarrowOpen] = useState(false);
+  const [isWideDesktop, setIsWideDesktop] = useState(() => {
+    const mql = getWideDesktopMediaQuery();
+    if (mql) return mql.matches;
+    return typeof window === "undefined" ? true : window.innerWidth >= WIDE_DESKTOP_BREAKPOINT_PX;
+  });
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const onResize = () => setIsWideDesktop(window.innerWidth >= WIDE_DESKTOP_BREAKPOINT_PX);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    const mql = getWideDesktopMediaQuery();
+    if (!mql) return;
+    setIsWideDesktop(mql.matches);
+    const onChange = (event: MediaQueryListEvent) => setIsWideDesktop(event.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
   }, []);
 
   const usePersistentPanel = isWideDesktop || Boolean(panelContent);
-  const isExpanded = usePersistentPanel ? panelVisible : manualOpen;
+  const isExpanded = usePersistentPanel ? panelVisible : narrowOpen;
+
+  const setExpanded = useCallback(
+    (next: boolean) => {
+      if (usePersistentPanel) setPanelVisible(next);
+      else setNarrowOpen(next);
+    },
+    [setPanelVisible, usePersistentPanel],
+  );
+
+  const toggleInspector = useCallback(() => {
+    if (usePersistentPanel) togglePanelVisible();
+    else setNarrowOpen((prev) => !prev);
+  }, [togglePanelVisible, usePersistentPanel]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const onToggle = () => {
-      if (usePersistentPanel) togglePanelVisible();
-      else setManualOpen((prev) => !prev);
-    };
-    window.addEventListener("openbot:toggle-inspector", onToggle);
-    return () => window.removeEventListener("openbot:toggle-inspector", onToggle);
-  }, [togglePanelVisible, usePersistentPanel]);
+    window.addEventListener(INSPECTOR_TOGGLE_EVENT, toggleInspector);
+    return () => window.removeEventListener(INSPECTOR_TOGGLE_EVENT, toggleInspector);
+  }, [toggleInspector]);
 
-  if (!isExpanded) {
+  return { panelContent, isExpanded, toggleInspector, setExpanded };
+}
+
+export function PropertiesPanel({ controller }: { controller: InspectorController }) {
+  const { selectedCompanyId } = useCompany();
+
+  if (!controller.isExpanded) {
     return (
       <aside
         className="hidden md:flex w-11 shrink-0 border-l flex-col items-center"
@@ -46,7 +77,7 @@ export function PropertiesPanel() {
         <button
           type="button"
           className="flex h-full w-11 flex-col items-center gap-2.5 px-1.5 py-3 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground cursor-pointer"
-          onClick={() => (usePersistentPanel ? setPanelVisible(true) : setManualOpen(true))}
+          onClick={() => controller.setExpanded(true)}
           aria-label="인스펙터 열기"
           title="인스펙터 열기"
         >
@@ -75,8 +106,8 @@ export function PropertiesPanel() {
     >
       <InspectorSidePanel
         companyId={selectedCompanyId}
-        panelContent={panelContent}
-        onClose={() => (usePersistentPanel ? setPanelVisible(false) : setManualOpen(false))}
+        panelContent={controller.panelContent}
+        onClose={() => controller.setExpanded(false)}
       />
     </aside>
   );

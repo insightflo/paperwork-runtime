@@ -71,4 +71,24 @@ describe("SidebarNavItem", () => {
     expect(html).toContain(">4<");
     expect(html).not.toContain('<span class="flex-1 truncate">Missions</span>');
   });
+
+  it("exposes amber textBadge status via title and status dot in compact mode", () => {
+    const html = renderToStaticMarkup(
+      <SidebarDensityContext.Provider value={{ width: 88, compact: true }}>
+        <MemoryRouter initialEntries={["/RES/missions"]}>
+          <SidebarNavItem
+            to="/human-operator"
+            label="Human Operator"
+            icon={Icon}
+            textBadge="status stale"
+            textBadgeTone="amber"
+          />
+        </MemoryRouter>
+      </SidebarDensityContext.Provider>,
+    );
+
+    expect(html).toContain('title="Human Operator (status stale)"');
+    expect(html).toContain('aria-label="Human Operator (status stale)"');
+    expect(html).toContain("var(--openbot-wait-question)");
+  });
 });
