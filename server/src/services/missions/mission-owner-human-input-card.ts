@@ -411,24 +411,73 @@ function buildCard(input: MissionOwnerHumanInputCardSpec, format: { failureCause
   };
 }
 
-/** Merge an equivalent pending request, replay an exact terminal legacy card, or create normally. */
+/** concrete 한국어 증상이 있는 요청인지 판정한다(시스템 일반 폴백 문구·영문만 있는 사유 제외). */
+export function hasConcreteKoreanHumanReason(reason: string | null | undefined): boolean {
+  const formatted = formatSymptom(present(reason));
+  return Boolean(formatted && !formatted.startsWith(SYMPTOM_STATUS_FALLBACK));
+}
+
+/** 시스템이 concrete 증상 없이 선점 발행한 기본 moi1 대기 카드인지 판정한다. */
+export function isGenericFallbackMissionHumanCard(card: { requestKey: string; definition?: unknown }): boolean {
+  if (!card.requestKey.startsWith("moi1:")) return false;
+  const def = card.definition as { humanReview?: { symptom?: unknown } } | null | undefined;
+  const symptom = typeof def?.humanReview?.symptom === "string" ? def.humanReview.symptom.trim() : "";
+  return !symptom || symptom.startsWith(SYMPTOM_STATUS_FALLBACK);
+}
+
+function shouldSupersedeFallbackCard(
+  spec: MissionOwnerHumanInputCardSpec,
+  existing: { requestKey: string; definition?: unknown },
+  incomingRequestKey: string,
+): boolean {
+  return existing.requestKey !== incomingRequestKey
+    && spec.actorType !== "system"
+    && hasConcreteKoreanHumanReason(spec.reason)
+    && isGenericFallbackMissionHumanCard(existing);
+}
+
+const SUPERSEDE_FALLBACK_REASON = "superseded_by_concrete_owner_diagnosis";
+
+/** Merge an equivalent pending request, supersede a blank fallback card with concrete diagnosis, or create normally. */
 export async function createMissionOwnerHumanInputDecisionCard(db: Db, spec: MissionOwnerHumanInputCardSpec) {
   const cardInput = buildMissionOwnerHumanInputDecisionCard(spec);
+  const createCard = () =>
+    operatorDecisionWriteService(db).create(spec.companyId, cardInput, { type: "agent", id: spec.requestedByAgentId });
   try {
     const merged = await tryMergePendingHumanInputCard(db, spec, cardInput);
     if (merged) return merged;
     const historicalReplay = await replayHistoricalDefaultHumanInputCard(db, spec, cardInput);
     if (historicalReplay) return historicalReplay;
-    return await operatorDecisionWriteService(db).create(spec.companyId, cardInput, { type: "agent", id: spec.requestedByAgentId });
+    if (!cardInput.requestKey.startsWith("moi2:") && spec.actorType !== "system" && hasConcreteKoreanHumanReason(spec.reason)) {
+      const pending = await findPendingMissionHumanCard(db, spec.companyId, spec.missionId);
+      if (pending && shouldSupersedeFallbackCard(spec, pending, cardInput.requestKey)) {
+        await withdrawPendingMissionHumanCard(db, spec.companyId, spec.missionId, {
+          actorId: spec.requestedByAgentId,
+          reason: SUPERSEDE_FALLBACK_REASON,
+          details: { newRequestKey: cardInput.requestKey },
+        });
+      }
+    }
+    return await createCard();
   } catch (error) {
-    // [C1 2026-11-08] 미션당 pending 카드 1장 부분 고유 인덱스가 동시 제출의 두 번째 insert 를
-    // 거부한다(R2 게이트의 SELECT→INSERT 레이스). legacy(moi1) 발행은 새 카드 대신 기존 pending
-    // 카드에 사유를 누적하고 그 카드를 반환한다 — R2 의 재요청 처리와 같은 계약.
-    // 현재 수명(moi2) 발행은 create 트랜잭션 안에서 교체 대상을 먼저 회수하므로 여기서
-    // 위반되면 예상 밖이다 — 조용히 접히면 stale 카드로 resolve 교착이 생길 수 있어 그대로
-    // 노출한다(기존 카드 쓰기 5xx 계약 유지).
+    // [C1 2026-11-08] 미션당 pending 카드 1장 부분 고유 인덱스 위반 — 시스템 기본 폴백 카드를
+    //   에이전트의 구체적 한국어 진단으로 교체하는 경우에만 1회 회수 후 재시도하고, 그 외는
+    //   기존 pending 카드에 사유를 누적한다(repeatCount).
     if (!isPendingMissionHumanCardUniqueViolation(error)) throw error;
     if (cardInput.requestKey.startsWith("moi2:")) throw error;
+    const racePending = await findPendingMissionHumanCard(db, spec.companyId, spec.missionId);
+    if (racePending && shouldSupersedeFallbackCard(spec, racePending, cardInput.requestKey)) {
+      await withdrawPendingMissionHumanCard(db, spec.companyId, spec.missionId, {
+        actorId: spec.requestedByAgentId,
+        reason: SUPERSEDE_FALLBACK_REASON,
+        details: { newRequestKey: cardInput.requestKey },
+      });
+      try {
+        return await createCard();
+      } catch (retryError) {
+        if (!isPendingMissionHumanCardUniqueViolation(retryError)) throw retryError;
+      }
+    }
     const bumped = await bumpPendingMissionHumanCard(db, spec.companyId, spec.missionId);
     const existing = bumped ? await findPendingMissionHumanCard(db, spec.companyId, spec.missionId) : null;
     if (!existing) throw error;
@@ -443,11 +492,17 @@ export async function findPendingMissionHumanCard(
   db: Pick<Db, "select">,
   companyId: string,
   missionId: string,
-): Promise<{ id: string; requestKey: string; sourceContext: OperatorDecisionSourceContextJson } | null> {
+): Promise<{
+  id: string;
+  requestKey: string;
+  sourceContext: OperatorDecisionSourceContextJson;
+  definition: typeof operatorDecisions.$inferSelect["definition"];
+} | null> {
   const [existing] = await db.select({
     id: operatorDecisions.id,
     requestKey: operatorDecisions.requestKey,
     sourceContext: operatorDecisions.sourceContext,
+    definition: operatorDecisions.definition,
   }).from(operatorDecisions).where(and(
     eq(operatorDecisions.companyId, companyId),
     eq(operatorDecisions.status, "pending"),
@@ -548,6 +603,7 @@ async function tryMergePendingHumanInputCard(
       id: operatorDecisions.id,
       requestKey: operatorDecisions.requestKey,
       sourceContext: operatorDecisions.sourceContext,
+      definition: operatorDecisions.definition,
     }).from(operatorDecisions).where(and(
       eq(operatorDecisions.companyId, spec.companyId),
       eq(operatorDecisions.status, "pending"),
@@ -559,6 +615,9 @@ async function tryMergePendingHumanInputCard(
     if (!existing) return null;
     if (existing.requestKey === cardInput.requestKey) {
       return { decision: await operatorDecisionReadService(db).getRequired(existing.id), replayed: true };
+    }
+    if (shouldSupersedeFallbackCard(spec, existing, cardInput.requestKey)) {
+      return null;
     }
     const previous = existing.sourceContext?.missionOwnerHumanInput?.repeatCount;
     const repeatCount = (typeof previous === "number" && Number.isFinite(previous) && previous >= 0 ? previous : 0) + 1;
