@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { forwardRef, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
+import { SidebarDensityContext } from "../lib/sidebar-slide-physics";
 import { SidebarNavItem } from "./SidebarNavItem";
 
 vi.mock("../context/SidebarContext", () => ({
@@ -53,5 +54,21 @@ describe("SidebarNavItem", () => {
 
     expect(html).toContain('href="/RES/quality"');
     expect(html).not.toContain('href="/quality"');
+  });
+
+  it("renders icon-only tile with tooltip attributes and numeric badge in 88px compact mode", () => {
+    const html = renderToStaticMarkup(
+      <SidebarDensityContext.Provider value={{ width: 88, compact: true }}>
+        <MemoryRouter initialEntries={["/RES/missions"]}>
+          <SidebarNavItem to="/missions" label="Missions" icon={Icon} badge={4} />
+        </MemoryRouter>
+      </SidebarDensityContext.Provider>,
+    );
+
+    expect(html).toContain('href="/RES/missions"');
+    expect(html).toContain('title="Missions"');
+    expect(html).toContain('aria-label="Missions"');
+    expect(html).toContain(">4<");
+    expect(html).not.toContain('<span class="flex-1 truncate">Missions</span>');
   });
 });

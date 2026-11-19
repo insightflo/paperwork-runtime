@@ -66,4 +66,13 @@ describe("calculateSidebarSlideMetrics", () => {
     expect(collapsed.sheetShadowAlpha).toBeLessThanOrEqual(0.14);
     expect(calculateSidebarSlideMetrics(NAV_EXPANDED_WIDTH_PX).sheetShadowAlpha).toBeCloseTo(0.065, 2);
   });
+
+  it("renders crisp zero-blur full-opacity icons when snapped to 88px compact mode", () => {
+    const compactMetrics = calculateSidebarSlideMetrics(NAV_COMPACT_WIDTH_PX);
+    expect(compactMetrics.subNavBlurPx).toBe(0);
+    expect(compactMetrics.subNavOpacity).toBe(1);
+    expect(compactMetrics.subNavScale).toBe(1);
+    expect(compactMetrics.canvasDensityTier).toBe("ultra-wide");
+    expect(compactMetrics.visibleKpiColumns).toBe(5);
+  });
 });
