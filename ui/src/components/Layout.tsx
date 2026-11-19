@@ -9,6 +9,7 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { CommandPalette } from "./CommandPalette";
 import { ToastViewport } from "./ToastViewport";
 import { MobileBottomNav } from "./MobileBottomNav";
+import { BoundaryDragHandle, useMobileEdgeSwipe } from "./BoundaryDragHandle";
 import { WorktreeBanner } from "./WorktreeBanner";
 import { DevRestartBanner } from "./DevRestartBanner";
 import { useDialog } from "../context/DialogContext";
@@ -21,6 +22,7 @@ import { useCompanyPageMemory } from "../hooks/useCompanyPageMemory";
 import { useAfterInitialPaint } from "../hooks/useAfterInitialPaint";
 import { healthApi } from "../api/health";
 import { shouldSyncCompanySelectionFromRoute } from "../lib/company-selection";
+import { SidebarDensityContext, useSidebarSlideController } from "../lib/sidebar-slide-physics";
 import { normalizeRememberedInstanceSettingsPath } from "../lib/instance-settings";
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
@@ -41,7 +43,7 @@ import {
 export function Layout() {
   const { sidebarOpen, setSidebarOpen, toggleSidebar, isMobile } = useSidebar();
   const { openNewIssue, openOnboarding } = useDialog();
-  const { togglePanelVisible } = usePanel();
+  const { panelContent, panelVisible, togglePanelVisible } = usePanel();
   const {
     companies,
     loading: companiesLoading,
@@ -62,6 +64,8 @@ export function Layout() {
   const [hermesPanelOpen, setHermesPanelOpenState] = useState(() => readRememberedHermesPanelOpen());
   const heavyPanelsReady = useAfterInitialPaint(900);
   const nextTheme = theme === "dark" ? "light" : "dark";
+  const rightPanelWidth = (panelVisible && panelContent ? 360 : 0) + (hermesPanelOpen && !isMobile ? 384 : 0);
+  const slide = useSidebarSlideController({ isMobile, sidebarOpen, setSidebarOpen, rightPanelWidth });
 
   const matchedCompany = useMemo(() => {
     if (!companyPrefix) return null;
@@ -129,36 +133,7 @@ export function Layout() {
     onTogglePanel: togglePanelVisible,
   });
 
-  useEffect(() => {
-    if (!isMobile) {
-      setMobileNavVisible(true);
-      return;
-    }
-    lastMainScrollTop.current = 0;
-    setMobileNavVisible(true);
-  }, [isMobile]);
-
-  useEffect(() => {
-    if (!isMobile) return;
-    let startX = 0;
-    let startY = 0;
-    const onTouchStart = (e: TouchEvent) => {
-      startX = e.touches[0]!.clientX;
-      startY = e.touches[0]!.clientY;
-    };
-    const onTouchEnd = (e: TouchEvent) => {
-      const dx = e.changedTouches[0]!.clientX - startX;
-      if (Math.abs(e.changedTouches[0]!.clientY - startY) > 75) return;
-      if (!sidebarOpen && startX < 30 && dx > 50) setSidebarOpen(true);
-      else if (sidebarOpen && dx < -50) setSidebarOpen(false);
-    };
-    document.addEventListener("touchstart", onTouchStart, { passive: true });
-    document.addEventListener("touchend", onTouchEnd, { passive: true });
-    return () => {
-      document.removeEventListener("touchstart", onTouchStart);
-      document.removeEventListener("touchend", onTouchEnd);
-    };
-  }, [isMobile, sidebarOpen, setSidebarOpen]);
+  useMobileEdgeSwipe(isMobile, sidebarOpen, setSidebarOpen);
 
   const updateMobileNavVisibility = useCallback((currentTop: number) => {
     const delta = currentTop - lastMainScrollTop.current;
@@ -198,10 +173,10 @@ export function Layout() {
     }
   }, [location.hash, location.pathname, location.search]);
 
-  const sidePanel = isInstanceSettingsRoute ? (
-    <InstanceSidebar />
-  ) : (
-    <Sidebar onOpenHermes={openHermesPanel} hermesPanelOpen={hermesPanelOpen} />
+  const sidePanel = (
+    <SidebarDensityContext.Provider value={slide.density}>
+      {isInstanceSettingsRoute ? <InstanceSidebar /> : <Sidebar onOpenHermes={openHermesPanel} hermesPanelOpen={hermesPanelOpen} />}
+    </SidebarDensityContext.Provider>
   );
 
   return (
@@ -237,8 +212,24 @@ export function Layout() {
         ) : (
           <div className="flex h-full shrink-0">
             <CompanyRail />
-            <div className={cn("flex h-full flex-col overflow-hidden transition-[width] duration-100 ease-out", sidebarOpen ? "w-60" : "w-0")}>
-              <div className="flex-1 min-h-0 overflow-hidden">{sidePanel}</div>
+            <div
+              className="flex h-full flex-col overflow-hidden transition-[width] duration-100 ease-out"
+              style={{ width: slide.effectiveNavWidth }}
+              onPointerEnter={() => slide.setHoveringSubNav(true)}
+              onPointerLeave={() => slide.setHoveringSubNav(false)}
+            >
+              <div
+                className="flex-1 min-h-0 overflow-hidden"
+                style={{
+                  opacity: slide.metrics.subNavOpacity,
+                  transform: `scale(${slide.metrics.subNavScale})`,
+                  transformOrigin: "top left",
+                  filter: slide.metrics.subNavBlurPx > 0 ? `blur(${slide.metrics.subNavBlurPx}px)` : undefined,
+                  backgroundColor: "var(--openbot-subnav-bg)",
+                }}
+              >
+                {sidePanel}
+              </div>
               <SidebarFooterBar
                 healthVersion={health?.version}
                 instanceSettingsTarget={instanceSettingsTarget}
@@ -249,13 +240,29 @@ export function Layout() {
             </div>
           </div>
         )}
-
+        {!isMobile && (
+          <BoundaryDragHandle width={slide.effectiveNavWidth} onPreview={slide.previewNavWidth} onCommit={slide.commitNavWidth} onToggle={slide.toggleNav} />
+        )}
         <div className={cn("flex min-w-0 flex-col", isMobile ? "w-full" : "h-full flex-1")}>
           <div className={cn(isMobile && "sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85")}>
             <BreadcrumbBar />
           </div>
           <div className={cn(isMobile ? "block" : "flex flex-1 min-h-0")}>
-            <main id="main-content" tabIndex={-1} className={cn("flex-1 p-4 md:p-6", isMobile ? "overflow-visible pb-[calc(5rem+env(safe-area-inset-bottom))]" : "overflow-auto")}>
+            <main
+              id="main-content"
+              tabIndex={-1}
+              data-density-tier={slide.metrics.canvasDensityTier}
+              className={cn("flex-1 p-4 md:p-6", isMobile ? "overflow-visible pb-[calc(5rem+env(safe-area-inset-bottom))]" : "overflow-auto")}
+              style={
+                isMobile
+                  ? undefined
+                  : {
+                      ["--openbot-kpi-cols" as string]: slide.metrics.visibleKpiColumns,
+                      boxShadow: `0 26px 60px -30px rgb(var(--openbot-sheet-shadow-rgb) / ${slide.metrics.sheetShadowAlpha})`,
+                      borderTopLeftRadius: 14,
+                    }
+              }
+            >
               {hasUnknownCompanyPrefix ? (
                 <NotFoundPage scope="invalid_company_prefix" requestedPrefix={companyPrefix ?? selectedCompany?.issuePrefix} />
               ) : (
