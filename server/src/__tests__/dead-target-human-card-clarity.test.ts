@@ -18,6 +18,7 @@ import { ensureDeadTargetHumanEscalation } from "../services/missions/mission-ow
 import {
   createMissionOwnerHumanInputDecisionCard,
   isForeignDominantLine,
+  SUPERSEDE_FALLBACK_REASON,
   SYMPTOM_EVIDENCE_POINTER,
   SYMPTOM_STATUS_FALLBACK,
 } from "../services/missions/mission-owner-human-input-card.js";
@@ -190,5 +191,58 @@ describeDb("dead-target human card failure clarity and fallback replacement", ()
     expect(concreteSecond.replayed).toBe(true);
     expect(concreteSecond.decision.id).toBe(concreteFirst.decision.id);
     expect(concreteSecond.decision.sourceContext.missionOwnerHumanInput?.repeatCount).toBe(1);
+  });
+
+  it("keeps existing fallback card pending when replacement creation fails and supersedes atomically on replay", async () => {
+    expect(SUPERSEDE_FALLBACK_REASON).toBe("superseded_by_concrete_owner_diagnosis");
+    const w = await seedWorld({ oversightStatus: "in_progress" });
+    const runId = randomUUID();
+    await db.insert(heartbeatRuns).values({
+      id: runId, companyId: w.companyId, agentId: w.ownerAgentId, issueId: w.oversightIssueId, status: "running",
+    });
+    await db.update(issues).set({ checkoutRunId: runId }).where(eq(issues.id, w.oversightIssueId));
+
+    const fallback = await createMissionOwnerHumanInputDecisionCard(db, {
+      companyId: w.companyId, missionId: w.missionId, decisionEventId: randomUUID(),
+      decision: "escalate", ownerActionIssueId: w.oversightIssueId, ownerActionIssueStatus: "in_progress",
+      requestedByAgentId: w.ownerAgentId, actorType: "system",
+      reason: "English internal diagnostics only without Korean explanation.",
+      evidence: "internal-only", issueTitle: "Oversight", issueIdentifier: "RES-11",
+    });
+
+    // Simulate a failing post-commit replacement create (unknown agentId fails ownership inside the tx):
+    // withdrawal must roll back so the mission never loses its pending human card.
+    await expect(createMissionOwnerHumanInputDecisionCard(db, {
+      companyId: w.companyId, missionId: w.missionId, decisionEventId: randomUUID(),
+      lifetimeId: randomUUID(), allowSupersedeFallback: true,
+      decision: "escalate", ownerActionIssueId: w.oversightIssueId, ownerActionIssueStatus: "in_progress",
+      requestedByAgentId: randomUUID(), actorType: "agent",
+      reason: "입력 주소가 없는 페이지(404)로 확인되어 미션 취소가 필요합니다.",
+      evidence: "https://github.com/repos/ray-lea", issueTitle: "Oversight", issueIdentifier: "RES-11",
+    })).rejects.toThrow();
+
+    const afterFailure = await db.select().from(operatorDecisions).where(eq(operatorDecisions.id, fallback.decision.id));
+    expect(afterFailure[0]!.status).toBe("pending");
+
+    // Subsequent submission / replay while fallback is still pending succeeds atomically and keeps exact idempotency.
+    const submitInput = {
+      db,
+      issueId: w.oversightIssueId,
+      actor: { actorType: "agent" as const, actorId: w.ownerAgentId, agentId: w.ownerAgentId, runId },
+      data: {
+        decision: "escalate" as const,
+        reason: "입력 주소가 없는 페이지(404)로 확인되어 미션 취소가 필요합니다.",
+        evidence: "https://github.com/repos/ray-lea",
+        humanRequest: { schemaVersion: 1 as const, requestKey: "owner-404-atomic-recovery", expectedCurrentLifetimeId: null },
+      },
+    };
+    const firstSubmit = await submitMissionOwnerDecision(submitInput);
+    const replaySubmit = await submitMissionOwnerDecision(submitInput);
+    expect(replaySubmit.operatorDecisionId).toBe(firstSubmit.operatorDecisionId);
+
+    const finalCards = await db.select().from(operatorDecisions).where(eq(operatorDecisions.companyId, w.companyId));
+    expect(finalCards).toHaveLength(2);
+    expect(finalCards.find((c) => c.id === fallback.decision.id)!.status).toBe("cancelled");
+    expect(finalCards.filter((c) => c.status === "pending").map((c) => c.id)).toEqual([firstSubmit.operatorDecisionId]);
   });
 });
