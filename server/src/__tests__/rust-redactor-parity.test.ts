@@ -3,7 +3,7 @@ import { chmodSync, copyFileSync, existsSync, mkdtempSync, rmSync } from "node:f
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   clearRegisteredRuntimeSecretsForTests,
   redactBeforeTruncate,
@@ -217,12 +217,9 @@ describe("paperclip-log-redactor N-API parity", () => {
 describe("native driver hardening", () => {
   function makeDriver(overrides: Record<string, unknown> = {}): NativeSecretRedactorDriver {
     return {
-      setRegisteredLiteralSecrets: () => {},
-      registerRuntimeSecrets: () => {},
-      clearRegisteredRuntimeSecrets: () => {},
+      setRegisteredLiteralSecrets: () => {}, registerRuntimeSecrets: () => {}, clearRegisteredRuntimeSecrets: () => {},
       // Sentinels: if a rejected driver ever stays attached, JS output changes to these.
-      redactSensitiveText: () => "NATIVE-LEAK",
-      redactEmbeddedJson: () => "NATIVE-LEAK",
+      redactSensitiveText: () => "NATIVE-LEAK", redactEmbeddedJson: () => "NATIVE-LEAK",
       ...overrides,
     } as NativeSecretRedactorDriver;
   }
@@ -262,6 +259,21 @@ describe("native driver hardening", () => {
       expect(redactSensitiveText("Authorization: world-writable-secret-99")).toBe("Authorization: [redacted]");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it("never leaks secret-bearing driver error messages through console.warn", () => {
+    useJs();
+    const warnings: string[] = [];
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => { warnings.push(args.map(String).join(" ")); });
+    try {
+      setNativeSecretRedactorDriver(makeDriver({ redactSensitiveText: () => { throw new Error("boom leak_payload_secret_1234"); }, redactEmbeddedJson: () => { throw new Error("boom leak_payload_secret_1234"); } }));
+      registerRuntimeSecrets(["leak_payload_secret_1234"]);
+      expect(redactSensitiveText("Authorization: leak_payload_secret_1234")).toBe("Authorization: [redacted]"); // fail-closed to JS
+      expect(warnings.join("\n")).toContain("native driver failed (Error)");
+      expect(warnings.join("\n")).not.toContain("leak_payload_secret_1234");
+    } finally {
+      warnSpy.mockRestore();
     }
   }, 60_000);
 });

@@ -16,21 +16,22 @@ const warnedPaths = new Set<string>();
 function configuredPath(): string {
   const raw = process.env.PAPERCLIP_REDACTOR_LIB?.trim() ?? "";
   if (raw !== "" && (raw.includes("\0") || !path.isAbsolute(raw))) {
-    warnLoadFailure(raw, new Error("invalid path (must be non-NUL absolute path)"));
+    warnLoadFailure(raw, new Error("invalid path (must be non-NUL absolute path)"), "path validation");
     return "";
   }
   return raw;
 }
 
-function warnLoadFailure(libPath: string, err: unknown): void {
-  if (warnedPaths.has(libPath)) return;
-  warnedPaths.add(libPath);
+function warnLoadFailure(libPath: string, err: unknown, stage = "dlopen"): void {
+  const key = `${stage}:${libPath}`;
+  if (warnedPaths.has(key)) return;
+  warnedPaths.add(key);
   const detail = err instanceof Error ? err.message : String(err);
   // Lazy import so this module can load without the server logger; if that import
   // itself fails, still surface the reason on stderr instead of dropping it.
   import("./middleware/logger.js")
-    .then(({ logger }) => logger?.warn?.(`[redactor-native] dlopen failed for ${libPath}: ${detail}`))
-    .catch(() => console.warn(`[redactor-native] dlopen failed for ${libPath}: ${detail}`));
+    .then(({ logger }) => logger?.warn?.(`[redactor-native] ${stage} failed for ${libPath}: ${detail}`))
+    .catch(() => console.warn(`[redactor-native] ${stage} failed for ${libPath}: ${detail}`));
 }
 
 function detach(): void {
@@ -48,12 +49,14 @@ export function ensureNativeRedactorLoaded(): void {
   }
   detach();
   try {
-    // Defense-in-depth before dlopen: regular file, not world-writable, and owned
-    // by root (A1 installs /usr/local/lib as root) or the current user only.
-    const st = fs.statSync(cfg);
-    if (!st.isFile() || (st.mode & 0o002) !== 0
-      || (typeof process.getuid === "function" && st.uid !== 0 && st.uid !== process.getuid())) {
-      throw new Error(`refusing unsafe native library permissions/ownership: ${cfg}`);
+    // Defense-in-depth before dlopen; POSIX permission/ownership bits are
+    // meaningless on win32, so the stat guard runs on other platforms only.
+    if (process.platform !== "win32") {
+      const st = fs.statSync(cfg);
+      if (!st.isFile() || (st.mode & 0o002) !== 0
+        || (typeof process.getuid === "function" && st.uid !== 0 && st.uid !== process.getuid())) {
+        throw new Error(`refusing unsafe native library permissions/ownership: ${cfg}`);
+      }
     }
     const mod = { exports: {} as NativeAddonExports };
     process.dlopen(mod, cfg);

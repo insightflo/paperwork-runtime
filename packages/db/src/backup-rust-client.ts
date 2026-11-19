@@ -71,7 +71,9 @@ function isNonNegativeInteger(value: string): boolean {
   return /^(0|[1-9]\d*)$/.test(value);
 }
 
-// rust-postgres parses these as u32 seconds/counts/milliseconds.
+// rust-postgres parses keepalives_idle/interval as u64 seconds and
+// keepalives_count/tcp_user_timeout as u32; isU32 intentionally enforces the
+// tighter u32 ceiling and safely falls back to JS above 2^32-1.
 function isU32(value: string): boolean {
   return isNonNegativeInteger(value) && Number(value) <= 4294967295;
 }
@@ -83,7 +85,7 @@ function isU32(value: string): boolean {
 // bool there, so both only accept their exact rust-safe spellings.
 const RUST_ALLOWED_QUERY_PARAMS: Record<string, (value: string) => boolean> = {
   sslmode: (value) => value === "disable",
-  application_name: () => true,
+  application_name: (value) => /^[\x20-\x7e\x80-\xff]*$/.test(value),
   connect_timeout: (value) => /^[1-9]\d*$/.test(value) && Number(value) <= Number.MAX_SAFE_INTEGER,
   target_session_attrs: (value) => value === "any" || value === "read-write",
   keepalives: (value) => value === "true" || value === "false",
@@ -177,14 +179,15 @@ export async function tryRustDatabaseBackup(opts: RunDatabaseBackupOptions): Pro
     nullifyColumns: opts.nullifyColumns,
   });
   if (stdout === "missing") return { delegated: false };
+  const unreadable = () => new Error(`paperclip-db-backup returned an unreadable result: ${stdout.slice(0, 200)}`);
   let parsed: { backupFile: string; sizeBytes: number };
   try {
     parsed = JSON.parse(stdout) as { backupFile: string; sizeBytes: number };
   } catch {
-    throw new Error(`paperclip-db-backup returned an unreadable result: ${stdout.slice(0, 200)}`);
+    throw unreadable();
   }
-  if (!parsed || typeof parsed.backupFile !== "string" || typeof parsed.sizeBytes !== "number" || !Number.isFinite(parsed.sizeBytes)) {
-    throw new Error(`paperclip-db-backup returned an unreadable result: ${stdout.slice(0, 200)}`);
+  if (!parsed || typeof parsed.backupFile !== "string" || typeof parsed.sizeBytes !== "number" || !Number.isInteger(parsed.sizeBytes) || parsed.sizeBytes < 0) {
+    throw unreadable();
   }
   return { delegated: true, value: { backupFile: parsed.backupFile, sizeBytes: parsed.sizeBytes, prunedCount: pruneOldBackups(opts.backupDir, retentionDays, filenamePrefix) } };
 }
