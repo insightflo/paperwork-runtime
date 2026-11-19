@@ -18,7 +18,7 @@ import {
   operatorQueueViewService,
   QUEUED_WAKEUP_STATUSES,
 } from "../services/operator-queue-view.js";
-import { opsConsoleTelemetryService } from "../services/ops-console-telemetry.js";
+import { opsConsoleTelemetryService, matchesProcessStartTime } from "../services/ops-console-telemetry.js";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 
 const support = await getEmbeddedPostgresTestSupport();
@@ -169,7 +169,15 @@ describe("r60 scenario 5a — ops console telemetry safety & gate TTL/audit hard
     expect((await telemetry.stopBackgroundProcess("co-5", process.pid)).ok).toBe(false);
   });
 
-  it("rejects sentinel 'audit-head' or empty-window completeAudit and prunes expired TTL claims", async () => {
+  it("matches ps UTC lstart against recorded processStartedAt and rejects shifted/missing timestamps", () => {
+    expect(matchesProcessStartTime("Thu Nov 19 05:40:15 2026", "2026-11-19T05:40:16.200Z")).toBe(true);
+    expect(matchesProcessStartTime("Thu Nov  5 05:40:15 2026", "2026-11-05T05:40:15.500Z")).toBe(true);
+    expect(matchesProcessStartTime("Thu Nov 19 05:40:15 2026", null)).toBe(false);
+    expect(matchesProcessStartTime("Thu Nov 19 05:40:25 2026", "2026-11-19T05:40:15.000Z")).toBe(false);
+    expect(matchesProcessStartTime("Thu Nov 19 05:39:50 2026", "2026-11-19T05:40:15.000Z")).toBe(false);
+  });
+
+  it("rejects sentinel 'audit-head' or empty-window completeAudit and enforces TTL expiry in verifyChanges too", async () => {
     await expect(gate.completeAudit("co-empty", "audit-head")).rejects.toThrow();
     await expect(gate.completeAudit("co-empty", "deadbeef")).rejects.toThrow(/누적 병합/);
 
@@ -186,6 +194,15 @@ describe("r60 scenario 5a — ops console telemetry safety & gate TTL/audit hard
     const parsed = JSON.parse(readFileSync(stateFile, "utf8")) as { claims: Array<{ expiresAt?: string }> };
     parsed.claims[0].expiresAt = "2000-01-01T00:00:00.000Z";
     writeFileSync(stateFile, JSON.stringify(parsed, null, 2), "utf8");
+
+    // verifyChanges must prune expired claims directly even before any later claimPaths call.
+    const staleVerify = await gate.verifyChanges("co-ttl", {
+      taskId: "stale-task",
+      mode: "commit",
+      changes: [{ path: "ui/src/pages/Dashboard.tsx" }],
+    });
+    expect(staleVerify.decision).toBe("hold_action");
+    expect(staleVerify.violations[0]?.kind).toBe("out_of_scope");
 
     const fresh = await gate.claimPaths("co-ttl", {
       taskId: "fresh-task",
@@ -298,21 +315,34 @@ describeDb("r60 scenario 5b — operator queue view & process tenant isolation (
     expect(remaining).toEqual([legacy, second].sort());
   });
 
-  it("rejects stopping a PID owned by another company", async () => {
+  it("rejects stopping a PID owned by another company and excludes bare-pid server rows", async () => {
     const fakeChildPid = 424242;
-    await db.insert(heartbeatRuns).values({
-      id: randomUUID(),
-      companyId,
-      agentId,
-      invocationSource: "on_demand",
-      status: "running",
-      processPid: fakeChildPid,
-    });
+    await db.insert(heartbeatRuns).values([
+      {
+        id: randomUUID(),
+        companyId,
+        agentId,
+        invocationSource: "on_demand",
+        status: "running",
+        processPid: fakeChildPid,
+        processStartedAt: new Date(),
+      },
+      {
+        id: randomUUID(),
+        companyId: otherCompanyId,
+        agentId,
+        invocationSource: "on_demand",
+        status: "running",
+        processPid: process.pid,
+        processStartedAt: new Date(),
+      },
+    ]);
     const gate = createHermitGateService({ stateDir: tempDir("hg-tenant-") });
     const telemetry = opsConsoleTelemetryService(db, gate);
     const denied = await telemetry.stopBackgroundProcess(otherCompanyId, fakeChildPid);
     expect(denied.ok).toBe(false);
     if (!denied.ok) expect(denied.reason).toContain("소유 프로세스가 아닙니다");
+    expect((await telemetry.stopBackgroundProcess(otherCompanyId, process.pid)).ok).toBe(false);
     expect(await telemetry.listBackgroundProcesses(otherCompanyId)).toEqual([]);
   });
 });

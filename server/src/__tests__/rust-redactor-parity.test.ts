@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { chmodSync, copyFileSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -10,6 +10,8 @@ import {
   redactEmbeddedJson,
   redactSensitiveText,
   registerRuntimeSecrets,
+  setNativeSecretRedactorDriver,
+  type NativeSecretRedactorDriver,
 } from "@paperclipai/adapter-utils/secret-redactor";
 import { redactCurrentUserTextWithNative, resetNativeRedactorForTests } from "../redactor-native.js";
 import {
@@ -210,4 +212,56 @@ describe("paperclip-log-redactor N-API parity", () => {
       `[benchmark] log-redactor 2MB: js_ms=${jsMs.toFixed(2)} rust_ms=${rustMs.toFixed(2)} speedup=${(jsMs / rustMs).toFixed(2)}x`,
     );
   }, 120_000);
+});
+
+describe("native driver hardening", () => {
+  function makeDriver(overrides: Record<string, unknown> = {}): NativeSecretRedactorDriver {
+    return {
+      setRegisteredLiteralSecrets: () => {},
+      registerRuntimeSecrets: () => {},
+      clearRegisteredRuntimeSecrets: () => {},
+      // Sentinels: if a rejected driver ever stays attached, JS output changes to these.
+      redactSensitiveText: () => "NATIVE-LEAK",
+      redactEmbeddedJson: () => "NATIVE-LEAK",
+      ...overrides,
+    } as NativeSecretRedactorDriver;
+  }
+
+  it("rejects incomplete or throwing drivers and keeps JS authoritative", () => {
+    useJs();
+    registerRuntimeSecrets(["hardening-secret-1234"]);
+    const probe = "Authorization: hardening-secret-1234";
+    expect(redactSensitiveText(probe)).toBe("Authorization: [redacted]");
+
+    setNativeSecretRedactorDriver(makeDriver({ setRegisteredLiteralSecrets: undefined }) as unknown as NativeSecretRedactorDriver);
+    expect(redactSensitiveText(probe)).toBe("Authorization: [redacted]");
+
+    setNativeSecretRedactorDriver(makeDriver({ setRegisteredLiteralSecrets: () => { throw new Error("attach boom"); } }));
+    expect(redactSensitiveText(probe)).toBe("Authorization: [redacted]");
+
+    setNativeSecretRedactorDriver(makeDriver({ registerRuntimeSecrets: () => { throw new Error("register boom"); } }));
+    registerRuntimeSecrets(["later-runtime-secret-5678"]);
+    expect(redactSensitiveText("Authorization: later-runtime-secret-5678")).toBe("Authorization: [redacted]");
+
+    const clears: number[] = [];
+    setNativeSecretRedactorDriver(makeDriver({ clearRegisteredRuntimeSecrets: () => clears.push(1) }));
+    setNativeSecretRedactorDriver(null);
+    expect(clears).toHaveLength(1);
+  }, 60_000);
+
+  it("refuses a world-writable native library and falls back to JS", () => {
+    const tempDir = mkdtempSync(path.join(tmpdir(), "redactor-world-writable-"));
+    try {
+      const copy = path.join(tempDir, libName);
+      copyFileSync(libPath, copy);
+      chmodSync(copy, 0o666);
+      process.env.PAPERCLIP_REDACTOR_LIB = copy;
+      resetNativeRedactorForTests();
+      expect(redactCurrentUserTextWithNative("probe", [], [], "*")).toBeNull(); // never installed
+      registerRuntimeSecrets(["world-writable-secret-99"]);
+      expect(redactSensitiveText("Authorization: world-writable-secret-99")).toBe("Authorization: [redacted]");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  }, 60_000);
 });

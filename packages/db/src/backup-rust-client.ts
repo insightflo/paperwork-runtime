@@ -71,19 +71,26 @@ function isNonNegativeInteger(value: string): boolean {
   return /^(0|[1-9]\d*)$/.test(value);
 }
 
+// rust-postgres parses these as u32 seconds/counts/milliseconds.
+function isU32(value: string): boolean {
+  return isNonNegativeInteger(value) && Number(value) <= 4294967295;
+}
+
 // Strict allowlist of query params the rust-postgres NoTls config understands.
 // Anything else must fall back to the JS implementation rather than risk a
-// silently-ignored parameter (e.g. sslmode or hostaddr).
+// silently-ignored parameter (e.g. sslmode or hostaddr). sslmode=prefer would
+// make NoTls fail against an SSL-capable server, and keepalives is a Rust
+// bool there, so both only accept their exact rust-safe spellings.
 const RUST_ALLOWED_QUERY_PARAMS: Record<string, (value: string) => boolean> = {
-  sslmode: (value) => value === "disable" || value === "prefer",
+  sslmode: (value) => value === "disable",
   application_name: () => true,
-  connect_timeout: (value) => /^[1-9]\d*$/.test(value),
+  connect_timeout: (value) => /^[1-9]\d*$/.test(value) && Number(value) <= Number.MAX_SAFE_INTEGER,
   target_session_attrs: (value) => value === "any" || value === "read-write",
-  keepalives: isNonNegativeInteger,
-  keepalives_idle: isNonNegativeInteger,
-  keepalives_interval: isNonNegativeInteger,
-  keepalives_count: isNonNegativeInteger,
-  tcp_user_timeout: isNonNegativeInteger,
+  keepalives: (value) => value === "true" || value === "false",
+  keepalives_idle: isU32,
+  keepalives_interval: isU32,
+  keepalives_count: isU32,
+  tcp_user_timeout: isU32,
 };
 
 export function isRustPostgresConnectionCompatible(connectionString: string): boolean {
@@ -174,6 +181,9 @@ export async function tryRustDatabaseBackup(opts: RunDatabaseBackupOptions): Pro
   try {
     parsed = JSON.parse(stdout) as { backupFile: string; sizeBytes: number };
   } catch {
+    throw new Error(`paperclip-db-backup returned an unreadable result: ${stdout.slice(0, 200)}`);
+  }
+  if (!parsed || typeof parsed.backupFile !== "string" || typeof parsed.sizeBytes !== "number" || !Number.isFinite(parsed.sizeBytes)) {
     throw new Error(`paperclip-db-backup returned an unreadable result: ${stdout.slice(0, 200)}`);
   }
   return { delegated: true, value: { backupFile: parsed.backupFile, sizeBytes: parsed.sizeBytes, prunedCount: pruneOldBackups(opts.backupDir, retentionDays, filenamePrefix) } };
