@@ -1,22 +1,13 @@
+import fs from "node:fs";
 import path from "node:path";
 import {
   setNativeSecretRedactorDriver,
   type NativeSecretRedactorDriver,
 } from "@paperclipai/adapter-utils/secret-redactor";
 
-interface NativeAddonExports {
-  setRegisteredLiteralSecrets?: (literals: string[]) => void;
-  registerRuntimeSecrets?: (values: string[], allowShort: boolean) => void;
-  clearRegisteredRuntimeSecrets?: () => void;
-  redactSensitiveText?: (value: string, emails: boolean, keepUnscanned: boolean) => string | null;
-  redactEmbeddedJson?: (value: string, emails: boolean, keepUnscanned: boolean) => string | null;
-  redactCurrentUserText?: (
-    input: string,
-    userNames: string[],
-    homeDirs: string[],
-    replacement: string | null,
-  ) => string | null;
-}
+type NativeAddonExports = Partial<NativeSecretRedactorDriver> & {
+  redactCurrentUserText?: (input: string, userNames: string[], homeDirs: string[], replacement: string | null) => string | null;
+};
 
 let addon: NativeAddonExports | null = null;
 let resolvedPath: string | null = null;
@@ -24,17 +15,22 @@ const warnedPaths = new Set<string>();
 
 function configuredPath(): string {
   const raw = process.env.PAPERCLIP_REDACTOR_LIB?.trim() ?? "";
-  return raw !== "" && !raw.includes("\0") && path.isAbsolute(raw) ? raw : "";
+  if (raw !== "" && (raw.includes("\0") || !path.isAbsolute(raw))) {
+    warnLoadFailure(raw, new Error("invalid path (must be non-NUL absolute path)"));
+    return "";
+  }
+  return raw;
 }
 
 function warnLoadFailure(libPath: string, err: unknown): void {
   if (warnedPaths.has(libPath)) return;
   warnedPaths.add(libPath);
   const detail = err instanceof Error ? err.message : String(err);
-  // Lazy import keeps this module free of server logger deps for browser-side bundles.
+  // Lazy import so this module can load without the server logger; if that import
+  // itself fails, still surface the reason on stderr instead of dropping it.
   import("./middleware/logger.js")
     .then(({ logger }) => logger?.warn?.(`[redactor-native] dlopen failed for ${libPath}: ${detail}`))
-    .catch(() => {});
+    .catch(() => console.warn(`[redactor-native] dlopen failed for ${libPath}: ${detail}`));
 }
 
 function detach(): void {
@@ -52,13 +48,18 @@ export function ensureNativeRedactorLoaded(): void {
   }
   detach();
   try {
+    // Defense-in-depth before dlopen: regular file, not world-writable, and owned
+    // by root (A1 installs /usr/local/lib as root) or the current user only.
+    const st = fs.statSync(cfg);
+    if (!st.isFile() || (st.mode & 0o002) !== 0
+      || (typeof process.getuid === "function" && st.uid !== 0 && st.uid !== process.getuid())) {
+      throw new Error(`refusing unsafe native library permissions/ownership: ${cfg}`);
+    }
     const mod = { exports: {} as NativeAddonExports };
     process.dlopen(mod, cfg);
-    if (
-      typeof mod.exports.redactSensitiveText !== "function"
-      || typeof mod.exports.redactEmbeddedJson !== "function"
-    ) {
-      throw new Error("missing redactSensitiveText/redactEmbeddedJson exports");
+    if ([mod.exports.setRegisteredLiteralSecrets, mod.exports.registerRuntimeSecrets, mod.exports.clearRegisteredRuntimeSecrets, mod.exports.redactSensitiveText, mod.exports.redactEmbeddedJson]
+      .some((fn) => typeof fn !== "function")) {
+      throw new Error("missing native redactor exports");
     }
     addon = mod.exports;
     resolvedPath = cfg;
@@ -70,10 +71,8 @@ export function ensureNativeRedactorLoaded(): void {
 }
 
 export function resetNativeRedactorForTests(): void {
-  addon = null;
-  resolvedPath = null;
   warnedPaths.clear();
-  setNativeSecretRedactorDriver(null);
+  detach();
   ensureNativeRedactorLoaded();
 }
 
