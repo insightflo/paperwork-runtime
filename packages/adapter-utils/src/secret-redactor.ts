@@ -3,9 +3,7 @@ const SECRET_LABEL =
 const BEARER_SECRET = /Bearer\s+[A-Za-z0-9._~+/=-]{8,}/giu;
 const AUTH_HEADER_SECRET = /(authorization["']?\s*[=:]+\s*)(?:Bearer|Basic|Digest|Token)\s+[A-Za-z0-9._~+/=-]{8,}/giu;
 const CREDENTIAL_ASSIGNMENT = new RegExp(
-  String.raw`(["']?(?:${SECRET_LABEL})["']?\s*[=:]+\s*)(\[redacted\]|"[^"]*"|'[^']*'|[^\s,;)}\]]+)`,
-  "giu",
-);
+  String.raw`(["']?(?:${SECRET_LABEL})["']?\s*[=:]+\s*)(\[redacted\]|"[^"]*"|'[^']*'|[^\s,;)}\]]+)`, "giu");
 const JSON_BARE_KEY = /("keys?"\s*:\s*)(\[redacted\]|"[^"]*"|'[^']*'|[^\s,;)}\]]+)/giu;
 const KNOWN_SECRET_PREFIXES =
   /(?<![A-Za-z0-9_-])(?:(?:sk-ant|sk-|sk_|xai-|ghp_|gho_|ghu_|ghr_|ghs_|github_pat_|AKIA|xox[abeoprs]-|xapp-|glpat-|rk_live_|rk_test_)[A-Za-z0-9._-]{8,}|whsec_[A-Za-z0-9+/=._-]{8,}|AIza[A-Za-z0-9_-]{30,}|(?:npm|hf|gsk)_[A-Za-z0-9]{30,}|ASIA[A-Z0-9]{16}(?![A-Za-z0-9]))/g;
@@ -37,17 +35,31 @@ const MARKERS = new RegExp(`${VALUE_MARKER}|${LABEL_MARKER}`, "gu");
 const registeredSecrets = new Set<string>();
 let registeredSecretPattern: RegExp | null = null;
 
+export interface NativeSecretRedactorDriver {
+  setRegisteredLiteralSecrets?: (literals: string[]) => void;
+  registerRuntimeSecrets?: (values: string[], allowShort: boolean) => void;
+  clearRegisteredRuntimeSecrets?: () => void;
+  redactSensitiveText: (value: string, emails: boolean, keepUnscanned: boolean) => string | null;
+  redactEmbeddedJson: (value: string, emails: boolean, keepUnscanned: boolean) => string | null;
+}
+let nativeDriver: NativeSecretRedactorDriver | null = null;
+export function setNativeSecretRedactorDriver(driver: NativeSecretRedactorDriver | null): void {
+  nativeDriver = driver;
+  // Push already-derived literals verbatim; registering them again would double-URI-encode.
+  if (driver && registeredSecrets.size > 0) driver.setRegisteredLiteralSecrets?.([...registeredSecrets]);
+}
+function tryNative(call: (d: NativeSecretRedactorDriver) => string | null): string | null {
+  try { return nativeDriver ? call(nativeDriver) : null; } catch { return null; }
+}
+
 function uriEncoded(value: string): string | null {
-  try {
-    return encodeURIComponent(value);
-  } catch {
-    return null;
-  }
+  try { return encodeURIComponent(value); } catch { return null; }
 }
 
 export function registerRuntimeSecrets(values: Iterable<string>, options: { allowShort?: boolean } = {}): void {
+  const vals = [...values];
   const before = registeredSecrets.size;
-  for (const value of values) {
+  for (const value of vals) {
     if (!value || (!options.allowShort && value.length < MIN_REGISTERED_SECRET_LENGTH)) continue;
     for (const form of [value, JSON.stringify(value).slice(1, -1), uriEncoded(value)]) {
       if (form !== null && form.length > 0) registeredSecrets.add(form);
@@ -58,19 +70,21 @@ export function registerRuntimeSecrets(values: Iterable<string>, options: { allo
     .sort((a, b) => b.length - a.length)
     .map((item) => item.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
   registeredSecretPattern = alternatives.length > 0 ? new RegExp(alternatives.join("|"), "gu") : null;
+  // Forward raw values; the native side derives JSON-escaped/URI-encoded forms itself.
+  nativeDriver?.registerRuntimeSecrets?.(vals, options.allowShort ?? false);
 }
 
 export function clearRegisteredRuntimeSecretsForTests(): void {
   registeredSecrets.clear();
   registeredSecretPattern = null;
+  nativeDriver?.clearRegisteredRuntimeSecrets?.();
 }
 
 function urlHosts(value: string): Uint8Array {
   const flags = new Uint8Array(value.length);
   for (const match of value.matchAll(URL_HOST)) {
     const start = (match.index ?? 0) + (match[1] ?? "").length;
-    flags.fill(HOST, start, start + (match[2]?.length ?? 0));
-  }
+    flags.fill(HOST, start, start + (match[2]?.length ?? 0)); }
   return flags;
 }
 
@@ -81,21 +95,17 @@ function markRegisteredSecrets(value: string): string {
   const ranges: Array<{ start: number; end: number }> = [];
   let hosts: Uint8Array | null | undefined;
   for (let match = pattern.exec(value); match !== null; match = pattern.exec(value)) {
-    let start = match.index;
-    let end = start + match[0].length;
+    let start = match.index, end = start + match[0].length;
     if (hosts === undefined) hosts = value.includes("://") ? urlHosts(value) : null;
     if (hosts?.subarray(start, end).every((flag) => flag === HOST)) continue;
-    const prev = ranges.at(-1);
-    const floor = prev?.end ?? 0;
+    const prev = ranges.at(-1), floor = prev?.end ?? 0;
     while (start > floor && !hosts?.[start - 1] && TOKEN_CHARACTER.test(value.charAt(start - 1))) start -= 1;
     if (prev && end <= prev.end) continue;
     while (end < value.length && !hosts?.[end] && TOKEN_CHARACTER.test(value.charAt(end))) end += 1;
-    if (prev && start <= prev.end) prev.end = end;
-    else ranges.push({ start, end });
+    if (prev && start <= prev.end) prev.end = end; else ranges.push({ start, end });
   }
   if (ranges.length === 0) return value;
-  let out = "";
-  let cursor = 0;
+  let out = "", cursor = 0;
   for (const { start, end } of ranges) {
     out += value.slice(cursor, start) + (RULE_WORD.test(value.slice(start, end)) ? LABEL_MARKER : VALUE_MARKER);
     cursor = end;
@@ -133,9 +143,7 @@ function startsLikeJson(value: string, start: number): boolean {
 }
 
 function findBalancedEnd(value: string, start: number): number {
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
+  let depth = 0, inString = false, escaped = false;
   for (let i = start; i < value.length; i += 1) {
     const ch = value[i];
     if (inString) {
@@ -158,25 +166,18 @@ function findBalancedEnd(value: string, start: number): number {
 function redactHeaderStrings(value: unknown): unknown {
   if (typeof value === "string") return "[redacted]";
   if (Array.isArray(value)) return value.map(redactHeaderStrings);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactHeaderStrings(v)]));
-  }
-  return value;
+  return value !== null && typeof value === "object"
+    ? Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redactHeaderStrings(v)]))
+    : value;
 }
 
 function convertJsonValue(value: unknown, seen: Set<object>, emails: boolean, depth = 0): unknown {
   if (typeof value === "string") return redactCore(value, emails, false);
-  if (value === null || value === undefined || typeof value === "number" || typeof value === "boolean") return value;
-  if (Array.isArray(value)) {
+  if (value !== null && typeof value === "object") {
     if (seen.has(value)) return "[circular]";
     if (depth >= MAX_CONVERSION_DEPTH) return "[too deep]";
     seen.add(value);
-    return value.map((item) => convertJsonValue(item, seen, emails, depth + 1));
-  }
-  if (typeof value === "object") {
-    if (seen.has(value)) return "[circular]";
-    if (depth >= MAX_CONVERSION_DEPTH) return "[too deep]";
-    seen.add(value);
+    if (Array.isArray(value)) return value.map((item) => convertJsonValue(item, seen, emails, depth + 1));
     try {
       return Object.fromEntries(Object.entries(value).map(([key, entry]) => {
         const safeKey = redactCore(key, emails, false);
@@ -186,14 +187,14 @@ function convertJsonValue(value: unknown, seen: Set<object>, emails: boolean, de
       }));
     } catch { return UNSERIALIZABLE; }
   }
+  if (value === undefined || value === null || typeof value === "number" || typeof value === "boolean") return value;
   return String(value);
 }
 
 function unchangedKeyCount(parsed: unknown, converted: unknown): number {
   if (parsed === null || typeof parsed !== "object") return parsed === converted ? 0 : -1;
   if (converted === null || typeof converted !== "object" || Array.isArray(parsed) !== Array.isArray(converted)) return -1;
-  const a = Object.entries(parsed);
-  const b = Object.entries(converted);
+  const a = Object.entries(parsed), b = Object.entries(converted);
   if (a.length !== b.length) return -1;
   let count = Array.isArray(parsed) ? 0 : a.length;
   for (const [idx, [k, v]] of a.entries()) {
@@ -220,29 +221,22 @@ function writtenKeyCount(text: string): number {
 
 function parseRedactedJson(candidate: string, emails: boolean): string | null {
   try {
-    const parsed = JSON.parse(candidate);
-    const converted = convertJsonValue(parsed, new Set<object>(), emails);
+    const parsed = JSON.parse(candidate), converted = convertJsonValue(parsed, new Set<object>(), emails);
     if (unchangedKeyCount(parsed, converted) === writtenKeyCount(candidate)) return candidate;
     return JSON.stringify(converted) ?? null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 export function redactEmbeddedJson(value: string, options: { emails?: boolean; keepUnscanned?: boolean } = {}): string {
   const emails = options.emails ?? false;
   const keepUnscanned = options.keepUnscanned ?? false;
-  let result = "";
-  let index = 0;
-  let scans = 0;
+  const native = tryNative((d) => d.redactEmbeddedJson(value, emails, keepUnscanned));
+  if (native !== null) return native;
+  let result = "", index = 0, scans = 0;
   while (index < value.length) {
-    let start = -1;
-    for (let i = index; i < value.length; i += 1) {
-      if (value[i] === "{" || value[i] === "[") {
-        start = i;
-        break;
-      }
-    }
+    let start = value.indexOf("{", index);
+    const bracket = value.indexOf("[", index);
+    if (bracket >= 0 && (start < 0 || bracket < start)) start = bracket;
     if (start < 0) break;
     if (!startsLikeJson(value, start)) {
       let next = start + 1;
@@ -278,7 +272,11 @@ function redactCore(value: string, emails: boolean, keepUnscanned: boolean): str
 }
 
 export function redactSensitiveText(value: string, options: { emails?: boolean; keepUnscanned?: boolean } = {}): string {
-  return redactCore(value, options.emails ?? false, options.keepUnscanned ?? false);
+  const emails = options.emails ?? false;
+  const keepUnscanned = options.keepUnscanned ?? false;
+  const native = tryNative((d) => d.redactSensitiveText(value, emails, keepUnscanned));
+  if (native !== null) return native;
+  return redactCore(value, emails, keepUnscanned);
 }
 
 export function redactBeforeTruncate(

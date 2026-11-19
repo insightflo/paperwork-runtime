@@ -17,6 +17,17 @@ const TARGET_FILES = [
   "ui/src/components/agent-detail/RunViews.tsx",
   "ui/src/components/LiveRunWidget.tsx",
   "ui/src/components/ToastViewport.tsx",
+  "ui/src/components/BoundaryDragHandle.tsx",
+  "ui/src/components/SidebarWaitChip.tsx",
+  "ui/src/components/SidebarAgents.tsx",
+  "ui/src/components/InspectorSidePanel.tsx",
+  "ui/src/components/PropertiesPanel.tsx",
+  "ui/src/components/QueuePanel.tsx",
+  "ui/src/components/SubagentDockAndSteps.tsx",
+  "ui/src/components/DashboardCommandHeader.tsx",
+  "ui/src/components/ChannelCollaborationBoard.tsx",
+  "ui/src/components/HermitGateAndOpsPanel.tsx",
+  "ui/src/pages/Activity.tsx",
 ];
 
 function collectDeclaredOpenbotTokens(cssPath) {

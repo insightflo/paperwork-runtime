@@ -12,21 +12,72 @@
  * - GET    /worktree/proposals/:id                        — Get proposal
  * - PATCH  /worktree/proposals/:id/review                 — Review proposal (approve/reject)
  *
+ * Hermit Gate (r60 은둔 작업 게이트) · Ops Console:
+ * - /companies/:companyId/hermit-gate/*  — claims / verify / merges / audit / decisions
+ * - /companies/:companyId/ops-console/*  — overview / thresholds / processes / queue
+ *
  * CRITICAL: /maintenance/* routes are gated by company-kind-gate at the app level.
  */
 
-import { Router } from "express";
+import { Router, type Request } from "express";
+import { z } from "zod";
 import type { Db } from "@paperclipai/db";
 import { ruleStore } from "../services/worktree/rule-store.js";
 import { proposalStore } from "../services/worktree/proposal-store.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
-import { notFound, badRequest } from "../errors.js";
+import { badRequest, notFound } from "../errors.js";
 import { logActivity } from "../services/activity-log.js";
+import { getHermitGateService } from "../services/hermit-gate.js";
+import {
+  AuditCompleteInputSchema,
+  AuditScopeInputSchema,
+  ChangeVerificationInputSchema,
+  ClaimRequestSchema,
+  DecisionRecordSchema,
+  DecisionUpdateInputSchema,
+  MergeRecordInputSchema,
+  QueueEditInputSchema,
+  QueueReorderInputSchema,
+  ThresholdsInputSchema,
+} from "../services/hermit-gate-types.js";
+import { operatorQueueViewService } from "../services/operator-queue-view.js";
+import { opsConsoleTelemetryService } from "../services/ops-console-telemetry.js";
 
 export function worktreeRoutes(db: Db) {
   const router = Router();
   const rules = ruleStore(db);
   const proposals = proposalStore(db);
+  const gate = getHermitGateService();
+  const queue = operatorQueueViewService(db);
+  const telemetry = opsConsoleTelemetryService(db, gate);
+
+  function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
+    const parsed = schema.safeParse(body ?? {});
+    if (!parsed.success) throw badRequest("Validation error", parsed.error.issues);
+    return parsed.data;
+  }
+
+  async function audit(
+    req: Request,
+    companyId: string,
+    entityType: string,
+    action: string,
+    entityId: string,
+    details: Record<string, unknown>,
+  ): Promise<void> {
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action,
+      entityType,
+      entityId,
+      details,
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // Rules
@@ -301,6 +352,189 @@ export function worktreeRoutes(db: Db) {
     });
 
     res.json(updated);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Hermit Gate — 경로 클레임/변경 검증/병합 감사/중대 결정 원장 (r60)
+  // ---------------------------------------------------------------------------
+
+  router.get("/companies/:companyId/hermit-gate/state", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const state = await gate.getState(companyId);
+    res.json(state);
+  });
+
+  router.post("/companies/:companyId/hermit-gate/claims", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const input = parseBody(ClaimRequestSchema, req.body);
+    const result = await gate.claimPaths(companyId, input);
+    if (result.ok) {
+      await audit(req, companyId, "hermit_gate", "hermit_gate.claim.granted", result.claim.claimId, {
+        taskId: input.taskId,
+        paths: result.claim.paths,
+      });
+      res.status(201).json({ ok: true, claim: result.claim });
+      return;
+    }
+    await audit(req, companyId, "hermit_gate", "hermit_gate.claim.held", input.taskId, {
+      conflicts: result.conflicts,
+    });
+    res.status(409).json({ error: result.resumeCondition, conflicts: result.conflicts, verdict: result.verdict });
+  });
+
+  router.delete("/companies/:companyId/hermit-gate/claims/:taskId", async (req, res) => {
+    const { companyId, taskId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const released = await gate.releaseTaskClaims(companyId, taskId);
+    if (released === 0) throw notFound("해제할 클레임이 없습니다");
+    await audit(req, companyId, "hermit_gate", "hermit_gate.claim.released", taskId, { released });
+    res.json({ ok: true, released });
+  });
+
+  router.post("/companies/:companyId/hermit-gate/verify", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const input = parseBody(ChangeVerificationInputSchema, req.body);
+    const verdict = await gate.verifyChanges(companyId, input);
+    if (verdict.decision !== "proceed") {
+      await audit(req, companyId, "hermit_gate", "hermit_gate.verify.held", input.taskId, {
+        violations: verdict.violations,
+      });
+    }
+    res.json(verdict);
+  });
+
+  router.post("/companies/:companyId/hermit-gate/merges", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const input = parseBody(MergeRecordInputSchema, req.body);
+    const result = await gate.recordMergedPr(companyId, input);
+    await audit(req, companyId, "hermit_gate", "hermit_gate.merge.recorded", String(input.prNumber), {
+      mergeSha: input.mergeSha,
+      duplicate: result.duplicate,
+      auditActive: result.auditState.auditActive,
+    });
+    res.status(result.duplicate ? 200 : 201).json(result);
+  });
+
+  router.post("/companies/:companyId/hermit-gate/merges/check", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const input = parseBody(z.object({ changedPaths: z.array(z.string()), isAuditFix: z.boolean().optional() }), req.body);
+    res.json(await gate.checkMergeGate(companyId, input));
+  });
+
+  router.post("/companies/:companyId/hermit-gate/audit/scope", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const input = parseBody(AuditScopeInputSchema, req.body);
+    const auditState = await gate.setAuditScope(companyId, input.blockedScopes);
+    await audit(req, companyId, "hermit_gate", "hermit_gate.audit.scope_set", "audit", input);
+    res.json(auditState);
+  });
+
+  router.post("/companies/:companyId/hermit-gate/audit/complete", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const input = parseBody(AuditCompleteInputSchema, req.body);
+    const auditState = await gate.completeAudit(companyId, input.auditedThroughSha);
+    await audit(req, companyId, "hermit_gate", "hermit_gate.audit.completed", "audit", input);
+    res.json(auditState);
+  });
+
+  router.post("/companies/:companyId/hermit-gate/decisions", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const input = parseBody(DecisionRecordSchema, req.body);
+    const decision = await gate.recordDecision(companyId, input);
+    await audit(req, companyId, "hermit_gate", "hermit_gate.decision.recorded", decision.id, {
+      taskId: input.taskId,
+      decision: input.decision,
+    });
+    res.status(201).json(decision);
+  });
+
+  router.patch("/companies/:companyId/hermit-gate/decisions/:decisionId", async (req, res) => {
+    const { companyId, decisionId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const input = parseBody(DecisionUpdateInputSchema, req.body);
+    const updated = await gate.updateDecision(companyId, decisionId, input.reason);
+    if (!updated) throw notFound("결정 기록을 찾을 수 없습니다");
+    await audit(req, companyId, "hermit_gate", "hermit_gate.decision.updated", decisionId, input);
+    res.json(updated);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Ops Console — 리소스/프로세스/대기 큐
+  // ---------------------------------------------------------------------------
+
+  router.get("/companies/:companyId/ops-console/overview", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const [resources, openWaits] = await Promise.all([
+      telemetry.getResourceSnapshot(companyId),
+      telemetry.getOpenWaits(companyId),
+    ]);
+    res.json({ resources, backgroundProcesses: telemetry.listBackgroundProcesses(companyId), openWaits });
+  });
+
+  router.put("/companies/:companyId/ops-console/thresholds", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const input = parseBody(ThresholdsInputSchema, req.body);
+    const thresholds = await telemetry.updateThresholds(companyId, input);
+    await audit(req, companyId, "ops_console", "ops_console.thresholds.updated", "resources", { ...thresholds });
+    res.json(thresholds);
+  });
+
+  router.post("/companies/:companyId/ops-console/processes/:pid/stop", async (req, res) => {
+    const { companyId, pid } = req.params;
+    assertCompanyAccess(req, companyId);
+    const pidNumber = Number(pid);
+    if (!Number.isInteger(pidNumber)) throw badRequest("pid 는 정수여야 합니다");
+    const result = telemetry.stopBackgroundProcess(pidNumber);
+    if (result.ok) {
+      await audit(req, companyId, "ops_console", "ops_console.process.stopped", String(pidNumber), { pid: pidNumber });
+      res.json(result);
+      return;
+    }
+    res.status(409).json({ error: result.reason, ...result });
+  });
+
+  router.get("/companies/:companyId/ops-console/queue", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const agentId = typeof req.query.agentId === "string" ? req.query.agentId : undefined;
+    res.json({ items: await queue.listCompanyQueue(companyId, agentId) });
+  });
+
+  router.post("/companies/:companyId/ops-console/queue/reorder", async (req, res) => {
+    const { companyId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const input = parseBody(QueueReorderInputSchema, req.body);
+    const items = await queue.reorderQueue(companyId, input.orderedIds);
+    await audit(req, companyId, "ops_console", "ops_console.queue.reordered", "queue", input);
+    res.json({ items });
+  });
+
+  router.patch("/companies/:companyId/ops-console/queue/:wakeupId", async (req, res) => {
+    const { companyId, wakeupId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const input = parseBody(QueueEditInputSchema, req.body);
+    const item = await queue.editQueuedWakeup(companyId, wakeupId, input);
+    await audit(req, companyId, "ops_console", "ops_console.queue.edited", wakeupId, input);
+    res.json(item);
+  });
+
+  router.post("/companies/:companyId/ops-console/queue/:wakeupId/cancel", async (req, res) => {
+    const { companyId, wakeupId } = req.params;
+    assertCompanyAccess(req, companyId);
+    const cancelled = await queue.cancelQueuedWakeup(companyId, wakeupId);
+    if (!cancelled) throw notFound("취소할 대기 항목을 찾을 수 없습니다");
+    await audit(req, companyId, "ops_console", "ops_console.queue.cancelled", wakeupId, {});
+    res.json({ ok: true });
   });
 
   return router;
