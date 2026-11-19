@@ -49,20 +49,22 @@ export interface NativeSecretRedactorDriver {
 }
 let nativeDriver: NativeSecretRedactorDriver | null = null;
 let nativeFailureWarned = false;
+function warnNativeOnce(reason: string, err?: unknown): void {
+  if (nativeFailureWarned) return;
+  nativeFailureWarned = true; // only the Error name (never the raw payload, which may reflect secrets) is printed below
+  console.warn(`[secret-redactor] ${reason}${err === undefined ? "" : ` (${err instanceof Error ? err.name : typeof err})`}; falling back to JS`);
+}
 export function setNativeSecretRedactorDriver(driver: NativeSecretRedactorDriver | null): void {
   try { nativeDriver?.clearRegisteredRuntimeSecrets(); } catch { /* ignore stale driver */ }
   if (driver) {
-    if ([driver.setRegisteredLiteralSecrets, driver.registerRuntimeSecrets, driver.clearRegisteredRuntimeSecrets, driver.redactSensitiveText, driver.redactEmbeddedJson].some((fn) => typeof fn !== "function")) { nativeDriver = null; return; }
-    // Push already-derived literals verbatim; registering them again would double-URI-encode.
-    try { if (registeredSecrets.size > 0) driver.setRegisteredLiteralSecrets([...registeredSecrets]); } catch { nativeDriver = null; return; } // never leave a half-initialized driver active
+    if ([driver.setRegisteredLiteralSecrets, driver.registerRuntimeSecrets, driver.clearRegisteredRuntimeSecrets, driver.redactSensitiveText, driver.redactEmbeddedJson].some((fn) => typeof fn !== "function")) { warnNativeOnce("rejecting native driver missing required hooks"); nativeDriver = null; return; }
+    try { if (registeredSecrets.size > 0) driver.setRegisteredLiteralSecrets([...registeredSecrets]); } catch (err) { warnNativeOnce("native driver literal sync failed", err); nativeDriver = null; return; } // verbatim push; never leave a half-initialized driver active
+    nativeFailureWarned = false; // a fresh valid driver gets a fresh warning budget
   }
   nativeDriver = driver;
 }
 function tryNative(call: (d: NativeSecretRedactorDriver) => string | null): string | null {
-  try { return nativeDriver ? call(nativeDriver) : null; } catch (err) {
-    if (!nativeFailureWarned) { nativeFailureWarned = true; console.warn("[secret-redactor] native driver failed; falling back to JS", err); }
-    return null;
-  }
+  try { return nativeDriver ? call(nativeDriver) : null; } catch (err) { warnNativeOnce("native driver failed", err); return null; }
 }
 
 function uriEncoded(value: string): string | null {
@@ -70,24 +72,22 @@ function uriEncoded(value: string): string | null {
 }
 
 export function registerRuntimeSecrets(values: Iterable<string>, options: { allowShort?: boolean } = {}): void {
-  const vals = [...values];
-  const before = registeredSecrets.size;
+  const vals = [...values], before = registeredSecrets.size;
   for (const value of vals) {
     if (!value || (!options.allowShort && value.length < MIN_REGISTERED_SECRET_LENGTH)) continue;
-    for (const form of [value, JSON.stringify(value).slice(1, -1), uriEncoded(value)])
-      if (form !== null && form.length > 0) registeredSecrets.add(form);
+    for (const form of [value, JSON.stringify(value).slice(1, -1), uriEncoded(value)]) if (form !== null && form.length > 0) registeredSecrets.add(form);
   }
   if (registeredSecrets.size === before) return;
   const alternatives = [...registeredSecrets].sort((a, b) => b.length - a.length).map((item) => item.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"));
   registeredSecretPattern = alternatives.length > 0 ? new RegExp(alternatives.join("|"), "gu") : null;
   // Forward raw values; the native side derives JSON-escaped/URI-encoded forms itself.
-  try { nativeDriver?.registerRuntimeSecrets(vals, options.allowShort ?? false); } catch { nativeDriver = null; }
+  try { nativeDriver?.registerRuntimeSecrets(vals, options.allowShort ?? false); } catch (err) { warnNativeOnce("native driver registration failed", err); nativeDriver = null; }
 }
 
 export function clearRegisteredRuntimeSecretsForTests(): void {
   registeredSecrets.clear();
   registeredSecretPattern = null;
-  try { nativeDriver?.clearRegisteredRuntimeSecrets(); } catch { nativeDriver = null; }
+  try { nativeDriver?.clearRegisteredRuntimeSecrets(); } catch (err) { warnNativeOnce("native driver registration failed", err); nativeDriver = null; }
 }
 
 function urlHosts(value: string): Uint8Array {
