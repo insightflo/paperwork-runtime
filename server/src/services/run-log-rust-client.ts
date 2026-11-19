@@ -106,7 +106,7 @@ export async function runRustLogFinalize(bin: string, absPath: string) {
     { path: absPath },
   );
   const bad = !resp || typeof resp.bytes !== "number" || typeof resp.compressed !== "boolean"
-    || (resp.sha256 !== undefined && typeof resp.sha256 !== "string");
+    || typeof resp.sha256 !== "string";
   if (bad) throw new Error("run_log_finalize_bad_shape");
   return resp as { bytes: number; sha256: string; compressed: boolean };
 }
@@ -259,7 +259,6 @@ async function readPlainRange(filePath: string, offset: number, limitBytes: numb
   const stat = await fs.stat(filePath); // ENOENT propagates → caller tries the .gz sibling
   const start = Math.max(0, Math.min(offset, stat.size));
   const end = Math.max(start, Math.min(start + limitBytes - 1, stat.size - 1));
-  if (start > end) return { content: "", nextOffset: start };
   const chunks: Buffer[] = [];
   await new Promise<void>((resolve, reject) => {
     const stream = createReadStream(filePath, { start, end });

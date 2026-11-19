@@ -84,20 +84,25 @@ pub(crate) fn validate_abs_path(p: &str) -> Result<&Path, RunLogError> {
 }
 
 fn open_regular(path: &Path) -> Result<Option<File>, RunLogError> {
-    // Pre-open check keeps FIFOs and symlinked non-files from blocking File::open;
+    // Pre-open check keeps FIFOs and symlinks from blocking File::open;
     // symlink_metadata inspects only the final path component.
+    let not_regular = || RunLogError::InvalidInput("log_path_not_regular_file".to_string());
     match fs::symlink_metadata(path) {
         Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(err) => return Err(RunLogError::Io(err)),
-        Ok(meta) if !meta.file_type().is_file() => {
-            return Err(RunLogError::InvalidInput("log_path_not_regular_file".to_string()));
-        }
+        Ok(meta) if meta.file_type().is_symlink() => match fs::metadata(path) {
+            // Dangling symlink stays "not found" so the <path>.gz sibling fallback runs.
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(RunLogError::Io(err)),
+            Ok(_) => return Err(not_regular()),
+        },
+        Ok(meta) if !meta.file_type().is_file() => return Err(not_regular()),
         Ok(_) => {}
     }
     match File::open(path) {
         Ok(file) => {
             if !file.metadata()?.is_file() {
-                return Err(RunLogError::InvalidInput("log_path_not_regular_file".to_string()));
+                return Err(not_regular());
             }
             Ok(Some(file))
         }
