@@ -1,10 +1,13 @@
-import { createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { createGzip, gunzip } from "node:zlib";
 import { promisify } from "node:util";
 import postgres from "postgres";
+import { pruneOldBackups, sanitizeRestoreErrorMessage, timestamp, tryRustDatabaseBackup, tryRustDatabaseRestore } from "./backup-rust-client.js";
+
+export { formatDatabaseBackupResult } from "./backup-rust-client.js";
 
 export type RunDatabaseBackupOptions = {
   connectionString: string;
@@ -61,50 +64,6 @@ async function* sqlBackupLineStream(lines: string[]): AsyncGenerator<string> {
   }
 }
 
-function sanitizeRestoreErrorMessage(error: unknown): string {
-  if (error && typeof error === "object") {
-    const record = error as Record<string, unknown>;
-    const firstLine = typeof record.message === "string"
-      ? record.message.split(/\r?\n/, 1)[0]?.trim()
-      : "";
-    const detail = typeof record.detail === "string" ? record.detail.trim() : "";
-    const severity = typeof record.severity === "string" ? record.severity.trim() : "";
-    const message = firstLine || detail || (error instanceof Error ? error.message : String(error));
-    return severity ? `${severity}: ${message}` : message;
-  }
-  return error instanceof Error ? error.message : String(error);
-}
-
-function timestamp(date: Date = new Date()): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
-}
-
-function pruneOldBackups(backupDir: string, retentionDays: number, filenamePrefix: string): number {
-  if (!existsSync(backupDir)) return 0;
-  const safeRetention = Math.max(1, Math.trunc(retentionDays));
-  const cutoff = Date.now() - safeRetention * 24 * 60 * 60 * 1000;
-  let pruned = 0;
-
-  for (const name of readdirSync(backupDir)) {
-    if (!name.startsWith(`${filenamePrefix}-`) || !(name.endsWith(".sql") || name.endsWith(".sql.gz"))) continue;
-    const fullPath = resolve(backupDir, name);
-    const stat = statSync(fullPath);
-    if (stat.mtimeMs < cutoff) {
-      unlinkSync(fullPath);
-      pruned++;
-    }
-  }
-
-  return pruned;
-}
-
-function formatBackupSize(sizeBytes: number): string {
-  if (sizeBytes < 1024) return `${sizeBytes}B`;
-  if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)}K`;
-  return `${(sizeBytes / (1024 * 1024)).toFixed(1)}M`;
-}
-
 function formatSqlLiteral(value: string): string {
   const sanitized = value.replace(/\u0000/g, "");
   let tag = "$paperclip$";
@@ -153,6 +112,8 @@ function tableKey(schemaName: string, tableName: string): string {
 }
 
 export async function runDatabaseBackup(opts: RunDatabaseBackupOptions): Promise<RunDatabaseBackupResult> {
+  const rustBackup = await tryRustDatabaseBackup(opts);
+  if (rustBackup.delegated) return rustBackup.value;
   const filenamePrefix = opts.filenamePrefix ?? "paperclip";
   const retentionDays = Math.max(1, Math.trunc(opts.retentionDays));
   const includeMigrationJournal = opts.includeMigrationJournal === true;
@@ -543,6 +504,8 @@ export async function runDatabaseBackup(opts: RunDatabaseBackupOptions): Promise
 }
 
 export async function runDatabaseRestore(opts: RunDatabaseRestoreOptions): Promise<void> {
+  const rustRestore = await tryRustDatabaseRestore(opts);
+  if (rustRestore.delegated) return;
   const connectTimeout = Math.max(1, Math.trunc(opts.connectTimeoutSeconds ?? 5));
   const sql = postgres(opts.connectionString, { max: 1, connect_timeout: connectTimeout });
 
@@ -573,10 +536,4 @@ export async function runDatabaseRestore(opts: RunDatabaseRestoreOptions): Promi
   } finally {
     await sql.end();
   }
-}
-
-export function formatDatabaseBackupResult(result: RunDatabaseBackupResult): string {
-  const size = formatBackupSize(result.sizeBytes);
-  const pruned = result.prunedCount > 0 ? `; pruned ${result.prunedCount} old backup(s)` : "";
-  return `${result.backupFile} (${size}${pruned})`;
 }
