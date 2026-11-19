@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { unprocessable } from "../errors.js";
+import { badRequest, unprocessable } from "../errors.js";
 import type {
   ChangeVerificationInput, ClaimRequest, ClaimResult, CompanyGateState,
   ConsequentialDecision, DecisionRecord, GateVerdict, GateViolation, MergeRecordInput, PathClaim,
@@ -21,6 +21,17 @@ import type {
 import { DEEP_IMPORT_PATTERNS, defaultAuditState, normalizeRepoPath, pathWithin, pathsOverlap } from "./hermit-gate-types.js";
 
 export { normalizeRepoPath, pathsOverlap } from "./hermit-gate-types.js";
+
+const DEFAULT_CLAIM_TTL_MINUTES = 240;
+let warnedTmpFallback = false;
+
+function pruneExpiredClaims(state: CompanyGateState, nowMs = Date.now()): void {
+  state.claims = state.claims.filter((claim) => {
+    if (!claim.expiresAt) return true;
+    const expiryMs = Date.parse(claim.expiresAt);
+    return Number.isFinite(expiryMs) && expiryMs > nowMs;
+  });
+}
 
 function stateFilePath(stateDir: string, companyId: string): string {
   return path.join(stateDir, `hermit-gate-${companyId.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
@@ -59,6 +70,10 @@ function persistCompanyState(stateDir: string, companyId: string, state: Company
 }
 
 export function createHermitGateService(options?: { stateDir?: string }) {
+  if (!options?.stateDir && !process.env.PAPERCLIP_HERMIT_STATE_DIR && !process.env.PAPERCLIP_HOME && !warnedTmpFallback) {
+    warnedTmpFallback = true;
+    console.warn("[hermit-gate] PAPERCLIP_HOME unset; falling back to volatile tmpdir state directory");
+  }
   const stateDir =
     options?.stateDir ??
     process.env.PAPERCLIP_HERMIT_STATE_DIR ??
@@ -89,11 +104,15 @@ export function createHermitGateService(options?: { stateDir?: string }) {
     stateDir,
 
     getState(companyId: string) {
-      return mutate(companyId, (state) => ({ claims: state.claims, auditState: state.audit, decisions: state.decisions }));
+      return mutate(companyId, (state) => {
+        pruneExpiredClaims(state);
+        return { claims: state.claims, auditState: state.audit, decisions: state.decisions };
+      });
     },
 
     claimPaths(companyId: string, input: ClaimRequest): Promise<ClaimResult> {
       return mutate(companyId, (state) => {
+        pruneExpiredClaims(state);
         const requested = input.paths.map(normalizeRepoPath);
         const conflicts: GateViolation[] = [];
         for (const candidate of requested) {
@@ -109,10 +128,12 @@ export function createHermitGateService(options?: { stateDir?: string }) {
         if (conflicts.length > 0) {
           return { ok: false, verdict: "hold_action", conflicts, resumeCondition: "선행 task 완료/해제 또는 공유 경로 조정 필요" };
         }
+        const expiresAt = new Date(Date.now() + (input.ttlMinutes ?? DEFAULT_CLAIM_TTL_MINUTES) * 60_000).toISOString();
         const existing = state.claims.find((c) => c.taskId === input.taskId);
         if (existing) {
           existing.paths = Array.from(new Set([...existing.paths, ...requested]));
           existing.worktreeName = input.worktreeName;
+          existing.expiresAt = expiresAt;
           if (input.agentId !== undefined) existing.agentId = input.agentId;
           return { ok: true, claim: existing };
         }
@@ -123,6 +144,7 @@ export function createHermitGateService(options?: { stateDir?: string }) {
           agentId: input.agentId,
           paths: requested,
           createdAt: new Date().toISOString(),
+          expiresAt,
         };
         state.claims.push(claim);
         return { ok: true, claim };
@@ -239,14 +261,27 @@ export function createHermitGateService(options?: { stateDir?: string }) {
 
     completeAudit(companyId: string, auditedThroughSha: string) {
       return mutate(companyId, (state) => {
+        const trimmed = auditedThroughSha.trim();
+        if (!trimmed || trimmed === "audit-head") {
+          throw badRequest("유효한 감사 기준 커밋 SHA가 필요합니다");
+        }
         const audit = state.audit;
-        const idx = audit.mergedPrsSinceAudit.findIndex((e) => e.mergeSha === auditedThroughSha);
-        if (audit.mergedPrsSinceAudit.length > 0 && idx < 0) {
+        if (audit.mergedPrsSinceAudit.length === 0) {
+          if (audit.lastAuditMergeSha !== null && trimmed === audit.lastAuditMergeSha) {
+            audit.auditActive = false;
+            audit.scopeDetermined = false;
+            audit.blockedScopes = [];
+            return audit;
+          }
+          throw unprocessable("감사 완료 처리할 누적 병합 항목이 없습니다");
+        }
+        const idx = audit.mergedPrsSinceAudit.findIndex((e) => e.mergeSha === trimmed);
+        if (idx < 0) {
           throw unprocessable("감사 기준 커밋(auditedThroughSha)이 현재 감사 윈도우에 없습니다");
         }
         // 감사 중 도착한 병합은 버리지 않는다: auditedThroughSha 이후 항목만 유지.
-        audit.mergedPrsSinceAudit = idx >= 0 ? audit.mergedPrsSinceAudit.slice(idx + 1) : [];
-        audit.lastAuditMergeSha = auditedThroughSha;
+        audit.mergedPrsSinceAudit = audit.mergedPrsSinceAudit.slice(idx + 1);
+        audit.lastAuditMergeSha = trimmed;
         audit.auditActive = false;
         audit.scopeDetermined = false;
         audit.blockedScopes = [];

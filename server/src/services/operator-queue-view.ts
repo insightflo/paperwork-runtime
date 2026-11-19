@@ -32,6 +32,9 @@ type WakeupRow = typeof agentWakeupRequests.$inferSelect;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** jsonb payload.queueOrder 가 정수가 아닐 때 PostgreSQL ::int 캐스트 500 예외를 막는다. */
+const SAFE_QUEUE_ORDER_SQL = sql`COALESCE(CASE WHEN (${agentWakeupRequests.payload} ->> 'queueOrder') ~ '^-?[0-9]{1,9}$' THEN (${agentWakeupRequests.payload} ->> 'queueOrder')::int END, 1000000)`;
+
 function assertUuid(value: string, label: string): void {
   if (!UUID_RE.test(value)) throw badRequest(`잘못된 ${label} 형식입니다`);
 }
@@ -80,17 +83,39 @@ export function operatorQueueViewService(db: Db) {
       .select()
       .from(agentWakeupRequests)
       .where(and(...conditions))
-      .orderBy(
-        sql`COALESCE((${agentWakeupRequests.payload} ->> 'queueOrder')::int, 1000000) ASC`,
-        asc(agentWakeupRequests.requestedAt),
-      );
+      .orderBy(sql`${SAFE_QUEUE_ORDER_SQL} ASC`, asc(agentWakeupRequests.requestedAt));
     return rows.map(mapRow);
   }
 
   async function reorderQueue(companyId: string, orderedIds: string[]): Promise<OperatorQueueItem[]> {
     for (const id of orderedIds) assertUuid(id, "wakeup id");
     await db.transaction(async (tx) => {
-      for (let index = 0; index < orderedIds.length; index += 1) {
+      const existing = await tx
+        .select({ id: agentWakeupRequests.id })
+        .from(agentWakeupRequests)
+        .where(
+          and(
+            eq(agentWakeupRequests.companyId, companyId),
+            inArray(agentWakeupRequests.status, [...QUEUED_WAKEUP_STATUSES]),
+          ),
+        )
+        .orderBy(sql`${SAFE_QUEUE_ORDER_SQL} ASC`, asc(agentWakeupRequests.requestedAt));
+      const activeSet = new Set(existing.map((row) => row.id));
+      const seen = new Set<string>();
+      const fullOrder: string[] = [];
+      for (const id of orderedIds) {
+        if (activeSet.has(id) && !seen.has(id)) {
+          seen.add(id);
+          fullOrder.push(id);
+        }
+      }
+      for (const row of existing) {
+        if (!seen.has(row.id)) {
+          seen.add(row.id);
+          fullOrder.push(row.id);
+        }
+      }
+      for (let index = 0; index < fullOrder.length; index += 1) {
         await tx
           .update(agentWakeupRequests)
           .set({
@@ -98,7 +123,7 @@ export function operatorQueueViewService(db: Db) {
           })
           .where(
             and(
-              eq(agentWakeupRequests.id, orderedIds[index]),
+              eq(agentWakeupRequests.id, fullOrder[index]),
               eq(agentWakeupRequests.companyId, companyId),
               inArray(agentWakeupRequests.status, [...QUEUED_WAKEUP_STATUSES]),
             ),
@@ -127,11 +152,21 @@ export function operatorQueueViewService(db: Db) {
     if (input.prompt !== undefined) payload.prompt = input.prompt.trim();
     if (input.note !== undefined) payload.note = input.note.trim();
     const now = new Date();
-    await db
+    const updated = await db
       .update(agentWakeupRequests)
       .set({ payload, updatedAt: now })
-      .where(eq(agentWakeupRequests.id, wakeupId));
-    return mapRow({ ...row, payload, updatedAt: now });
+      .where(
+        and(
+          eq(agentWakeupRequests.id, wakeupId),
+          eq(agentWakeupRequests.companyId, companyId),
+          inArray(agentWakeupRequests.status, [...QUEUED_WAKEUP_STATUSES]),
+        ),
+      )
+      .returning();
+    if (updated.length === 0) {
+      throw unprocessable("대기열에서 이미 처리 중이거나 취소되어 편집할 수 없습니다");
+    }
+    return mapRow(updated[0]);
   }
 
   async function cancelQueuedWakeup(companyId: string, wakeupId: string): Promise<boolean> {
