@@ -57,7 +57,7 @@ fn write_json_stdout<T: Serialize>(value: &T) -> Result<(), RunLogError> {
 fn run() -> Result<(), RunLogError> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() != 1 || !matches!(args[0].as_str(), "finalize" | "read-range") {
-        // Drain piped stdin so writers never hit EPIPE when we exit early.
+        // Drain up to MAX_STDIN_BYTES of piped stdin so small payloads don't EPIPE the writer; larger payloads still see EPIPE.
         if !io::stdin().is_terminal() {
             let _ = read_stdin_bounded(MAX_STDIN_BYTES);
         }
@@ -79,6 +79,7 @@ fn run() -> Result<(), RunLogError> {
             let resp = ops::read_range(&req.path, req.offset, req.limit_bytes)?;
             write_json_stdout(&resp)
         }
+        // Unreachable: validated above.
         _ => Err(RunLogError::InvalidInput(
             "usage: paperclip-run-log <finalize|read-range>".to_string(),
         )),

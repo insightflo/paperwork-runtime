@@ -108,7 +108,7 @@ export function createLocalFileRunLogStore(basePath: string): RunLogStore {
         await fh.close().catch(() => undefined);
         throw writeErr;
       }
-      await fh.close();
+      await fh.close().catch(() => undefined);
     },
 
     async finalize(handle) {

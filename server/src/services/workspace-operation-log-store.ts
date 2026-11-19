@@ -93,7 +93,12 @@ export function createLocalFileWorkspaceOperationLogStore(basePath: string): Wor
         // Whether finalized to .gz or vanished cleanly, never resurrect a ghost
         // .ndjson and never throw ENOENT into the workspace-operations catch.
         if (isRunLogEnoent(err)) {
-          warnRunLogFallback(STORE_LABEL, "append dropped: log missing or already finalized", err);
+          const finalized = (await fs.stat(`${absPath}.gz`).catch(() => null)) !== null;
+          warnRunLogFallback(
+            STORE_LABEL,
+            finalized ? "append dropped: log already finalized to .gz" : "append dropped: log vanished mid-run",
+            err,
+          );
           return;
         }
         throw err;
@@ -105,7 +110,7 @@ export function createLocalFileWorkspaceOperationLogStore(basePath: string): Wor
         await fh.close().catch(() => undefined);
         throw writeErr;
       }
-      await fh.close();
+      await fh.close().catch(() => undefined);
     },
 
     async finalize(handle) {
