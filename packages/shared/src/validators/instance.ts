@@ -30,6 +30,30 @@ export const judgmentModelIdSchema = z
   .regex(/^[A-Za-z0-9._:/-]+$/, "judgment model id contains invalid characters")
   .nullable();
 
+export const llmStructuredProviderIdSchema = z.string().trim().min(1).max(64).regex(/^[a-zA-Z0-9._-]+$/);
+export const llmStructuredProviderNameSchema = z.string().trim().min(1).max(80)
+  .refine((value) => !/[\r\n\0]/.test(value), "Control characters not allowed");
+const llmStructuredApiKeySchema = z.string().trim().min(1).max(512)
+  .refine((value) => !/[\r\n\0]/.test(value), "Control characters not allowed").nullable();
+const requiredBaseUrlSchema = judgmentBaseUrlSchema.refine(
+  (value): value is string => typeof value === "string" && value.length > 0, "Base URL is required",
+);
+export const llmStructuredProviderFieldsSchema = z.object({
+  id: llmStructuredProviderIdSchema,
+  name: llmStructuredProviderNameSchema,
+  baseUrl: requiredBaseUrlSchema,
+  model: judgmentModelIdSchema.optional(),
+});
+export const llmStructuredProviderPatchItemSchema = llmStructuredProviderFieldsSchema.extend({
+  apiKey: llmStructuredApiKeySchema.optional(),
+}).strict();
+export const llmStructuredTestConnectionSchema = z.object({
+  providerId: llmStructuredProviderIdSchema.optional(),
+  baseUrl: requiredBaseUrlSchema,
+  apiKey: llmStructuredApiKeySchema.optional(),
+}).strict();
+export type LlmStructuredTestConnectionInput = z.infer<typeof llmStructuredTestConnectionSchema>;
+
 export const instanceGeneralSettingsSchema = z.object({
   censorUsernameInLogs: z.boolean().default(false),
   judgmentBaseUrl: judgmentBaseUrlSchema.optional(),
@@ -37,15 +61,21 @@ export const instanceGeneralSettingsSchema = z.object({
   llmStructuredBaseUrl: judgmentBaseUrlSchema.optional(),
   llmStructuredModel: judgmentModelIdSchema.optional(),
   llmStructuredApiKeyConfigured: z.boolean().optional(),
+  llmStructuredProviders: z.array(llmStructuredProviderFieldsSchema.extend({
+    model: judgmentModelIdSchema.unwrap().optional(),
+    apiKeyConfigured: z.boolean(),
+  }).strict()).max(20).optional(),
+  llmStructuredDefaultProviderId: llmStructuredProviderIdSchema.optional(),
 }).strict();
 
 export const patchInstanceGeneralSettingsSchema = instanceGeneralSettingsSchema
-  .omit({ llmStructuredApiKeyConfigured: true })
+  .omit({ llmStructuredApiKeyConfigured: true, llmStructuredProviders: true })
   .partial()
   .extend({
-    llmStructuredApiKey: z.string().trim().min(1).max(512)
-      .refine((value) => !/[\r\n\0]/.test(value), "Control characters not allowed")
-      .nullable().optional(),
+    llmStructuredApiKey: llmStructuredApiKeySchema.optional(),
+    llmStructuredProviders: z.array(llmStructuredProviderPatchItemSchema).max(20)
+      .refine((items) => new Set(items.map(({ id }) => id)).size === items.length, "Provider IDs must be unique").optional(),
+    llmStructuredDefaultProviderId: llmStructuredProviderIdSchema.nullable().optional(),
   });
 
 export const instanceExperimentalSettingsSchema = z.object({

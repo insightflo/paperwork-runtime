@@ -130,8 +130,9 @@ export async function executeCoreWorkflowTool(input: {
     const missing = defaults.filter(([field, suffix]) =>
       !adapterConfig[field] && !Object.hasOwn(env, `PAPERCLIP_LLM_STRUCTURED_${suffix}`),
     );
+    const providerId = typeof adapterConfig.providerId === "string" && adapterConfig.providerId.trim() ? adapterConfig.providerId.trim() : undefined;
     const instanceConfig = missing.length
-      ? await instanceSettingsService(input.db).getLlmStructuredRuntimeConfig().catch(() => undefined)
+      ? await instanceSettingsService(input.db).getLlmStructuredRuntimeConfig(providerId).catch(() => undefined)
       : undefined;
     for (const [field, suffix] of missing) {
       const value = instanceConfig?.[field];

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SlidersHorizontal } from "lucide-react";
-import type { PatchInstanceGeneralSettings } from "@paperclipai/shared";
+import type { InstanceGeneralSettings, PatchInstanceGeneralSettings } from "@paperclipai/shared";
 import { Input } from "@/components/ui/input";
-import { instanceSettingsApi } from "@/api/instanceSettings";
+import { instanceSettingsApi, type LlmStructuredConnectionTestResult } from "@/api/instanceSettings";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
@@ -59,11 +59,105 @@ export function toLlmStructuredPatch(
   };
 }
 
-const structuredFields = [
-  ["llmStructuredBaseUrl", "llm-structured-base-url", "Base URL", "https://api.deepseek.com/v1"],
-  ["llmStructuredModel", "llm-structured-model", "Model", "deepseek-chat"],
-  ["llmStructuredApiKey", "llm-structured-api-key", "API Key", "sk-..."],
-] as const;
+const presets = {
+  deepseek: ["DeepSeek", "https://api.deepseek.com/v1", "deepseek-chat"],
+  zai: ["Z.AI", "https://api.z.ai/api/paas/v4", "glm-4.7"],
+  openai: ["OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"],
+  custom: ["Custom", "", ""],
+} as const;
+type Preset = keyof typeof presets;
+type ProviderRow = { id: string; name: string; baseUrl: string; model: string; apiKey: string; apiKeyConfigured: boolean; clearApiKey: boolean };
+
+export function createNewProviderRow(preset: Preset = "custom", existingIds: string[] = []): ProviderRow {
+  const [name, baseUrl, model] = presets[preset];
+  let id: string = preset;
+  for (let suffix = 2; existingIds.includes(id); suffix++) id = `${preset}-${suffix}`;
+  return { id, name, baseUrl, model, apiKey: "", apiKeyConfigured: false, clearApiKey: false };
+}
+
+export function toLlmStructuredProvidersDraft(settings?: Partial<InstanceGeneralSettings> | null): ProviderRow[] {
+  return (settings?.llmStructuredProviders ?? []).map(({ id, name, baseUrl, model, apiKeyConfigured }) => ({
+    id, name, baseUrl, model: model ?? "", apiKeyConfigured, apiKey: "", clearApiKey: false,
+  }));
+}
+
+export function toLlmStructuredProvidersPatch(rows: ProviderRow[], defaultProviderId?: string | null): PatchInstanceGeneralSettings {
+  return {
+    llmStructuredProviders: rows.map(({ id, name, baseUrl, model, apiKey, clearApiKey }) => ({
+      id, name: name.trim(), baseUrl: baseUrl.trim(), model: model.trim() || null,
+      ...(clearApiKey ? { apiKey: null } : apiKey.trim() ? { apiKey: apiKey.trim() } : {}),
+    })),
+    llmStructuredDefaultProviderId: defaultProviderId && rows.some(({ id }) => id === defaultProviderId) ? defaultProviderId : null,
+  };
+}
+
+const chip = "rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-60";
+const providerFields = [["name", "공급자 이름 (Name)"], ["baseUrl", "Base URL"], ["model", "Model"], ["apiKey", "API Key"]] as const;
+
+function ProviderCard({ row, saved, isDefault, update, selectDefault, remove }: {
+  row: ProviderRow; saved: boolean; isDefault: boolean; update: (patch: Partial<ProviderRow>) => void;
+  selectDefault: () => void; remove: () => void;
+}) {
+  const [filter, setFilter] = useState("");
+  const [result, setResult] = useState<LlmStructuredConnectionTestResult | null>(null);
+  const [pending, setPending] = useState(false);
+  async function testConnection() {
+    setPending(true);
+    setResult(null);
+    setFilter("");
+    try {
+      const apiKey = row.apiKey.trim();
+      setResult(await instanceSettingsApi.testLlmStructuredConnection({
+        ...(saved ? { providerId: row.id } : {}), baseUrl: row.baseUrl.trim(), ...(apiKey ? { apiKey } : {}),
+      }));
+    } catch {
+      setResult({ ok: false, latencyMs: 0, models: [] });
+    } finally {
+      setPending(false);
+    }
+  }
+  const models = result?.models.filter((model) => model.toLowerCase().includes(filter.trim().toLowerCase())) ?? [];
+  return <fieldset disabled={pending} className="grid min-w-0 gap-3 rounded-lg border border-border p-4">
+    <div className="flex flex-wrap items-center gap-2">
+      <button type="button" className={cn(chip, isDefault && "bg-primary text-primary-foreground hover:bg-primary/90")}
+        aria-pressed={isDefault} onClick={selectDefault}>기본 공급자</button>
+      <span className="rounded-full bg-muted px-2 py-1 text-xs">{row.apiKeyConfigured ? "키 등록됨" : "키 미등록"}</span>
+      <button type="button" className={cn(chip, "ml-auto text-destructive")} onClick={remove}>삭제</button>
+    </div>
+    {providerFields.map(([field, label]) => <label key={field} className="grid gap-1 text-sm font-medium">
+      {label}
+      <Input type={field === "apiKey" ? "password" : "text"} value={row[field]}
+        autoComplete={field === "apiKey" ? "new-password" : "off"} disabled={field === "apiKey" && row.clearApiKey}
+        placeholder={field === "apiKey" ? row.apiKeyConfigured ? "비워두면 기존 키 유지" : "sk-..." : undefined}
+        onChange={(event) => {
+          update({ [field]: event.target.value });
+          if (field === "baseUrl" || field === "apiKey") setResult(null);
+        }} />
+    </label>)}
+    {row.apiKeyConfigured && <label className="flex items-center gap-2 text-sm">
+      <input type="checkbox" checked={row.clearApiKey} onChange={(event) => {
+        update({ clearApiKey: event.target.checked, apiKey: "" });
+        setResult(null);
+      }} /> Clear key
+    </label>}
+    <button type="button" className={cn(chip, "w-fit")} onClick={testConnection}
+      disabled={!row.baseUrl.trim() || pending || row.clearApiKey}>연결 테스트 · 모델 조회</button>
+    {pending && <p role="status" className="text-sm">연결 확인 중…</p>}
+    {result && (result.ok ? <div className="grid gap-2">
+      <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">{`연결 성공 · ${result.latencyMs}ms · 모델 ${result.models.length}개`}</p>
+      {result.models.length > 12 && <Input aria-label="모델 검색" placeholder="모델 검색" value={filter}
+        onChange={(event) => setFilter(event.target.value)} />}
+      {models.length > 0 && <select aria-label="조회된 모델" className="min-w-0 rounded-md border bg-background p-2 text-sm" value=""
+        onChange={(event) => update({ model: event.target.value })}>
+        <option value="" disabled>모델 선택</option>
+        {[...new Set(models)].map((model) => <option key={model} value={model}>{model}</option>)}
+      </select>}
+      {result.models.length > 0 && models.length === 0 && <p className="text-sm text-muted-foreground">검색 결과가 없습니다.</p>}
+    </div> : <p role="alert" className="text-sm text-destructive">
+      {result.statusCode ? `연결 실패 (HTTP ${result.statusCode}).` : "연결 실패. Base URL과 API Key를 확인해 주세요."}
+    </p>)}
+  </fieldset>;
+}
 
 export function InstanceGeneralSettings() {
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -110,31 +204,18 @@ export function InstanceGeneralSettings() {
     },
   });
 
-  const { llmStructuredBaseUrl, llmStructuredModel } = generalQuery.data ?? {};
-  const keyConfigured = generalQuery.data?.llmStructuredApiKeyConfigured === true;
-  const [structuredDraft, setStructuredDraft] = useState(() => toLlmStructuredDraft(generalQuery.data));
-  const [structuredNotice, setStructuredNotice] = useState<string | null>(null);
-
-  useEffect(() => {
-    setStructuredDraft((draft) => ({
-      ...draft, llmStructuredBaseUrl: llmStructuredBaseUrl ?? "", llmStructuredModel: llmStructuredModel ?? "",
-    }));
-  }, [llmStructuredBaseUrl, llmStructuredModel]);
-  useEffect(() => {
-    if (!structuredNotice) return;
-    const timeout = setTimeout(() => setStructuredNotice(null), 3000);
-    return () => clearTimeout(timeout);
-  }, [structuredNotice]);
+  const settings = generalQuery.data;
+  const [providerEdits, setProviderEdits] = useState<{ rows: ProviderRow[]; defaultId?: string } | null>(null);
+  const rows = providerEdits?.rows ?? toLlmStructuredProvidersDraft(settings);
+  const defaultId = providerEdits ? providerEdits.defaultId : settings?.llmStructuredDefaultProviderId;
+  const savedIds = settings?.llmStructuredProviders?.map(({ id }) => id) ?? [];
   const structuredMutation = useMutation({
     throwOnError: false,
-    mutationFn: (clearKey: boolean) => instanceSettingsApi.updateGeneral(
-      clearKey ? { llmStructuredApiKey: null } : toLlmStructuredPatch(structuredDraft),
-    ).catch(() => { throw new Error("Could not update the structured LLM connection. Check your settings and try again."); }),
-    onMutate: () => { setStructuredNotice(null); },
-    onSuccess: async (_, clearKey) => {
-      setStructuredDraft((draft) => ({ ...draft, llmStructuredApiKey: "" }));
-      await queryClient.invalidateQueries({ queryKey: queryKeys.instance.generalSettings });
-      setStructuredNotice(clearKey ? "Saved API key cleared." : "Structured LLM connection saved.");
+    mutationFn: () => instanceSettingsApi.updateGeneral(toLlmStructuredProvidersPatch(rows, defaultId))
+      .catch(() => { throw new Error("Could not save structured LLM providers. Check the provider settings and try again."); }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKeys.instance.generalSettings, updated);
+      setProviderEdits(null);
     },
   });
 
@@ -249,44 +330,28 @@ export function InstanceGeneralSettings() {
       </section>
 
       <section className="rounded-xl border border-border bg-card p-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-sm font-semibold">Structured LLM connection (1-shot API)</h2>
-          <span className={cn("rounded-full px-2 py-1 text-xs font-medium", keyConfigured
-            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-muted text-muted-foreground")}>
-            {keyConfigured ? "API Key 등록됨" : "API Key 미등록"}
-          </span>
-        </div>
+        <h2 className="text-sm font-semibold">Structured LLM connection (1-shot API)</h2>
+        {!savedIds.length && (settings?.llmStructuredBaseUrl || settings?.llmStructuredApiKeyConfigured) &&
+          <p className="mt-2 break-all text-sm text-muted-foreground">
+            기존 연결: {settings.llmStructuredBaseUrl || "주소 미설정"} · {settings.llmStructuredModel || "모델 미설정"}
+            {settings.llmStructuredApiKeyConfigured ? " · 키 등록됨" : " · 키 미등록"}. 새 공급자의 키는 별도로 입력해 주세요.
+          </p>}
         <fieldset disabled={structuredMutation.isPending} className="mt-4 grid min-w-0 max-w-xl gap-4">
-          {structuredFields.map(([field, id, label, placeholder]) => {
-            const isKey = field === "llmStructuredApiKey";
-            return (
-              <div key={id} className="space-y-1.5">
-                <label htmlFor={id} className="text-sm font-medium">{label}</label>
-                <Input id={id} type={isKey ? "password" : "text"} value={structuredDraft[field]}
-                  autoComplete={isKey ? "new-password" : "off"}
-                  placeholder={isKey && keyConfigured
-                    ? "등록됨 — 변경할 때만 새 키 입력 (비워두면 기존 키 유지)" : placeholder}
-                  onChange={(event) => setStructuredDraft({ ...structuredDraft, [field]: event.target.value })}
-                />
-              </div>
-            );
-          })}
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => structuredMutation.mutate(false)}
-              className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
-              Save structured LLM connection
-            </button>
-            {keyConfigured && (
-              <button type="button" onClick={() => structuredMutation.mutate(true)}
-                className="h-9 rounded-md border border-border px-4 text-sm font-medium hover:bg-muted disabled:opacity-60">
-                Clear saved key
-              </button>
-            )}
+            {(["custom", "deepseek", "zai", "openai"] as const).map((preset) =>
+              <button key={preset} type="button" className={chip} onClick={() => setProviderEdits({
+                rows: [...rows, createNewProviderRow(preset, [...savedIds, ...rows.map(({ id }) => id)])], defaultId,
+              })}>{preset === "custom" ? "+ 공급자 추가" : presets[preset][0]}</button>)}
           </div>
-          {structuredMutation.error && <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-            {structuredMutation.error.message}
-          </div>}
-          {structuredNotice && <p role="status" className="text-sm text-muted-foreground">{structuredNotice}</p>}
+          {rows.map((row) => <ProviderCard key={row.id} row={row} saved={savedIds.includes(row.id)}
+            isDefault={row.id === defaultId} selectDefault={() => setProviderEdits({ rows, defaultId: row.id })}
+            update={(patch) => setProviderEdits({ rows: rows.map((item) => item.id === row.id ? { ...item, ...patch } : item), defaultId })}
+            remove={() => setProviderEdits({ rows: rows.filter(({ id }) => id !== row.id), defaultId: defaultId === row.id ? undefined : defaultId })} />)}
+          <button type="button" disabled={!providerEdits || rows.some(({ name, baseUrl }) => !name.trim() || !baseUrl.trim())}
+            className={cn(chip, "w-fit bg-primary text-primary-foreground hover:bg-primary/90")}
+            onClick={() => structuredMutation.mutate()}>Save structured LLM providers</button>
+          {structuredMutation.error && <p role="alert" className="text-sm text-destructive">{structuredMutation.error.message}</p>}
+          {structuredMutation.isSuccess && !providerEdits && <p role="status" className="text-sm">공급자 설정을 저장했습니다.</p>}
         </fieldset>
       </section>
     </div>
