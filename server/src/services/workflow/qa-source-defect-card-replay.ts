@@ -17,7 +17,7 @@ export async function createOrReplayQaSourceDefectCard(input: {
   v3RequestKey: string;
   sourcePrefix: string;
   build: (language: SystemLanguage) => CreateOperatorDecisionInput;
-  buildHistorical: () => readonly CreateOperatorDecisionInput[];
+  buildHistorical: () => readonly CreateOperatorDecisionInput[] | Promise<readonly CreateOperatorDecisionInput[]>;
   buildHistoricalV3: () => readonly CreateOperatorDecisionInput[];
 }) {
   const preferred = input.build(input.language);
@@ -110,8 +110,9 @@ export async function createOrReplayQaSourceDefectCard(input: {
     }
   }
   if (legacy) {
-    if (!await recoverable(legacy)) return replay(legacy, [...currentCandidates, ...input.buildHistorical()]);
-    matchingInput(legacy, [...currentCandidates, ...input.buildHistorical()]);
+    const historical = await input.buildHistorical();
+    if (!await recoverable(legacy)) return replay(legacy, [...currentCandidates, ...historical]);
+    matchingInput(legacy, [...currentCandidates, ...historical]);
   }
 
   await cleanup(preferred.requestKey);

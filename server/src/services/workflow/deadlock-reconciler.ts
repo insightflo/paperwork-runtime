@@ -7,6 +7,7 @@ import {
 } from "./dag-engine.js";
 import { loadExecutionDefinition } from "./execution-definition.js";
 import { buildPredFactsMap, buildStepRunMap } from "./reconciler-edge-helpers.js";
+import { activateStepsWithNodeFallback } from "./workflow-core-client-s5.js";
 import type { ReconciliationResult } from "./reconciler.js";
 import { hasActiveWorkflowReworkIteration } from "./rework-liveness.js";
 import {
@@ -89,10 +90,15 @@ export async function reconcileDeadlockedWorkflowRuns(
         ? new Set(getWorkflowLaunchSteps(steps, { dynamicOwnerPlan }).map((step) => step.id))
         : undefined;
 
+      // [S5] tx 밖 pass — step 활성화 판정은 Rust activate 배치 1 spawn 으로 묶고,
+      //   부재 시 Map miss 는 per-step TS 판정으로 보전한다.
+      const activationsByStepId = await activateStepsWithNodeFallback(steps, predsByStepId);
       const hasProgressCandidate = pending.some((step) => {
         const stepDef = stepById.get(step.stepId);
         if (!stepDef) return true;
-        if (!classifyStepActivation(stepDef, predsByStepId).runnable) return false;
+        const activation = activationsByStepId.get(stepDef.id)
+          ?? classifyStepActivation(stepDef, predsByStepId);
+        if (!activation.runnable) return false;
         if (step.issueId) return issueStatusById.get(step.issueId) === "todo";
         if (launchStepIds && !launchStepIds.has(stepDef.id)) return false;
         return hasConditionalEdges;
