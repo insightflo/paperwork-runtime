@@ -8,15 +8,16 @@ use std::process;
 
 /// JS-semantics shims shared by the ported normalizer (plan_graph.rs does
 /// `use crate::js::*`). Raw Value + permissive reads preserve duck-typing parity.
+#[rustfmt::skip]
 mod js {
     use serde_json::{Map, Value};
     use std::collections::HashSet;
     use std::hash::Hash;
 
-    /// String#trim domain: Unicode White_Space + U+FEFF (Rust `trim` omits the BOM).
-    pub fn js_trim(s: &str) -> &str {
-        s.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
-    }
+    /// String#trim/trimEnd domain: Unicode White_Space minus U+0085 (NEL), plus U+FEFF.
+    fn is_js_trim_char(c: char) -> bool { (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}' }
+    pub fn js_trim(s: &str) -> &str { s.trim_matches(is_js_trim_char) }
+    pub fn js_trim_end(s: &str) -> &str { s.trim_end_matches(is_js_trim_char) }
 
     /// `typeof v === "string" && v.trim() ? v.trim() : null`.
     pub fn read_string(v: &Value) -> Option<String> {
@@ -85,9 +86,104 @@ mod js {
             _ => Map::new(),
         }
     }
+
+    /// ECMA `Number::toString` for finite f64 (shortest round-trip digits via `{:e}`).
+    pub fn js_num_str(f: f64) -> String {
+        if f == 0.0 {
+            return "0".into(); // covers -0
+        }
+        let neg = f.is_sign_negative();
+        let a = f.abs();
+        let body = if a.fract() == 0.0 && a < 1e21 {
+            format!("{a:.0}")
+        } else {
+            let e = format!("{a:e}");
+            let (mant, exp) = e.split_once('e').unwrap_or((e.as_str(), "0"));
+            let digits: String = mant.chars().filter(|c| *c != '.').collect();
+            let n = exp.parse::<i32>().unwrap_or(0) + 1;
+            let k = digits.len() as i32;
+            if (k..=21).contains(&n) {
+                format!("{digits}{}", "0".repeat((n - k).max(0) as usize))
+            } else if (1..=21).contains(&n) {
+                format!("{}.{}", &digits[..n as usize], &digits[n as usize..])
+            } else if n > -6 && n <= 0 {
+                format!("0.{}{digits}", "0".repeat((-n).max(0) as usize))
+            } else if k == 1 {
+                format!("{digits}e{}{}", if n >= 1 { "+" } else { "-" }, (n - 1).abs())
+            } else {
+                let (h, t) = (&digits[..1], &digits[1..]);
+                format!("{h}.{t}e{}{}", if n >= 1 { "+" } else { "-" }, (n - 1).abs())
+            }
+        };
+        if neg {
+            format!("-{body}")
+        } else {
+            body
+        }
+    }
+
+    /// JS `ToString`; `None` models `undefined` (array elements render nullish as "").
+    pub fn js_to_string(v: Option<&Value>) -> String {
+        match v {
+            None => "undefined".into(),
+            Some(Value::Null) => "null".into(),
+            Some(Value::Bool(b)) => b.to_string(),
+            Some(Value::Number(n)) => js_num_str(n.as_f64().unwrap_or(f64::NAN)),
+            Some(Value::String(s)) => s.clone(),
+            Some(Value::Array(a)) => a
+                .iter()
+                .map(|e| {
+                    if e.is_null() {
+                        String::new()
+                    } else {
+                        js_to_string(Some(e))
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(","),
+            Some(Value::Object(_)) => "[object Object]".into(),
+        }
+    }
+
+    /// `JSON.stringify(v)` for JSON-representable input (integer-index keys sort
+    /// numerically first, non-finite numbers become null).
+    pub fn js_json_stringify(v: &Value) -> String {
+        match v {
+            Value::Null => "null".into(),
+            Value::Bool(b) => b.to_string(),
+            Value::Number(n) => n
+                .as_f64()
+                .filter(|f| f.is_finite())
+                .map_or_else(|| "null".into(), js_num_str),
+            Value::String(s) => serde_json::to_string(s).unwrap_or_else(|_| "\"\"".into()),
+            Value::Array(a) => {
+                format!("[{}]", a.iter().map(js_json_stringify).collect::<Vec<_>>().join(","))
+            }
+            Value::Object(m) => {
+                let mut e: Vec<(&String, &Value)> = m.iter().collect();
+                e.sort_by_key(|(k, _)| array_index_key(k).map(|i| (0, i)).unwrap_or((1, 0)));
+                let parts = e.iter().map(|(k, v)| {
+                    format!("{}:{}", js_json_stringify(&Value::String((*k).clone())), js_json_stringify(v))
+                });
+                format!("{{{}}}", parts.collect::<Vec<_>>().join(","))
+            }
+        }
+    }
+
+    /// JS "integer index" key: canonical u32 decimal below 2^32 - 1.
+    fn array_index_key(k: &str) -> Option<u64> {
+        k.parse::<u64>()
+            .ok()
+            .filter(|n| *n < 4_294_967_295 && n.to_string() == k)
+    }
 }
 
 mod agent_role_boundaries;
+// Deliberately hand-compacted to honor the file line caps.
+#[rustfmt::skip]
+mod artifact_contract;
+#[rustfmt::skip]
+mod delivery_verification;
 // Deliberately hand-compacted to honor the 300-line file limit.
 #[rustfmt::skip]
 mod plan_graph;
@@ -159,6 +255,9 @@ fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
             structural_materialization::dispatch(s, raw)
         }
         s if structural_topology::SUBCOMMANDS.contains(&s) => structural_topology::dispatch(s, raw),
+        s if delivery_verification::SUBCOMMANDS.contains(&s) => {
+            delivery_verification::dispatch(s, raw)
+        }
         _ => quality_contract::dispatch(subcommand, raw),
     }
 }
@@ -168,6 +267,7 @@ fn run() -> Result<(), String> {
     let Some(subcommand) = args.first().map(String::as_str) else {
         let subs = [
             agent_role_boundaries::SUBCOMMANDS,
+            delivery_verification::SUBCOMMANDS,
             quality_contract::SUBCOMMANDS,
             revision_reuse::SUBCOMMANDS,
             structural_materialization::SUBCOMMANDS,

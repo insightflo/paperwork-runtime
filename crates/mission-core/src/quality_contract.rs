@@ -2,7 +2,7 @@
 //! Dynamic reads mirror JS property/iteration/template semantics (crate::js
 //! supplies trim/truthiness). Err(_) mirrors TS TypeError throws.
 //! Verbatim string constants/line builders live in crate::quality_contract_lines.
-use crate::js::{js_trim, js_truthy};
+use crate::js::{js_trim, js_trim_end, js_truthy};
 use crate::quality_contract_lines as qcl;
 use serde_json::{json, Map, Value};
 
@@ -277,10 +277,10 @@ pub fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
                     .unwrap_or(false)
             ))),
         },
-        "verification-criteria" => Ok(json!(qcl::verification_gate_lines(false)
-            .join("\n")
-            .trim_end_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
-            .to_string())),
+        "verification-criteria" => Ok(json!(js_trim_end(
+            &qcl::verification_gate_lines(false).join("\n")
+        )
+        .to_string())),
         "render-structural-gate-lines" => Ok(json!(qcl::structural_gate_lines())),
         "quality-contract-constants" => Ok(json!({
             "EVIDENCE_CHAIN_FORMAT": qcl::EVIDENCE_CHAIN_FORMAT,
