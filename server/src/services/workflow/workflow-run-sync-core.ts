@@ -27,7 +27,7 @@ import { isHeartbeatFinalizationV1Enabled } from "../heartbeat-finalization/flag
 import { TERMINAL_WORKFLOW_STATUSES } from "../missions/mission-runtime-manager.js";
 import { logActivity } from "../activity-log.js";
 import { logger } from "../../middleware/logger.js";
-import { classifyStepActivation, workflowHasConditionalEdges } from "./control-flow/edge-condition.js";
+import { classifyStepActivation, workflowHasConditionalEdges, type StepActivation } from "./control-flow/edge-condition.js";
 import { applyBackEdgeReworkPass } from "./control-flow/loop-driver.js";
 import { cancelResolvedQaSourceDefectOwnerCards } from "./qa-source-defect-owner-card.js";
 import { closeResolvedWorkflowUnblocks } from "./resolved-unblock-closeout.js";
@@ -53,6 +53,7 @@ import { syncStepRunsFromIssueState } from "./workflow-issue-state-sync.js";
 import { readWorkflowToolCorrection } from "./workflow-tool-correction.js";
 import { applyConditionalSkipPropagation } from "./workflow-conditional-skip.js";
 import { findRunnableStepsWithNodeFallback } from "./workflow-core-client.js";
+import { activateStepsWithNodeFallback } from "./workflow-core-client-s5.js";
 import { cancelOutstandingWorkflowIssues } from "./workflow-cancellation.js";
 import { startIssueLessToolStepRun } from "./workflow-tool-start.js";
 import type { WorkflowExecutionContext } from "./dag-engine.js";
@@ -354,11 +355,17 @@ async function syncWorkflowRunStateCore(
     // [B2 사실망 통일] revive 도 launch 와 동일한 v1 정책 스냅샷을 소비한다 — launch 가 dispatch_ready_at
     //   대기로 미기동하는 선행을 revive 가 먼저 부활시키지 않는다(같은 평가에서 같은 사실).
     let revivePredsByStepId = buildPredFactsMap(context.steps, reviveRunMap, validationVerdictsByIssueId, v1Enforcement, issueStatusByIssueId);
+    // [S5] tx 밖 pass — 부활 판정은 Rust activate 배치로 묶는다(첫 후보에서 lazy 1 spawn). 부활로 preds 가
+    //   재구축되면 배치를 함께 무효화해 다음 후보에서 신선하게 재계산한다(stale 판정 방지 — 부활된 선행이
+    //   pending 이 되면 always/failure edge 판정이 달라진다). Map miss 만 per-step TS 판정으로 보전한다.
+    let reviveActivations: Map<string, StepActivation> | null = null;
     let revivedAny = false;
     for (const step of context.steps) {
       const sr = reviveRunMap.get(step.id);
       if (!sr || sr.status !== "skipped" || normalizeRecord(sr.metadata).controlFlowSkipped !== true) continue;
-      if (!classifyStepActivation(step, revivePredsByStepId).runnable) continue;
+      reviveActivations ??= await activateStepsWithNodeFallback(context.steps, revivePredsByStepId);
+      const activation = reviveActivations.get(step.id) ?? classifyStepActivation(step, revivePredsByStepId);
+      if (!activation.runnable) continue;
       const nextMetadata = { ...buildWorkflowStepRunMetadata(step, sr.metadata), controlFlowSkipped: false };
       const result = await reviveConditionalSkip(db, {
         observedRun: context.run,
@@ -404,6 +411,7 @@ async function syncWorkflowRunStateCore(
         v1Enforcement,
         issueStatusByIssueId,
       );
+      reviveActivations = null;
     }
     if (revivedAny) {
       stepRuns = await db.select().from(workflowStepRuns).where(eq(workflowStepRuns.workflowRunId, runId));

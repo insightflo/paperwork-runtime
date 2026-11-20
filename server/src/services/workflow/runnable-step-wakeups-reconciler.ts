@@ -15,6 +15,7 @@ import {
 } from "./dag-engine.js";
 import { loadExecutionDefinition } from "./execution-definition.js";
 import { buildPredFactsMap, buildStepRunMap } from "./reconciler-edge-helpers.js";
+import { activateStepsWithNodeFallback } from "./workflow-core-client-s5.js";
 import type { ReconciliationResult } from "./reconciler.js";
 import { hasActiveWorkflowReworkIteration } from "./rework-liveness.js";
 import { lifecycleInFlightClause } from "../heartbeat-finalization/lifecycle-active.js";
@@ -68,13 +69,18 @@ export async function reconcileRunnableWorkflowStepWakeups(
         : [];
       const issueStatusById = new Map(linkedIssueRows.map((issue) => [issue.id, issue.status]));
 
+      // [S5] tx 밖 pass — step 활성화 판정은 Rust activate 배치 1 spawn 으로 묶고,
+      //   부재 시 Map miss 는 per-step TS 판정으로 보전한다.
+      const activationsByStepId = await activateStepsWithNodeFallback(steps, predsByStepId);
       for (const stepRun of pending) {
         if (!stepRun.issueId) continue;
         if (issueStatusById.get(stepRun.issueId) !== "todo") continue;
         const step = stepById.get(stepRun.stepId);
         if (!step) continue;
         if (launchStepIds && !launchStepIds.has(step.id)) continue;
-        if (!classifyStepActivation(step, predsByStepId).runnable) continue;
+        const activation = activationsByStepId.get(step.id)
+          ?? classifyStepActivation(step, predsByStepId);
+        if (!activation.runnable) continue;
         // [finding 1] The generic runnable-step wakeup reconciler must never
         // bypass retry delay/fresh-session/idempotency. ANY workflowRetry
         // metadata (valid waiting/dispatching, due, or malformed) is owned by

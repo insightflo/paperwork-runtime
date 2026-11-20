@@ -8,7 +8,8 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { issues, workflowTransitionEvents } from "@paperclipai/db";
-import { classifyStepActivation, resolveEdges, type EdgeBearingStep, type PredFacts, type PredStatus } from "../workflow/control-flow/edge-condition.js";
+import { classifyStepActivation, resolveEdges, type EdgeBearingStep, type PredFacts, type PredStatus, type StepActivation } from "../workflow/control-flow/edge-condition.js";
+import { activateStepsWithNodeFallback } from "../workflow/workflow-core-client-s5.js";
 import { workflowControlNodeResultSchema } from "@paperclipai/shared";
 import { isQaLikeStep } from "../workflow-step-role.js";
 import { isStepRunAwaitingRetry } from "../workflow/retry-policy.js";
@@ -27,6 +28,8 @@ export type WorkflowContinuationStepRow = {
   stepRun: WorkflowContinuationStepRun;
   run: { id: string };
   definition: { stepsJson: unknown };
+  /** activateWorkflowContinuationStepRows 가 스탬프한 배치 활성화 판정 — 있으면 우선 소비. */
+  stepActivation?: StepActivation;
 };
 
 export type WorkflowContinuationVerdict =
@@ -130,16 +133,21 @@ export function missionWorkflowContinuationRemains(
   stepRows: readonly WorkflowContinuationStepRow[],
   options: { validationVerdictsByIssueId?: Map<string, ValidationVerdictObservation> } = {},
 ): WorkflowContinuationVerdict {
-  const byRun = new Map<string, { steps: StepLike[]; runByStepId: Map<string, WorkflowContinuationStepRun> }>();
+  const byRun = new Map<string, {
+    steps: StepLike[];
+    runByStepId: Map<string, WorkflowContinuationStepRun>;
+    activationByStepId: Map<string, StepActivation>;
+  }>();
   for (const row of stepRows) {
     const parsed = readSteps(row.definition.stepsJson);
     if (parsed.malformed) return continuation(`uncertain:malformed-steps-json:run:${row.run.id}`);
     let entry = byRun.get(row.run.id);
     if (!entry) {
-      entry = { steps: [], runByStepId: new Map() };
+      entry = { steps: [], runByStepId: new Map(), activationByStepId: new Map() };
       byRun.set(row.run.id, entry);
     }
     entry.runByStepId.set(row.stepRun.stepId, row.stepRun);
+    if (row.stepActivation) entry.activationByStepId.set(row.stepRun.stepId, row.stepActivation);
     for (const step of parsed.steps) {
       if (!entry.steps.some((existing) => existing.id === step.id)) entry.steps.push(step);
     }
@@ -173,7 +181,8 @@ export function missionWorkflowContinuationRemains(
         continue; // malformed retry metadata → not live; eligible for terminal evaluation
       }
       // pending: evaluate authority(failure/always/IF/qa edges). runnable or waiting → continuation.
-      const activation = classifyStepActivation(step, preds);
+      //   [S5] 스탬프된 배치 판정을 우선 소비 — 미스탬프 호출자(테스트·비스탬프 경로)는 TS 판정.
+      const activation = entry.activationByStepId.get(step.id) ?? classifyStepActivation(step, preds);
       if (activation.runnable) return continuation(`runnable-step:run:${runId}:step:${step.id}`);
       if (activation.waiting) return continuation(`waiting-step:run:${runId}:step:${step.id}`);
       // pending but skippable(unreachable) → not continuation from this step
@@ -184,3 +193,39 @@ export function missionWorkflowContinuationRemains(
 
 // 회귀 테스트/디버그용 edge 전개 노출(export). engine export 를 그대로 re-export 해 중복 구현을 피한다.
 export { resolveEdges as resolveWorkflowEdges };
+
+// [목적] missionWorkflowContinuationRemains 의 step 활성화 판정을 Rust activate 배치(1 spawn/run)
+//   로 미리 계산해 각 stepRow 의 stepActivation 에 스탬프한다 — 동기 호출 체인
+//   (classifyTerminalMissionContinuation → missionWorkflowContinuationRemains)을 그대로 유지하면서
+//   서브프로세스 스폰만 이 async 경계로 끌어올린다. 호출자는 db.transaction 밖이어야 한다(F4).
+//   그루핑·preds 구성은 remains 와 동일 로직을 공유해 판정 입력이 갈리지 않게 한다.
+//   Rust 게이트가 닫혀 있어도 runWithNodeFallback 이 TS 판정을 스탬프하므로 어느 팔이든 결과 동일.
+//   malformed row 가 하나라도 있으면 스탬프 없이 그대로 반환 — remains 가 같은 이유로 fail-closed.
+export async function activateWorkflowContinuationStepRows(
+  stepRows: readonly WorkflowContinuationStepRow[],
+  options: { validationVerdictsByIssueId?: Map<string, ValidationVerdictObservation> } = {},
+): Promise<readonly WorkflowContinuationStepRow[]> {
+  const byRun = new Map<string, { steps: StepLike[]; runByStepId: Map<string, WorkflowContinuationStepRun> }>();
+  for (const row of stepRows) {
+    const parsed = readSteps(row.definition.stepsJson);
+    if (parsed.malformed) return stepRows;
+    let entry = byRun.get(row.run.id);
+    if (!entry) {
+      entry = { steps: [], runByStepId: new Map() };
+      byRun.set(row.run.id, entry);
+    }
+    entry.runByStepId.set(row.stepRun.stepId, row.stepRun);
+    for (const step of parsed.steps) {
+      if (!entry.steps.some((existing) => existing.id === step.id)) entry.steps.push(step);
+    }
+  }
+  const activationsByRunId = new Map<string, Map<string, StepActivation>>();
+  for (const [runId, entry] of byRun) {
+    const preds = buildPredsByStepId(entry.steps, entry.runByStepId, options.validationVerdictsByIssueId);
+    activationsByRunId.set(runId, await activateStepsWithNodeFallback(entry.steps, preds));
+  }
+  return stepRows.map((row) => {
+    const activation = activationsByRunId.get(row.run.id)?.get(row.stepRun.stepId);
+    return activation ? { ...row, stepActivation: activation } : row;
+  });
+}
