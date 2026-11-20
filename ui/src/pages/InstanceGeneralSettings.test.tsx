@@ -4,14 +4,19 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
   InstanceGeneralSettings,
+  createNewProviderRow,
+  toLlmStructuredProvidersDraft,
+  toLlmStructuredProvidersPatch,
   toGeneralPatch,
   toJudgmentDraft,
   toLlmStructuredDraft,
   toLlmStructuredPatch,
 } from "./InstanceGeneralSettings";
 
+import type { InstanceGeneralSettings as GeneralSettings } from "@paperclipai/shared";
+
 const { queryData } = vi.hoisted(() => ({
-  queryData: vi.fn(() => ({ censorUsernameInLogs: false, llmStructuredApiKeyConfigured: false })),
+  queryData: vi.fn((): GeneralSettings => ({ censorUsernameInLogs: false, llmStructuredApiKeyConfigured: false })),
 }));
 
 vi.mock("@tanstack/react-query", () => ({
@@ -103,20 +108,65 @@ describe("toLlmStructuredPatch", () => {
 
 describe("InstanceGeneralSettings structured LLM section", () => {
   it.each([false, true])("renders the correct controls when key configured is %s", (configured) => {
-    queryData.mockReturnValueOnce({ censorUsernameInLogs: false, llmStructuredApiKeyConfigured: configured });
+    queryData.mockReturnValueOnce({ censorUsernameInLogs: false, llmStructuredProviders: [
+      { id: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", apiKeyConfigured: configured },
+    ], llmStructuredDefaultProviderId: "openai" });
     const html = renderToStaticMarkup(<InstanceGeneralSettings />);
     const title = "Structured LLM connection (1-shot API)";
     expect(html).toContain(title);
     expect(html.indexOf(title)).toBeGreaterThan(html.indexOf("Judgment connection"));
-    expect(html).toContain('id="llm-structured-base-url"');
-    expect(html).toContain('id="llm-structured-model"');
-    const keyInput = html.match(/<input\b[^>]*\bid="llm-structured-api-key"[^>]*>/)?.[0];
+    expect(html).toContain("Base URL");
+    expect(html).toContain("Model");
+    expect(html).toContain('aria-pressed="true"');
+    const keyInput = html.match(/<input\b[^>]*\btype="password"[^>]*>/)?.[0];
     expect(keyInput).toContain('type="password"');
     expect(keyInput).toContain('autoComplete="new-password"');
-    expect(html).toContain("Save structured LLM connection");
-    expect(html.includes("Clear saved key")).toBe(configured);
-    expect(html).toContain(configured ? "API Key 등록됨" : "API Key 미등록");
+    expect(html).toContain("Save structured LLM providers");
+    expect(html.includes("Clear key")).toBe(configured);
+    expect(html).toContain(configured ? "키 등록됨" : "키 미등록");
+    expect(html).toContain("+ 공급자 추가");
+    expect(html).toMatch(/<button\b[^>]*>연결 테스트 · 모델 조회<\/button>/);
     expect(html).toContain(configured ? "비워두면 기존 키 유지" : 'placeholder="sk-..."');
+  });
+});
+
+describe("structured provider drafts", () => {
+  it.each([
+    ["deepseek", "DeepSeek", "https://api.deepseek.com/v1", "deepseek-chat"],
+    ["zai", "Z.AI", "https://api.z.ai/api/paas/v4", "glm-4.7"],
+    ["openai", "OpenAI", "https://api.openai.com/v1", "gpt-4o-mini"],
+    ["custom", "Custom", "", ""],
+  ] as const)("creates a unique valid row for %s", (preset, name, baseUrl, model) => {
+    const row = createNewProviderRow(preset, [preset, `${preset}-2`]);
+    expect(row).toEqual({ id: `${preset}-3`, name, baseUrl, model, apiKey: "", apiKeyConfigured: false, clearApiKey: false });
+    expect(row.id).toMatch(/^[a-zA-Z0-9._-]+$/);
+  });
+
+  it("hydrates only public fields, preserves a blank key, and patches replacement and cleared keys", () => {
+    const saved = { id: "saved", name: "Saved", baseUrl: "https://example.com/v1", apiKeyConfigured: true, apiKey: "not copied" };
+    const [row] = toLlmStructuredProvidersDraft({ llmStructuredProviders: [saved] });
+    expect(row).toEqual({ ...saved, apiKey: "", model: "", clearApiKey: false });
+    const renamed = { ...row, name: " Renamed ", apiKey: "  " };
+    expect(toLlmStructuredProvidersPatch([renamed], row.id)).toEqual({
+      llmStructuredProviders: [{ id: row.id, name: "Renamed", baseUrl: row.baseUrl, model: null }],
+      llmStructuredDefaultProviderId: row.id,
+    });
+    expect(toLlmStructuredProvidersPatch([{ ...renamed, apiKey: " replacement " }]).llmStructuredProviders)
+      .toMatchObject([{ apiKey: "replacement" }]);
+    expect(toLlmStructuredProvidersPatch([{ ...renamed, apiKey: "replacement", clearApiKey: true }]).llmStructuredProviders)
+      .toMatchObject([{ apiKey: null }]);
+    expect(toLlmStructuredProvidersPatch([createNewProviderRow()], row.id)).toMatchObject({
+      llmStructuredProviders: [{ id: "custom" }], llmStructuredDefaultProviderId: null,
+    });
+  });
+
+  it("keeps legacy settings visible without pretending the legacy key belongs to a new provider", () => {
+    queryData.mockReturnValueOnce({ censorUsernameInLogs: false, llmStructuredBaseUrl: "https://legacy.example/v1",
+      llmStructuredApiKeyConfigured: true });
+    const html = renderToStaticMarkup(<InstanceGeneralSettings />);
+    expect(html).toContain("https://legacy.example/v1");
+    expect(html).toContain("키 등록됨");
+    expect(html).not.toContain('type="password"');
   });
 });
 

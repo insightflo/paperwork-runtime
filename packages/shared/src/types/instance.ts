@@ -1,3 +1,19 @@
+export interface LlmStructuredProvider {
+  id: string;
+  name: string;
+  baseUrl: string;
+  model?: string;
+  readonly apiKeyConfigured: boolean;
+}
+
+export interface LlmStructuredConnectionTestResult {
+  ok: boolean;
+  statusCode?: number;
+  latencyMs: number;
+  models: string[];
+  error?: string;
+}
+
 export interface InstanceGeneralSettings {
   censorUsernameInLogs: boolean;
   /** 판단(Jev) 엔드포인트 오버라이드. 미설정(undefined)이면 기본값 사용. */
@@ -7,6 +23,8 @@ export interface InstanceGeneralSettings {
   llmStructuredBaseUrl?: string;
   llmStructuredModel?: string;
   readonly llmStructuredApiKeyConfigured?: boolean;
+  llmStructuredProviders?: LlmStructuredProvider[];
+  llmStructuredDefaultProviderId?: string;
 }
 
 export interface InstanceExperimentalSettings {

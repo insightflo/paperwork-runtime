@@ -10,6 +10,8 @@ import {
   type InstanceSettings,
   type PatchInstanceExperimentalSettings,
 } from "@paperclipai/shared";
+import type { LlmStructuredConnectionTestResult } from "@paperclipai/shared/types/instance";
+import { llmStructuredProviderFieldsSchema, type LlmStructuredTestConnectionInput } from "@paperclipai/shared/validators/instance";
 import { eq } from "drizzle-orm";
 import { localEncryptedProvider } from "../secrets/local-encrypted-provider.js";
 import type { StoredSecretVersionMaterial } from "../secrets/types.js";
@@ -26,12 +28,29 @@ function hasEncryptedMaterial(value: unknown): value is { material: StoredSecret
     "ciphertext" in material && typeof material.ciphertext === "string";
 }
 
+function readProviders(raw: unknown) {
+  return Array.isArray(raw) ? raw.flatMap((entry: unknown) => {
+    const parsed = llmStructuredProviderFieldsSchema.safeParse(entry);
+    if (!parsed.success) return [];
+    const { model, ...fields } = parsed.data;
+    const { apiKeyEncrypted } = entry as Record<string, unknown>;
+    return [{ ...fields, ...(model ? { model } : {}), apiKeyEncrypted }];
+  }) : undefined;
+}
+
+async function resolveKey(encrypted: unknown) {
+  if (!hasEncryptedMaterial(encrypted)) return undefined;
+  return localEncryptedProvider.resolveVersion({ material: encrypted.material, externalRef: null }).catch(() => undefined);
+}
+
 function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
   const source = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const baseUrl = judgmentBaseUrlSchema.safeParse(source.judgmentBaseUrl);
   const modelId = judgmentModelIdSchema.safeParse(source.judgmentModelId);
   const llmBaseUrl = judgmentBaseUrlSchema.safeParse(source.llmStructuredBaseUrl);
   const llmModel = judgmentModelIdSchema.safeParse(source.llmStructuredModel);
+  const providers = readProviders(source.llmStructuredProviders);
+  const defaultProvider = providers?.find(({ id }) => id === source.llmStructuredDefaultProviderId);
   // 필드 단위 검증: 한 필드가 손상되어도 다른 필드(예: censorUsernameInLogs)까지
   // 기본값으로 되돌리지 않는다. null/불량값은 해당 오버라이드만 뺀다.
   return {
@@ -41,6 +60,10 @@ function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
     ...(llmBaseUrl.success && llmBaseUrl.data !== null ? { llmStructuredBaseUrl: llmBaseUrl.data } : {}),
     ...(llmModel.success && llmModel.data !== null ? { llmStructuredModel: llmModel.data } : {}),
     llmStructuredApiKeyConfigured: hasEncryptedMaterial(source.llmStructuredApiKeyEncrypted),
+    ...(providers ? { llmStructuredProviders: providers.map(({ apiKeyEncrypted, ...fields }) => ({
+      ...fields, apiKeyConfigured: hasEncryptedMaterial(apiKeyEncrypted),
+    })) } : {}),
+    ...(defaultProvider ? { llmStructuredDefaultProviderId: defaultProvider.id } : {}),
   };
 }
 
@@ -142,19 +165,61 @@ export function instanceSettingsService(db: Db) {
       return normalizeGeneralSettings(row.general);
     },
 
-    getLlmStructuredRuntimeConfig: async (): Promise<{ baseUrl?: string; model?: string; apiKey?: string }> => {
+    getLlmStructuredRuntimeConfig: async (providerId?: string): Promise<{ baseUrl?: string; model?: string; apiKey?: string }> => {
       const { general } = await getOrCreateRow();
-      const { llmStructuredBaseUrl: baseUrl, llmStructuredModel: model } = normalizeGeneralSettings(general);
-      const encrypted = general.llmStructuredApiKeyEncrypted;
-      let apiKey: string | undefined;
-      if (hasEncryptedMaterial(encrypted)) {
-        try {
-          apiKey = await localEncryptedProvider.resolveVersion({ material: encrypted.material, externalRef: null });
-        } catch {
-          // An unreadable optional key must not discard the non-secret defaults.
-        }
+      const providers = readProviders(general.llmStructuredProviders);
+      const selectedId = providerId ?? general.llmStructuredDefaultProviderId ?? providers?.[0]?.id;
+      const provider = providers?.find(({ id }) => id === selectedId);
+      if (provider) {
+        return { baseUrl: provider.baseUrl, model: provider.model, apiKey: await resolveKey(provider.apiKeyEncrypted) };
       }
-      return { baseUrl, model, apiKey };
+      const { llmStructuredBaseUrl: baseUrl, llmStructuredModel: model } = normalizeGeneralSettings(general);
+      return { baseUrl, model, apiKey: await resolveKey(general.llmStructuredApiKeyEncrypted) };
+    },
+
+    testLlmStructuredConnection: async (
+      input: LlmStructuredTestConnectionInput, deps?: { fetchImpl?: typeof fetch },
+    ): Promise<LlmStructuredConnectionTestResult> => {
+      let apiKey = input.apiKey?.trim();
+      if (!apiKey) {
+        const { general } = await getOrCreateRow();
+        const encrypted = input.providerId === undefined ? general.llmStructuredApiKeyEncrypted
+          : readProviders(general.llmStructuredProviders)?.find(({ id }) => id === input.providerId)?.apiKeyEncrypted;
+        apiKey = await resolveKey(encrypted);
+      }
+      if (!apiKey) return { ok: false, latencyMs: 0, models: [], error: "api_key_required" };
+      const start = performance.now();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10_000);
+      let statusCode: number | undefined;
+      const result = (models: string[], error?: string) => ({
+        ok: !error, statusCode, latencyMs: Math.round(performance.now() - start), models, ...(error ? { error } : {}),
+      });
+      try {
+        const response = await (deps?.fetchImpl ?? fetch)(`${input.baseUrl.replace(/\/$/, "")}/models`, {
+          method: "GET", headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+          signal: controller.signal, redirect: "error",
+        });
+        statusCode = response.status;
+        if (!response.ok) {
+          void response.body?.cancel().catch(() => undefined);
+          return result([], "upstream_http_error");
+        }
+        const payload = await response.json();
+        const entries = Array.isArray(payload) ? payload : payload?.data ?? payload?.models;
+        if (!Array.isArray(entries)) return result([], "invalid_models_response");
+        const models = new Set<string>();
+        for (const entry of entries) {
+          const value = typeof entry === "string" ? entry : entry?.id ?? entry?.name;
+          if (typeof value === "string" && value.trim() && !value.includes(apiKey)) models.add(value.trim());
+        }
+        return result([...models].sort().slice(0, 200));
+      } catch (err) {
+        return result([], controller.signal.aborted ? "timeout" : err instanceof SyntaxError && statusCode !== undefined
+          ? "invalid_models_response" : "network_error");
+      } finally {
+        clearTimeout(timer);
+      }
     },
 
     getExperimental: async (): Promise<InstanceExperimentalSettings> => {
@@ -175,11 +240,21 @@ export function instanceSettingsService(db: Db) {
       } else if (patch.llmStructuredApiKey === undefined && Object.hasOwn(current.general, "llmStructuredApiKeyEncrypted")) {
         nextGeneral.llmStructuredApiKeyEncrypted = current.general.llmStructuredApiKeyEncrypted;
       }
+      const existing = readProviders(current.general.llmStructuredProviders);
+      if (patch.llmStructuredProviders !== undefined) {
+        nextGeneral.llmStructuredProviders = await Promise.all(patch.llmStructuredProviders.map(async ({ apiKey, ...fields }) => {
+          const encrypted = apiKey === undefined ? existing?.find(({ id }) => id === fields.id)?.apiKeyEncrypted
+            : apiKey === null ? undefined : { material: (await localEncryptedProvider.createVersion({ value: apiKey, externalRef: null })).material };
+          return { ...fields, ...(hasEncryptedMaterial(encrypted) ? { apiKeyEncrypted: encrypted } : {}) };
+        }));
+      } else if (existing) {
+        nextGeneral.llmStructuredProviders = existing;
+      }
       const now = new Date();
       const [updated] = await db
         .update(instanceSettings)
         .set({
-          general: { ...nextGeneral },
+          general: nextGeneral,
           updatedAt: now,
         })
         .where(eq(instanceSettings.id, current.id))

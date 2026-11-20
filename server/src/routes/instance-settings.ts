@@ -1,6 +1,7 @@
 import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
 import { patchInstanceExperimentalSettingsSchema, patchInstanceGeneralSettingsSchema } from "@paperclipai/shared";
+import { llmStructuredTestConnectionSchema } from "@paperclipai/shared/validators/instance";
 import { forbidden } from "../errors.js";
 import { validate } from "../middleware/validate.js";
 import { instanceSettingsService, logActivity } from "../services/index.js";
@@ -52,6 +53,15 @@ export function instanceSettingsRoutes(db: Db) {
         ),
       );
       res.json(updated.general);
+    },
+  );
+
+  router.post(
+    "/instance/settings/general/llm-structured/test",
+    validate(llmStructuredTestConnectionSchema),
+    async (req, res) => {
+      assertCanManageInstanceSettings(req);
+      res.json(await svc.testLlmStructuredConnection(req.body));
     },
   );
 
