@@ -1,7 +1,8 @@
 //! [파일 목적] 서브커맨드 디스패치 테이블 — stdin JSON → Value 응답. main.rs 가
 //!   300줄 상한에 걸려 Stage 7A 에서 본 모듈로 분리했다(입력 struct·dispatch·테스트 포함).
 //! [외부 연결] 각 Stage 모듈(readiness/render/retry_batch/condition_eval/artifact_refs/
-//!   structural_gate)의 `pub fn(raw)->Result<Value,String>` 핸들러를 매칭하고,
+//!   structural_gate/resume_*/definition_step_validation/run_input_derivations)의
+//!   `pub fn(raw)->Result<Value,String>` 핸들러를 매칭하고,
 //!   edge_step/pred_facts_map 헬퍼는 crate root(main.rs)의 것을 공유한다.
 
 use crate::{edge_step, pred_facts_map};
@@ -184,6 +185,20 @@ pub fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
         "forward-reachable" => crate::resume_graph::forward_reachable(raw),
         "normalize-step-contract" => crate::resume_graph::normalize_step_contract(raw),
         "normalize-step-machine-checks" => crate::resume_graph::normalize_step_machine_checks(raw),
+        "validate-definition-steps" => {
+            crate::definition_step_validation::validate_definition_steps(raw)
+        }
+        "definition-step-warnings" => {
+            crate::definition_step_validation::definition_step_warnings(raw)
+        }
+        "summarize-step-warnings" => {
+            crate::definition_step_validation::summarize_step_warnings(raw)
+        }
+        "extract-youtube-video-id" => crate::run_input_derivations::extract_youtube_id(raw),
+        "validate-run-input-declarations" => crate::run_input_derivations::validate_run_inputs(raw),
+        "apply-run-input-derivations" => {
+            crate::run_input_derivations::apply_run_input_derivations(raw)
+        }
         _ => Err(format!("unknown subcommand: {subcommand}")),
     }
 }
@@ -252,6 +267,18 @@ mod tests {
         eq("check-step-eligibility", r#"{"history":{"status":"pending","kind":"agent","effect":"none","issueId":null,"startedAt":null,"hasAttempt":false,"hasQueue":false,"hasExternalResult":false}}"#, r#"{"blocker":null}"#);
         eq("sort-steps-by-priority", r#"{"steps":[{"id":"a","executionControls":{"priority":"low"}},{"id":"b","executionControls":{"priority":"critical"}},{"id":"c"}]}"#, r#"{"steps":[{"id":"b","executionControls":{"priority":"critical"}},{"id":"a","executionControls":{"priority":"low"}},{"id":"c"}]}"#);
         eq("sort-steps-by-priority", r#"{"steps":"ba"}"#, r#"{"steps":["b","a"]}"#);
+    }
+
+    #[test]
+    fn stage8c_subcommands_dispatch() {
+        eq("extract-youtube-video-id", r#"{"value":"see https://youtu.be/ABCDEFGHIJK?t=1"}"#, r#"{"videoId":"ABCDEFGHIJK"}"#);
+        eq("validate-run-input-declarations", r#"{"runInputs":[{"key":"a"}]}"#, r#"{"ok":true}"#);
+        // keySchema 는 [A-Za-z0-9_] — 하이픈은 zod union 전부 실패.
+        assert!(dispatch("validate-run-input-declarations", br#"{"runInputs":[{"key":"a-b"}]}"#).is_err());
+        eq("apply-run-input-derivations", r#"{"runInputs":[{"key":"v","deriveFrom":{"input":"u","extract":"youtubeVideoId"}}],"metadata":{"u":"youtu.be/ABCDEFGHIJK"}}"#, r#"{"status":"ok","metadata":{"u":"youtu.be/ABCDEFGHIJK","v":"ABCDEFGHIJK"}}"#);
+        eq("validate-definition-steps", r#"{"steps":[{"id":"a"}]}"#, r#"{"ok":true}"#);
+        eq("definition-step-warnings", r#"{"steps":[{"id":"a","toolArgs":"{$steps.b.workProductPath}"},{"id":"b"}]}"#, r#"{"warnings":[]}"#);
+        eq("summarize-step-warnings", r#"{"warnings":[{"kind":"k","stepId":"s","referencedStepId":"r","message":"m"}]}"#, r#"{"summary":[{"kind":"k","stepId":"s","referencedStepId":"r"}]}"#);
     }
 
     #[test]
