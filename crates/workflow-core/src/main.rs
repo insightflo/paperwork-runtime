@@ -20,6 +20,7 @@ use std::process;
 ///   IF 조건 평가, retry_batch: 재시도 배치 판정·패치, render: tool-arg, readiness: 게이트.
 mod condition_eval;
 mod js_value;
+mod qa_defect_card;
 mod readiness;
 mod render;
 mod render_path;
@@ -216,20 +217,25 @@ fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
     }
 }
 
+/// qa-defect-card-historical 은 lone surrogate 문자열을 낼 수 있어 Value 직렬화를 우회해
+///   직접 JSON 텍스트를 받는다; 나머지 서브커맨드는 Value 경로.
+fn dispatch_text(subcommand: &str, raw: &[u8]) -> Result<String, String> {
+    if subcommand == "qa-defect-card-historical" {
+        return qa_defect_card::historical_card(raw);
+    }
+    dispatch(subcommand, raw).and_then(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+}
+
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
     let Some(subcommand) = args.first().map(String::as_str) else {
         return Err(
-            "usage: paperclip-workflow-core <normalize-policy|calculate-delay|classify-retry|classify-retry-batch|sanitize-error|append-attempt|read-metadata|is-due|validate-dag|has-disallowed-cycle|classify-activation|find-skippable|runnable-steps|skippable-steps|activate|render-tool-args|evaluate-conditions>"
+            "usage: paperclip-workflow-core <normalize-policy|calculate-delay|classify-retry|classify-retry-batch|sanitize-error|append-attempt|read-metadata|is-due|validate-dag|has-disallowed-cycle|classify-activation|find-skippable|runnable-steps|skippable-steps|activate|render-tool-args|evaluate-conditions|qa-defect-card-historical>"
                 .to_string(),
         );
     };
     let raw = read_stdin_bounded(MAX_STDIN_BYTES)?;
-    let out = dispatch(subcommand, &raw)?;
-    println!(
-        "{}",
-        serde_json::to_string(&out).map_err(|e| e.to_string())?
-    );
+    println!("{}", dispatch_text(subcommand, &raw)?);
     Ok(())
 }
 
