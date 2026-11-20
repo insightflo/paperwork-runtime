@@ -51,21 +51,23 @@ function readVerifyReceiptReferences(step: WorkflowArgStep, consumerArtifactCont
   return new Set(Array.from(references).filter(id => receiptRefs.has(id)));
 }
 
-export const resolveWorkflowToolStepArgs = withSelectedInputTransaction(async (input: {
+export type ToolStepArgsResolutionInput = {
   db: Db;
   run: WorkflowArgRun;
   step: WorkflowArgStep;
   workflowSteps: WorkflowArgStep[];
   consumerStepRunId?: string | null;
   consumerArtifactContract?: unknown;
-}): Promise<unknown> => {
+};
+
+export type ResolvedToolStepArgValues = Parameters<typeof renderWorkflowToolStepArgsWithResolvedValues>[0];
+
+export const resolveWorkflowToolStepArgValuesBody = async (input: ToolStepArgsResolutionInput): Promise<ResolvedToolStepArgValues> => {
   const args = input.step.toolArgs ?? {};
   const runMetadata = input.run.metadata ?? {};
   const references = collectArtifactReferences(args);
   if (references.size === 0) {
-    return renderWorkflowToolStepArgsWithResolvedValues({
-      args, runDate: input.run.runDate ?? "", runId: input.run.id, pathsByStepId: new Map(), runMetadata,
-    });
+    return { args, runDate: input.run.runDate ?? "", runId: input.run.id, pathsByStepId: new Map(), runMetadata };
   }
 
   const ancestors = collectAncestorStepIds(input.step.id, input.workflowSteps);
@@ -288,7 +290,8 @@ export const resolveWorkflowToolStepArgs = withSelectedInputTransaction(async (i
     }
   }
 
-  return renderWorkflowToolStepArgsWithResolvedValues({
-    args, runDate: input.run.runDate ?? "", runId: input.run.id, pathsByStepId, runMetadata,
-  });
-});
+  return { args, runDate: input.run.runDate ?? "", runId: input.run.id, pathsByStepId, runMetadata };
+};
+
+export const resolveWorkflowToolStepArgs = withSelectedInputTransaction(async (input: ToolStepArgsResolutionInput): Promise<unknown> =>
+  renderWorkflowToolStepArgsWithResolvedValues(await resolveWorkflowToolStepArgValuesBody(input)));

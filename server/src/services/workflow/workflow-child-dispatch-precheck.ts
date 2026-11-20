@@ -14,7 +14,7 @@ import {
 } from "@paperclipai/db";
 import { normalizeWorkflowStepsForExecution } from "./dag-engine.js";
 import type { WorkflowStep } from "./dag-engine.js";
-import { resolveWorkflowToolStepArgs } from "./tool-step-args.js";
+import { resolveWorkflowToolStepArgsViaWorkflowCore } from "./tool-step-args-workflow-core.js";
 import { getWorkflowDefinitionById } from "./workflow-store.js";
 import {
   ANY_UNRESOLVED_TOKEN_RE,
@@ -121,7 +121,7 @@ export async function precheckWorkflowChildDispatch(
   const definitionSteps = normalizeWorkflowStepsForExecution(definition.stepsJson);
   let rendered: unknown;
   try {
-    rendered = await resolveWorkflowToolStepArgs({
+    rendered = await resolveWorkflowToolStepArgsViaWorkflowCore({
       db: db,
       run: { id: run.id, companyId, runDate: run.runDate, metadata: run.metadata },
       step: { id: step.id, toolArgs: rawInputs },

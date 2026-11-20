@@ -114,7 +114,8 @@ import { resolveMissionWorkProductPaths } from "../work-products/output-paths.js
 
 import { readExplicitValidationVerdict } from "../validation-verdict.js";
 import { applyWorkProductDependencyGate, collectUniqueStepRunIssueIds, loadWorkProductDependencyGate, reloadWorkflowStepRunsForSameRun } from "./workproduct-dependency-gate.js";
-import { resolveWorkflowToolStepArgs, stripShellEscapeResidue } from "./tool-step-args.js";
+import { stripShellEscapeResidue } from "./tool-step-args.js";
+import { resolveWorkflowToolStepArgsViaWorkflowCore } from "./tool-step-args-workflow-core.js";
 import { isStructuralGateStep } from "./control-flow/structural-gate.js";
 import { STEP_MACHINE_CHECKS_TOOL, evaluateStepMachineChecks, renderMachineCheckFailure } from "./step-machine-checks.js";
 import {
@@ -613,7 +614,7 @@ export async function processQueuedWorkflowToolStepRuns(
       : null;
     const args = hasPersistedArgs
       ? stripShellEscapeResidue(invocation.args)
-      : await resolveWorkflowToolStepArgs({
+      : await resolveWorkflowToolStepArgsViaWorkflowCore({
         db,
         run: row.run,
         step: step as PersistedWorkflowStep,

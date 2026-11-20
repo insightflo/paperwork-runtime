@@ -11,7 +11,7 @@ import { normalizeRecord, getMetadataRecord } from "./dag-metadata-helpers.js";
 import { setWorkflowStepRunStatus } from "./step-status-fencing.js";
 import { persistFailedToolDispatch } from "./tool-dispatch-failure.js";
 import { settleToolQueueMetadata } from "./tool-queue-settle.js";
-import { resolveWorkflowToolStepArgs } from "./tool-step-args.js";
+import { resolveWorkflowToolStepArgsViaWorkflowCore } from "./tool-step-args-workflow-core.js";
 import { isStructuralGateStep } from "./control-flow/structural-gate.js";
 import { STEP_MACHINE_CHECKS_TOOL } from "./step-machine-checks.js";
 import { captureStructuralGateProducerToken } from "./control-flow/structural-semantic-readiness.js";
@@ -135,7 +135,7 @@ export async function startIssueLessToolStepRun(input: {
         { executionGeneration: stepRun.executionGeneration, requestId })
       : await freezeCompanyArtifactAttempt({ db, companyId: run.companyId, toolName, step,
         executionGeneration: stepRun.executionGeneration, requestId });
-    args = await resolveWorkflowToolStepArgs({
+    args = await resolveWorkflowToolStepArgsViaWorkflowCore({
       db, run, step: step as PersistedWorkflowStep, workflowSteps, consumerStepRunId: stepRun.id,
       consumerArtifactContract: artifactExecution?.contract,
     });
