@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 const MAX_STDIN_BYTES: usize = 4 * 1024 * 1024;
 const VERSION_TIMEOUT: Duration = Duration::from_secs(4);
+const NPM_VIEW_TIMEOUT: Duration = Duration::from_secs(2);
 const CATALOG_TIMEOUT: Duration = Duration::from_secs(10);
 const ZAI_DEFAULT_BASE_URL: &str = "https://api.z.ai/api/coding/paas/v4";
 
@@ -21,6 +22,8 @@ struct StatusInput {
     home_dir: Option<String>,
     pi_agent_dir: Option<String>,
     command_overrides: Option<HashMap<String, String>>,
+    /// true면 npm 레지스트리 최신 버전 조회(`npm view`)를 병렬로 수행한다.
+    check_updates: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -83,6 +86,9 @@ struct CliRuntimeStatus {
     supports_model_update: bool,
     supports_provider_sync: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    latest_version: Option<String>,
+    update_available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
 
@@ -135,6 +141,8 @@ struct RuntimeSpec {
     supports_self_update: bool,
     supports_model_update: bool,
     supports_provider_sync: bool,
+    /// npm 배포판 패키지명(있을 때만 `npm view` 최신 버전 조회 대상).
+    npm_package: Option<&'static str>,
 }
 
 const RUNTIMES: &[RuntimeSpec] = &[
@@ -148,6 +156,7 @@ const RUNTIMES: &[RuntimeSpec] = &[
         supports_self_update: true,
         supports_model_update: true,
         supports_provider_sync: true,
+        npm_package: Some("@mariozechner/pi-coding-agent"),
     },
     RuntimeSpec {
         id: "codex",
@@ -159,6 +168,7 @@ const RUNTIMES: &[RuntimeSpec] = &[
         supports_self_update: true,
         supports_model_update: false,
         supports_provider_sync: false,
+        npm_package: Some("@openai/codex"),
     },
     RuntimeSpec {
         id: "claude",
@@ -170,6 +180,7 @@ const RUNTIMES: &[RuntimeSpec] = &[
         supports_self_update: true,
         supports_model_update: false,
         supports_provider_sync: false,
+        npm_package: Some("@anthropic-ai/claude-code"),
     },
     RuntimeSpec {
         id: "opencode",
@@ -181,6 +192,7 @@ const RUNTIMES: &[RuntimeSpec] = &[
         supports_self_update: true,
         supports_model_update: false,
         supports_provider_sync: true,
+        npm_package: Some("opencode-ai"),
     },
     RuntimeSpec {
         id: "commandcode",
@@ -192,6 +204,7 @@ const RUNTIMES: &[RuntimeSpec] = &[
         supports_self_update: true,
         supports_model_update: false,
         supports_provider_sync: false,
+        npm_package: Some("commandcode"),
     },
     RuntimeSpec {
         id: "antigravity",
@@ -203,6 +216,7 @@ const RUNTIMES: &[RuntimeSpec] = &[
         supports_self_update: false,
         supports_model_update: false,
         supports_provider_sync: false,
+        npm_package: None,
     },
     RuntimeSpec {
         id: "gemini",
@@ -214,6 +228,7 @@ const RUNTIMES: &[RuntimeSpec] = &[
         supports_self_update: true,
         supports_model_update: false,
         supports_provider_sync: false,
+        npm_package: Some("@google/gemini-cli"),
     },
     RuntimeSpec {
         id: "hermes",
@@ -225,6 +240,7 @@ const RUNTIMES: &[RuntimeSpec] = &[
         supports_self_update: true,
         supports_model_update: false,
         supports_provider_sync: false,
+        npm_package: None,
     },
     RuntimeSpec {
         id: "cursor",
@@ -236,6 +252,7 @@ const RUNTIMES: &[RuntimeSpec] = &[
         supports_self_update: false,
         supports_model_update: false,
         supports_provider_sync: false,
+        npm_package: None,
     },
 ];
 
@@ -428,6 +445,25 @@ fn is_executable_file(path: &Path) -> bool {
     fs::metadata(path).map(|m| m.is_file()).unwrap_or(false)
 }
 
+fn binary_search_dirs(home_dir: &Path) -> Vec<PathBuf> {
+    let mut search_dirs: Vec<PathBuf> = Vec::new();
+    if let Ok(path_env) = env::var("PATH") {
+        for dir in env::split_paths(&path_env) {
+            if !dir.as_os_str().is_empty() {
+                search_dirs.push(dir);
+            }
+        }
+    }
+    search_dirs.push(home_dir.join(".npm-global").join("bin"));
+    search_dirs.push(home_dir.join(".bun").join("bin"));
+    search_dirs.push(home_dir.join(".local").join("bin"));
+    search_dirs.push(home_dir.join(".cargo").join("bin"));
+    search_dirs.push(PathBuf::from("/opt/homebrew/bin"));
+    search_dirs.push(PathBuf::from("/usr/local/bin"));
+    search_dirs.push(PathBuf::from("/usr/bin"));
+    search_dirs
+}
+
 fn resolve_binary(
     spec: &RuntimeSpec,
     home_dir: &Path,
@@ -444,22 +480,7 @@ fn resolve_binary(
         }
     }
 
-    let mut search_dirs: Vec<PathBuf> = Vec::new();
-    if let Ok(path_env) = env::var("PATH") {
-        for dir in env::split_paths(&path_env) {
-            if !dir.as_os_str().is_empty() {
-                search_dirs.push(dir);
-            }
-        }
-    }
-    search_dirs.push(home_dir.join(".npm-global").join("bin"));
-    search_dirs.push(home_dir.join(".bun").join("bin"));
-    search_dirs.push(home_dir.join(".local").join("bin"));
-    search_dirs.push(home_dir.join(".cargo").join("bin"));
-    search_dirs.push(PathBuf::from("/opt/homebrew/bin"));
-    search_dirs.push(PathBuf::from("/usr/local/bin"));
-    search_dirs.push(PathBuf::from("/usr/bin"));
-
+    let search_dirs = binary_search_dirs(home_dir);
     for bin_name in spec.binaries {
         for dir in &search_dirs {
             let candidate = dir.join(bin_name);
@@ -469,6 +490,27 @@ fn resolve_binary(
         }
     }
     None
+}
+
+/// `npm view`용 npm 바이너리 위치. `command_overrides["npm"]`을 우선한다(테스트용 가짜 npm).
+fn resolve_npm_bin(
+    home_dir: &Path,
+    overrides: Option<&HashMap<String, String>>,
+) -> Option<PathBuf> {
+    if let Some(map) = overrides {
+        if let Some(custom) = map.get("npm").map(String::as_str).map(str::trim) {
+            if !custom.is_empty() {
+                let p = PathBuf::from(custom);
+                if is_executable_file(&p) {
+                    return Some(p);
+                }
+            }
+        }
+    }
+    binary_search_dirs(home_dir)
+        .iter()
+        .map(|dir| dir.join("npm"))
+        .find(|candidate| is_executable_file(candidate))
 }
 
 fn run_command_capture(
@@ -529,6 +571,60 @@ fn parse_version_text(raw: &str) -> Option<String> {
         }
     }
     Some(line.chars().take(80).collect())
+}
+
+/// `npm view <pkg> version` 출력에서 최신 버전 문자열을 뽑는다(첫 줄, 숫자 시작만).
+fn fetch_npm_latest_version(npm_bin: &Path, pkg: &str) -> Option<String> {
+    let (stdout, _) =
+        run_command_capture(npm_bin, &["view", pkg, "version"], NPM_VIEW_TIMEOUT).ok()?;
+    let first = stdout.lines().map(str::trim).find(|l| !l.is_empty())?;
+    let cleaned = first.trim_start_matches('v');
+    cleaned
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_digit())
+        .then(|| cleaned.to_string())
+}
+
+/// 버전 문자열에서 코어 semver 숫자들만 추출한다("pi 9.9.9" → [9,9,9], "v1.2.3-beta" → [1,2,3]).
+/// 숫자 토큰을 찾지 못하면 빈 벡터(비교 불가).
+fn semver_numbers(value: &str) -> Vec<u64> {
+    let Some(token) = value
+        .split_whitespace()
+        .find(|t| t.starts_with(|c: char| c.is_ascii_digit()))
+    else {
+        return Vec::new();
+    };
+    let core = token
+        .trim_start_matches('v')
+        .split(['-', '+'])
+        .next()
+        .unwrap_or("");
+    core.split('.')
+        .map_while(|part| part.parse::<u64>().ok())
+        .collect()
+}
+
+/// a > b → Greater. 어느 한쪽이라도 파싱 실패면 Equal(업데이트 있음으로 오탐하지 않는다).
+fn compare_semver(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let (va, vb) = (semver_numbers(a), semver_numbers(b));
+    if va.is_empty() || vb.is_empty() {
+        return Ordering::Equal;
+    }
+    let len = va.len().max(vb.len());
+    let pad = |v: &[u64]| -> Vec<u64> {
+        let mut out = v.to_vec();
+        out.resize(len, 0);
+        out
+    };
+    for (x, y) in std::iter::zip(pad(&va), pad(&vb)) {
+        match x.cmp(&y) {
+            Ordering::Equal => continue,
+            other => return other,
+        }
+    }
+    Ordering::Equal
 }
 
 fn parse_pi_catalog_models(stdout: &str, stderr: &str) -> Vec<String> {
@@ -737,6 +833,8 @@ fn probe_single_runtime(
             supports_self_update: spec.supports_self_update,
             supports_model_update: spec.supports_model_update,
             supports_provider_sync: spec.supports_provider_sync,
+            latest_version: None,
+            update_available: false,
             error,
         },
         catalog_models,
@@ -748,20 +846,77 @@ fn handle_status(input: StatusInput) -> StatusOutput {
     let pi_agent_dir = resolve_pi_agent_dir(&home_dir, input.pi_agent_dir.as_deref());
     let providers = read_pi_providers(&pi_agent_dir);
     let overrides = input.command_overrides.as_ref();
+    let check_updates = input.check_updates.unwrap_or(false);
 
-    let results: Vec<(CliRuntimeStatus, Vec<String>)> = thread::scope(|scope| {
-        let handles: Vec<_> = RUNTIMES
+    // 런타임 탐색과 npm 최신 버전 조회를 같은 scope에서 병렬로 돌린다.
+    // npm 조회는 바이너리가 실제 존재하는 런타임만 대상으로 한다(불필요한 npm 스폰 방지).
+    let mut results: Vec<(CliRuntimeStatus, Vec<String>)> = thread::scope(|scope| {
+        let probe_handles: Vec<_> = RUNTIMES
             .iter()
             .map(|spec| {
                 scope.spawn(|| probe_single_runtime(spec, &home_dir, &pi_agent_dir, overrides))
             })
             .collect();
-        handles.into_iter().map(|h| h.join().unwrap()).collect()
+        let npm_handles: Vec<(&'static str, thread::ScopedJoinHandle<'_, Option<String>>)> =
+            if check_updates {
+                let npm_bin = resolve_npm_bin(&home_dir, overrides);
+                match npm_bin {
+                    Some(bin) => RUNTIMES
+                        .iter()
+                        .filter(|spec| {
+                            spec.npm_package.is_some()
+                                && resolve_binary(spec, &home_dir, overrides).is_some()
+                        })
+                        .filter_map(|spec| {
+                            let pkg = spec.npm_package?;
+                            let npm = bin.clone();
+                            Some((
+                                pkg,
+                                scope.spawn(move || fetch_npm_latest_version(&npm, pkg)),
+                            ))
+                        })
+                        .collect(),
+                    None => Vec::new(),
+                }
+            } else {
+                Vec::new()
+            };
+
+        let mut probed: Vec<(CliRuntimeStatus, Vec<String>)> = probe_handles
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .collect();
+
+        let mut latest_by_pkg: HashMap<&'static str, String> = HashMap::new();
+        for (pkg, handle) in npm_handles {
+            if let Some(latest) = handle.join().unwrap() {
+                latest_by_pkg.insert(pkg, latest);
+            }
+        }
+        // probed는 RUNTIMES 순서와 동일하므로 인덱스로 병합한다.
+        for (idx, spec) in RUNTIMES.iter().enumerate() {
+            let Some(pkg) = spec.npm_package else {
+                continue;
+            };
+            let Some(latest) = latest_by_pkg.get(pkg) else {
+                continue;
+            };
+            let rt = &mut probed[idx].0;
+            if !rt.installed {
+                continue;
+            }
+            rt.update_available = rt
+                .version
+                .as_deref()
+                .is_some_and(|v| compare_semver(latest, v) == std::cmp::Ordering::Greater);
+            rt.latest_version = Some(latest.clone());
+        }
+        probed
     });
 
     let mut catalog_models = Vec::new();
     let mut runtimes = Vec::with_capacity(results.len());
-    for (rt, rt_catalog) in results {
+    for (rt, rt_catalog) in results.drain(..) {
         if rt.id == "pi" {
             catalog_models = rt_catalog;
         }
@@ -1030,6 +1185,22 @@ mod tests {
     }
 
     #[test]
+    fn compares_semver_versions_conservatively() {
+        use std::cmp::Ordering;
+        assert_eq!(compare_semver("1.2.3", "1.2.3"), Ordering::Equal);
+        assert_eq!(compare_semver("1.2.4", "1.2.3"), Ordering::Greater);
+        assert_eq!(compare_semver("1.2.3", "1.2.4"), Ordering::Less);
+        assert_eq!(compare_semver("0.67.68", "0.7.0"), Ordering::Greater);
+        assert_eq!(compare_semver("1.2", "1.2.0"), Ordering::Equal);
+        assert_eq!(compare_semver("v1.0.0", "1.0.0"), Ordering::Equal);
+        assert_eq!(compare_semver("1.0.0-beta.1", "1.0.0"), Ordering::Equal);
+        assert_eq!(compare_semver("pi 9.9.9", "9.9.10"), Ordering::Less);
+        // 파싱 불가능한 입력은 오탐 방지를 위해 Equal로 취급한다.
+        assert_eq!(compare_semver("unknown", "1.0.0"), Ordering::Equal);
+        assert_eq!(compare_semver("", ""), Ordering::Equal);
+    }
+
+    #[test]
     fn status_and_sync_never_leak_secrets_and_set_0600() {
         let root = make_temp_dir("cli-runtime-test");
         let home_dir = root.join("home");
@@ -1082,6 +1253,7 @@ mod tests {
             home_dir: Some(home_dir.to_string_lossy().into_owned()),
             pi_agent_dir: Some(pi_dir.to_string_lossy().into_owned()),
             command_overrides: Some(overrides),
+            check_updates: None,
         });
         let status_json = serde_json::to_string(&status).unwrap();
         assert!(!status_json.contains(secret));
@@ -1102,6 +1274,58 @@ mod tests {
         })
         .unwrap();
         assert!(logout.removed);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn npm_latest_version_lookup_populates_update_fields_only_when_requested() {
+        let root = make_temp_dir("cli-runtime-npm-test");
+        let home_dir = root.join("home");
+        let pi_dir = home_dir.join(".pi/agent");
+        fs::create_dir_all(&pi_dir).unwrap();
+
+        let fake_pi = root.join("fake-pi");
+        fs::write(
+            &fake_pi,
+            "#!/bin/sh\nif [ \"$1\" = \"--version\" ]; then echo \"pi 9.9.9\"; exit 0; fi\nif [ \"$1\" = \"--list-models\" ]; then printf \"provider  model\\nzai  glm-4.6\\n\"; exit 0; fi\nexit 1\n",
+        )
+        .unwrap();
+        fs::set_permissions(&fake_pi, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let fake_npm = root.join("fake-npm");
+        fs::write(&fake_npm, "#!/bin/sh\necho \"9.9.10\"\n").unwrap();
+        fs::set_permissions(&fake_npm, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let mut overrides = HashMap::new();
+        overrides.insert("pi".to_string(), fake_pi.to_string_lossy().into_owned());
+        overrides.insert("npm".to_string(), fake_npm.to_string_lossy().into_owned());
+
+        let make_input = |check_updates: Option<bool>| StatusInput {
+            home_dir: Some(home_dir.to_string_lossy().into_owned()),
+            pi_agent_dir: Some(pi_dir.to_string_lossy().into_owned()),
+            command_overrides: Some(overrides.clone()),
+            check_updates,
+        };
+        let no_check = handle_status(make_input(None));
+        let pi_rt = no_check.runtimes.iter().find(|r| r.id == "pi").unwrap();
+        assert_eq!(pi_rt.version.as_deref(), Some("9.9.9"));
+        assert_eq!(pi_rt.latest_version, None);
+        assert!(!pi_rt.update_available);
+
+        let with_check = handle_status(make_input(Some(true)));
+        let pi_rt = with_check.runtimes.iter().find(|r| r.id == "pi").unwrap();
+        assert_eq!(pi_rt.latest_version.as_deref(), Some("9.9.10"));
+        assert!(pi_rt.update_available);
+
+        // npm 배포판이 아닌 런타임(cursor: npm_package 없음)에는 최신 버전 정보를 남기지 않는다.
+        let cursor_rt = with_check
+            .runtimes
+            .iter()
+            .find(|r| r.id == "cursor")
+            .unwrap();
+        assert_eq!(cursor_rt.latest_version, None);
+        assert!(!cursor_rt.update_available);
 
         let _ = fs::remove_dir_all(&root);
     }

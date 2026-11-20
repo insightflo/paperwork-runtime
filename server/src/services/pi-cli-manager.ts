@@ -30,6 +30,9 @@ import { instanceSettingsService } from "./instance-settings.js";
 const STATUS_TIMEOUT_MS = 15_000;
 const UPDATE_TIMEOUT_MS = 60_000;
 const RUST_BIN_TIMEOUT_MS = 25_000;
+const NPM_VIEW_TIMEOUT_MS = 2_500;
+const NPM_LATEST_CACHE_TTL_MS = 5 * 60_000;
+const PI_NPM_PACKAGE = "@mariozechner/pi-coding-agent";
 const ZAI_DEFAULT_BASE_URL = "https://api.z.ai/api/coding/paas/v4";
 const PROVIDER_ID_RE = /^[a-zA-Z0-9._-]{1,64}$/;
 const MODEL_ID_RE = /^[A-Za-z0-9._:/-]{1,200}$/;
@@ -39,7 +42,7 @@ const VALID_RUNTIME_IDS = new Set<CliRuntimeId>([
 ]);
 
 export type PiCliExecFile = (command: string, args: string[], options: { timeout: number }) => Promise<{ stdout: string; stderr: string }>;
-export interface PiCliManagerOptions { homeDir?: string; agentDir?: string; piCommand?: string; execFileImpl?: PiCliExecFile }
+export interface PiCliManagerOptions { homeDir?: string; agentDir?: string; piCommand?: string; execFileImpl?: PiCliExecFile; /** npm 최신 버전 조회(checkUpdates) off 시 false. 기본 on. */ checkUpdates?: boolean }
 export type PiCliSyncDirection = "both" | "to_pi" | "from_pi";
 interface StoredProvider { id: string; name: string; baseUrl: string; model?: string; apiKeyEncrypted?: unknown }
 
@@ -190,6 +193,45 @@ function readProviderStatuses(agentDir: string): PiCliProviderStatus[] {
   }).sort((a, b) => a.id.localeCompare(b.id));
 }
 
+/** 코어 semver 비교. "pi 9.9.9"처럼 접두 텍스트가 섞여도 첫 숫자 토큰을 기준으로 비교한다.
+ * 파싱 실패시 0(같음) — 업데이트 있음으로 오탐하지 않는다. */
+export function compareSemver(a: string, b: string): number {
+  const coreNumbers = (value: string): number[] => {
+    const token = value.trim().split(/\s+/).find((part) => /^\d/.test(part)) ?? "";
+    return token
+      .replace(/^v/i, "")
+      .split(/[+-]/)[0]
+      .split(".")
+      .map((part) => Number.parseInt(part, 10));
+  };
+  const [na, nb] = [coreNumbers(a), coreNumbers(b)];
+  if (na.length === 0 || nb.length === 0) return 0;
+  if (na.some(Number.isNaN) || nb.some(Number.isNaN)) return 0;
+  const len = Math.max(na.length, nb.length);
+  for (let i = 0; i < len; i += 1) {
+    const diff = (na[i] ?? 0) - (nb[i] ?? 0);
+    if (diff !== 0) return diff > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+/** `npm view <pkg> version` 조회(짧은 타임아웃 + 모듈 캐시). 실패시 undefined. 성공만 캐시한다. */
+const npmLatestCache = new Map<string, { version: string; expiresAt: number }>();
+
+async function npmLatestVersion(pkg: string, opts: PiCliManagerOptions): Promise<string | undefined> {
+  const cached = npmLatestCache.get(pkg);
+  if (cached && cached.expiresAt > Date.now()) return cached.version;
+  try {
+    const { stdout } = await (opts.execFileImpl ?? defaultExecFile)("npm", ["view", pkg, "version"], { timeout: NPM_VIEW_TIMEOUT_MS });
+    const version = stdout.split(/\r?\n/, 1)[0]?.trim() ?? "";
+    if (!/^\d+(\.\d+)+/.test(version)) return undefined;
+    npmLatestCache.set(pkg, { version, expiresAt: Date.now() + NPM_LATEST_CACHE_TTL_MS });
+    return version;
+  } catch {
+    return undefined;
+  }
+}
+
 function parseCatalogModels(stdout: string, stderr: string): string[] {
   const ids = new Set<string>();
   for (const text of [stdout, stderr]) {
@@ -234,6 +276,7 @@ export async function getPiCliStatus(opts: PiCliManagerOptions = {}): Promise<Pi
         homeDir: opts.homeDir ?? os.homedir(),
         piAgentDir: agentDir,
         ...(opts.piCommand ? { commandOverrides: { pi: opts.piCommand } } : {}),
+        checkUpdates: opts.checkUpdates ?? true,
       });
       if (Array.isArray(snapshot.runtimes) && !opts.homeDir) {
         snapshot.runtimes = await enrichRuntimesWithAdapterModels(snapshot.runtimes, snapshot.catalogModels ?? []);
@@ -263,6 +306,7 @@ export async function getPiCliStatus(opts: PiCliManagerOptions = {}): Promise<Pi
   } catch (err) {
     status.error = execErrorLine(err);
   }
+  const piLatest = opts.checkUpdates === false ? undefined : await npmLatestVersion(PI_NPM_PACKAGE, opts);
   status.runtimes = [{
     id: "pi",
     name: "Pi CLI",
@@ -277,6 +321,9 @@ export async function getPiCliStatus(opts: PiCliManagerOptions = {}): Promise<Pi
     supportsSelfUpdate: true,
     supportsModelUpdate: true,
     supportsProviderSync: true,
+    ...(piLatest
+      ? { latestVersion: piLatest, updateAvailable: status.installed && compareSemver(piLatest, status.version ?? "") > 0 }
+      : {}),
     ...(status.error ? { error: status.error } : {}),
   }];
   return status;
