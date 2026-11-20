@@ -11,19 +11,36 @@ import {
   type PatchInstanceExperimentalSettings,
 } from "@paperclipai/shared";
 import { eq } from "drizzle-orm";
+import { localEncryptedProvider } from "../secrets/local-encrypted-provider.js";
+import type { StoredSecretVersionMaterial } from "../secrets/types.js";
 
 const DEFAULT_SINGLETON_KEY = "default";
+
+function hasEncryptedMaterial(value: unknown): value is { material: StoredSecretVersionMaterial } {
+  if (value === null || typeof value !== "object" || !("material" in value)) return false;
+  const { material } = value;
+  return material !== null && typeof material === "object" &&
+    "scheme" in material && material.scheme === "local_encrypted_v1" &&
+    "iv" in material && typeof material.iv === "string" &&
+    "tag" in material && typeof material.tag === "string" &&
+    "ciphertext" in material && typeof material.ciphertext === "string";
+}
 
 function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
   const source = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   const baseUrl = judgmentBaseUrlSchema.safeParse(source.judgmentBaseUrl);
   const modelId = judgmentModelIdSchema.safeParse(source.judgmentModelId);
+  const llmBaseUrl = judgmentBaseUrlSchema.safeParse(source.llmStructuredBaseUrl);
+  const llmModel = judgmentModelIdSchema.safeParse(source.llmStructuredModel);
   // 필드 단위 검증: 한 필드가 손상되어도 다른 필드(예: censorUsernameInLogs)까지
   // 기본값으로 되돌리지 않는다. null/불량값은 해당 오버라이드만 뺀다.
   return {
     censorUsernameInLogs: source.censorUsernameInLogs === true,
     ...(baseUrl.success && baseUrl.data !== null ? { judgmentBaseUrl: baseUrl.data } : {}),
     ...(modelId.success && modelId.data !== null ? { judgmentModelId: modelId.data } : {}),
+    ...(llmBaseUrl.success && llmBaseUrl.data !== null ? { llmStructuredBaseUrl: llmBaseUrl.data } : {}),
+    ...(llmModel.success && llmModel.data !== null ? { llmStructuredModel: llmModel.data } : {}),
+    llmStructuredApiKeyConfigured: hasEncryptedMaterial(source.llmStructuredApiKeyEncrypted),
   };
 }
 
@@ -125,6 +142,21 @@ export function instanceSettingsService(db: Db) {
       return normalizeGeneralSettings(row.general);
     },
 
+    getLlmStructuredRuntimeConfig: async (): Promise<{ baseUrl?: string; model?: string; apiKey?: string }> => {
+      const { general } = await getOrCreateRow();
+      const { llmStructuredBaseUrl: baseUrl, llmStructuredModel: model } = normalizeGeneralSettings(general);
+      const encrypted = general.llmStructuredApiKeyEncrypted;
+      let apiKey: string | undefined;
+      if (hasEncryptedMaterial(encrypted)) {
+        try {
+          apiKey = await localEncryptedProvider.resolveVersion({ material: encrypted.material, externalRef: null });
+        } catch {
+          // An unreadable optional key must not discard the non-secret defaults.
+        }
+      }
+      return { baseUrl, model, apiKey };
+    },
+
     getExperimental: async (): Promise<InstanceExperimentalSettings> => {
       const row = await getOrCreateRow();
       return normalizeExperimentalSettings(row.experimental);
@@ -132,10 +164,17 @@ export function instanceSettingsService(db: Db) {
 
     updateGeneral: async (patch: PatchInstanceGeneralSettings): Promise<InstanceSettings> => {
       const current = await getOrCreateRow();
-      const nextGeneral = normalizeGeneralSettings({
+      const nextGeneral: Record<string, unknown> = { ...normalizeGeneralSettings({
         ...normalizeGeneralSettings(current.general),
         ...patch,
-      });
+      }) };
+      delete nextGeneral.llmStructuredApiKeyConfigured;
+      if (typeof patch.llmStructuredApiKey === "string") {
+        const { material } = await localEncryptedProvider.createVersion({ value: patch.llmStructuredApiKey, externalRef: null });
+        nextGeneral.llmStructuredApiKeyEncrypted = { material };
+      } else if (patch.llmStructuredApiKey === undefined && Object.hasOwn(current.general, "llmStructuredApiKeyEncrypted")) {
+        nextGeneral.llmStructuredApiKeyEncrypted = current.general.llmStructuredApiKeyEncrypted;
+      }
       const now = new Date();
       const [updated] = await db
         .update(instanceSettings)

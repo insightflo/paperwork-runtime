@@ -27,6 +27,7 @@ import { executeAgentJudgmentTool } from "../judgment/agent-judgment-tool-execut
 import { executeMissionOwnerAction, OwnerActionRefusalError, withCurrentOwnerToolAttempt } from "../missions/mission-owner-execute.js";
 import { missionOwnerExecuteSchema } from "@paperclipai/shared/validators/mission-owner-authority";
 import { executeLlmStructuredWorkflowStep } from "./llm-structured-executor.js";
+import { instanceSettingsService } from "../instance-settings.js";
 import { executeStepCloseoutTool } from "./step-closeout-tool.js";
 import { executeHtmlPreflightTool } from "../judgment/html-preflight-executor.js";
 import { secretService } from "../secrets.js";
@@ -123,7 +124,21 @@ export async function executeCoreWorkflowTool(input: {
   if (artifactExecution && (tool.adapterType !== "builtin" || isJudgmentTool || isHtmlPreflightTool || isLlmStructuredTool)) {
     return { status: 422, body: { error: "artifact_contract_adapter_unsupported", source: "core", tool: input.toolName } };
   }
-  if (isLlmStructuredTool) return executeLlmStructuredWorkflowStep({ ...input, agentId, adapterConfig });
+  if (isLlmStructuredTool) {
+    const env = { ...readObject(adapterConfig.env) };
+    const defaults = [["baseUrl", "BASE_URL"], ["model", "MODEL"], ["apiKey", "API_KEY"]] as const;
+    const missing = defaults.filter(([field, suffix]) =>
+      !adapterConfig[field] && !Object.hasOwn(env, `PAPERCLIP_LLM_STRUCTURED_${suffix}`),
+    );
+    const instanceConfig = missing.length
+      ? await instanceSettingsService(input.db).getLlmStructuredRuntimeConfig().catch(() => undefined)
+      : undefined;
+    for (const [field, suffix] of missing) {
+      const value = instanceConfig?.[field];
+      if (value) env[`PAPERCLIP_LLM_STRUCTURED_${suffix}`] = { type: "plain", value };
+    }
+    return executeLlmStructuredWorkflowStep({ ...input, agentId, adapterConfig: { ...adapterConfig, env } });
+  }
   if (isJudgmentTool || isHtmlPreflightTool) {
     // [봇 bug·medium 교정] 디렉토리 해석 실패(일시 DB 오류 포함)가 관측 도구 실행 자체를
     //   실패시키지 않게 한다 — 결과는 각 실행기가 구조화해 반환한다.
