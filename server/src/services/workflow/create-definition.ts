@@ -7,7 +7,8 @@
 //   복사 A 단계에 새 QA rework 엣지가 합성되지 않게 한다. 공개 요청 플래그가 아니며 일반
 //   생성 경로는 이 값 없이 기존 동작을 그대로 유지한다.
 import type { Db } from "@paperclipai/db";
-import { validateDag, type WorkflowStep } from "./dag-engine.js";
+import type { WorkflowStep } from "./dag-engine.js";
+import { validateDagWithNodeFallback } from "./workflow-core-client.js";
 import { createWorkflowDefinition } from "./workflow-store.js";
 import { normalizeWorkflowSteps } from "./normalize-definition-steps.js";
 import { assertWorkflowToolReadinessForSteps } from "./admission-tool-readiness.js";
@@ -27,7 +28,7 @@ export async function createWorkflowDefinitionWithNormalization(
     ...(input.copiedStepIds ? { copiedStepIds: input.copiedStepIds } : {}),
   });
   // Validate DAG structure
-  const validation = validateDag(steps);
+  const validation = await validateDagWithNodeFallback(steps);
   if (!validation.valid) {
     throw new Error(`Invalid workflow DAG: ${validation.errors.join(", ")}`);
   }
