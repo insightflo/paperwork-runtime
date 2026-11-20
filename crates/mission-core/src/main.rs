@@ -1,5 +1,6 @@
 //! paperclip-mission-core — stdin/stdout JSON subcommands mirroring
-//! server/src/services/missions/mission-plan-dependency-graph.ts.
+//! server/src/services/missions/mission-plan-dependency-graph.ts and
+//! mission-quality-contract.ts.
 //! Err(_) results mirror TS TypeError throws: they go to stderr with exit 1.
 use serde_json::{json, Value};
 use std::env;
@@ -14,7 +15,7 @@ mod js {
     use std::hash::Hash;
 
     /// String#trim domain: Unicode White_Space + U+FEFF (Rust `trim` omits the BOM).
-    fn js_trim(s: &str) -> &str {
+    pub fn js_trim(s: &str) -> &str {
         s.trim_matches(|c: char| c.is_whitespace() || c == '\u{feff}')
     }
 
@@ -90,6 +91,8 @@ mod js {
 // Deliberately hand-compacted to honor the 300-line file limit.
 #[rustfmt::skip]
 mod plan_graph;
+mod quality_contract;
+mod quality_contract_lines;
 
 const MAX_STDIN_BYTES: usize = 4 * 1024 * 1024;
 
@@ -139,17 +142,17 @@ fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
                 units, step_ids
             )?))
         }
-        _ => Err(format!("unknown subcommand: {subcommand}")),
+        _ => quality_contract::dispatch(subcommand, raw),
     }
 }
 
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
     let Some(subcommand) = args.first().map(String::as_str) else {
-        return Err(
-            "usage: paperclip-mission-core <normalize-dependency-graph|is-unit-materialized|remap-to-step-ids>"
-                .to_string(),
-        );
+        return Err(format!(
+            "usage: paperclip-mission-core <{}>",
+            quality_contract::SUBCOMMANDS.join("|")
+        ));
     };
     let raw = read_stdin_bounded(MAX_STDIN_BYTES)?;
     let out = dispatch(subcommand, &raw)?;
