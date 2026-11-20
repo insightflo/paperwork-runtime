@@ -2,9 +2,16 @@ import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
 import { patchInstanceExperimentalSettingsSchema, patchInstanceGeneralSettingsSchema } from "@paperclipai/shared";
 import { llmStructuredTestConnectionSchema } from "@paperclipai/shared/validators/instance";
-import { forbidden } from "../errors.js";
+import { badRequest, forbidden } from "../errors.js";
 import { validate } from "../middleware/validate.js";
 import { instanceSettingsService, logActivity } from "../services/index.js";
+import {
+  getPiCliStatus,
+  isValidCliRuntimeId,
+  logoutPiCliProvider,
+  runCliRuntimeUpdate,
+  syncInstanceProvidersWithPiCli,
+} from "../services/pi-cli-manager.js";
 import { getActorInfo } from "./authz.js";
 
 function assertCanManageInstanceSettings(req: Request) {
@@ -15,6 +22,32 @@ function assertCanManageInstanceSettings(req: Request) {
     return;
   }
   throw forbidden("Instance admin access required");
+}
+
+async function logInstanceCliActivity(
+  db: Db,
+  svc: ReturnType<typeof instanceSettingsService>,
+  req: Request,
+  action: string,
+  details: Record<string, unknown>,
+) {
+  const actor = getActorInfo(req);
+  const companyIds = await svc.listCompanyIds();
+  await Promise.all(
+    companyIds.map((companyId) =>
+      logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        action,
+        entityType: "instance_settings",
+        entityId: "default",
+        details,
+      }),
+    ),
+  );
 }
 
 export function instanceSettingsRoutes(db: Db) {
@@ -32,6 +65,13 @@ export function instanceSettingsRoutes(db: Db) {
     async (req, res) => {
       assertCanManageInstanceSettings(req);
       const updated = await svc.updateGeneral(req.body);
+      if (
+        req.body.llmStructuredProviders !== undefined ||
+        req.body.llmStructuredBaseUrl !== undefined ||
+        req.body.llmStructuredApiKey !== undefined
+      ) {
+        await syncInstanceProvidersWithPiCli(db, { direction: "to_pi" }).catch(() => undefined);
+      }
       const actor = getActorInfo(req);
       const companyIds = await svc.listCompanyIds();
       await Promise.all(
@@ -64,6 +104,65 @@ export function instanceSettingsRoutes(db: Db) {
       res.json(await svc.testLlmStructuredConnection(req.body));
     },
   );
+
+  router.get("/instance/settings/general/pi-cli/status", async (req, res) => {
+    assertCanManageInstanceSettings(req);
+    res.json(await getPiCliStatus());
+  });
+
+  router.post("/instance/settings/general/pi-cli/sync", async (req, res) => {
+    assertCanManageInstanceSettings(req);
+    const direction: unknown = req.body?.direction;
+    if (direction !== undefined && direction !== "both" && direction !== "to_pi" && direction !== "from_pi") {
+      throw badRequest("direction must be one of: both, to_pi, from_pi");
+    }
+    const result = await syncInstanceProvidersWithPiCli(db, { direction });
+    await logInstanceCliActivity(db, svc, req, "instance.settings.cli_synced", {
+      direction: direction ?? "both",
+      ok: result.ok,
+      message: result.message,
+    });
+    res.json(result);
+  });
+
+  router.post("/instance/settings/general/pi-cli/update", async (req, res) => {
+    assertCanManageInstanceSettings(req);
+    const target: unknown = req.body?.target;
+    if (target !== "self" && target !== "models") {
+      throw badRequest("target must be one of: self, models");
+    }
+    const runtimeId: unknown = req.body?.runtimeId;
+    if (runtimeId !== undefined && !isValidCliRuntimeId(runtimeId)) {
+      throw badRequest("invalid runtimeId");
+    }
+    const result = await runCliRuntimeUpdate(runtimeId ?? "pi", target);
+    await logInstanceCliActivity(db, svc, req, "instance.settings.cli_updated", {
+      runtimeId: runtimeId ?? "pi",
+      target,
+      ok: result.ok,
+      message: result.message,
+    });
+    res.json(result);
+  });
+
+  router.post("/instance/settings/general/pi-cli/logout", async (req, res) => {
+    assertCanManageInstanceSettings(req);
+    const providerId: unknown = req.body?.providerId;
+    if (typeof providerId !== "string" || providerId.length === 0) {
+      throw badRequest("providerId is required");
+    }
+    const runtimeId: unknown = req.body?.runtimeId;
+    if (runtimeId !== undefined && !isValidCliRuntimeId(runtimeId)) {
+      throw badRequest("invalid runtimeId");
+    }
+    const result = await logoutPiCliProvider(providerId, { runtimeId: runtimeId ?? "pi" });
+    await logInstanceCliActivity(db, svc, req, "instance.settings.cli_logout", {
+      runtimeId: runtimeId ?? "pi",
+      providerId,
+      ok: result.ok,
+    });
+    res.json(result);
+  });
 
   router.get("/instance/settings/experimental", async (req, res) => {
     assertCanManageInstanceSettings(req);
