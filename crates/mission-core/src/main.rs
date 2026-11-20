@@ -1,7 +1,6 @@
-//! paperclip-mission-core — stdin/stdout JSON subcommands mirroring
-//! server/src/services/missions/mission-plan-dependency-graph.ts and
-//! mission-quality-contract.ts.
-//! Err(_) results mirror TS TypeError throws: they go to stderr with exit 1.
+//! paperclip-mission-core — stdin/stdout JSON subcommands mirroring the
+//! server/src/services/missions/* TS modules. Err(_) results mirror TS
+//! TypeError throws: they go to stderr with exit 1.
 use serde_json::{json, Value};
 use std::env;
 use std::io::{self, Read};
@@ -93,6 +92,9 @@ mod js {
 mod plan_graph;
 mod quality_contract;
 mod quality_contract_lines;
+mod revision_delta;
+mod revision_reuse;
+mod revision_reuse_steps;
 
 const MAX_STDIN_BYTES: usize = 4 * 1024 * 1024;
 
@@ -142,6 +144,7 @@ fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
                 units, step_ids
             )?))
         }
+        s if revision_reuse::SUBCOMMANDS.contains(&s) => revision_reuse::dispatch(s, raw),
         _ => quality_contract::dispatch(subcommand, raw),
     }
 }
@@ -151,7 +154,9 @@ fn run() -> Result<(), String> {
     let Some(subcommand) = args.first().map(String::as_str) else {
         return Err(format!(
             "usage: paperclip-mission-core <{}>",
-            quality_contract::SUBCOMMANDS.join("|")
+            [quality_contract::SUBCOMMANDS, revision_reuse::SUBCOMMANDS]
+                .concat()
+                .join("|")
         ));
     };
     let raw = read_stdin_bounded(MAX_STDIN_BYTES)?;
