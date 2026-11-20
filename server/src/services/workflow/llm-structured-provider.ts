@@ -30,11 +30,15 @@ type CallInput = ProviderConfig & LlmStructuredTransport & {
   jsonSchema?: Record<string, unknown>;
   schemaName?: string;
   responseFormatMode?: "json_object" | "json_schema";
+  stream?: boolean;
 };
 
 export class LlmStructuredProviderError extends Error {
   constructor(readonly code: "unavailable" | "invalid_response" | "unsafe_response" | "unsafe_request") { super(code); }
 }
+
+// Marks idle-window or hard-cap expiry during a stream read so the retry loop treats it as transient.
+class StreamStallError extends Error {}
 
 const retryable = new Set([429, 502, 503, 504]);
 function retryDelay(response: Response, attempt: number): number {
@@ -51,11 +55,86 @@ function containsKey(value: unknown, key: string): boolean {
   return Object.entries(value).some(([name, child]) => name.includes(key) || containsKey(child, key));
 }
 
+type Completion = { parsedJson: unknown; rawText: string; model: string; usage: unknown };
+
+async function readJsonCompletion(response: Response, fallbackModel: string): Promise<Completion> {
+  const envelope = readObject(await response.json());
+  const choice = Array.isArray(envelope.choices) ? readObject(envelope.choices[0]) : {};
+  const message = readObject(choice.message);
+  if (typeof message.content !== "string" || message.refusal || choice.finish_reason === "length") throw new Error();
+  return { parsedJson: JSON.parse(message.content.trim()), rawText: message.content,
+    model: nonEmptyString(envelope.model) ?? fallbackModel, usage: envelope.usage ?? null };
+}
+
+// SSE events end at a blank line; their "data:" lines join with "\n" before JSON parsing.
+function sseEventData(event: string): string {
+  return event.split("\n").filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).replace(/^ /, "")).join("\n");
+}
+
+// The idle window re-arms on every received chunk, so token-by-token generation never trips
+// the read timeout; only a gap > timeoutMs or the overall hard cap ends the read and uses a retry.
+async function readStreamCompletion(response: Response, fallbackModel: string, timeoutMs: number): Promise<Completion> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error();
+  const deadline = performance.now() + Math.max(timeoutMs * 3, 300_000);
+  const decoder = new TextDecoder();
+  let buffered = "";
+  let rawText = "";
+  let usage: unknown = null;
+  let responseModel = fallbackModel;
+  let done = false;
+  const applyEvent = (data: string) => {
+    const payload = data.trim();
+    if (!payload) return;
+    if (payload === "[DONE]") { done = true; return; }
+    const chunk = readObject(JSON.parse(payload));
+    responseModel = nonEmptyString(chunk.model) ?? responseModel;
+    if (chunk.usage != null) usage = chunk.usage;
+    const choice = Array.isArray(chunk.choices) ? readObject(chunk.choices[0]) : {};
+    const delta = readObject(choice.delta);
+    if (delta.refusal || choice.finish_reason === "length") throw new LlmStructuredProviderError("invalid_response");
+    if (typeof delta.content === "string") rawText += delta.content;
+  };
+  const drain = () => {
+    const events = buffered.split("\n\n");
+    buffered = events.pop() ?? "";
+    for (const event of events) {
+      if (done) break;
+      applyEvent(sseEventData(event));
+    }
+  };
+  try {
+    while (!done) {
+      const wait = Math.min(timeoutMs, deadline - performance.now());
+      if (wait <= 0) throw new StreamStallError();
+      let idleTimer: ReturnType<typeof setTimeout> | undefined;
+      const idle = new Promise<never>((_, reject) => { idleTimer = setTimeout(() => reject(new StreamStallError()), wait); });
+      let chunk: Awaited<ReturnType<typeof reader.read>>;
+      try {
+        chunk = await Promise.race([reader.read(), idle]);
+      } finally {
+        clearTimeout(idleTimer);
+      }
+      if (chunk.done) break;
+      buffered = (buffered + decoder.decode(chunk.value, { stream: true })).replace(/\r\n/g, "\n");
+      drain();
+    }
+    buffered += `${decoder.decode()}\n\n`;
+    drain();
+    return { parsedJson: JSON.parse(rawText.trim()), rawText, model: responseModel, usage };
+  } finally {
+    void reader.cancel().catch(() => undefined);
+    reader.releaseLock();
+  }
+}
+
 export async function callOpenAiCompatibleStructured(input: CallInput) {
   const { baseUrl, apiKey, model, userContent, systemPrompt, jsonSchema, schemaName, responseFormatMode,
     timeoutMs, maxRetries, fetchImpl = fetch, sleepImpl = sleep } = input;
   const payload = {
     model, temperature: 0,
+    ...(input.stream !== false ? { stream: true, stream_options: { include_usage: true } } : {}),
     messages: [...(systemPrompt === undefined ? [] : [{ role: "system", content: systemPrompt }]),
       { role: "user", content: userContent }],
     response_format: jsonSchema && responseFormatMode !== "json_object"
@@ -78,22 +157,18 @@ export async function callOpenAiCompatibleStructured(input: CallInput) {
           body, signal: controller.signal, redirect: "error",
         });
         if (response.ok) {
-          let envelope: Record<string, unknown>;
-          let parsedJson: unknown;
-          let rawText: string;
+          const sse = (response.headers.get("Content-Type") ?? "").toLowerCase().includes("text/event-stream");
+          if (sse) clearTimeout(timer); // the stream reader enforces its own idle window and hard cap
+          let completion: Completion;
           try {
-            envelope = readObject(await response.json());
-            const choice = Array.isArray(envelope.choices) ? readObject(envelope.choices[0]) : {};
-            const message = readObject(choice.message);
-            if (typeof message.content !== "string" || message.refusal || choice.finish_reason === "length") throw new Error();
-            rawText = message.content;
-            parsedJson = JSON.parse(rawText.trim());
-          } catch {
+            completion = sse ? await readStreamCompletion(response, model, timeoutMs)
+              : await readJsonCompletion(response, model);
+          } catch (error) {
             controller.signal.throwIfAborted();
+            if (error instanceof StreamStallError || error instanceof LlmStructuredProviderError) throw error;
             throw new LlmStructuredProviderError("invalid_response");
           }
-          const responseModel = nonEmptyString(envelope.model) ?? model;
-          const usage = envelope.usage ?? null;
+          const { parsedJson, rawText, model: responseModel, usage } = completion;
           if ([rawText, parsedJson, responseModel, usage].some((value) => containsKey(value, apiKey))) {
             throw new LlmStructuredProviderError("unsafe_response");
           }
@@ -103,6 +178,12 @@ export async function callOpenAiCompatibleStructured(input: CallInput) {
         void response.body?.cancel().catch(() => undefined);
         if (!retryable.has(response.status) || attempts > maxRetries) break;
         delay = retryDelay(response, attempts);
+      } catch (error) {
+        // Aborted attempts and stalled streams are transient: retry with backoff like a retryable status.
+        if (error instanceof LlmStructuredProviderError) throw error;
+        if (!(controller.signal.aborted || error instanceof StreamStallError) || attempts > maxRetries) throw error;
+        controller.abort();
+        delay = 500 * 2 ** (attempts - 1);
       } finally {
         clearTimeout(timer);
       }

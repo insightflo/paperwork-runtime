@@ -105,4 +105,22 @@ describe("llm-structured", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("consumes a streamed SSE completion end to end", async () => {
+    const input = setup();
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const piece of ['{"ans', 'wer":true}']) {
+          controller.enqueue(encoder.encode(`data: {"choices":[{"delta":{"content":${JSON.stringify(piece)}}}]}\n\n`));
+        }
+        controller.enqueue(encoder.encode('data: {"choices":[],"usage":{"total_tokens":4}}\n\ndata: [DONE]\n\n'));
+        controller.close();
+      },
+    });
+    input.fetchImpl.mockResolvedValueOnce(new Response(body, { headers: { "Content-Type": "text/event-stream" } }));
+    const response = await executeLlmStructuredTool(input);
+    expect(response).toMatchObject({ status: 200, body: { data: { output: { answer: true }, usage: { total_tokens: 4 } } } });
+    expect(JSON.parse(String(input.fetchImpl.mock.calls[0]?.[1]?.body)).stream).toBe(true);
+  });
 });
