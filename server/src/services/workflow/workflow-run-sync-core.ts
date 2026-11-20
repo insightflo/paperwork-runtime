@@ -12,7 +12,7 @@ import { workflowControlNodeResultSchema } from "@paperclipai/shared";
 import { sortWorkflowStepsByPriority } from "./dag-step-priority.js";
 import { buildStepRunMap, toConditionalStepObservation } from "./dag-step-observation.js";
 import { normalizeRecord } from "./dag-metadata-helpers.js";
-import { buildPredFactsMap, findRunnableSteps, type ValidationVerdictObservation } from "./dag-readiness-facts.js";
+import { buildPredFactsMap, type ValidationVerdictObservation } from "./dag-readiness-facts.js";
 import { loadLatestValidationVerdicts, type WorkflowValidationIssueBinding } from "./dag-validation-verdicts.js";
 import { mapWorkflowExecutionResult } from "./workflow-execution-result.js";
 import type { WorkflowExecutionResult } from "./types.js";
@@ -52,6 +52,7 @@ import { workflowChildStepIds, ensureStepRunRecords, buildWorkflowStepRunMetadat
 import { syncStepRunsFromIssueState } from "./workflow-issue-state-sync.js";
 import { readWorkflowToolCorrection } from "./workflow-tool-correction.js";
 import { applyConditionalSkipPropagation } from "./workflow-conditional-skip.js";
+import { findRunnableStepsWithNodeFallback } from "./workflow-core-client.js";
 import { cancelOutstandingWorkflowIssues } from "./workflow-cancellation.js";
 import { startIssueLessToolStepRun } from "./workflow-tool-start.js";
 import type { WorkflowExecutionContext } from "./dag-engine.js";
@@ -517,7 +518,7 @@ async function syncWorkflowRunStateCore(
     while (shouldContinue) {
       shouldContinue = false;
       const stepRunMap = buildStepRunMap(stepRuns);
-      const runnableSteps = sortWorkflowStepsByPriority(findRunnableSteps(context.steps, stepRunMap, {
+      const runnableSteps = sortWorkflowStepsByPriority(await findRunnableStepsWithNodeFallback(context.steps, stepRunMap, {
         launchedStepIds: dynamicLaunchStepIds,
         validationVerdictsByIssueId,
         v1EnforcementEnabled: v1Enforcement,

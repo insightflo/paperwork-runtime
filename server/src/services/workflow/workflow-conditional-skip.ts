@@ -2,7 +2,8 @@ import type { Db } from "@paperclipai/db";
 import { workflowStepRuns } from "@paperclipai/db";
 import { buildStepRunMap, toConditionalStepObservation } from "./dag-step-observation.js";
 import { buildPredFactsMap, type ValidationVerdictObservation } from "./dag-readiness-facts.js";
-import { findSkippableSteps, resolveEdges, workflowHasConditionalEdges } from "./control-flow/edge-condition.js";
+import { resolveEdges, workflowHasConditionalEdges } from "./control-flow/edge-condition.js";
+import { findSkippableStepsWithNodeFallback } from "./workflow-core-client.js";
 import { settleConditionalSkip } from "./conditional-skip-settlement.js";
 import { reloadWorkflowStepRunsForSameRun } from "./workproduct-dependency-gate.js";
 import { isStructuralGateStep } from "./control-flow/structural-gate.js";
@@ -74,22 +75,25 @@ export async function applyConditionalSkipPropagation(input: {
       input.v1EnforcementEnabled,
       input.issueStatusByIssueId,
     );
-    const skippableSteps = findSkippableSteps(input.context.steps, skipPredsByStepId, {
+    const eligibleStepIds = new Set<string>();
+    for (const step of input.context.steps) {
+      if (input.dynamicLaunchStepIds && !input.dynamicLaunchStepIds.has(step.id)) continue;
+      const run = skipRunMap.get(step.id);
+      if (!run || run.status !== "pending" || run.issueId != null) continue;
+      if (step.dependencies.some((depId) => isStructuralGateStep(
+        input.context.steps.find((candidate) => candidate.id === depId),
+      ))) continue;
+      if (hasRecoverableQaRequestChangesDependency(
+        step,
+        input.context.steps,
+        skipRunMap,
+        input.validationVerdictsByIssueId,
+      )) continue;
+      eligibleStepIds.add(step.id);
+    }
+    const skippableSteps = await findSkippableStepsWithNodeFallback(input.context.steps, skipPredsByStepId, {
       launchedStepIds: input.dynamicLaunchStepIds,
-      isStepEligible: (step) => {
-        const run = skipRunMap.get(step.id);
-        if (!run || run.status !== "pending" || run.issueId != null) return false;
-        if (step.dependencies.some((depId) => {
-          const depStep = input.context.steps.find((candidate) => candidate.id === depId);
-          return isStructuralGateStep(depStep);
-        })) return false;
-        return !hasRecoverableQaRequestChangesDependency(
-          step,
-          input.context.steps,
-          skipRunMap,
-          input.validationVerdictsByIssueId,
-        );
-      },
+      eligibleStepIds,
     });
     if (skippableSteps.length === 0) return { stepRuns, cancelled: false };
 

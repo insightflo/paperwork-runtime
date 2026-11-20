@@ -9,7 +9,7 @@ import type { Db } from "@paperclipai/db";
 import { activityLog, companies, heartbeatRuns, issueWorkProducts, issues, workflowStepRuns, workflowTransitionEvents } from "@paperclipai/db";
 import { and, desc, eq, gt, lt, ne } from "drizzle-orm";
 import { issueService } from "../issues.js";
-import { validateDag, executeWorkflowRun, syncWorkflowRunState, getWorkflowExecutionResultSnapshot, syncWorkflowRunForIssue, cancelWorkflowRunWithCleanup } from "./dag-engine.js";
+import { executeWorkflowRun, syncWorkflowRunState, getWorkflowExecutionResultSnapshot, syncWorkflowRunForIssue, cancelWorkflowRunWithCleanup } from "./dag-engine.js";
 import { QaRemediationWorkflowHoldError } from "./control-flow/qa-correction-followup-reconcile.js";
 import { lockUnreplacedRun } from "./run-replacement-guard.js";
 import { assertWorkflowToolReadinessForSteps } from "./admission-tool-readiness.js";
@@ -58,6 +58,7 @@ import { findActiveScheduledWorkflowMissionRun, prepareWorkflowTrigger } from ".
 import { assertWorkflowChildDefinitionCycles } from "./workflow-child-execution.js";
 import { discoverWorkflowChildStart } from "./workflow-child-discovery.js";
 import { createWorkflowDefinitionWithNormalization } from "./create-definition.js";
+import { validateDagWithNodeFallback } from "./workflow-core-client.js";
 import { HttpError } from "../../errors.js";
 
 async function assertWorkflowToolReadiness(
@@ -248,7 +249,7 @@ export const workflowService = {
         executionMode: updates.executionMode,
         tools: await listCompanyPlanningArtifactTools(db, existing.companyId),
       });
-      const validation = validateDag(steps);
+      const validation = await validateDagWithNodeFallback(steps);
       if (!validation.valid) {
         throw new Error(`Invalid workflow DAG: ${validation.errors.join(", ")}`);
       }
@@ -510,7 +511,7 @@ async resumeRun(
    * Validate a workflow DAG without creating it.
    */
   async validateDag(steps: unknown[]): Promise<DagValidationResult> {
-    return validateDag(normalizeWorkflowSteps(steps));
+    return validateDagWithNodeFallback(normalizeWorkflowSteps(steps));
   },
 
   /**
