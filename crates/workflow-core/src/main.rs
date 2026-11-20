@@ -16,6 +16,11 @@ use std::env;
 use std::io::{self, Read};
 use std::process;
 
+/// Stage 3 서브커맨드 — bin 모듈(lib 미공개). render: tool-arg 템플릿, readiness: 실행 게이트.
+mod readiness;
+mod render;
+mod render_path;
+
 const MAX_STDIN_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Deserialize)]
@@ -197,6 +202,10 @@ fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
                 "stepIds": find_skippable_steps(&steps, &pred_facts_map(input.preds), launched.as_ref())
             }))
         }
+        "runnable-steps" => readiness::runnable_steps(raw),
+        "skippable-steps" => readiness::skippable_steps(raw),
+        "activate" => readiness::activate(raw),
+        "render-tool-args" => render::render_tool_args(raw),
         _ => Err(format!("unknown subcommand: {subcommand}")),
     }
 }
@@ -205,7 +214,7 @@ fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
     let Some(subcommand) = args.first().map(String::as_str) else {
         return Err(
-            "usage: paperclip-workflow-core <normalize-policy|calculate-delay|classify-retry|sanitize-error|append-attempt|read-metadata|is-due|validate-dag|has-disallowed-cycle|classify-activation|find-skippable>"
+            "usage: paperclip-workflow-core <normalize-policy|calculate-delay|classify-retry|sanitize-error|append-attempt|read-metadata|is-due|validate-dag|has-disallowed-cycle|classify-activation|find-skippable|runnable-steps|skippable-steps|activate|render-tool-args>"
                 .to_string(),
         );
     };
