@@ -7,15 +7,19 @@ import { isWorkflowControlNode } from "./control-flow/control-node-executor.js";
 import { isWorkflowChildStep } from "./workflow-child-guards.js";
 import {
   appendRetryAttempt,
-  classifyWorkflowStepRetry,
   hasMalformedWorkflowRetry,
   normalizeWorkflowRetryPolicy,
   readWorkflowRetryMetadata,
   sanitizeErrorSummary,
   type WorkflowRetryAttemptSummary,
+  type WorkflowRetryPolicy,
 } from "./retry-policy.js";
 import { hasActiveWorkflowRetryRecoveryExecution } from "./retry-execution-state.js";
 import { scheduleWorkflowStepRetry } from "./step-retry-scheduler.js";
+import {
+  classifyRetryBatchWithNodeFallback,
+  type WorkflowRetryBatchClassifyItem,
+} from "./workflow-core-client-s4.js";
 
 type StepRun = typeof workflowStepRuns.$inferSelect;
 
@@ -95,8 +99,17 @@ export async function applyWorkflowStepRetryPass(input: {
   const failedRuns = input.stepRuns.filter((stepRun) => stepRun.status === "failed");
   if (failedRuns.length === 0) return input.stepRuns;
 
-  const stepRunMap = new Map(input.stepRuns.map((stepRun) => [stepRun.stepId, stepRun]));
   let metadataChanged = false;
+  // [Rust 4B] 분류 입력을 먼저 모아 classify-retry-batch 스폰 1회로 판정한다 —
+  //   스폰은 db.transaction 밖(이 pass 자체가 비-tx, scheduleWorkflowStepRetry 가
+  //   각 건의 tx 를 연다)에서만 일어난다. 판정 적용 순서는 기존 루프와 동일하다.
+  const batchItems: WorkflowRetryBatchClassifyItem[] = [];
+  const pendingByStepRunId = new Map<string, {
+    failedRun: StepRun;
+    metadata: Record<string, unknown>;
+    hasRetry: boolean;
+    policy: WorkflowRetryPolicy;
+  }>();
   for (const failedRun of failedRuns) {
     const step = input.context.steps.find((candidate) => candidate.id === failedRun.stepId);
     if (!step) continue;
@@ -143,17 +156,30 @@ export async function applyWorkflowStepRetryPass(input: {
         issueId: failedRun.issueId,
       })
       : false;
-    const decision = classifyWorkflowStepRetry({
+    const controlNode = isWorkflowControlNode(step);
+    batchItems.push({
+      id: failedRun.id,
       policy,
       stepRunStatus: failedRun.status,
       retryCount: failedRun.retryCount,
-      isControlNode: isWorkflowControlNode(step),
-      stepTypeSupported: !isWorkflowControlNode(step) && supportedStepType(step),
+      isControlNode: controlNode,
+      stepTypeSupported: !controlNode && supportedStepType(step),
       isQaStep: isQaLikeStep(step),
       qaRequestChanges: qaVerdict?.verdict === "request_changes" || structuralGateExcluded,
       recoveryActive,
+      jitterRandom: Math.random(),
     });
+    pendingByStepRunId.set(failedRun.id, { failedRun, metadata, hasRetry, policy });
+  }
 
+  const decisionByStepRunId = new Map(
+    (await classifyRetryBatchWithNodeFallback({ items: batchItems }))
+      .map((decision) => [decision.id, decision] as const),
+  );
+  for (const [stepRunId, pending] of pendingByStepRunId) {
+    const { failedRun, metadata, hasRetry, policy } = pending;
+    const decision = decisionByStepRunId.get(stepRunId);
+    if (!decision) continue;
     if (decision.eligible) {
       const errorSummary = failedRun.lastDispatchErrorSummary
         ?? (metadata.toolResult as Record<string, unknown> | undefined)?.error as string | undefined
