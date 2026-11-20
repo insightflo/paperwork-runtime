@@ -15,7 +15,7 @@ import {
   workflowIfControlResultSchema,
 } from "@paperclipai/shared";
 import type { WorkflowExecutionContext, WorkflowStep } from "../dag-engine.js";
-import { evaluateWorkflowConditionGroup } from "./condition-evaluator.js";
+import { evaluateConditionsWithNodeFallback } from "../workflow-core-client-s4.js";
 import {
   resolveWorkflowConditionSources,
   selectCurrentWorkProductCandidate,
@@ -83,7 +83,7 @@ async function evaluateIfNode(input: {
       runMetadata: input.context.run.metadata ?? null,
     }),
   });
-  const evaluation = evaluateWorkflowConditionGroup({
+  const evaluation = await evaluateConditionsWithNodeFallback({
     group,
     resolveSource: (source) => resolved.get(workflowConditionSourceKey(source)),
   });

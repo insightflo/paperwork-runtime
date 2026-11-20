@@ -16,10 +16,14 @@ use std::env;
 use std::io::{self, Read};
 use std::process;
 
-/// Stage 3 서브커맨드 — bin 모듈(lib 미공개). render: tool-arg 템플릿, readiness: 실행 게이트.
+/// Stage 3·4A 서브커맨드 — bin 모듈(lib 미공개). js_value: JS 의미론, condition_eval:
+///   IF 조건 평가, retry_batch: 재시도 배치 판정·패치, render: tool-arg, readiness: 게이트.
+mod condition_eval;
+mod js_value;
 mod readiness;
 mod render;
 mod render_path;
+mod retry_batch;
 
 const MAX_STDIN_BYTES: usize = 4 * 1024 * 1024;
 
@@ -206,6 +210,8 @@ fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
         "skippable-steps" => readiness::skippable_steps(raw),
         "activate" => readiness::activate(raw),
         "render-tool-args" => render::render_tool_args(raw),
+        "classify-retry-batch" => retry_batch::classify_retry_batch(raw),
+        "evaluate-conditions" => condition_eval::evaluate_conditions(raw),
         _ => Err(format!("unknown subcommand: {subcommand}")),
     }
 }
@@ -214,7 +220,7 @@ fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
     let Some(subcommand) = args.first().map(String::as_str) else {
         return Err(
-            "usage: paperclip-workflow-core <normalize-policy|calculate-delay|classify-retry|sanitize-error|append-attempt|read-metadata|is-due|validate-dag|has-disallowed-cycle|classify-activation|find-skippable|runnable-steps|skippable-steps|activate|render-tool-args>"
+            "usage: paperclip-workflow-core <normalize-policy|calculate-delay|classify-retry|classify-retry-batch|sanitize-error|append-attempt|read-metadata|is-due|validate-dag|has-disallowed-cycle|classify-activation|find-skippable|runnable-steps|skippable-steps|activate|render-tool-args|evaluate-conditions>"
                 .to_string(),
         );
     };
@@ -269,6 +275,14 @@ mod tests {
         eq("classify-activation", r#"{"step":{"id":"s","dependencies":["a","b","c"]},"preds":{"a":9,"b":{"status":"completed","dispatchReady":"no"},"c":{"status":"pending"}}}"#, r#"{"runnable":false,"skippable":false,"waiting":true}"#);
         eq("classify-activation", r#"{"step":{"id":"s","dependencies":[],"conditionalDependencies":[{"stepId":7},{"stepId":"a","when":"always"}]},"preds":{"a":{"status":"skipped"}}}"#, r#"{"runnable":true,"skippable":false,"waiting":false}"#);
         eq("find-skippable", r#"{"steps":[{"id":"s1","dependencies":["a"]},{"id":"s2","dependencies":["b"]}],"preds":{"a":{"status":"failed"},"b":{"status":"completed"}},"launchedStepIds":["s1"]}"#, r#"{"stepIds":["s1"]}"#);
+    }
+
+    #[test]
+    fn stage4a_subcommands_dispatch() {
+        let out = run("classify-retry-batch", r#"{"nowIso":"2026-11-20T00:00:00.000Z","items":[{"id":"s","policy":{"enabled":true,"maxRetries":2,"delaySeconds":0,"backoff":"fixed","jitter":false},"stepRunStatus":"failed","retryCount":0,"isControlNode":false,"stepTypeSupported":true,"isQaStep":false,"qaRequestChanges":false,"recoveryActive":false}]}"#);
+        assert_eq!(out["items"][0]["eligible"], json!(true));
+        let out = run("evaluate-conditions", r#"{"combinator":"all","conditions":[{"source":{"kind":"tool_json","stepId":"p","path":"$","toolName":"m"},"dataType":"number","operator":"less_than","rightValue":9,"left":5}]}"#);
+        assert_eq!(out, json!({"outcome":true,"results":[true]}));
     }
 
     #[test]

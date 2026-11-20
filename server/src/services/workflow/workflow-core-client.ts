@@ -142,7 +142,7 @@ export function resetWorkflowCoreFallbackWarningsForTests(): void {
  *   interpret 가 WorkflowCoreContractError 를 던지면(응답 shape 불일치) fallback 한다.
  *   그 외 에러(시맨틱)는 재발사 없이 그대로 전파한다.
  */
-async function runWithNodeFallback<T>(input: {
+export async function runWithNodeFallback<T>(input: {
   subcommand: string;
   payload: () => unknown;
   fallback: () => T | Promise<T>;
