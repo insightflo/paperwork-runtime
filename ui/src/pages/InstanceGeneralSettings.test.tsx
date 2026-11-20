@@ -265,7 +265,11 @@ describe("InstanceGeneralSettings Multi-CLI manager section", () => {
     expect(html).toContain("1 / 2 CLI 설치됨");
     expect(html).toContain("Installed Coding Agent CLIs");
     expect(html).toContain("OpenAI Codex");
-    expect(html).toContain("CLI 업데이트");
+    // updateAvailable 미지원(unknown) 상태 — 업데이트 버튼 대신 확인 버튼만 노출
+    expect(html).toContain("업데이트 확인");
+    expect(html).not.toContain("CLI 업데이트");
+    expect(html).not.toContain("업데이트 가능");
+    expect(html).not.toContain("최신 버전");
     expect(html).toContain("모델 새로고침");
     expect(html).toContain("Pi CLI v9.9.9");
     expect(html).toContain("총 3개 모델");
@@ -283,6 +287,64 @@ describe("InstanceGeneralSettings Multi-CLI manager section", () => {
     expect(html).toContain("복사");
     expect(html).toContain("적용");
     expect(html).toContain("openai-completions");
+  });
+
+  it("shows the CLI 업데이트 button + 업데이트 가능 badge only when updateAvailable is true", () => {
+    piStatusData.mockReturnValueOnce({
+      installed: true,
+      executablePath: "/home/u/.bun/bin/pi",
+      version: "9.9.9",
+      agentDir: "/home/u/.pi/agent",
+      providers: [],
+      catalogModels: [],
+      runtimes: [
+        {
+          id: "codex",
+          name: "OpenAI Codex",
+          adapterType: "codex_local",
+          installed: true,
+          executablePath: "/usr/local/bin/codex",
+          version: "1.0.0",
+          authConfigured: false,
+          authSource: null,
+          modelCount: 0,
+          sampleModels: [],
+          supportsSelfUpdate: true,
+          supportsModelUpdate: false,
+          supportsProviderSync: false,
+          latestVersion: "1.0.1",
+          updateAvailable: true,
+        },
+        {
+          id: "claude",
+          name: "Claude Code",
+          adapterType: "claude_local",
+          installed: true,
+          executablePath: "/usr/local/bin/claude",
+          version: "2.0.0",
+          authConfigured: false,
+          authSource: null,
+          modelCount: 0,
+          sampleModels: [],
+          supportsSelfUpdate: true,
+          supportsModelUpdate: false,
+          supportsProviderSync: false,
+          latestVersion: "2.0.0",
+          updateAvailable: false,
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(<InstanceGeneralSettings />);
+
+    // updateAvailable: true → amber 배지 + 버전 전환 + CLI 업데이트 버튼
+    expect(html).toContain("업데이트 가능");
+    expect(html).toContain("v1.0.0 → v1.0.1");
+    expect(html).toContain("CLI 업데이트");
+    expect(html.match(/CLI 업데이트/g)).toHaveLength(1);
+    // updateAvailable: false(최신 확인됨) → 확인 버튼 + 최신 버전 배지, 업데이트 버튼 없음
+    expect(html).toContain("최신 버전");
+    expect(html).toContain("업데이트 확인");
+    expect(html).not.toContain("v2.0.0 →");
   });
 
   it("renders the not-detected badge and no logout when pi is absent", () => {

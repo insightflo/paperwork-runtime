@@ -102,6 +102,10 @@ export interface CliRuntimeStatus {
   supportsSelfUpdate: boolean;
   supportsModelUpdate: boolean;
   supportsProviderSync: boolean;
+  /** npm registry 최신 버전(확인된 경우에만). 미확인이면 undefined/null. */
+  latestVersion?: string | null;
+  /** latestVersion > version (semver) 일 때 true. 확인 전/미지원이면 undefined. */
+  updateAvailable?: boolean;
   error?: string;
 }
 

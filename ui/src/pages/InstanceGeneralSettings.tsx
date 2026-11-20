@@ -176,11 +176,16 @@ const copyModelRef = (ref: string) => {
   void navigator.clipboard.writeText(ref).catch(() => undefined);
 };
 
+/** 진행 중인 CLI 관리 작업 추적용 — 버튼 라벨/상태 표시기를 런타임·작업별로 전환한다. */
+type CliPendingKind = "sync" | "models" | "self" | "check" | "logout";
+type CliPendingAction = { runtimeId?: string; kind: CliPendingKind } | null;
+
 function PiCliManagerSection({ canApplyModel, onApplyModel }: {
   canApplyModel: boolean; onApplyModel: (modelRef: string) => void;
 }) {
   const queryClient = useQueryClient();
   const [modelFilter, setModelFilter] = useState("");
+  const [pendingAction, setPendingAction] = useState<CliPendingAction>(null);
   const statusQuery = useQuery({
     queryKey: PI_CLI_STATUS_QUERY_KEY,
     queryFn: () => instanceSettingsApi.getPiCliStatus(),
@@ -194,6 +199,7 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
         queryClient.invalidateQueries({ queryKey: PI_CLI_STATUS_QUERY_KEY }),
       ]);
     },
+    onSettled: () => setPendingAction(null),
   });
   const status = statusQuery.data;
   const runtimes = Array.isArray(status?.runtimes) ? status.runtimes : [];
@@ -203,7 +209,18 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
   const filteredModels = catalogModels.filter((ref) =>
     ref.toLowerCase().includes(modelFilter.trim().toLowerCase()));
   const busy = actionMutation.isPending;
-  const runAction = (run: () => Promise<PiCliActionResult>) => actionMutation.mutate(run);
+  const runAction = (pending: Exclude<CliPendingAction, null>, run: () => Promise<PiCliActionResult>) => {
+    setPendingAction(pending);
+    actionMutation.mutate(run);
+  };
+  const actionPending = (kind: CliPendingKind, runtimeId?: string) =>
+    pendingAction?.kind === kind && (runtimeId === undefined || pendingAction.runtimeId === runtimeId);
+  const runUpdateCheck = (runtimeId: string) => {
+    setPendingAction({ kind: "check", runtimeId });
+    void statusQuery.refetch().finally(() => {
+      setPendingAction((prev) => (prev?.kind === "check" && prev.runtimeId === runtimeId ? null : prev));
+    });
+  };
 
   return (
     <section className="rounded-xl border border-border bg-card p-5">
@@ -227,14 +244,14 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
       {status?.error && <p role="alert" className="mt-2 text-xs text-amber-700 dark:text-amber-300">{status.error}</p>}
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" className={chip} disabled={busy}
-          onClick={() => runAction(() => instanceSettingsApi.syncPiCli({ direction: "both" }))}>
-          Pi CLI ↔ 웹 설정 동기화</button>
+          onClick={() => runAction({ kind: "sync" }, () => instanceSettingsApi.syncPiCli({ direction: "both" }))}>
+          {actionPending("sync") ? "동기화 중…" : "Pi CLI ↔ 웹 설정 동기화"}</button>
         <button type="button" className={chip} disabled={busy || !status?.installed}
-          onClick={() => runAction(() => instanceSettingsApi.updatePiCli({ runtimeId: "pi", target: "models" }))}>
-          모델 카탈로그 새로고침 (pi update --models)</button>
+          onClick={() => runAction({ kind: "models", runtimeId: "pi" }, () => instanceSettingsApi.updatePiCli({ runtimeId: "pi", target: "models" }))}>
+          {actionPending("models", "pi") ? "모델 업데이트 중…" : "모델 카탈로그 새로고침 (pi update --models)"}</button>
         <button type="button" className={chip} disabled={busy || !status?.installed}
-          onClick={() => runAction(() => instanceSettingsApi.updatePiCli({ runtimeId: "pi", target: "self" }))}>
-          CLI 버전 업데이트 (pi update --self)</button>
+          onClick={() => runAction({ kind: "self", runtimeId: "pi" }, () => instanceSettingsApi.updatePiCli({ runtimeId: "pi", target: "self" }))}>
+          {actionPending("self", "pi") ? "CLI 업데이트 중…" : "CLI 버전 업데이트 (pi update --self)"}</button>
         <button type="button" className={chip} disabled={statusQuery.isFetching}
           onClick={() => void statusQuery.refetch()}>상태 새로고침</button>
       </div>
@@ -256,7 +273,12 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
             Installed Coding Agent CLIs
           </h3>
           <ul className="mt-2 grid gap-2 sm:grid-cols-2">
-            {runtimes.map((rt) => (
+            {runtimes.map((rt) => {
+              const modelsPending = actionPending("models", rt.id);
+              const selfPending = actionPending("self", rt.id);
+              const checkPending = actionPending("check", rt.id);
+              const canSelfUpdate = rt.installed && rt.supportsSelfUpdate;
+              return (
               <li key={rt.id} className="grid gap-1.5 rounded-md border border-border px-3 py-2.5">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-sm font-medium">{rt.name}</span>
@@ -265,6 +287,16 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
                     : "bg-muted text-muted-foreground")}>
                     {rt.installed ? piCliVersionLabel(rt.version) : "미설치"}
                   </span>
+                  {rt.updateAvailable && (
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                      업데이트 가능
+                    </span>
+                  )}
+                  {canSelfUpdate && !rt.updateAvailable && rt.latestVersion && (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                      최신 버전
+                    </span>
+                  )}
                   <span className={cn("rounded-full px-2 py-0.5 text-xs", rt.authConfigured
                     ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
                     : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300")}>
@@ -276,18 +308,32 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
                   {rt.executablePath ?? rt.adapterType}
                   {rt.authSource ? ` · ${rt.authSource}` : ""}
                 </p>
+                {rt.updateAvailable && rt.latestVersion && (
+                  <p className="font-mono text-xs text-amber-700 dark:text-amber-300">
+                    {`${piCliVersionLabel(rt.version)} → v${rt.latestVersion}`}
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-1.5">
                   <button type="button" className={cn(chip, "px-2 py-0.5 text-xs")} disabled={busy}
-                    onClick={() => runAction(() => instanceSettingsApi.updatePiCli({ runtimeId: rt.id, target: "models" }))}>
-                    모델 새로고침</button>
-                  {rt.installed && rt.supportsSelfUpdate && (
+                    onClick={() => runAction({ kind: "models", runtimeId: rt.id }, () => instanceSettingsApi.updatePiCli({ runtimeId: rt.id, target: "models" }))}>
+                    {modelsPending ? "새로고침 중…" : "모델 새로고침"}</button>
+                  {canSelfUpdate && rt.updateAvailable && (
                     <button type="button" className={cn(chip, "px-2 py-0.5 text-xs")} disabled={busy}
-                      onClick={() => runAction(() => instanceSettingsApi.updatePiCli({ runtimeId: rt.id, target: "self" }))}>
-                      CLI 업데이트</button>
+                      onClick={() => runAction({ kind: "self", runtimeId: rt.id }, () => instanceSettingsApi.updatePiCli({ runtimeId: rt.id, target: "self" }))}>
+                      {selfPending ? "업데이트 중…" : "CLI 업데이트"}</button>
+                  )}
+                  {canSelfUpdate && !rt.updateAvailable && (
+                    <button type="button" className={cn(chip, "px-2 py-0.5 text-xs text-muted-foreground")} disabled={checkPending || statusQuery.isFetching}
+                      onClick={() => runUpdateCheck(rt.id)}>
+                      {checkPending ? "확인 중…" : "업데이트 확인"}</button>
                   )}
                 </div>
+                {modelsPending && (
+                  <p role="status" className="text-xs text-muted-foreground">모델 목록 새로고침 중…</p>
+                )}
               </li>
-            ))}
+              );
+            })}
           </ul>
         </>
       )}
@@ -309,7 +355,7 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
               {p.baseUrl && <span className="break-all font-mono text-xs text-muted-foreground">{p.baseUrl}</span>}
               {p.authConfigured && (
                 <button type="button" className={cn(chip, "ml-auto px-2 py-1 text-xs text-destructive")} disabled={busy}
-                  onClick={() => runAction(() => instanceSettingsApi.logoutPiCliProvider({ providerId: p.id }))}>
+                  onClick={() => runAction({ kind: "logout", runtimeId: p.id }, () => instanceSettingsApi.logoutPiCliProvider({ providerId: p.id }))}>
                   로그아웃</button>
               )}
             </li>
