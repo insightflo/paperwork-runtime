@@ -16,12 +16,17 @@ import {
   getStructuralTopologyErrors as getStructuralTopologyErrorsNode,
   type StructuralTopologyStep,
 } from "./control-flow/structural-topology.js";
+import { checkStepEligibility as checkStepEligibilityNode } from "./resume/eligibility.js";
+import type { StepEligibilityBlocker, StepHistory } from "./resume/types.js";
+import { sortWorkflowStepsByPriority as sortWorkflowStepsByPriorityNode } from "./dag-step-priority.js";
+import type { WorkflowStep } from "./dag-engine.js";
 import { runWithNodeFallback, WorkflowCoreContractError } from "./workflow-core-client.js";
 
 /**
  * [목적] Stage 7A 서브커맨드(artifact-references / ancestor-step-ids /
  *   tool-reference-errors / gate-producer-token / same-producer-token /
- *   is-structural-gate / structural-topology-errors)의 Node 브리지.
+ *   is-structural-gate / structural-topology-errors)와 Stage 7C
+ *   (check-step-eligibility / sort-steps-by-priority)의 Node 브리지.
  *   workflow-core-client.ts 의 runWithNodeFallback/게이트/warn-once 계약을 그대로 재사용한다.
  * [주의] 응답 shape 는 TS 반환 타입 계약으로 엄격히 검증한다 — 선언 타입 밖 원소
  *   (예: 비문자열 dep id 로 생긴 ancestors 의 null/숫자, 비문자열 stepId)는 계약 위반으로
@@ -173,5 +178,63 @@ export function getStructuralTopologyErrorsWithNodeFallback(
     fallback: () => getStructuralTopologyErrorsNode(steps),
     interpret: (response) =>
       stringArrayField(response, "errors", "workflow_core_structural_topology_errors"),
+  });
+}
+
+const STEP_ELIGIBILITY_BLOCKERS: ReadonlySet<string> = new Set<StepEligibilityBlocker>(
+  ["unsupported_status", "active_work", "executed_step", "external_effect_unknown", "control_tool_effects_unverified"],
+);
+
+/** `{steps:[…]}` 응답을 입력 순열로 되돌린다 — id 버킷 소비로 원본 identity·중복 id 를 보존한다. */
+function permutedStepsResponse<T extends { id: string }>(steps: readonly T[], raw: unknown, reason: string): T[] {
+  if (!Array.isArray(raw) || raw.length !== steps.length) {
+    throw new WorkflowCoreContractError(`${reason}_bad_shape`);
+  }
+  const pool = new Map<string, T[]>();
+  for (const step of steps) {
+    const bucket = pool.get(step.id);
+    if (bucket) bucket.push(step);
+    else pool.set(step.id, [step]);
+  }
+  return raw.map((item) => {
+    if (!isRecord(item) || typeof item.id !== "string") {
+      throw new WorkflowCoreContractError(`${reason}_bad_item`);
+    }
+    const step = pool.get(item.id)?.shift();
+    if (!step) throw new WorkflowCoreContractError(`${reason}_unknown_step`);
+    return step;
+  });
+}
+
+export function checkStepEligibilityWithNodeFallback(
+  history: StepHistory,
+): Promise<StepEligibilityBlocker | null> {
+  return runWithNodeFallback({
+    subcommand: "check-step-eligibility",
+    payload: () => ({ history }),
+    fallback: () => checkStepEligibilityNode(history),
+    interpret: (response) => {
+      if (!isRecord(response) || !("blocker" in response)) {
+        throw new WorkflowCoreContractError("workflow_core_step_eligibility_bad_shape");
+      }
+      const blocker = response.blocker;
+      if (blocker === null) return null;
+      if (typeof blocker !== "string" || !STEP_ELIGIBILITY_BLOCKERS.has(blocker)) {
+        throw new WorkflowCoreContractError("workflow_core_step_eligibility_bad_shape");
+      }
+      return blocker as StepEligibilityBlocker;
+    },
+  });
+}
+
+export function sortWorkflowStepsByPriorityWithNodeFallback(
+  steps: WorkflowStep[],
+): Promise<WorkflowStep[]> {
+  return runWithNodeFallback({
+    subcommand: "sort-steps-by-priority",
+    payload: () => ({ steps }),
+    fallback: () => sortWorkflowStepsByPriorityNode(steps),
+    interpret: (response) =>
+      permutedStepsResponse(steps, isRecord(response) ? response.steps : undefined, "workflow_core_sorted_steps"),
   });
 }
