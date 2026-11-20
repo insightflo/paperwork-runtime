@@ -6,13 +6,19 @@ import {
   InstanceGeneralSettings,
   toGeneralPatch,
   toJudgmentDraft,
+  toLlmStructuredDraft,
+  toLlmStructuredPatch,
 } from "./InstanceGeneralSettings";
+
+const { queryData } = vi.hoisted(() => ({
+  queryData: vi.fn(() => ({ censorUsernameInLogs: false, llmStructuredApiKeyConfigured: false })),
+}));
 
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   useMutation: () => ({ isPending: false, mutate: vi.fn() }),
   useQuery: () => ({
-    data: { censorUsernameInLogs: false },
+    data: queryData(),
     isLoading: false,
     error: null,
   }),
@@ -45,6 +51,72 @@ describe("toGeneralPatch", () => {
       judgmentBaseUrl: "https://api.example.com",
       judgmentModelId: null,
     });
+  });
+});
+
+describe("toLlmStructuredDraft", () => {
+  it("defaults to empty fields", () => {
+    expect(toLlmStructuredDraft(null)).toEqual({
+      llmStructuredBaseUrl: "", llmStructuredModel: "", llmStructuredApiKey: "",
+    });
+  });
+
+  it("hydrates public fields but never copies a key", () => {
+    const settings = {
+      llmStructuredBaseUrl: "https://api.deepseek.com/v1",
+      llmStructuredModel: "deepseek-chat",
+      llmStructuredApiKey: "do-not-copy",
+    };
+    expect(toLlmStructuredDraft(settings)).toEqual({ ...settings, llmStructuredApiKey: "" });
+  });
+});
+
+describe("toLlmStructuredPatch", () => {
+  const draft = {
+    llmStructuredBaseUrl: " https://api.deepseek.com/v1 ",
+    llmStructuredModel: " deepseek-chat ",
+    llmStructuredApiKey: " \t ",
+  };
+
+  it("trims public fields and omits a blank key to preserve the saved key", () => {
+    expect(toLlmStructuredPatch(draft)).toStrictEqual({
+      llmStructuredBaseUrl: "https://api.deepseek.com/v1", llmStructuredModel: "deepseek-chat",
+    });
+  });
+
+  it("sends a trimmed replacement key", () => {
+    expect(toLlmStructuredPatch({ ...draft, llmStructuredApiKey: " sk-example " }).llmStructuredApiKey)
+      .toBe("sk-example");
+  });
+
+  it("clears the key explicitly even with a replacement typed in", () => {
+    expect(toLlmStructuredPatch({ ...draft, llmStructuredApiKey: "sk-example" }, { clearApiKey: true })
+      .llmStructuredApiKey).toBeNull();
+  });
+
+  it("sends null for blank URL and model", () => {
+    expect(toLlmStructuredPatch(toLlmStructuredDraft())).toStrictEqual({
+      llmStructuredBaseUrl: null, llmStructuredModel: null,
+    });
+  });
+});
+
+describe("InstanceGeneralSettings structured LLM section", () => {
+  it.each([false, true])("renders the correct controls when key configured is %s", (configured) => {
+    queryData.mockReturnValueOnce({ censorUsernameInLogs: false, llmStructuredApiKeyConfigured: configured });
+    const html = renderToStaticMarkup(<InstanceGeneralSettings />);
+    const title = "Structured LLM connection (1-shot API)";
+    expect(html).toContain(title);
+    expect(html.indexOf(title)).toBeGreaterThan(html.indexOf("Judgment connection"));
+    expect(html).toContain('id="llm-structured-base-url"');
+    expect(html).toContain('id="llm-structured-model"');
+    const keyInput = html.match(/<input\b[^>]*\bid="llm-structured-api-key"[^>]*>/)?.[0];
+    expect(keyInput).toContain('type="password"');
+    expect(keyInput).toContain('autoComplete="new-password"');
+    expect(html).toContain("Save structured LLM connection");
+    expect(html.includes("Clear saved key")).toBe(configured);
+    expect(html).toContain(configured ? "API Key 등록됨" : "API Key 미등록");
+    expect(html).toContain(configured ? "비워두면 기존 키 유지" : 'placeholder="sk-..."');
   });
 });
 

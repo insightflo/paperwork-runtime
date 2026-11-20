@@ -34,9 +34,19 @@ export const instanceGeneralSettingsSchema = z.object({
   censorUsernameInLogs: z.boolean().default(false),
   judgmentBaseUrl: judgmentBaseUrlSchema.optional(),
   judgmentModelId: judgmentModelIdSchema.optional(),
+  llmStructuredBaseUrl: judgmentBaseUrlSchema.optional(),
+  llmStructuredModel: judgmentModelIdSchema.optional(),
+  llmStructuredApiKeyConfigured: z.boolean().optional(),
 }).strict();
 
-export const patchInstanceGeneralSettingsSchema = instanceGeneralSettingsSchema.partial();
+export const patchInstanceGeneralSettingsSchema = instanceGeneralSettingsSchema
+  .omit({ llmStructuredApiKeyConfigured: true })
+  .partial()
+  .extend({
+    llmStructuredApiKey: z.string().trim().min(1).max(512)
+      .refine((value) => !/[\r\n\0]/.test(value), "Control characters not allowed")
+      .nullable().optional(),
+  });
 
 export const instanceExperimentalSettingsSchema = z.object({
   enableIsolatedWorkspaces: z.boolean().default(false),

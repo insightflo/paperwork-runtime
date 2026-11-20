@@ -31,6 +31,40 @@ export function toGeneralPatch(draft: JudgmentConnectionDraft): PatchInstanceGen
   };
 }
 
+export interface LlmStructuredDraft {
+  llmStructuredBaseUrl: string;
+  llmStructuredModel: string;
+  llmStructuredApiKey: string;
+}
+
+export function toLlmStructuredDraft(
+  settings?: { llmStructuredBaseUrl?: string; llmStructuredModel?: string } | null,
+): LlmStructuredDraft {
+  return {
+    llmStructuredBaseUrl: settings?.llmStructuredBaseUrl ?? "",
+    llmStructuredModel: settings?.llmStructuredModel ?? "",
+    llmStructuredApiKey: "",
+  };
+}
+
+export function toLlmStructuredPatch(
+  draft: LlmStructuredDraft,
+  options?: { clearApiKey?: boolean },
+): PatchInstanceGeneralSettings {
+  const key = draft.llmStructuredApiKey.trim();
+  return {
+    llmStructuredBaseUrl: draft.llmStructuredBaseUrl.trim() || null,
+    llmStructuredModel: draft.llmStructuredModel.trim() || null,
+    ...(options?.clearApiKey ? { llmStructuredApiKey: null } : key ? { llmStructuredApiKey: key } : {}),
+  };
+}
+
+const structuredFields = [
+  ["llmStructuredBaseUrl", "llm-structured-base-url", "Base URL", "https://api.deepseek.com/v1"],
+  ["llmStructuredModel", "llm-structured-model", "Model", "deepseek-chat"],
+  ["llmStructuredApiKey", "llm-structured-api-key", "API Key", "sk-..."],
+] as const;
+
 export function InstanceGeneralSettings() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
@@ -38,10 +72,7 @@ export function InstanceGeneralSettings() {
   const [judgmentDraft, setJudgmentDraft] = useState<JudgmentConnectionDraft>(toJudgmentDraft());
 
   useEffect(() => {
-    setBreadcrumbs([
-      { label: "Instance Settings" },
-      { label: "General" },
-    ]);
+    setBreadcrumbs([{ label: "Instance Settings" }, { label: "General" }]);
   }, [setBreadcrumbs]);
 
   const generalQuery = useQuery({
@@ -50,9 +81,7 @@ export function InstanceGeneralSettings() {
   });
 
   useEffect(() => {
-    if (generalQuery.data) {
-      setJudgmentDraft(toJudgmentDraft(generalQuery.data));
-    }
+    if (generalQuery.data) setJudgmentDraft(toJudgmentDraft(generalQuery.data));
   }, [generalQuery.data]);
 
   const toggleMutation = useMutation({
@@ -78,6 +107,34 @@ export function InstanceGeneralSettings() {
       setActionError(
         error instanceof Error ? error.message : "Failed to update judgment connection settings.",
       );
+    },
+  });
+
+  const { llmStructuredBaseUrl, llmStructuredModel } = generalQuery.data ?? {};
+  const keyConfigured = generalQuery.data?.llmStructuredApiKeyConfigured === true;
+  const [structuredDraft, setStructuredDraft] = useState(() => toLlmStructuredDraft(generalQuery.data));
+  const [structuredNotice, setStructuredNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    setStructuredDraft((draft) => ({
+      ...draft, llmStructuredBaseUrl: llmStructuredBaseUrl ?? "", llmStructuredModel: llmStructuredModel ?? "",
+    }));
+  }, [llmStructuredBaseUrl, llmStructuredModel]);
+  useEffect(() => {
+    if (!structuredNotice) return;
+    const timeout = setTimeout(() => setStructuredNotice(null), 3000);
+    return () => clearTimeout(timeout);
+  }, [structuredNotice]);
+  const structuredMutation = useMutation({
+    throwOnError: false,
+    mutationFn: (clearKey: boolean) => instanceSettingsApi.updateGeneral(
+      clearKey ? { llmStructuredApiKey: null } : toLlmStructuredPatch(structuredDraft),
+    ).catch(() => { throw new Error("Could not update the structured LLM connection. Check your settings and try again."); }),
+    onMutate: () => { setStructuredNotice(null); },
+    onSuccess: async (_, clearKey) => {
+      setStructuredDraft((draft) => ({ ...draft, llmStructuredApiKey: "" }));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.instance.generalSettings });
+      setStructuredNotice(clearKey ? "Saved API key cleared." : "Structured LLM connection saved.");
     },
   });
 
@@ -189,6 +246,48 @@ export function InstanceGeneralSettings() {
             Save judgment connection
           </button>
         </div>
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-sm font-semibold">Structured LLM connection (1-shot API)</h2>
+          <span className={cn("rounded-full px-2 py-1 text-xs font-medium", keyConfigured
+            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-muted text-muted-foreground")}>
+            {keyConfigured ? "API Key 등록됨" : "API Key 미등록"}
+          </span>
+        </div>
+        <fieldset disabled={structuredMutation.isPending} className="mt-4 grid min-w-0 max-w-xl gap-4">
+          {structuredFields.map(([field, id, label, placeholder]) => {
+            const isKey = field === "llmStructuredApiKey";
+            return (
+              <div key={id} className="space-y-1.5">
+                <label htmlFor={id} className="text-sm font-medium">{label}</label>
+                <Input id={id} type={isKey ? "password" : "text"} value={structuredDraft[field]}
+                  autoComplete={isKey ? "new-password" : "off"}
+                  placeholder={isKey && keyConfigured
+                    ? "등록됨 — 변경할 때만 새 키 입력 (비워두면 기존 키 유지)" : placeholder}
+                  onChange={(event) => setStructuredDraft({ ...structuredDraft, [field]: event.target.value })}
+                />
+              </div>
+            );
+          })}
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => structuredMutation.mutate(false)}
+              className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+              Save structured LLM connection
+            </button>
+            {keyConfigured && (
+              <button type="button" onClick={() => structuredMutation.mutate(true)}
+                className="h-9 rounded-md border border-border px-4 text-sm font-medium hover:bg-muted disabled:opacity-60">
+                Clear saved key
+              </button>
+            )}
+          </div>
+          {structuredMutation.error && <div role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {structuredMutation.error.message}
+          </div>}
+          {structuredNotice && <p role="status" className="text-sm text-muted-foreground">{structuredNotice}</p>}
+        </fieldset>
       </section>
     </div>
   );

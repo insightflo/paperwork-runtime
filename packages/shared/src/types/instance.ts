@@ -4,6 +4,9 @@ export interface InstanceGeneralSettings {
   judgmentBaseUrl?: string;
   /** 판단(Jev) 모델 오버라이드. 미설정(undefined)이면 정의별 모델 사용. */
   judgmentModelId?: string;
+  llmStructuredBaseUrl?: string;
+  llmStructuredModel?: string;
+  readonly llmStructuredApiKeyConfigured?: boolean;
 }
 
 export interface InstanceExperimentalSettings {
