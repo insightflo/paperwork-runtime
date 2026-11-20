@@ -26,6 +26,8 @@ import type { ProgressEvidenceContext } from "../tools/progress-store.js";
 import { executeAgentJudgmentTool } from "../judgment/agent-judgment-tool-executor.js";
 import { executeMissionOwnerAction, OwnerActionRefusalError, withCurrentOwnerToolAttempt } from "../missions/mission-owner-execute.js";
 import { missionOwnerExecuteSchema } from "@paperclipai/shared/validators/mission-owner-authority";
+import { executeLlmStructuredWorkflowStep } from "./llm-structured-executor.js";
+import { executeStepCloseoutTool } from "./step-closeout-tool.js";
 import { executeHtmlPreflightTool } from "../judgment/html-preflight-executor.js";
 import { secretService } from "../secrets.js";
 import type { JudgmentService } from "../judgment/judgment-service.js";
@@ -74,6 +76,7 @@ export async function executeCoreWorkflowTool(input: {
   const adapterConfig = readObject(tool.adapterConfig);
   const isJudgmentTool = tool.adapterType === "builtin" && adapterConfig.kind === "judgment";
   const isHtmlPreflightTool = tool.adapterType === "builtin" && adapterConfig.kind === "html-preflight";
+  const isLlmStructuredTool = tool.adapterType === "builtin" && adapterConfig.kind === "llm-structured";
   let agentId = input.agentId?.trim() || "";
   if (!agentId && input.agentName?.trim()) {
     const [agent] = await input.db.select({ id: agents.id }).from(agents)
@@ -108,15 +111,19 @@ export async function executeCoreWorkflowTool(input: {
       throw error;
     }
   }
+  if (tool.adapterType === "builtin" && adapterConfig.kind === "step-closeout") {
+    return executeStepCloseoutTool(input);
+  }
   if (input.heartbeatRunId && adapterConfig.artifactContract !== undefined) {
     return executeAgentArtifactTool(input, executeCoreWorkflowTool);
   }
   let artifactExecution: FrozenArtifactAttempt | null;
   try { artifactExecution = await loadArtifactAttempt({ ...input, adapterConfig }); }
   catch (error) { return { status: 422, body: { error: (error as Error).message, source: "core", tool: input.toolName } }; }
-  if (artifactExecution && (tool.adapterType !== "builtin" || isJudgmentTool || isHtmlPreflightTool)) {
+  if (artifactExecution && (tool.adapterType !== "builtin" || isJudgmentTool || isHtmlPreflightTool || isLlmStructuredTool)) {
     return { status: 422, body: { error: "artifact_contract_adapter_unsupported", source: "core", tool: input.toolName } };
   }
+  if (isLlmStructuredTool) return executeLlmStructuredWorkflowStep({ ...input, agentId, adapterConfig });
   if (isJudgmentTool || isHtmlPreflightTool) {
     // [봇 bug·medium 교정] 디렉토리 해석 실패(일시 DB 오류 포함)가 관측 도구 실행 자체를
     //   실패시키지 않게 한다 — 결과는 각 실행기가 구조화해 반환한다.

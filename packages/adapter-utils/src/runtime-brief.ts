@@ -6,6 +6,7 @@ import { buildIssueExecutionCardBriefLines, buildRuntimeReadBriefLine } from "./
 import { buildWorkflowReworkContractBriefLines, buildWorkflowReworkTaskHeader } from "./runtime-brief-rework-section.js";
 import { buildQaCapAcceptanceBriefLines } from "./runtime-brief-qa-cap-section.js";
 import { buildMissionWorkingNoteBriefLines } from "./runtime-brief-working-note.js";
+import { buildPrehydratedBundleBriefLines } from "./runtime-brief-prehydrate.js";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -109,6 +110,7 @@ function buildWorkflowToolContractBrief(context: unknown) {
     asString(contract.stepName) ? `Step: ${asString(contract.stepName)}` : asString(contract.stepId) ? `Step: ${asString(contract.stepId)}` : null,
     toolNames.length > 0 ? `Allowed workflow tools: ${toolNames.join(", ")}` : null,
     ...toolLines,
+    toolNames.includes("step-closeout") ? "Atomic closeout: use the step-closeout tool once with {issueId, status, comment, artifactPaths} instead of separate curl calls for artifacts, comments, and issue completion." : null,
     `Workflow step args: ${workflowStepArgsJson}`,
     `Effective HTTP parameters: ${effectiveParametersJson}`,
     "Use the Effective HTTP parameters above as the HTTP `parameters` JSON unless the assigned issue explicitly overrides them.",
@@ -552,6 +554,7 @@ export function buildPaperclipRuntimeBrief(context: Record<string, unknown>) {
   const noProgressRecoveryLines = buildNoProgressRecoveryBriefLines(context.paperclipNoProgressRecoveryBrief);
   const isReworkMode = reworkHeaderLines.length > 0;
   const workflowToolContractLine = buildWorkflowToolContractBrief(context);
+  const prehydratedBundleLines = buildPrehydratedBundleBriefLines(context.paperclipPrehydratedBundle);
   // [QA rework] rework contract가 최신 QA feedback을 이미 가지면 최근 코멘트는 중복이므로 억제(prompt dilution 방지).
   const recentIssueCommentsLine = isReworkMode ? null : buildRecentIssueCommentsBrief(context.paperclipIssueRecentComments);
   // [operator instruction cursor] 미소비 운영자 지시 — rework 모드에서도 억제하지 않는 최우선 블록.
@@ -782,7 +785,7 @@ export function buildPaperclipRuntimeBrief(context: Record<string, unknown>) {
       ? `- Previous handoff summary: ${summarizeMarkdownHandoff(asString(context.paperclipSessionHandoffMarkdown))}`
       : null;
   const brief = joinPromptSections([
-    taskKey || issueId || projectId || allowedKeys.length > 0 || handoffSummary
+    taskKey || issueId || projectId || allowedKeys.length > 0 || handoffSummary || prehydratedBundleLines.length > 0
       ? "Paperclip runtime brief:"
       : null,
     // [operator instruction cursor] 커서 이후 미소비 운영자 지시를 rework 헤더보다 앞선 최상단에.
@@ -825,6 +828,7 @@ export function buildPaperclipRuntimeBrief(context: Record<string, unknown>) {
     ...workflowReworkContractLines,
     ...qaCapAcceptanceLines,
     workflowToolContractLine,
+    ...prehydratedBundleLines,
     recentIssueCommentsLine,
     hermesChatLine,
     fileViewsLine,
