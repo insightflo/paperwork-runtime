@@ -76,3 +76,58 @@ export interface InstanceSettings {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export type CliRuntimeId =
+  | "pi"
+  | "codex"
+  | "claude"
+  | "opencode"
+  | "commandcode"
+  | "antigravity"
+  | "gemini"
+  | "hermes"
+  | "cursor";
+
+export interface CliRuntimeStatus {
+  id: CliRuntimeId;
+  name: string;
+  adapterType: string;
+  installed: boolean;
+  executablePath: string | null;
+  version: string | null;
+  authConfigured: boolean;
+  authSource?: string | null;
+  modelCount: number;
+  sampleModels: string[];
+  supportsSelfUpdate: boolean;
+  supportsModelUpdate: boolean;
+  supportsProviderSync: boolean;
+  error?: string;
+}
+
+export interface PiCliProviderStatus {
+  id: string;
+  baseUrl?: string;
+  api?: string;
+  modelCount: number;
+  models: string[];
+  authConfigured: boolean;
+}
+
+export interface PiCliStatusSnapshot {
+  installed: boolean;
+  executablePath: string | null;
+  version: string | null;
+  agentDir: string;
+  providers: PiCliProviderStatus[];
+  catalogModels: string[];
+  runtimes?: CliRuntimeStatus[];
+  error?: string;
+}
+
+export interface PiCliActionResult {
+  ok: boolean;
+  action: "sync" | "update_self" | "update_models" | "update_cli" | "logout" | "refresh_models";
+  message: string;
+  status: PiCliStatusSnapshot;
+}

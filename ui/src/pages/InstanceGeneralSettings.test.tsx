@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   InstanceGeneralSettings,
   createNewProviderRow,
+  piCatalogModelName,
+  piCliVersionLabel,
   toLlmStructuredProvidersDraft,
   toLlmStructuredProvidersPatch,
   toGeneralPatch,
@@ -14,16 +16,26 @@ import {
 } from "./InstanceGeneralSettings";
 
 import type { InstanceGeneralSettings as GeneralSettings } from "@paperclipai/shared";
+import type { PiCliStatusSnapshot } from "@paperclipai/shared/types/instance";
 
-const { queryData } = vi.hoisted(() => ({
+const { queryData, piStatusData } = vi.hoisted(() => ({
   queryData: vi.fn((): GeneralSettings => ({ censorUsernameInLogs: false, llmStructuredApiKeyConfigured: false })),
+  piStatusData: vi.fn((): PiCliStatusSnapshot => ({
+    installed: false,
+    executablePath: null,
+    version: null,
+    agentDir: "~/.pi/agent",
+    providers: [],
+    catalogModels: [],
+    runtimes: [],
+  })),
 }));
 
 vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  useQueryClient: () => ({ invalidateQueries: vi.fn(), setQueryData: vi.fn() }),
   useMutation: () => ({ isPending: false, mutate: vi.fn() }),
-  useQuery: () => ({
-    data: queryData(),
+  useQuery: (options?: { queryKey?: readonly unknown[] }) => ({
+    data: Array.isArray(options?.queryKey) && options.queryKey[1] === "pi-cli-status" ? piStatusData() : queryData(),
     isLoading: false,
     error: null,
   }),
@@ -182,5 +194,114 @@ describe("InstanceGeneralSettings judgment connection section", () => {
     expect(html).toContain("TypeSafe 호환 판단 API 주소(비우면 기본값)");
     expect(html).toContain("모델 미설정 시 정의별 모델 사용");
     expect(html).toContain("서버 환경의 기존 판단 API 키가 이 주소로 전송됨");
+  });
+});
+
+describe("pi cli helpers", () => {
+  it("piCliVersionLabel strips pi/v prefixes for the badge", () => {
+    expect(piCliVersionLabel("pi 9.9.9")).toBe("v9.9.9");
+    expect(piCliVersionLabel("v1.2.3")).toBe("v1.2.3");
+    expect(piCliVersionLabel("1.2.3")).toBe("v1.2.3");
+    expect(piCliVersionLabel(null)).toBe("v?");
+    expect(piCliVersionLabel("  ")).toBe("v?");
+  });
+
+  it("piCatalogModelName strips the provider prefix from catalog refs", () => {
+    expect(piCatalogModelName("zai/glm-4.6")).toBe("glm-4.6");
+    expect(piCatalogModelName("openrouter/anthropic/claude-sonnet")).toBe("anthropic/claude-sonnet");
+    expect(piCatalogModelName("solo-model")).toBe("solo-model");
+  });
+});
+
+describe("InstanceGeneralSettings Multi-CLI manager section", () => {
+  it("renders multi-CLI runtimes, pi providers, and catalog state when installed", () => {
+    piStatusData.mockReturnValueOnce({
+      installed: true,
+      executablePath: "/home/u/.bun/bin/pi",
+      version: "pi 9.9.9",
+      agentDir: "/home/u/.pi/agent",
+      providers: [
+        { id: "zai", baseUrl: "https://api.z.ai/api/coding/paas/v4", api: "openai-completions", modelCount: 2, models: ["zai/glm-4.6", "zai/glm-4.5"], authConfigured: true },
+        { id: "solo", baseUrl: "https://solo.example/v1", modelCount: 1, models: ["solo/m1"], authConfigured: false },
+      ],
+      catalogModels: ["solo/m1", "zai/glm-4.5", "zai/glm-4.6"],
+      runtimes: [
+        {
+          id: "pi",
+          name: "Pi CLI",
+          adapterType: "pi_local",
+          installed: true,
+          executablePath: "/home/u/.bun/bin/pi",
+          version: "9.9.9",
+          authConfigured: true,
+          authSource: "~/.pi/agent/auth.json",
+          modelCount: 3,
+          sampleModels: ["zai/glm-4.6"],
+          supportsSelfUpdate: true,
+          supportsModelUpdate: true,
+          supportsProviderSync: true,
+        },
+        {
+          id: "codex",
+          name: "OpenAI Codex",
+          adapterType: "codex_local",
+          installed: false,
+          executablePath: null,
+          version: null,
+          authConfigured: false,
+          authSource: null,
+          modelCount: 0,
+          sampleModels: [],
+          supportsSelfUpdate: true,
+          supportsModelUpdate: false,
+          supportsProviderSync: false,
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(<InstanceGeneralSettings />);
+
+    expect(html).toContain("Multi-CLI &amp; Model Runtime (OpenBot Manager)");
+    expect(html.indexOf("OpenBot Manager")).toBeGreaterThan(html.indexOf("Structured LLM connection"));
+    expect(html).toContain("1 / 2 CLI 설치됨");
+    expect(html).toContain("Installed Coding Agent CLIs");
+    expect(html).toContain("OpenAI Codex");
+    expect(html).toContain("CLI 업데이트");
+    expect(html).toContain("모델 새로고침");
+    expect(html).toContain("Pi CLI v9.9.9");
+    expect(html).toContain("총 3개 모델");
+    expect(html).toContain("/home/u/.bun/bin/pi");
+    expect(html).toContain("/home/u/.pi/agent");
+    expect(html).toContain("Pi CLI ↔ 웹 설정 동기화");
+    expect(html).toContain("모델 카탈로그 새로고침 (pi update --models)");
+    expect(html).toContain("CLI 버전 업데이트 (pi update --self)");
+    expect(html).toContain("상태 새로고침");
+    expect(html).toContain("로그인됨 (auth.json)");
+    expect(html).toContain("미인증");
+    expect(html).toContain("로그아웃");
+    expect(html).toContain("모델 검색");
+    expect(html).toContain("zai/glm-4.6");
+    expect(html).toContain("복사");
+    expect(html).toContain("적용");
+    expect(html).toContain("openai-completions");
+  });
+
+  it("renders the not-detected badge and no logout when pi is absent", () => {
+    piStatusData.mockReturnValueOnce({
+      installed: false,
+      executablePath: null,
+      version: null,
+      agentDir: "/x/.pi/agent",
+      providers: [],
+      catalogModels: [],
+      runtimes: [],
+      error: "spawn pi ENOENT",
+    });
+    const html = renderToStaticMarkup(<InstanceGeneralSettings />);
+
+    expect(html).toContain("Pi CLI not detected");
+    expect(html).toContain("총 0개 모델");
+    expect(html).toContain("spawn pi ENOENT");
+    expect(html).not.toContain("로그아웃");
+    expect(html).toContain("Pi CLI ↔ 웹 설정 동기화");
   });
 });

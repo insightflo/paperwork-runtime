@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { SlidersHorizontal } from "lucide-react";
 import type { InstanceGeneralSettings, PatchInstanceGeneralSettings } from "@paperclipai/shared";
+import type { PiCliActionResult } from "@paperclipai/shared/types/instance";
 import { Input } from "@/components/ui/input";
 import { instanceSettingsApi, type LlmStructuredConnectionTestResult } from "@/api/instanceSettings";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -93,6 +94,17 @@ export function toLlmStructuredProvidersPatch(rows: ProviderRow[], defaultProvid
 
 const chip = "rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-60";
 const providerFields = [["name", "공급자 이름 (Name)"], ["baseUrl", "Base URL"], ["model", "Model"], ["apiKey", "API Key"]] as const;
+const PI_CLI_STATUS_QUERY_KEY = ["instance", "pi-cli-status"] as const;
+
+export function piCliVersionLabel(version: string | null | undefined): string {
+  const cleaned = (version ?? "").trim().replace(/^pi[\s_-]*/i, "").replace(/^v/i, "").trim();
+  return cleaned ? `v${cleaned}` : "v?";
+}
+
+export function piCatalogModelName(ref: string): string {
+  const slash = ref.indexOf("/");
+  return slash >= 0 ? ref.slice(slash + 1) : ref;
+}
 
 function ProviderCard({ row, saved, isDefault, update, selectDefault, remove }: {
   row: ProviderRow; saved: boolean; isDefault: boolean; update: (patch: Partial<ProviderRow>) => void;
@@ -159,6 +171,178 @@ function ProviderCard({ row, saved, isDefault, update, selectDefault, remove }: 
   </fieldset>;
 }
 
+const copyModelRef = (ref: string) => {
+  if (typeof navigator === "undefined" || !navigator.clipboard) return;
+  void navigator.clipboard.writeText(ref).catch(() => undefined);
+};
+
+function PiCliManagerSection({ canApplyModel, onApplyModel }: {
+  canApplyModel: boolean; onApplyModel: (modelRef: string) => void;
+}) {
+  const queryClient = useQueryClient();
+  const [modelFilter, setModelFilter] = useState("");
+  const statusQuery = useQuery({
+    queryKey: PI_CLI_STATUS_QUERY_KEY,
+    queryFn: () => instanceSettingsApi.getPiCliStatus(),
+  });
+  const actionMutation = useMutation({
+    mutationFn: (run: () => Promise<PiCliActionResult>) => run(),
+    onSuccess: async (result) => {
+      queryClient.setQueryData(PI_CLI_STATUS_QUERY_KEY, result.status);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.instance.generalSettings }),
+        queryClient.invalidateQueries({ queryKey: PI_CLI_STATUS_QUERY_KEY }),
+      ]);
+    },
+  });
+  const status = statusQuery.data;
+  const runtimes = Array.isArray(status?.runtimes) ? status.runtimes : [];
+  const installedCount = runtimes.filter((rt) => rt.installed).length;
+  const providers = Array.isArray(status?.providers) ? status.providers : [];
+  const catalogModels = Array.isArray(status?.catalogModels) ? status.catalogModels : [];
+  const filteredModels = catalogModels.filter((ref) =>
+    ref.toLowerCase().includes(modelFilter.trim().toLowerCase()));
+  const busy = actionMutation.isPending;
+  const runAction = (run: () => Promise<PiCliActionResult>) => actionMutation.mutate(run);
+
+  return (
+    <section className="rounded-xl border border-border bg-card p-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-semibold">Multi-CLI &amp; Model Runtime (OpenBot Manager)</h2>
+        {runtimes.length > 0 && (
+          <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
+            {`${installedCount} / ${runtimes.length} CLI 설치됨`}
+          </span>
+        )}
+        <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", status?.installed
+          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+          : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300")}>
+          {status?.installed ? `Pi CLI ${piCliVersionLabel(status.version)}` : "Pi CLI not detected"}
+        </span>
+        <span className="text-xs text-muted-foreground">{`총 ${catalogModels.length}개 모델`}</span>
+      </div>
+      <p className="mt-1.5 break-all font-mono text-xs text-muted-foreground">
+        {`${status?.executablePath ?? "pi"} · ${status?.agentDir ?? "~/.pi/agent"}`}
+      </p>
+      {status?.error && <p role="alert" className="mt-2 text-xs text-amber-700 dark:text-amber-300">{status.error}</p>}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" className={chip} disabled={busy}
+          onClick={() => runAction(() => instanceSettingsApi.syncPiCli({ direction: "both" }))}>
+          Pi CLI ↔ 웹 설정 동기화</button>
+        <button type="button" className={chip} disabled={busy || !status?.installed}
+          onClick={() => runAction(() => instanceSettingsApi.updatePiCli({ runtimeId: "pi", target: "models" }))}>
+          모델 카탈로그 새로고침 (pi update --models)</button>
+        <button type="button" className={chip} disabled={busy || !status?.installed}
+          onClick={() => runAction(() => instanceSettingsApi.updatePiCli({ runtimeId: "pi", target: "self" }))}>
+          CLI 버전 업데이트 (pi update --self)</button>
+        <button type="button" className={chip} disabled={statusQuery.isFetching}
+          onClick={() => void statusQuery.refetch()}>상태 새로고침</button>
+      </div>
+      {actionMutation.data && (
+        <p role="status" className={cn("mt-3 text-sm",
+          actionMutation.data.ok ? "text-emerald-700 dark:text-emerald-300" : "text-destructive")}>
+          {actionMutation.data.message}
+        </p>
+      )}
+      {actionMutation.error && (
+        <p role="alert" className="mt-3 text-sm text-destructive">
+          {actionMutation.error instanceof Error ? actionMutation.error.message : "CLI 런타임 작업에 실패했습니다."}
+        </p>
+      )}
+
+      {runtimes.length > 0 && (
+        <>
+          <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Installed Coding Agent CLIs
+          </h3>
+          <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+            {runtimes.map((rt) => (
+              <li key={rt.id} className="grid gap-1.5 rounded-md border border-border px-3 py-2.5">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-sm font-medium">{rt.name}</span>
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs", rt.installed
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                    : "bg-muted text-muted-foreground")}>
+                    {rt.installed ? piCliVersionLabel(rt.version) : "미설치"}
+                  </span>
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs", rt.authConfigured
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                    : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300")}>
+                    {rt.authConfigured ? "인증됨" : "미인증"}
+                  </span>
+                  <span className="ml-auto text-xs text-muted-foreground">{`모델 ${rt.modelCount}개`}</span>
+                </div>
+                <p className="break-all font-mono text-xs text-muted-foreground">
+                  {rt.executablePath ?? rt.adapterType}
+                  {rt.authSource ? ` · ${rt.authSource}` : ""}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  <button type="button" className={cn(chip, "px-2 py-0.5 text-xs")} disabled={busy}
+                    onClick={() => runAction(() => instanceSettingsApi.updatePiCli({ runtimeId: rt.id, target: "models" }))}>
+                    모델 새로고침</button>
+                  {rt.installed && rt.supportsSelfUpdate && (
+                    <button type="button" className={cn(chip, "px-2 py-0.5 text-xs")} disabled={busy}
+                      onClick={() => runAction(() => instanceSettingsApi.updatePiCli({ runtimeId: rt.id, target: "self" }))}>
+                      CLI 업데이트</button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pi CLI Providers</h3>
+      {providers.length === 0 ? (
+        <p className="mt-2 text-sm text-muted-foreground">~/.pi/agent/models.json 에 등록된 공급자가 없습니다.</p>
+      ) : (
+        <ul className="mt-2 grid gap-2">
+          {providers.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
+              <span className="font-mono text-sm font-medium">{p.id}</span>
+              <span className={cn("rounded-full px-2 py-0.5 text-xs", p.authConfigured
+                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300")}>
+                {p.authConfigured ? "로그인됨 (auth.json)" : "미인증"}
+              </span>
+              <span className="text-xs text-muted-foreground">{`${p.api ?? "api 미지정"} · 모델 ${p.modelCount}개`}</span>
+              {p.baseUrl && <span className="break-all font-mono text-xs text-muted-foreground">{p.baseUrl}</span>}
+              {p.authConfigured && (
+                <button type="button" className={cn(chip, "ml-auto px-2 py-1 text-xs text-destructive")} disabled={busy}
+                  onClick={() => runAction(() => instanceSettingsApi.logoutPiCliProvider({ providerId: p.id }))}>
+                  로그아웃</button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Live Pi Model Catalog</h3>
+      <Input aria-label="pi 모델 카탈로그 검색" placeholder="모델 검색..." value={modelFilter}
+        onChange={(event) => setModelFilter(event.target.value)} className="mt-2 max-w-sm" />
+      <div className="mt-2 max-h-48 overflow-y-auto rounded-md border border-border">
+        {filteredModels.length === 0 ? (
+          <p className="px-3 py-2 text-sm text-muted-foreground">
+            {catalogModels.length === 0 ? "카탈로그가 비어 있습니다." : "검색 결과가 없습니다."}
+          </p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {filteredModels.map((ref) => (
+              <li key={ref} className="flex items-center gap-2 px-3 py-1.5">
+                <span className="min-w-0 flex-1 break-all font-mono text-xs">{ref}</span>
+                <button type="button" className={cn(chip, "px-2 py-0.5 text-xs")}
+                  onClick={() => copyModelRef(ref)}>복사</button>
+                <button type="button" className={cn(chip, "px-2 py-0.5 text-xs")} disabled={!canApplyModel}
+                  onClick={() => onApplyModel(ref)}>적용</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function InstanceGeneralSettings() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
@@ -216,8 +400,18 @@ export function InstanceGeneralSettings() {
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKeys.instance.generalSettings, updated);
       setProviderEdits(null);
+      void queryClient.invalidateQueries({ queryKey: PI_CLI_STATUS_QUERY_KEY });
     },
   });
+
+  const applyPiCatalogModel = (modelRef: string) => {
+    const targetId = defaultId ?? rows[0]?.id;
+    if (!targetId) return;
+    setProviderEdits({
+      rows: rows.map((row) => (row.id === targetId ? { ...row, model: piCatalogModelName(modelRef) } : row)),
+      defaultId: defaultId ?? targetId,
+    });
+  };
 
   if (generalQuery.isLoading) {
     return <div className="text-sm text-muted-foreground">Loading general settings...</div>;
@@ -354,6 +548,8 @@ export function InstanceGeneralSettings() {
           {structuredMutation.isSuccess && !providerEdits && <p role="status" className="text-sm">공급자 설정을 저장했습니다.</p>}
         </fieldset>
       </section>
+
+      <PiCliManagerSection canApplyModel={rows.length > 0} onApplyModel={applyPiCatalogModel} />
     </div>
   );
 }
