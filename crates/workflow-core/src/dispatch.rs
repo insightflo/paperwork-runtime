@@ -181,6 +181,9 @@ pub fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
         "structural-topology-errors" => crate::structural_gate::structural_topology_errors(raw),
         "check-step-eligibility" => crate::resume_eligibility::check_step_eligibility(raw),
         "sort-steps-by-priority" => crate::resume_eligibility::sort_steps_by_priority(raw),
+        "forward-reachable" => crate::resume_graph::forward_reachable(raw),
+        "normalize-step-contract" => crate::resume_graph::normalize_step_contract(raw),
+        "normalize-step-machine-checks" => crate::resume_graph::normalize_step_machine_checks(raw),
         _ => Err(format!("unknown subcommand: {subcommand}")),
     }
 }

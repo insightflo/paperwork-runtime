@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 /// ECMAScript WhiteSpace+LT — Rust `is_whitespace` 에서 U+0085(NEL) 를 빼고 U+FEFF 를 얹는다.
-fn js_trim(s: &str) -> &str {
+pub(crate) fn js_trim(s: &str) -> &str {
     s.trim_matches(|c: char| c == '\u{FEFF}' || (c.is_whitespace() && c != '\u{85}'))
 }
 

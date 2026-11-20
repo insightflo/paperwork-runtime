@@ -8,7 +8,7 @@ use std::process;
 /// Stage 서브커맨드 bin 모듈(lib 미공개) — js_value: JS 의미론, condition_eval:
 ///   IF 조건 평가, retry_batch: 재시도 배치 판정·패치, render: tool-arg, readiness: 게이트,
 ///   dispatch: 서브커맨드 테이블, artifact_refs/structural_gate: Stage 7A 포트,
-///   resume_eligibility: Stage 7C 포트.
+///   resume_eligibility: Stage 7C 포트, resume_graph: Stage 8A 포트.
 mod artifact_refs;
 mod condition_eval;
 mod dispatch;
@@ -18,6 +18,7 @@ mod readiness;
 mod render;
 mod render_path;
 mod resume_eligibility;
+mod resume_graph;
 mod retry_batch;
 mod structural_gate;
 
@@ -70,7 +71,7 @@ fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
     let Some(subcommand) = args.first().map(String::as_str) else {
         return Err(
-            "usage: paperclip-workflow-core <normalize-policy|calculate-delay|classify-retry|classify-retry-batch|sanitize-error|append-attempt|read-metadata|is-due|validate-dag|has-disallowed-cycle|classify-activation|find-skippable|runnable-steps|skippable-steps|activate|render-tool-args|evaluate-conditions|qa-defect-card-historical|artifact-references|ancestor-step-ids|tool-reference-errors|gate-producer-token|same-producer-token|is-structural-gate|structural-topology-errors|check-step-eligibility|sort-steps-by-priority>"
+            "usage: paperclip-workflow-core <normalize-policy|calculate-delay|classify-retry|classify-retry-batch|sanitize-error|append-attempt|read-metadata|is-due|validate-dag|has-disallowed-cycle|classify-activation|find-skippable|runnable-steps|skippable-steps|activate|render-tool-args|evaluate-conditions|qa-defect-card-historical|artifact-references|ancestor-step-ids|tool-reference-errors|gate-producer-token|same-producer-token|is-structural-gate|structural-topology-errors|check-step-eligibility|sort-steps-by-priority|forward-reachable|normalize-step-contract|normalize-step-machine-checks>"
                 .to_string(),
         );
     };
