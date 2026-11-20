@@ -15,7 +15,7 @@ import { loadCompanySystemLanguage, type SystemLanguage } from "../missions/syst
 import { logger } from "../../middleware/logger.js";
 import { HttpError } from "../../errors.js";
 import { createOrReplayQaSourceDefectCard } from "./qa-source-defect-card-replay.js";
-import { buildHistoricalQaSourceDefectCard } from "./qa-source-defect-card-historical.js";
+import { buildHistoricalQaSourceDefectCardWithNodeFallback } from "./workflow-core-client-s6b.js";
 import { buildHistoricalV3Candidates, buildHistoricalV3InputVariants, buildHistoricalV3RequestKey } from "./qa-source-defect-card-historical-v3.js";
 
 export const QA_SOURCE_DEFECT_CARD_SOURCE_TYPE = "workflow_qa_rejection";
@@ -285,7 +285,7 @@ export async function ensureQaSourceDefectOwnerCard(input: {
       db: input.db, companyId: input.companyId, language,
       legacyRequestKey: `qa-source-defect:${sourceId}`, sourcePrefix: `${`${input.workflowRunId}:${input.producerStepId}:`.replace(/[\\%_]/g, "\\$&")}%`,
       v3RequestKey: buildHistoricalV3RequestKey(input),
-      buildHistorical: () => [...historicalVariants.map((variant) => buildHistoricalQaSourceDefectCard(variant)), ...buildHistoricalV3Candidates(historicalInput, promotion.recurringFindingIds)],
+      buildHistorical: async () => [...(await Promise.all(historicalVariants.map(buildHistoricalQaSourceDefectCardWithNodeFallback))), ...buildHistoricalV3Candidates(historicalInput, promotion.recurringFindingIds)],
       buildHistoricalV3: () => buildHistoricalV3Candidates(historicalInput, promotion.recurringFindingIds),
       build: (displayLanguage) => buildCardCreateInput({
         ...input, language: displayLanguage,

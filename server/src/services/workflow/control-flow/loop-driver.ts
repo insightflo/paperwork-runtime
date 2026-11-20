@@ -45,6 +45,7 @@ import {
   workflowHasConditionalEdges,
   type EdgeBearingStep,
   type PredFacts,
+  type StepActivation,
 } from "./edge-condition.js";
 import { resetStepRunForRework } from "./step-reset.js";
 import { setWorkflowStepRunStatus } from "../step-status-fencing.js";
@@ -63,6 +64,7 @@ import {
   ensureQaSourceDefectOwnerCard,
   type QaSourceDefectCardQaRef,
 } from "../qa-source-defect-owner-card.js";
+import { activateStepsWithNodeFallback } from "../workflow-core-client-s5.js";
 
 type StepRun = typeof workflowStepRuns.$inferSelect;
 
@@ -278,6 +280,10 @@ export async function applyBackEdgeReworkPass(
   if (!workflowHasConditionalEdges(steps)) return { stepRuns: input.stepRuns, reworkedCount: 0, remediatedCount: 0 };
 
   const stepRunMap = new Map(input.stepRuns.map((stepRun) => [stepRun.stepId, stepRun]));
+  // [S5] tx 밖 pass — sibling QA 발화불가(unreachable) 판정은 Rust activate 배치로 묶는다. back-edge
+  //   rework 후보(terminal producer)가 처음 등장할 때 lazy 1 spawn — 후보가 없는 pass 는 스폰하지 않는다.
+  //   Map miss 는 per-step TS 판정으로 보전한다.
+  let activationsByStepId: Map<string, StepActivation> | null = null;
   let reworkedCount = 0;
   let remediatedCount = 0;
 
@@ -297,6 +303,8 @@ export async function applyBackEdgeReworkPass(
     //   같은 producer 산출물에 대한 모든 sibling QA 가 terminal 될 때까지 대기(barrier)한 뒤,
     //   request_changes 들을 하나의 rework 사이클로 합쳐 producer iteration 을 1 만 소모하게 한다.
     //   목적: maxIterations 가 QA verdict 단위가 아니라 producer rework 사이클 단위로 소모되도록.
+    // [S5] sibling QA 판정 배치는 이 pass 의 첫 후보에서 1회 계산해 공유한다.
+    activationsByStepId ??= await activateStepsWithNodeFallback(steps, predsByStepId);
     const siblingQas = backEdges.map((edge) => {
       const qaRun = stepRunMap.get(edge.stepId);
       const pred = predsByStepId.get(edge.stepId);
@@ -314,7 +322,9 @@ export async function applyBackEdgeReworkPass(
         && qaRun?.status !== "running"
         && (() => {
           const qaStep = steps.find((candidate) => candidate.id === edge.stepId);
-          return qaStep ? classifyStepActivation(qaStep, predsByStepId).skippable : false;
+          return qaStep
+            ? (activationsByStepId?.get(qaStep.id) ?? classifyStepActivation(qaStep, predsByStepId)).skippable
+            : false;
         })();
       return { edge, qaRun, pred, terminal, rejected, unreachable };
     });

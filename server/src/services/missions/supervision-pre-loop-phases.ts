@@ -38,7 +38,7 @@ import {
   emitTerminalMissionHumanOperatorReport,
   summarizeWorkflowRetryExhaustion,
 } from "./terminal-mission-human-operator-alert.js";
-import { loadTerminalValidationVerdicts } from "./terminal-mission-workflow-continuation.js";
+import { activateWorkflowContinuationStepRows, loadTerminalValidationVerdicts } from "./terminal-mission-workflow-continuation.js";
 import { summarizeProvider403LadderForMission } from "../heartbeat-provider403-ladder.js";
 import { qualityService } from "../quality.js";
 import { loadCompanySystemLanguage } from "./system-language.js";
@@ -227,13 +227,17 @@ export async function runMissionPreLoopPhases({
         .map((row) => row.stepRun.issueId)
         .filter((issueId): issueId is string => Boolean(issueId));
       const terminalVerdicts = await loadTerminalValidationVerdicts(db, stepRunIssueIds);
+      // [S5] tx 밖 — 활성화 판정은 Rust activate 배치로 스탬프하고 동기 classify 체인이 소비한다.
+      const workflowStepRows = await activateWorkflowContinuationStepRows(input.group.workflowStepRows, {
+        validationVerdictsByIssueId: terminalVerdicts,
+      });
       const continuation = classifyTerminalMissionContinuation({
         missionStatus: mission.status,
         missionHasActiveHeartbeat,
         missionIssueIds: missionIssues.map((missionIssue) => missionIssue.id),
         liveWakeupIssueIds: context.terminalAlertLiveWakeupIssueIds,
         openOwnerActionRecoveryExists,
-        workflowStepRows: input.group.workflowStepRows,
+        workflowStepRows,
         validationVerdictsByIssueId: terminalVerdicts,
       });
       if (!continuation.terminal) {

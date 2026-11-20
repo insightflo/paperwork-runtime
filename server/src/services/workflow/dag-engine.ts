@@ -116,6 +116,7 @@ import { readExplicitValidationVerdict } from "../validation-verdict.js";
 import { applyWorkProductDependencyGate, collectUniqueStepRunIssueIds, loadWorkProductDependencyGate, reloadWorkflowStepRunsForSameRun } from "./workproduct-dependency-gate.js";
 import { stripShellEscapeResidue } from "./tool-step-args.js";
 import { resolveWorkflowToolStepArgsViaWorkflowCore } from "./tool-step-args-workflow-core.js";
+import { activateStepsWithNodeFallback } from "./workflow-core-client-s5.js";
 import { isStructuralGateStep } from "./control-flow/structural-gate.js";
 import { STEP_MACHINE_CHECKS_TOOL, evaluateStepMachineChecks, renderMachineCheckFailure } from "./step-machine-checks.js";
 import {
@@ -583,7 +584,13 @@ export async function processQueuedWorkflowToolStepRuns(
     const activationPreds = buildPredFactsMap(steps, buildStepRunMap(
       await db.select().from(workflowStepRuns).where(eq(workflowStepRuns.workflowRunId, row.run.id)),
     ));
-    if (!classifyStepActivation(step, activationPreds).runnable) {
+    // [S5/F4] tx 밖에서는 Rust activate 배치로 이 row 의 run 판정을 묶는다(1 spawn/row). tx 안은
+    //   서브프로세스 스폰 금지이므로, 그리고 Map miss 시에는 per-step TS 판정으로 보전한다.
+    const activation = (is(db, PgTransaction)
+      ? null
+      : (await activateStepsWithNodeFallback(steps, activationPreds)).get(step.id))
+      ?? classifyStepActivation(step, activationPreds);
+    if (!activation.runnable) {
       result.skippedCount += 1;
       continue;
     }
