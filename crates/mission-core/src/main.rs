@@ -87,6 +87,7 @@ mod js {
     }
 }
 
+mod agent_role_boundaries;
 // Deliberately hand-compacted to honor the 300-line file limit.
 #[rustfmt::skip]
 mod plan_graph;
@@ -144,6 +145,9 @@ fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
                 units, step_ids
             )?))
         }
+        s if agent_role_boundaries::SUBCOMMANDS.contains(&s) => {
+            agent_role_boundaries::dispatch(s, raw)
+        }
         s if revision_reuse::SUBCOMMANDS.contains(&s) => revision_reuse::dispatch(s, raw),
         _ => quality_contract::dispatch(subcommand, raw),
     }
@@ -152,11 +156,15 @@ fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
     let Some(subcommand) = args.first().map(String::as_str) else {
+        let subs = [
+            agent_role_boundaries::SUBCOMMANDS,
+            quality_contract::SUBCOMMANDS,
+            revision_reuse::SUBCOMMANDS,
+        ]
+        .concat();
         return Err(format!(
             "usage: paperclip-mission-core <{}>",
-            [quality_contract::SUBCOMMANDS, revision_reuse::SUBCOMMANDS]
-                .concat()
-                .join("|")
+            subs.join("|")
         ));
     };
     let raw = read_stdin_bounded(MAX_STDIN_BYTES)?;
@@ -181,19 +189,10 @@ mod tests {
     use super::*;
     use serde_json::Map;
 
-    fn run(sub: &str, payload: &str) -> Result<Value, String> {
-        dispatch(sub, payload.as_bytes())
-    }
-    fn ok(sub: &str, payload: &str) -> Value {
-        run(sub, payload).unwrap()
-    }
+    fn run(sub: &str, payload: &str) -> Result<Value, String> { dispatch(sub, payload.as_bytes()) }
+    fn ok(sub: &str, payload: &str) -> Value { run(sub, payload).unwrap() }
     fn codes(out: &Value) -> Vec<&str> {
-        out["diagnostics"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(|d| d["code"].as_str())
-            .collect()
+        out["diagnostics"].as_array().unwrap().iter().filter_map(|d| d["code"].as_str()).collect()
     }
 
     #[test]
