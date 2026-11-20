@@ -179,6 +179,8 @@ pub fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
         "same-producer-token" => crate::structural_gate::same_producer_token(raw),
         "is-structural-gate" => crate::structural_gate::is_structural_gate(raw),
         "structural-topology-errors" => crate::structural_gate::structural_topology_errors(raw),
+        "check-step-eligibility" => crate::resume_eligibility::check_step_eligibility(raw),
+        "sort-steps-by-priority" => crate::resume_eligibility::sort_steps_by_priority(raw),
         _ => Err(format!("unknown subcommand: {subcommand}")),
     }
 }
@@ -237,6 +239,16 @@ mod tests {
         eq("same-producer-token", r#"{"left":{"producerStepId":"p","iterationIndex":1,"completedAt":"t"},"right":{"producerStepId":"p","iterationIndex":1.0,"completedAt":"t"}}"#, r#"{"same":true}"#);
         eq("is-structural-gate", r#"{"step":{"type":"tool","qaType":"structural","toolNames":["x"]}}"#, r#"{"isGate":true}"#);
         eq("structural-topology-errors", r#"{"steps":[{"id":"p","type":"action"},{"id":"g","type":"tool","qaType":"structural","toolNames":["x"],"dependencies":["p"]},{"id":"q","type":"qa","dependencies":["g"]}]}"#, r#"{"errors":["QA step \"q\" depends on structural gate \"g\" but omits producer \"p\"."]}"#);
+    }
+
+    #[test]
+    fn stage7c_subcommands_dispatch() {
+        eq("check-step-eligibility", r#"{"history":{"status":"running"}}"#, r#"{"blocker":"active_work"}"#);
+        // 필드 부재 — `issueId !== null` 은 undefined 도 !== null: 기록 이력으로 본다.
+        eq("check-step-eligibility", r#"{"history":{"status":"pending","kind":"agent","effect":"none"}}"#, r#"{"blocker":"executed_step"}"#);
+        eq("check-step-eligibility", r#"{"history":{"status":"pending","kind":"agent","effect":"none","issueId":null,"startedAt":null,"hasAttempt":false,"hasQueue":false,"hasExternalResult":false}}"#, r#"{"blocker":null}"#);
+        eq("sort-steps-by-priority", r#"{"steps":[{"id":"a","executionControls":{"priority":"low"}},{"id":"b","executionControls":{"priority":"critical"}},{"id":"c"}]}"#, r#"{"steps":[{"id":"b","executionControls":{"priority":"critical"}},{"id":"a","executionControls":{"priority":"low"}},{"id":"c"}]}"#);
+        eq("sort-steps-by-priority", r#"{"steps":"ba"}"#, r#"{"steps":["b","a"]}"#);
     }
 
     #[test]
