@@ -5,10 +5,12 @@
 import { describe, expect, it } from "vitest";
 import {
   buildVerificationBeforeCompletionCriteria,
+  EXECUTION_EFFICIENCY_MARKER,
   extractMissionQualityContract,
   renderAdaptiveQualityProfileLines,
   renderEvidenceExplanationQaLines,
   renderEvidenceExplanationWritingLines,
+  renderExecutionEfficiencyLines,
   renderMissionQualityContractSection,
 } from "../services/missions/mission-quality-contract.js";
 
@@ -93,6 +95,19 @@ describe("mission-quality-contract", () => {
     expect(lines).toContain("PASS when public prose");
     expect(lines).toContain("source containers");
     expect(lines).toContain("observation, interpretation, and conclusion");
+  });
+
+  it("renders the universal execution efficiency (Turn Budget) contract", () => {
+    const lines = renderExecutionEfficiencyLines();
+    const text = lines.join("\n");
+    expect(lines[0]).toBe(EXECUTION_EFFICIENCY_MARKER);
+    expect(text).toContain("## Execution efficiency (Turn Budget)");
+    expect(text).toContain("Batch exploration");
+    expect(text).toContain("Single-pass drafting");
+    expect(text).toContain("<= 20 tool calls per step");
+    expect(text).toContain("do not re-read unchanged files");
+    // Domain-agnostic: no company-, workflow-, or repo-specific nouns.
+    expect(text).not.toMatch(/paperclip|papercompany|workProduct|mission|curl/iu);
   });
 
   it("renders verification-before-completion criteria as a claim/evidence gate", () => {
