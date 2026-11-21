@@ -22,6 +22,7 @@ import {
 } from "./mission-owner-human-input-card.js";
 import { admitHumanCardForSource } from "./human-card-admission.js";
 import { isExactOwnerHumanReplay } from "./owner-human-request-submit.js";
+import { readOwnerHumanCurrent } from "./owner-human-request-state.js";
 import {
   lockOwnerHumanSubmission,
   recordOwnerHumanSubmission,
@@ -154,6 +155,38 @@ export async function submitMissionOwnerDecision(input: {
             pendingOperatorDecisionId: pendingCard.id,
             pendingRequestKey: pendingCard.requestKey,
             missionId: humanAuthority.scope.missionId,
+            decision: effectiveSubmission.decision,
+          },
+        );
+      }
+    }
+    // [R3 2026-11-21] 같은 이슈 미해결 사람 상정 중복 게이트(oversight): 스케줄러가 런을
+    // 재생성하는 oversight 이슈에서 같은 이슈(anchor)에 아직 recoveryNeeded 인 사람 요청이
+    // 남아 있으면 새 사람 결정 제출을 거부한다 — 갱신·추가 근거는 기존 이벤트/카드에 둔다.
+    // 예외는 기존 계약 그대로다: 동일 요청의 멱등 재전송(replay), 현재 lifetime 을 정확히
+    // 명시한 교체(CAS) 제출, 그리고 같은 런의 legacy 무키 반복 제출(새 카드가 아니라 기존
+    // 카드에 병합되는 채택 계약)은 통과한다 — 카드 대기 중이면 앞선 [R2]가 먼저 422를
+    // 반환하고, 카드 답변·요청 종결 뒤의 교체·재발은 계속 201 이다.
+    if (needsHumanAlert && humanAuthority && isOversight
+      && !(await isExactOwnerHumanReplay(humanAuthority, effectiveSubmission))) {
+      const current = await readOwnerHumanCurrent(humanAuthority);
+      const namesCurrentLifetime = effectiveSubmission.humanRequest !== undefined
+        && effectiveSubmission.humanRequest.expectedCurrentLifetimeId === current?.lifetime.lifetimeId;
+      const legacyInPlaceRepeat = effectiveSubmission.humanRequest === undefined
+        && current?.lifetime.identityMode === "legacy_exact"
+        && current.lifetime.heartbeatRunId === humanAuthority.heartbeatRunId;
+      if (current?.pointer.recoveryNeeded
+        && current.pointer.anchorIssueId === issue.id
+        && !namesCurrentLifetime
+        && !legacyInPlaceRepeat) {
+        throw unprocessable(
+          "같은 이슈에 아직 해결되지 않은 사람 상정(escalate/request_input)이 있습니다. 새 제출 대신 기존 카드를 갱신하거나 처리될 때까지 기다려 주세요.",
+          {
+            code: "mission_owner_duplicate_human_submission",
+            issueId: issue.id,
+            missionId: humanAuthority.scope.missionId,
+            pendingLifetimeId: current.pointer.lifetimeId,
+            pendingRequestKey: current.pointer.requestKey,
             decision: effectiveSubmission.decision,
           },
         );
