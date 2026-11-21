@@ -1,6 +1,7 @@
 import {
   EVIDENCE_CHAIN_DELIVERABLE_PLANNING_LINE,
   renderEvidenceExplanationWritingLines,
+  renderExecutionEfficiencyLines,
 } from "../missions/mission-quality-contract.js";
 
 
@@ -13,6 +14,7 @@ export function buildArtifactOutputDirectoryLines(input: {
     "- Write or reuse deliverable file(s) only in that directory. Do not look under other produced_work paths, run dates, or sibling mission folders.",
     "",
     ...renderEvidenceExplanationWritingLines(),
+    ...renderExecutionEfficiencyLines(),
   ];
 }
 

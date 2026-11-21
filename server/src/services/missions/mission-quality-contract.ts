@@ -234,3 +234,17 @@ export function renderStructuralGateAlreadyRunLines(): string[] {
     "",
   ];
 }
+
+export const EXECUTION_EFFICIENCY_MARKER = "## Execution efficiency (Turn Budget)";
+
+export function renderExecutionEfficiencyLines(): string[] {
+  return [
+    EXECUTION_EFFICIENCY_MARKER,
+    "",
+    "Spend tool calls on the deliverable, not on repeated exploration.",
+    "- Batch exploration: combine input file reads, directory listings, and shell lookups into 1-2 grouped commands instead of one tool call per file.",
+    "- Single-pass drafting: write each deliverable artifact once as a complete file rather than piecemeal micro-edits, then verify schema/links/format in one grouped check.",
+    "- Target <= 20 tool calls per step; do not re-read unchanged files or repeat identical probes.",
+    "",
+  ];
+}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EXECUTION_EFFICIENCY_MARKER } from "../services/missions/mission-quality-contract.js";
 import {
   buildAssignedIssueArtifactWorkflowText,
   buildArtifactOutputDirectoryLines,
@@ -72,6 +73,11 @@ describe("artifact registration instructions", () => {
     expect(text).toContain("source content -> observation -> interpretation -> conclusion");
     expect(text).toContain("storage details");
     expect(text).toContain("private traceability");
+    expect(text).toContain(EXECUTION_EFFICIENCY_MARKER);
+    expect(text).toContain("Batch exploration");
+    expect(text).toContain("Single-pass drafting");
+    expect(text).toContain("<= 20 tool calls per step");
+    expect(text).toContain("do not re-read unchanged files");
   });
 
   it("keeps delegated issue workProduct contracts focused on evidence chains", () => {
