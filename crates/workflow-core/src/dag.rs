@@ -3,8 +3,9 @@
 //! [parity] 오류/경고 문자열·순서를 TS validateDag 에 정렬(중복 ID → orphan → control-node → cycle →
 //!   entry point → unreachable). step id 멤버십은 raw JSON 값 비교로 JS Set/Map strict-equality 를
 //!   모사한다(비문자열 dep/stepId 5 → "5"; absent id ≈ undefined; JSON 한계로 객체 id 는 참조가 아닌
-//!   deep-equality 근사). 제외(문서화): zod 고유 검사(조건 strict 키/source 문법/rightValue 내용),
-//!   condition-source ancestor 규칙, parallel-branch guard — parity 테스트는 양측 동의 입력만 사용.
+//!   deep-equality 근사). control-node 규칙은 잔여 포함 전량 포트(zod 그룹 스키마·source ancestor·
+//!   parallel-branch guard — dag/control_nodes/*). 양측 합의 입력(for..of·spread 가 TypeError 인
+//!   TS 크래시 입력 제외)에서만 일치가 보장된다.
 
 mod control_nodes;
 

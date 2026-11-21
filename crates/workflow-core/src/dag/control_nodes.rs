@@ -1,17 +1,14 @@
-//! control-flow/control-node-validation.ts 의 basic IF/Complete 규칙 포트 — dag.rs validate_dag 가 호출.
-//! [parity 제외] zod 고유 검사(조건 strict 키/source 문법/rightValue 내용), condition-source ancestor
-//!   규칙, parallel-branch guard — parity 테스트는 양측 동의 입력만 사용.
+//! control-flow/control-node-validation.ts 의 IF/Complete 규칙 전량 포트 — dag.rs validate_dag 가 호출.
+//!   conditionGroup zod 스키마는 condition_group.rs, forward 그래프 탐색·condition-source
+//!   ancestor·parallel-branch 규칙은 topology.rs(Stage 2 잔여, 300줄 상한 분리).
+
+mod condition_group;
+mod topology;
 
 use super::{conditional_elems, get_str, js_str, truthy_elems};
 use crate::control_flow::string_elements;
 use serde_json::Value;
 use std::collections::HashSet;
-
-const IF_MAX_CONDITIONS: usize = 20;
-const STRING_OPS: &str =
-    "equals not_equals contains not_contains starts_with ends_with is_empty is_not_empty";
-const NUMBER_OPS: &str =
-    "equals not_equals greater_than greater_than_or_equal less_than less_than_or_equal";
 
 fn is_type(step: &Value, t: &str) -> bool {
     step.get("type").and_then(Value::as_str) == Some(t)
@@ -57,48 +54,6 @@ fn legacy_deps(step: &Value) -> Vec<String> {
         .collect()
 }
 
-/// zod workflowConditionGroupSchema 의 basic 검사(zod 와 동의하는 유효/무효 판정만 제공).
-fn condition_group_basic_valid(group: Option<&Value>) -> bool {
-    let Some(obj) = group.and_then(Value::as_object) else {
-        return false;
-    };
-    let comb_ok = matches!(
-        obj.get("combinator").and_then(Value::as_str),
-        Some("all" | "any")
-    );
-    let Some(conds) = obj.get("conditions").and_then(Value::as_array) else {
-        return false;
-    };
-    obj.len() == 2
-        && comb_ok
-        && (1..=IF_MAX_CONDITIONS).contains(&conds.len())
-        && conds.iter().all(|c| {
-            c.as_object().is_some_and(|cond| {
-                cond.get("source").is_some_and(Value::is_object)
-                    && cond
-                        .get("dataType")
-                        .and_then(Value::as_str)
-                        .is_some_and(|dt| {
-                            cond.get("operator")
-                                .and_then(Value::as_str)
-                                .is_some_and(|op| operators_for(dt).split(' ').any(|o| o == op))
-                        })
-            })
-        })
-}
-
-fn operators_for(data_type: &str) -> &'static str {
-    match data_type {
-        "string" => STRING_OPS,
-        "number" => NUMBER_OPS,
-        "boolean" => "is_true is_false",
-        "date_time" => "equals not_equals after after_or_equal before before_or_equal",
-        "array" => "is_empty is_not_empty contains",
-        "object" => "is_empty is_not_empty has_key",
-        _ => "",
-    }
-}
-
 /// 조건부 edge 중 raw stepId 가 step_id 와 strict-equal 인 truthy edge 전부 — TS outgoingConditionEdges.
 fn outgoing_raw<'a>(steps: &'a [Value], step_id: Option<&Value>) -> Vec<&'a Value> {
     steps
@@ -115,16 +70,18 @@ fn has_legacy_dependent(steps: &[Value], step_id: Option<&Value>) -> bool {
 }
 
 fn has_agent_or_tool_assignment(step: &Value) -> bool {
+    // JS String.trim — U+0085(NEL) 유지. Rust trim 이 빼는 NEL 만 남은 문자열도 비어있지 않다.
     let nonempty = |k: &str| {
         step.get(k)
             .and_then(Value::as_str)
-            .is_some_and(|v| !v.trim().is_empty())
+            .is_some_and(|v| !condition_group::js_trim(v).is_empty())
     };
     let list = |k: &str| {
         step.get(k).and_then(Value::as_array).is_some_and(|items| {
-            items
-                .iter()
-                .any(|t| t.as_str().is_some_and(|v| !v.trim().is_empty()))
+            items.iter().any(|t| {
+                t.as_str()
+                    .is_some_and(|v| !condition_group::js_trim(v).is_empty())
+            })
         })
     };
     ["agentId", "agentName", "assigneeAgentId", "toolName"]
@@ -155,7 +112,7 @@ pub(super) fn validate_control_nodes(steps: &[Value]) -> Vec<String> {
         let id = step.get("id");
         if is_type(step, "if") {
             let mut err = |m: &str| errors.push(format!("IF step \"{s}\" {m}"));
-            if !condition_group_basic_valid(step.get("conditionGroup")) {
+            if !condition_group::valid(step.get("conditionGroup")) {
                 err("requires a valid non-empty conditionGroup");
             }
             let out = outgoing_raw(steps, id);
@@ -187,6 +144,8 @@ pub(super) fn validate_control_nodes(steps: &[Value]) -> Vec<String> {
             if has_agent_or_tool_assignment(step) {
                 err("must not select an agent or tool");
             }
+            // Every IF source must be a forward ancestor (and not the IF itself).
+            errors.extend(topology::condition_source_errors(step, steps));
         } else if is_type(step, "complete") {
             let mut err = |m: &str| errors.push(format!("Complete step \"{s}\" {m}"));
             // forward 진입 edge: legacy(success) + truthy 조건부(back-edge 제외). raw stepId 보존.
@@ -219,5 +178,7 @@ pub(super) fn validate_control_nodes(steps: &[Value]) -> Vec<String> {
             }
         }
     }
+    // Parallel-branch guard: Complete 도달 시 별도로 도달 가능한 병렬 분기를 남기면 거부.
+    errors.extend(topology::parallel_branch_errors(steps));
     errors
 }
