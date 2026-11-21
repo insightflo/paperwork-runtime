@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+import {
+  computeAgentToolFingerprintViaRust,
+  hasToolSurfaceChangedViaRust,
+} from "./tool-hygiene-core-client.js";
 
 export interface McpServerFingerprintEntry {
   name: string;
@@ -56,6 +60,11 @@ function hashEnvShape(env: Readonly<Record<string, string | undefined>> | undefi
 }
 
 export function computeAgentToolFingerprint(input: AgentToolFingerprintInput): string {
+  // [wiring] opt-in Rust 위임 — PAPERCLIP_TOOL_HYGIENE_CORE_BIN 절대경로 게이트가 열리고
+  // Rust 가 유효 결과를 낼 때만 채택한다. null(게이트 폐쇄/직렬화 불가/스폰 오류/non-zero/
+  // 비JSON/shape 불량)이면 아래 TS 본문이 parity 의 최종 출처다.
+  const viaRust = computeAgentToolFingerprintViaRust(input);
+  if (viaRust !== null) return viaRust;
   const payload = {
     version: 1,
     adapterType: input.adapterType,
@@ -76,6 +85,9 @@ export function hasToolSurfaceChanged(
   previousFingerprint: string | null | undefined,
   currentInput: AgentToolFingerprintInput,
 ): { changed: boolean; currentFingerprint: string } {
+  // [wiring] opt-in Rust 위임 — 실패·게이트 폐쇄 시 null → 아래 TS 본문.
+  const viaRust = hasToolSurfaceChangedViaRust(previousFingerprint, currentInput);
+  if (viaRust !== null) return viaRust;
   const currentFingerprint = computeAgentToolFingerprint(currentInput);
   if (!previousFingerprint) return { changed: false, currentFingerprint };
   return { changed: previousFingerprint !== currentFingerprint, currentFingerprint };

@@ -14,6 +14,11 @@
 //   - 에이전트 자연어를 파싱하지 않는다(기계 생성 JSON의 error 문자열만 정규화 비교).
 
 import { createHash } from "node:crypto";
+import {
+  condenseToolErrorTextViaRust,
+  normalizeToolErrorSignatureViaRust,
+  toolErrorSignatureKeyViaRust,
+} from "./tool-hygiene-core-client.js";
 
 const MAX_TRACKED_SIGNATURES = 2000;
 const SIGNATURE_TTL_MS = 2 * 60 * 60 * 1000;
@@ -26,10 +31,16 @@ const signatures = new Map<string, SignatureEntry>();
 
 /** 에러 문자열 정규화: 숫자는 타임아웃 밀리초·경과시간 등 가변부라 마스킹, 공백 축약. */
 export function normalizeToolErrorSignature(text: string): string {
+  // [wiring] opt-in Rust 위임 — 실패·게이트 폐쇄 시 null → 아래 TS 본문(parity 최종 출처).
+  const viaRust = normalizeToolErrorSignatureViaRust(text);
+  if (viaRust !== null) return viaRust;
   return text.replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 function signatureKey(input: { tool: string; status?: number | null; error: string }): string {
+  // [wiring] opt-in Rust 위임(tool-error-signature-key) — Map 상태 관리는 TS 에 남긴다.
+  const viaRust = toolErrorSignatureKeyViaRust(input.tool, input.status, input.error);
+  if (viaRust !== null) return viaRust;
   const normalized = normalizeToolErrorSignature(input.error).slice(0, 2000);
   const hash = createHash("sha256").update(normalized).digest("hex").slice(0, 16);
   return `${input.tool}|${input.status ?? "x"}|${hash}`;
@@ -55,6 +66,9 @@ export type ToolErrorHygieneResult = {
 };
 
 function condenseErrorText(error: string, count: number): string {
+  // [wiring] opt-in Rust 위임(condense-tool-error-text) — 실패·게이트 폐쇄 시 null → TS 본문.
+  const viaRust = condenseToolErrorTextViaRust(error, count);
+  if (viaRust !== null) return viaRust;
   const excerpt = error.length > DUPLICATE_EXCERPT_CHARS
     ? `${error.slice(0, DUPLICATE_EXCERPT_CHARS)} …`
     : error;
