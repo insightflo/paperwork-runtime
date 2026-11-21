@@ -17,6 +17,9 @@ import { renewOwnerHumanRequestWithCard } from "./owner-human-request-renew.js";
 import { logger } from "../../middleware/logger.js";
 import { loadToolRecoveryBriefFacts } from "./tool-recovery-brief-facts.js";
 
+/** Hard runaway cap on recovery issues minted for a single (run.id, stepRun.id). */
+export const MAX_TOOL_RECOVERY_ANCHORS_PER_STEP_RUN = 5;
+
 function nonhumanDecisionMatchesFailure(
   decision: MissionOwnerDecisionRecord,
   run: typeof workflowRuns.$inferSelect,
@@ -164,6 +167,11 @@ export async function ensureToolRecoveryCard(db: Db, deps: MissionServiceDeps, i
       if (nonhuman.length > 1 || (!current && human.length > 0 && !closedLegacyHuman)) return fail();
       if (nonhuman.length === 1) return { issue: nonhuman[0]!.issue, created: false, classification, toolNames };
     }
+    // Runaway cap: fail closed without minting once a step run already has this many
+    // recovery anchors. Open and matching decided anchors are still reused above.
+    if (anchors.length >= MAX_TOOL_RECOVERY_ANCHORS_PER_STEP_RUN) {
+      return { issue: null, created: false, classification, toolNames };
+    }
     const recurring = anchors.length > 0;
     if (recurring && (run.status !== "failed" || run.dispatchAuthorityVersion !== input.run.dispatchAuthorityVersion
       || stepRun.statusTransitionVersion !== input.stepRun.statusTransitionVersion
@@ -202,7 +210,7 @@ export async function ensureToolRecoveryCard(db: Db, deps: MissionServiceDeps, i
     }
     return { issue, created: true, classification, toolNames };
   });
-  if (result.created && deps.onOwnerActionCreated) {
+  if (result.created && result.issue && deps.onOwnerActionCreated) {
     void Promise.resolve(deps.onOwnerActionCreated({ mission: input.mission, issue: result.issue,
       sourceIssue: input.oversightIssue, reason: "tool_step_failure_recovery_created" }))
       .catch((err) => logger.warn({ err, issueId: result.issue.id }, "failed to notify owner about tool recovery"));
