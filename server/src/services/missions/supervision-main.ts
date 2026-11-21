@@ -48,6 +48,7 @@ import {
   isStaleSourceWakeupEnabled,
   recordStaleSourceWakeupDiagnosis,
 } from "./stale-source-wakeup-gate.js";
+import { canRelaxSingleLaneForAutoRecoverableSource } from "./supervision-single-lane-relax.js";
 
 export function createRunMainExecutorSupervision({
   db,
@@ -359,7 +360,22 @@ export function createRunMainExecutorSupervision({
           // [P3 주의] stale-source 경로의 issue.originId 는 보통 workflow run id(QA issue id 아님)라
           //   resolveQaGateIssueId 가 no-op. 정확한 QA gate derive 가 필요하므로 이 삽입점은 제거
           //   (잘못된 차단 방지). QA recovery ownership 차단은 retry case(unblock issue, originId=source)에서 처리.
-          if (missionHasPendingHumanCard) {
+          // [single-lane relax 2026-11-21] pending 카드 대기 중에도, 카드가 choice/irreversible 이
+          //   아니고 소스 이슈의 최신 terminal 실패가 자동 복구 원인(provider_transient/
+          //   auth_refreshable)이면 보류를 푼다 — 이 원인은 재시도/갱신이 회수하므로 사람 응답을
+          //   기다리면 미션이 불필요하게 멈춘다. 회복 후 mission-work-settlement 가 카드를 닫는다.
+          //   dry-run·choice·irreversible·internal_bug·unknown·quota·런 미조회는 fail-closed 로 기존 보류 유지.
+          const singleLaneRelax = missionHasPendingHumanCard
+            ? await canRelaxSingleLaneForAutoRecoverableSource({
+                db, companyId: mission.companyId, sourceIssueId: issue.id,
+                pendingDecisionIds: missionPendingHumanDecisionIds,
+                applySafeActions: input.applySafeActions === true,
+              })
+            : null;
+          if (singleLaneRelax?.relax) {
+            findings.push(`stale_source_wakeup_relaxed_auto_recoverable: ${label} stale with ${missionPendingHumanDecisionIds.length} pending human decision card(s), but latest terminal run=${latestFailedRun.id} is auto-recoverable (cause=${singleLaneRelax.causeClass} signal=${singleLaneRelax.matchedSignal}) — single-path deferral relaxed; settlement closes the card after recovery`);
+          }
+          if (missionHasPendingHumanCard && !singleLaneRelax?.relax) {
             findings.push(`stale_source_wakeup_deferred_human_card_pending: ${label} stale but mission holds ${missionPendingHumanDecisionIds.length} pending human decision card(s) — owner auto-recovery deferred until the card resolves (single-path rule)`);
             wakeupDispatchStatus = "not_requested";
           } else if (dispatchStaleSourceWakeups && !alreadyDispatched && !hasSourceDiagnosis) {
