@@ -6,12 +6,14 @@ import type { WorkflowStep } from "./dag-engine.js";
 import { validateDag as validateDagNode } from "./dag-validation.js";
 import type { DagValidationResult } from "./types.js";
 import { renderWorkflowToolStepArgsWithResolvedValues } from "./tool-step-template-render.js";
+import { isInsideDbTransaction } from "./workflow-core-tx-guard.js";
 
 /**
  * [목적] Rust workflow-core bin(paperclip-workflow-core) stdin-JSON 브리지 + Node TS fallback.
  *   run-log-rust-client.ts 와 같은 계약: spawn → stdout JSON, stderr 는 tail 캡.
  *   Rust 경로는 가용성 우선 — helper 부재/계약 위반 시 기존 TS 구현으로 조용히 되돌아간다.
  * [주의] 이 파일은 순수 서브프로세스 브리지다 — zod/drizzle import 금지(계획 §4).
+ *   표시된 db.transaction 안(AsyncLocalStorage)에서는 어떤 진입점도 스폰하지 않고 TS 팔로 간다.
  *   시맨틱 에러(예: unresolved childInputs)는 TS 도 같은 판정을 내리므로 절대 fallback 하지 않고
  *   그대로 던진다(fallback 이 판정을 흡수하면 결과가 Rust/Node 어느 쪽인지 증명할 수 없다).
  * [수정시 영향] W1~W3 호출처(engine/create-definition, run-sync/conditional-skip, tool dispatch)가
@@ -57,6 +59,10 @@ export function runWorkflowCoreSubcommand<T = unknown>(
   payload: unknown,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<T> {
+  // 하드 플로어: 열린 DB 트랜잭션 아래에서는 직접 호출을 포함해 어떤 진입점도 스폰하지 않는다.
+  if (isInsideDbTransaction()) {
+    return Promise.reject(new WorkflowCoreUnavailableError("workflow_core_in_transaction"));
+  }
   const bin = resolveWorkflowCoreBin();
   if (bin === null || process.env.WORKFLOW_CORE_RUST === "0") {
     return Promise.reject(new WorkflowCoreUnavailableError("workflow_core_disabled"));
@@ -149,7 +155,8 @@ export async function runWithNodeFallback<T>(input: {
   interpret: (response: unknown) => T;
   timeoutMs?: number;
 }): Promise<T> {
-  if (!workflowCoreRustEnabled()) return await input.fallback();
+  // tx 안 우회는 의도적 게이트다 — 실패가 아니므로 warn 하지 않고 payload 직렬화도 건너뛴다.
+  if (isInsideDbTransaction() || !workflowCoreRustEnabled()) return await input.fallback();
   let response: unknown;
   try {
     response = await runWorkflowCoreSubcommand(input.subcommand, input.payload(), input.timeoutMs);

@@ -3,6 +3,7 @@ import { PgTransaction } from "drizzle-orm/pg-core";
 import { missions, workflowRecoveryAuthorities, workflowRuns, type Db } from "@paperclipai/db";
 import { conflict } from "../../errors.js";
 import { validReplacementStart } from "./replacement-start-evidence.js";
+import { runInsideDbTransaction } from "./workflow-core-tx-guard.js";
 import { drainReplacementRootNotifications, withReplacementAgentQueue } from "./replacement-agent-delivery.js";
 import {
   createReplacementRootNotifications,
@@ -19,7 +20,9 @@ export async function withReplacementFirstDelivery<T>(db: Db, runId: string, del
   const notifications = ownsDrain
     ? createReplacementRootNotifications()
     : currentReplacementRootNotifications(db);
-  const result = await db.transaction(async (tx) => {
+  // The marker lets workflow-core pick the in-process TS arm instead of spawning a
+  // subprocess while this transaction holds the connection — atomicity is unchanged.
+  const result = await db.transaction((tx) => runInsideDbTransaction(async () => {
     const t = tx as unknown as Db;
     const work = async () => {
       const [observed] = await tx.select().from(workflowRuns).where(eq(workflowRuns.id, runId));
@@ -41,7 +44,7 @@ export async function withReplacementFirstDelivery<T>(db: Db, runId: string, del
       return result;
     };
     return notifications ? withReplacementRootNotificationDb(t, notifications, work) : work();
-  });
+  }));
   // A savepoint is not a commit. Resume only after the owning transaction has succeeded.
   if (ownsDrain && notifications) await drainReplacementRootNotifications(db, notifications);
   return result;
