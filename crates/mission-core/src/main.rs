@@ -185,6 +185,9 @@ mod operator_card_summary;
 // Deliberately hand-compacted to honor the 300-line file limit.
 #[rustfmt::skip]
 mod plan_graph;
+// Deliberately hand-compacted to honor the 300-line file limit.
+#[rustfmt::skip]
+mod plan_qa;
 mod quality_contract;
 mod quality_contract_lines;
 mod revision_delta;
@@ -260,6 +263,7 @@ fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
         s if delivery_verification::SUBCOMMANDS.contains(&s) => {
             delivery_verification::dispatch(s, raw)
         }
+        s if plan_qa::SUBCOMMANDS.contains(&s) => plan_qa::dispatch(s, raw),
         _ => quality_contract::dispatch(subcommand, raw),
     }
 }
@@ -268,7 +272,7 @@ fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
     let Some(subcommand) = args.first().map(String::as_str) else {
-        let subs = [agent_role_boundaries::SUBCOMMANDS, delivery_verification::SUBCOMMANDS, operator_card_summary::SUBCOMMANDS, quality_contract::SUBCOMMANDS, revision_plan_declaration_targets::SUBCOMMANDS, revision_reuse::SUBCOMMANDS, structural_materialization::SUBCOMMANDS, structural_topology::SUBCOMMANDS].concat();
+        let subs = [agent_role_boundaries::SUBCOMMANDS, delivery_verification::SUBCOMMANDS, operator_card_summary::SUBCOMMANDS, plan_qa::SUBCOMMANDS, quality_contract::SUBCOMMANDS, revision_plan_declaration_targets::SUBCOMMANDS, revision_reuse::SUBCOMMANDS, structural_materialization::SUBCOMMANDS, structural_topology::SUBCOMMANDS].concat();
         return Err(format!("usage: paperclip-mission-core <{}>", subs.join("|")));
     };
     let raw = read_stdin_bounded(MAX_STDIN_BYTES)?;
