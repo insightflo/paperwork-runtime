@@ -6,6 +6,7 @@ import type {
 } from "@paperclipai/shared/types/operator-decision";
 import type { ResolveOperatorDecisionInput } from "../api/operator-decisions";
 import { timeAgo } from "../lib/timeAgo";
+import { buildOwnerChoiceCardView } from "../lib/owner-choice-card-view";
 import { Link } from "../lib/router";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
@@ -53,6 +54,13 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
   // [사람 카드 축소 Stage 4] symptom 이 있는 신형 패킷은 고정 축소 레이아웃(증상 → 선택지 → 쉬운 해석 → 근거 링크·액션)으로
   // 정렬한다. 선택·코멘트·resolve 제출 동작은 그대로 유지하고, 구형 카드는 기존 배치를 100% 보존한다.
   const compactCard = hasCompactSymptom(decision.definition.humanReview);
+  // [owner-choice-card] normal-flow choice 카드의 표시 상태를 순수 헬퍼로 정규화한다.
+  // choice 가 아닌(복구·축소·구형) 카드는 모두 isChoiceCard:false — 기존 경로에 영향이 없다.
+  const choiceCard = buildOwnerChoiceCardView(decision);
+  const choiceResolveAction = choiceCard.submitActionId === null
+    ? null
+    : decision.definition.actions.find((action) => action.id === choiceCard.submitActionId) ?? null;
+  const choiceOptionsShown = choiceCard.isChoiceCard && choiceCard.choiceOptions.length > 0;
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>([]);
   const [comment, setComment] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -149,7 +157,15 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
       : [...current, id]);
   }
 
-  function localError(action: OperatorDecisionAction): string | null {
+  // [owner-choice-card] choice 카드는 옵션 클릭 한 번으로 resolve 한다 — 검증·제출·오류 표시를 포함한
+  // 기존 submit 흐름을 그대로 재사용하며 선택값만 옵션 하나로 확정한다(새 API 없음).
+  function chooseChoiceOption(optionId: string) {
+    if (choiceResolveAction === null) return;
+    setError(null);
+    void submit(choiceResolveAction, [optionId]);
+  }
+
+  function localError(action: OperatorDecisionAction, overrideSelection?: string[]): string | null {
     if (action.requiresSelection) {
       const bounds = decision.definition.selection;
       if (!bounds) return L(lang, { en: "This action cannot accept a selection.", ko: "이 조치는 선택지를 받을 수 없습니다." });
@@ -164,7 +180,8 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
           return L(lang, { en: `${group.label ?? group.id}: Select ${want} option(s).`, ko: `${group.label ?? group.id}: ${want}개를 선택하세요.` });
         }
       }
-      if (effectiveSelectionFor(action).length < bounds.min || effectiveSelectionFor(action).length > bounds.max) {
+      const selection = overrideSelection ?? effectiveSelectionFor(action);
+      if (selection.length < bounds.min || selection.length > bounds.max) {
         return bounds.min === bounds.max
           ? L(lang, { en: `Select ${bounds.min} option${bounds.min === 1 ? "" : "s"}.`, ko: `선택지를 ${bounds.min}개 선택하세요.` })
           : L(lang, { en: `Select between ${bounds.min} and ${bounds.max} options.`, ko: `선택지를 ${bounds.min}~${bounds.max}개 선택하세요.` });
@@ -178,8 +195,8 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
     return null;
   }
 
-  async function submit(action: OperatorDecisionAction) {
-    const validationError = localError(action);
+  async function submit(action: OperatorDecisionAction, overrideSelection?: string[]) {
+    const validationError = localError(action, overrideSelection);
     if (validationError) {
       setError(validationError);
       return;
@@ -187,7 +204,7 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
     const trimmedComment = comment.trim();
     const input: ResolveOperatorDecisionInput = {
       actionId: action.id,
-      selectedOptionIds: action.requiresSelection ? effectiveSelectionFor(action) : [],
+      selectedOptionIds: overrideSelection ?? (action.requiresSelection ? effectiveSelectionFor(action) : []),
       comment: decision.definition.comment.mode === "disabled" || !trimmedComment ? null : trimmedComment,
     };
     setError(null);
@@ -232,6 +249,14 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
       )}
       <div data-operator-decision-meta className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span className="font-semibold text-foreground" title={decision.priority}>{humanLabel(lang, "priority", decision.priority).label}</span>
+        {/* [owner-choice-card] choice 카드는 오류·실패 톤이 아닌 결정 요청 배지 + 한국어 결정 지점 라벨로 표시한다. */}
+        {choiceCard.isChoiceCard && (
+          <span data-operator-choice-badge className="border border-primary/40 bg-primary/10 px-1.5 py-0.5 font-semibold text-primary">
+            {choiceCard.decisionPointLabel === null
+              ? L(lang, { en: "Decision request", ko: "결정 요청" })
+              : `${L(lang, { en: "Decision request", ko: "결정 요청" })} · ${choiceCard.decisionPointLabel}`}
+          </span>
+        )}
         <span>{L(lang, { en: "Requested by", ko: "요청:" })} {sourceLabel(decision, lang)}</span>
         <span>{timeAgo(decision.createdAt)}</span>
       </div>
@@ -249,6 +274,41 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
       {/* 판단 카드(humanReview)가 있으면 마크다운 description 은 중복 — 표시하지 않는다. */}
       {!decision.definition.humanReview && (
         <p id={descriptionId} className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{decision.description}</p>
+      )}
+
+      {/* [owner-choice-card] choice 옵션 블록 — 요약·추천 표시·(해당 시) 2시간 자동 진행 안내 배너.
+          옵션 버튼 클릭이 곧 resolve 라서 이 블록이 렌더될 때 구형 선택지 목록은 이중 나열을 피하려 숨긴다. */}
+      {choiceOptionsShown && (
+        <section data-operator-choice-options className="mt-3 space-y-2">
+          {choiceCard.autoAdvanceNotice && (
+            <p data-operator-choice-auto-advance role="status" className="border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
+              {choiceCard.autoAdvanceNotice}
+            </p>
+          )}
+          {choiceCard.choiceOptions.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              data-operator-choice-option={option.id}
+              onClick={() => chooseChoiceOption(option.id)}
+              disabled={submittingActionId !== null}
+              className="w-full border border-border bg-background px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
+            >
+              <span className="flex flex-wrap items-center gap-2 font-medium">
+                {option.label}
+                {option.recommended && (
+                  <span data-operator-choice-recommended className="border border-primary/40 px-1.5 py-0.5 text-xs font-semibold text-primary">
+                    {L(lang, { en: "Recommended", ko: "추천" })}
+                  </span>
+                )}
+                {option.irreversible && (
+                  <span className="px-1.5 py-0.5 text-xs text-muted-foreground">{L(lang, { en: "Irreversible", ko: "되돌릴 수 없음" })}</span>
+                )}
+              </span>
+              {option.summary !== "" && <span className="mt-1 block text-xs text-muted-foreground">{option.summary}</span>}
+            </button>
+          ))}
+        </section>
       )}
 
       {compactCard && decision.definition.humanReview ? (
@@ -313,7 +373,7 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
 
       {commonFacts.length > 0 && <section className="mt-4"><h3 className="text-sm font-medium">{L(lang, { en: "Common facts", ko: "공통 사실" })}</h3><OperatorDecisionFacts facts={commonFacts} /></section>}
       {/* 구형 카드는 기존 위치(근거·사실 아래)에 선택지를 표시한다. 신형 축소 카드의 선택지는 위로 올렸다. */}
-      {!compactCard && (
+      {!compactCard && !choiceOptionsShown && (
         <OperatorDecisionOptions
           decision={visibleOptionsDecision}
           selectedOptionIds={selectedOptionIds}
@@ -339,8 +399,8 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
             maxLength={decision.definition.comment.maxLength}
             required={decision.definition.comment.mode === "required"}
             aria-describedby={`${descriptionId} ${errorId}`}
-            disabled={submittingActionId !== null || !decision.definition.humanReview}
-            title={!decision.definition.humanReview ? L(lang, { en: "Decision information and source locations are required before deciding.", ko: "판단 정보와 원본 위치를 보완해야 결정할 수 있습니다." }) : undefined}
+            disabled={submittingActionId !== null || (!decision.definition.humanReview && !choiceOptionsShown)}
+            title={!decision.definition.humanReview && !choiceOptionsShown ? L(lang, { en: "Decision information and source locations are required before deciding.", ko: "판단 정보와 원본 위치를 보완해야 결정할 수 있습니다." }) : undefined}
             className="mt-1 min-h-20 w-full border border-border bg-background p-2 text-sm"
           />
         </div>
@@ -355,8 +415,8 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
             key={action.id}
             type="button"
             onClick={() => void submit(action)}
-            disabled={submittingActionId !== null || !decision.definition.humanReview}
-            title={!decision.definition.humanReview ? L(lang, { en: "Decision information and source locations are required before deciding.", ko: "판단 정보와 원본 위치를 보완해야 결정할 수 있습니다." }) : undefined}
+            disabled={submittingActionId !== null || (!decision.definition.humanReview && !choiceOptionsShown)}
+            title={!decision.definition.humanReview && !choiceOptionsShown ? L(lang, { en: "Decision information and source locations are required before deciding.", ko: "판단 정보와 원본 위치를 보완해야 결정할 수 있습니다." }) : undefined}
             className={cn("border px-3 py-2 text-sm font-medium disabled:opacity-50", toneClass(action.tone))}
           >
             {submittingActionId === action.id ? L(lang, { en: "Submitting…", ko: "제출 중…" }) : action.label}
