@@ -22,18 +22,12 @@ mod js {
     /// `typeof v === "string" && v.trim() ? v.trim() : null`.
     pub fn read_string(v: &Value) -> Option<String> {
         let t = js_trim(v.as_str()?);
-        if t.is_empty() {
-            None
-        } else {
-            Some(t.to_string())
-        }
+        if t.is_empty() { None } else { Some(t.to_string()) }
     }
 
     /// Non-array → []; otherwise keep entries that read as non-empty strings.
     pub fn read_string_array(v: &Value) -> Vec<String> {
-        v.as_array()
-            .map(|a| a.iter().filter_map(read_string).collect())
-            .unwrap_or_default()
+        v.as_array().map(|a| a.iter().filter_map(read_string).collect()).unwrap_or_default()
     }
 
     /// `Array.isArray(v) && !v.some(e => readString(e) === null)` (empty passes).
@@ -190,6 +184,7 @@ mod plan_graph;
 mod quality_contract;
 mod quality_contract_lines;
 mod revision_delta;
+mod revision_plan_declaration_targets;
 mod revision_reuse;
 mod revision_reuse_steps;
 // Deliberately hand-compacted to honor the 300-line file limit.
@@ -251,6 +246,9 @@ fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
             agent_role_boundaries::dispatch(s, raw)
         }
         s if revision_reuse::SUBCOMMANDS.contains(&s) => revision_reuse::dispatch(s, raw),
+        s if revision_plan_declaration_targets::SUBCOMMANDS.contains(&s) => {
+            revision_plan_declaration_targets::dispatch(s, raw)
+        }
         s if structural_materialization::SUBCOMMANDS.contains(&s) => {
             structural_materialization::dispatch(s, raw)
         }
@@ -269,6 +267,7 @@ fn run() -> Result<(), String> {
             agent_role_boundaries::SUBCOMMANDS,
             delivery_verification::SUBCOMMANDS,
             quality_contract::SUBCOMMANDS,
+            revision_plan_declaration_targets::SUBCOMMANDS,
             revision_reuse::SUBCOMMANDS,
             structural_materialization::SUBCOMMANDS,
             structural_topology::SUBCOMMANDS,
