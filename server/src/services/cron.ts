@@ -23,6 +23,12 @@
  * @module
  */
 
+import {
+  nextRunViaRust,
+  parseCronViaRust,
+  validateCronViaRust,
+} from "./schedule-core-client.js";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -202,6 +208,12 @@ function validateBounds(value: number, spec: FieldSpec): void {
  * ```
  */
 export function parseCron(expression: string): ParsedCron {
+  // [Rust opt-in] PAPERCLIP_SCHEDULE_CORE_BIN 설정 시 parse 서브커맨드를 우선 실행한다. null
+  //   (게이트 폐쇄/lone surrogate/스폰 실패/non-zero 도메인 오류/shape 불량)이면 아래 TS 본문이
+  //   parity 의 최종 출처로 실행된다 — 도메인 오류는 TS 가 같은 메시지의 Error 를 던진다.
+  const viaRust = parseCronViaRust(expression);
+  if (viaRust !== null) return viaRust;
+
   const trimmed = expression.trim();
   if (!trimmed) {
     throw new Error("Cron expression must not be empty");
@@ -231,6 +243,11 @@ export function parseCron(expression: string): ParsedCron {
  * @returns `null` on success, error message on failure.
  */
 export function validateCron(expression: string): string | null {
+  // [Rust opt-in] validate 서브커맨드는 {valid,error} 로 유효/무효 모두를 돌려준다 — 무효
+  //   메시지도 Rust 팔에서 그대로 흐른다(메시지 parity 는 stage 1 parity 스위트가 검증).
+  const viaRust = validateCronViaRust(expression);
+  if (viaRust !== null) return viaRust.error;
+
   try {
     parseCron(expression);
     return null;
@@ -330,6 +347,15 @@ export function nextCronTickFromExpression(
   expression: string,
   after: Date = new Date(),
 ): Date | null {
+  // [Rust opt-in] next-run 서브커맨드를 우선 실행한다. non-finite Date(NaN 시각)는 위임하지
+  //   않고 TS 본문의 정의된 동작(전수 탐색 후 null)을 그대로 관측시킨다. null 이면 아래 TS
+  //   본문이 parity 의 최종 출처로 실행된다.
+  const afterMs = after.getTime();
+  if (Number.isFinite(afterMs)) {
+    const viaRust = nextRunViaRust(expression, afterMs);
+    if (viaRust !== null) return viaRust.nextMs === null ? null : new Date(viaRust.nextMs);
+  }
+
   const cron = parseCron(expression);
   return nextCronTick(cron, after);
 }
