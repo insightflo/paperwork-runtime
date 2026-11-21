@@ -1,7 +1,12 @@
 import { asString, parseObject } from "../adapters/utils.js";
+import { extractRuntimeCommandViaRust } from "./runtime-guard-core-client.js";
 import { parseJsonLineObject } from "./runtime-shell-command-utils.js";
 
 export function extractRuntimeCommand(adapterType: string, line: string) {
+  // Opt-in Rust 시임 — 게이트(PAPERCLIP_RUNTIME_GUARD_CORE_BIN 절대경로)가 닫혀 있거나
+  // 스폰·JSON·shape 이 실패하면 null 이 돌아와 아래 TS 본문이 parity 출처로 실행된다.
+  const viaRust = extractRuntimeCommandViaRust(adapterType, line);
+  if (viaRust !== null) return viaRust.value;
   const parsed = parseJsonLineObject(line);
 
   // Hermes (and adapters that emit TUI text) log shell invocations as plain-text
