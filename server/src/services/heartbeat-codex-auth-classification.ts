@@ -1,3 +1,5 @@
+import { detectCodexAuthFailureForAutoBlockViaRust } from "./heartbeat-core-client.js";
+
 export type CodexAuthAutoBlockInfo = {
   reasonCode: string;
   authErrorCode: string | null;
@@ -21,6 +23,9 @@ export function detectCodexAuthFailureForAutoBlock(input: {
   stderrExcerpt?: string | null;
 }): CodexAuthAutoBlockInfo | null {
   if (input.adapterType !== "codex_local") return null;
+
+  const viaRust = detectCodexAuthFailureForAutoBlockViaRust(input);
+  if (viaRust !== null) return viaRust.value;
 
   const normalizedErrorCode = (input.errorCode ?? "").trim().toLowerCase();
   if (normalizedErrorCode.startsWith(CODEX_AUTH_401_ERROR_CODE_PREFIX)) {
