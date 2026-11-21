@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { WorkflowStepMachineCheck } from "@paperclipai/shared";
 import { resolveFsScanBin, runFsScanJson } from "../fs-scan-client.js";
-import { normalizeWorkflowStepMachineChecks } from "./step-contract.js";
+import { normalizeWorkflowStepMachineChecksWithNodeFallback } from "./workflow-core-client-s8a.js";
 
 /** Reserved structural-gate toolName. Never registered in the tool registry —
  * dag-engine special-cases it before registry resolution. */
@@ -250,7 +250,7 @@ export async function evaluateStepMachineChecks(input: {
   resolvePath: (tokened: string) => string | null;
   workspaceCwd: string;
 }): Promise<StepMachineChecksEvaluation> {
-  const checks = normalizeWorkflowStepMachineChecks(input.checks);
+  const checks = await normalizeWorkflowStepMachineChecksWithNodeFallback(input.checks);
   if (!checks || checks.length === 0) {
     return {
       ok: false,

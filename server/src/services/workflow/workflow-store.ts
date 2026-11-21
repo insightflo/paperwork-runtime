@@ -7,7 +7,8 @@
 
 import type { Db } from "@paperclipai/db";
 import { workflowDefinitions, workflowRunSlots, workflowRuns, workflowStepRuns, issues } from "@paperclipai/db";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, is } from "drizzle-orm";
+import { PgTransaction } from "drizzle-orm/pg-core";
 import { HttpError } from "../../errors.js";
 import { isRunReopenGuardEnabled, isRunRecoveryServiceEnabled, RUN_REOPEN_RESUMABLE_STATUSES, RUN_REOPEN_TERMINAL_STATUSES } from "./run-reopen-guard-flag.js";
 import { latestTerminalDecision, recoverTerminalRun } from "./run-recovery-authority.js";
@@ -27,6 +28,19 @@ import { loadExecutionDefinition } from "./execution-definition.js";
 import { createWorkflowRunWithDefinition } from "./workflow-run-create.js";
 import { stepTimeoutSignalsFromStep } from "../heartbeat-stability.js";
 import { validateWorkflowDefinitionSteps } from './definition-step-validation.js';
+import { validateWorkflowDefinitionStepsWithNodeFallback } from './workflow-core-client-s8c.js';
+
+/** [S8/F4] 서브프로세스 스폰은 열린 tx 안에서 금지 — PgTransaction 입력은 순수 TS 검증으로 보전한다(S5 dag-engine 선례). */
+async function validateWorkflowDefinitionStepsForDb(
+  db: Db,
+  steps: Parameters<typeof validateWorkflowDefinitionSteps>[0],
+): Promise<void> {
+  if (is(db, PgTransaction)) {
+    validateWorkflowDefinitionSteps(steps);
+    return;
+  }
+  await validateWorkflowDefinitionStepsWithNodeFallback(steps);
+}
 
 function inferWorkflowExecutionMode(name: string, steps: WorkflowStep[]): WorkflowExecutionMode {
   return isDynamicOwnerPlanWorkflowDefinition({ name, steps }) ? "dynamic_owner_plan" : "static_dag";
@@ -150,7 +164,7 @@ export async function createWorkflowDefinition(
   db: Db,
   input: CreateWorkflowDefinitionInput,
 ): Promise<WorkflowDefinition> {
-  validateWorkflowDefinitionSteps(input.steps);
+  await validateWorkflowDefinitionStepsForDb(db, input.steps);
   const id = crypto.randomUUID();
   const now = new Date();
   const executionMode = input.executionMode ?? inferWorkflowExecutionMode(input.name, input.steps);
@@ -228,7 +242,7 @@ export async function updateWorkflowDefinition(
   id: string,
   updates: Partial<Omit<WorkflowDefinition, "id" | "createdAt" | "updatedAt">>,
 ): Promise<WorkflowDefinition | null> {
-  validateWorkflowDefinitionSteps(updates.steps);
+  await validateWorkflowDefinitionStepsForDb(db, updates.steps);
   const { steps, ...rest } = updates;
   const patch: Partial<typeof workflowDefinitions.$inferInsert> = { updatedAt: new Date() };
   for (const [key, value] of Object.entries(rest) as [keyof typeof rest, unknown][]) {

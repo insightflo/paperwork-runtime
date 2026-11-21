@@ -28,11 +28,11 @@ import {
 } from "../services/operator-approval-wait.js";
 import { workProductService } from "../services/work-products.js";
 import { retryIssueLessToolWorkflowStep } from "../services/workflow/dag-engine.js";
+import { type WorkflowDefinitionStepWarning } from "../services/workflow/definition-step-validation.js";
 import {
-  findWorkflowDefinitionStepWarnings,
-  summarizeDefinitionStepWarnings,
-  type WorkflowDefinitionStepWarning,
-} from "../services/workflow/definition-step-validation.js";
+  findWorkflowDefinitionStepWarningsWithNodeFallback,
+  summarizeDefinitionStepWarningsWithNodeFallback,
+} from "../services/workflow/workflow-core-client-s8c.js";
 import { PRODUCER_REBIND_ELIGIBLE_DISPATCH_ERRORS, consumerDependsOnProducer, rebindOrPromoteProducerProvenance } from "../services/workflow/producer-provenance-rebind.js";
 import { WorkflowRunInputValidationError } from "../services/workflow/run-input-normalization.js";
 import { enableQaCapAcceptanceForCompany } from "../services/workflow/qa-cap-acceptance-rollout.js";
@@ -409,7 +409,7 @@ export function workflowRoutes(db: Db) {
       companyId,
     }));
     // POST는 항상 steps를 저장하므로 저장된 정의로 경고를 계산한다(빈 배열 포함, additive 필드).
-    const warnings = findWorkflowDefinitionStepWarnings(definition.steps);
+    const warnings = await findWorkflowDefinitionStepWarningsWithNodeFallback(definition.steps);
     logDefinitionStepWarnings({ workflowId: definition.id, companyId }, warnings);
     const actor = actorForActivity(req);
     await logActivity(db, {
@@ -421,7 +421,7 @@ export function workflowRoutes(db: Db) {
       action: "workflow.created",
       entityType: "workflow",
       entityId: definition.id,
-      details: { name: definition.name, ...(warnings.length ? { definitionWarnings: summarizeDefinitionStepWarnings(warnings) } : {}) },
+      details: { name: definition.name, ...(warnings.length ? { definitionWarnings: await summarizeDefinitionStepWarningsWithNodeFallback(warnings) } : {}) },
     });
     res.status(201).json({ ...serializeDefinition(definition), warnings });
   });
@@ -445,7 +445,7 @@ export function workflowRoutes(db: Db) {
     const definition = await workflowDomainCall(() => updateAuthorizedWorkflowDefinition(db, workflowId, req));
     if (!definition) throw notFound("Workflow definition not found");
     // PATCH는 이번에 steps를 쓴 경우에만 경고를 계산한다(steps 미포함 패치는 경고 없음).
-    const warnings = req.body.steps !== undefined ? findWorkflowDefinitionStepWarnings(definition.steps) : undefined;
+    const warnings = req.body.steps !== undefined ? await findWorkflowDefinitionStepWarningsWithNodeFallback(definition.steps) : undefined;
     if (warnings) logDefinitionStepWarnings({ workflowId, companyId: existing.companyId }, warnings);
     const actor = actorForActivity(req);
     await logActivity(db, {
@@ -459,7 +459,7 @@ export function workflowRoutes(db: Db) {
       entityId: workflowId,
       details: {
         changedFields: Object.keys(req.body),
-        ...(warnings?.length ? { definitionWarnings: summarizeDefinitionStepWarnings(warnings) } : {}),
+        ...(warnings?.length ? { definitionWarnings: await summarizeDefinitionStepWarningsWithNodeFallback(warnings) } : {}),
       },
     });
     res.json(warnings === undefined ? serializeDefinition(definition) : { ...serializeDefinition(definition), warnings });
