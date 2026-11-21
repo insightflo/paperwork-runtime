@@ -28,6 +28,7 @@ import { activePlanRecoveryGateReason, executionUnitKey } from "./supervision-he
 import { runMissionPreLoopPhases } from "./supervision-pre-loop-phases.js";
 import { runMissionPostLoopPhases } from "./supervision-post-loop-phases.js";
 import { runMissionOwnerDecisionPhases } from "./supervision-owner-decision-phases.js";
+import { sweepExpiredPendingHumanCards } from "./owner-human-card-ttl.js";
 import { applyOwnerToolRecovery, type OwnerToolRecoveryOutcome } from "./owner-tool-recovery.js";
 import { loadCompanySystemLanguage } from "./system-language.js";
 import { buildMissionSupervisionContext } from "./mission-supervision-context.js";
@@ -217,6 +218,22 @@ export function createRunMainExecutorSupervision({
       missionHasActiveHeartbeat,
     });
 
+    // [human-card TTL 2026-11-21] 만료된 pending 사람 카드를 먼저 정리한다 — 카드에 TTL 이
+    //   없던 시절, pending 카드 1장이 아래 단일-경로 보류를 무기한 유지해 자동 회구가 영구
+    //   정지했다. 스윕은 카드 resolved/cancelled 를 쓰는 변경이라 applySafeActions 적용
+    //   모드에서만 돌린다 — dry-run 은 읽기 전용이라 만료 카드도 그대로 pending 으로 본다.
+    //   스윕 실패는 보류 판정을 바꾸지 않으므로 경고만 남기고 기존 경로로 진행한다.
+    if (input.applySafeActions === true) {
+      try {
+        await sweepExpiredPendingHumanCards(db, {
+          companyId: mission.companyId,
+          missionId: mission.id,
+          now,
+        });
+      } catch (err) {
+        logger.warn({ err, missionId: mission.id }, "expired pending human card sweep failed; continuing with existing pending state");
+      }
+    }
     // [approval-waiting marker] 미션 이슈 전체에 대해 pending 운영자 결정/승인 대기 여부를
     // 배치 1회 판정한다 — 대기 중 이슈는 stale 이 아니라 사람 대기로 분류한다(스캔 N+1 금지).
     const approvalWaitByIssueId = await operatorApprovalWaitService(db).markersForIssueIds(
