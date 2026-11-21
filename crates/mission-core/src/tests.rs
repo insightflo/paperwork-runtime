@@ -98,6 +98,45 @@ fn materialized_and_remap_dispatch() {
 }
 
 #[test]
+fn operator_card_summary_dispatch() {
+    let card =
+        |p: &str| operator_card_summary::dispatch("format-operator-decision-summary", p.as_bytes());
+    let out = card(r#"{"decision":"escalate","reason":"blocked"}"#).unwrap();
+    assert!(out.starts_with('"')
+        && out.contains("증상: 미션 진행이 중단되었습니다")
+        && out.contains("blocked"));
+    let payload = serde_json::to_string(&json!({
+        "decision": "escalate",
+        "reason": "### Mission owner decision\nDecision: replan_mission\nReason: deep cause\nNext action: replan\nEvidence: /issues/42"
+    }))
+    .unwrap();
+    let out = card(&payload).unwrap();
+    assert!(out.contains("deep cause") && out.contains("/issues/42") && !out.contains("Decision:"));
+    let reason = format!("{}🚀{}", "a".repeat(199), "tail");
+    let payload =
+        format!(r#"{{"decision":"escalate","reason":{}}}"#, js::js_json_stringify(&json!(reason)));
+    assert!(card(&payload).unwrap().contains("\\ud83d"));
+    // Kelvin U+212A / long-s U+017F must not fold into the ASCII blocker
+    // label: JS non-unicode i-flag never folds a char >= 128 to ASCII.
+    let kelvin = "mission bloc\u{212a}er escalated: real reason here";
+    let p = format!(r#"{{"decision":"escalate","reason":{}}}"#, js::js_json_stringify(&json!(kelvin)));
+    assert!(card(&p).unwrap().contains(kelvin));
+    let p = format!(
+        r#"{{"decision":"escalate","reason":"ok","nextAction":{}}}"#,
+        js::js_json_stringify(&json!(kelvin))
+    );
+    assert!(card(&p).unwrap().contains(kelvin));
+    let longs = "mi\u{17f}\u{17f}ion blocker escalated: real reason here";
+    let p = format!(r#"{{"decision":"escalate","reason":{}}}"#, js::js_json_stringify(&json!(longs)));
+    assert!(card(&p).unwrap().contains(longs));
+    let out = card(r#"{"decision":"escalate","reason":"Mission blocker escalated: gone"}"#).unwrap();
+    assert!(out.contains("gone") && !out.contains("blocker"));
+    assert_eq!(card(r#"{"reason":5}"#).unwrap_err(), "text.toLowerCase is not a function");
+    assert_eq!(card("null").unwrap_err(), "Cannot read properties of null (reading 'reason')");
+    assert!(operator_card_summary::dispatch("nope", b"{}").is_err());
+}
+
+#[test]
 fn dispatcher_fails_closed() {
     assert!(run("nope", "{}").is_err());
     assert!(run("normalize-dependency-graph", "not json").is_err());

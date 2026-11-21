@@ -178,6 +178,10 @@ mod agent_role_boundaries;
 mod artifact_contract;
 #[rustfmt::skip]
 mod delivery_verification;
+#[rustfmt::skip] // hand-compacted to honor the 300-line file limit
+mod mission_owner_decision_text;
+#[rustfmt::skip] // hand-compacted to honor the 300-line file limit
+mod operator_card_summary;
 // Deliberately hand-compacted to honor the 300-line file limit.
 #[rustfmt::skip]
 mod plan_graph;
@@ -260,30 +264,21 @@ fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
     }
 }
 
+#[rustfmt::skip] // hand-compacted to honor the 300-line file limit
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
     let Some(subcommand) = args.first().map(String::as_str) else {
-        let subs = [
-            agent_role_boundaries::SUBCOMMANDS,
-            delivery_verification::SUBCOMMANDS,
-            quality_contract::SUBCOMMANDS,
-            revision_plan_declaration_targets::SUBCOMMANDS,
-            revision_reuse::SUBCOMMANDS,
-            structural_materialization::SUBCOMMANDS,
-            structural_topology::SUBCOMMANDS,
-        ]
-        .concat();
-        return Err(format!(
-            "usage: paperclip-mission-core <{}>",
-            subs.join("|")
-        ));
+        let subs = [agent_role_boundaries::SUBCOMMANDS, delivery_verification::SUBCOMMANDS, operator_card_summary::SUBCOMMANDS, quality_contract::SUBCOMMANDS, revision_plan_declaration_targets::SUBCOMMANDS, revision_reuse::SUBCOMMANDS, structural_materialization::SUBCOMMANDS, structural_topology::SUBCOMMANDS].concat();
+        return Err(format!("usage: paperclip-mission-core <{}>", subs.join("|")));
     };
     let raw = read_stdin_bounded(MAX_STDIN_BYTES)?;
+    // Lone-surrogate output needs raw print (see module doc).
+    if operator_card_summary::SUBCOMMANDS.contains(&subcommand) {
+        println!("{}", operator_card_summary::dispatch(subcommand, &raw)?);
+        return Ok(());
+    }
     let out = dispatch(subcommand, &raw)?;
-    println!(
-        "{}",
-        serde_json::to_string(&out).map_err(|e| e.to_string())?
-    );
+    println!("{}", serde_json::to_string(&out).map_err(|e| e.to_string())?);
     Ok(())
 }
 
