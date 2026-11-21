@@ -9,6 +9,7 @@ import { MISSION_OWNER_DECISION_EVENT_TYPE, MISSION_OWNER_DECISION_SOURCE, MISSI
 import type { OwnerHumanTx } from "./owner-human-request-contract.js";
 
 const ownerUnblockOrigin = "mission_main_executor_unblock";
+const TERMINAL_REPORT_EVENT_TYPE = "terminal_mission_human_operator_report";
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function invalidScope(): never {
   throw unprocessable("Legacy human request target is not bound to its company mission", {
@@ -28,7 +29,7 @@ function isPayload(value: unknown): value is Record<string, unknown> {
 function hasSupportedEventBinding(event: {
   eventType: string; layer: string; reason: string | null; reasonCode: string | null;
   decision: string | null; correlationId: string | null; workflowRunId: string | null;
-  payload: unknown; heartbeatRunId: string | null;
+  issueId: string | null; payload: unknown; heartbeatRunId: string | null;
 }, issueId: string, sourceIssueId: string): boolean {
   if (!isPayload(event.payload)) return false;
   const payload = event.payload;
@@ -45,13 +46,18 @@ function hasSupportedEventBinding(event: {
       && payload.decision === event.decision;
   }
 
-  if (event.eventType === "terminal_mission_human_operator_report") {
+  if (event.eventType === TERMINAL_REPORT_EVENT_TYPE) {
+    // [교차 이슈 앵커 2026-11-21] terminal report 행은 claim 당시의 owner-action 이슈에
+    //   issueId·correlationId·payload.ownerActionIssueId 를 모두 맞춰 쓴다. 스냅샷 재사용으로
+    //   카드가 새 owner-action 이슈에 붙을 수 있으므로 카드 앵커와의 동등 비교 대신 행 내부
+    //   정합성(세 결속이 같은 이슈를 가리킴)을 증명한다 — 실제 결속 이슈의 자격은 호출부의
+    //   owner-action 검증이 보장한다. 다른 생산자의 비교는 그대로다.
     return event.layer === "workflow_validation"
       && event.reason === "terminal_mission_no_continuation"
       && event.reasonCode === event.eventType
       && event.decision === "escalate"
-      && event.correlationId === issueId
-      && payload.ownerActionIssueId === issueId
+      && event.correlationId === event.issueId
+      && payload.ownerActionIssueId === event.issueId
       && payload.workflowRunId === event.workflowRunId
       && payload.status === "reported";
   }
@@ -122,19 +128,33 @@ export async function lockLegacyOwnerHumanCardMission(
     payload: workflowTransitionEvents.payload }).from(workflowTransitionEvents).where(and(
     eq(workflowTransitionEvents.id, input.sourceId), eq(workflowTransitionEvents.companyId, companyId),
   ));
-  if (!event || event.missionId !== missionId || event.issueId !== input.issueId || !isPayload(event.payload)
+  if (!event || event.missionId !== missionId || !isPayload(event.payload)
     || !hasSupportedEventBinding(event, input.issueId, source.id)) invalidScope();
+  // [교차 이슈 앵커 2026-11-21] 다른 moi1 생산자는 카드 앵커가 이벤트 행의 issue 와 같아야
+  //   한다(기존 엄격 비교 유지). terminal report 만 예외: 이벤트가 묶인 owner-action 이
+  //   종결돼 supervision 이 새 owner-action 을 고르면 스냅샷 재사용으로 카드가 새 이슈에 붙고
+  //   행의 issue 와 어긋난다(132건의 422 폭주). 단, 그 경우에도 이벤트가 같은 회사·미션의
+  //   owner-action 이슈에 실제로 묶여 있어야만 한다 — 그렇지 않으면 위조/교차 결속을 허용하게
+  //   되므로 fail-closed 를 유지한다.
+  const boundIssueId = event.eventType === TERMINAL_REPORT_EVENT_TYPE ? event.issueId : input.issueId;
+  if (event.issueId !== input.issueId) {
+    if (event.eventType !== TERMINAL_REPORT_EVENT_TYPE || !boundIssueId) invalidScope();
+    const [boundIssue] = await tx.select({ id: issues.id }).from(issues).where(and(
+      eq(issues.id, boundIssueId), eq(issues.companyId, companyId),
+      eq(issues.missionId, missionId), eq(issues.originKind, ownerUnblockOrigin)));
+    if (!boundIssue) invalidScope();
+  }
   const payload = event.payload;
   if (event.heartbeatRunId) {
     if (!uuidPattern.test(event.heartbeatRunId)) invalidScope();
     const [heartbeat] = await tx.select({ issueId: heartbeatRuns.issueId }).from(heartbeatRuns).where(and(
       eq(heartbeatRuns.id, event.heartbeatRunId), eq(heartbeatRuns.companyId, companyId),
     ));
-    if (!heartbeat || heartbeat.issueId !== input.issueId) invalidScope();
+    if (!heartbeat || heartbeat.issueId !== boundIssueId) invalidScope();
   }
   const payloadOwner = payload.ownerActionIssueId;
   const payloadSource = payload.sourceIssueId;
-  if ((payloadOwner !== undefined && payloadOwner !== input.issueId)
+  if ((payloadOwner !== undefined && payloadOwner !== boundIssueId)
     || (payloadSource !== undefined && payloadSource !== source.id)) invalidScope();
 
   const runIds = [context.data.workflowRunId, snapshot.workflowRunId, event.workflowRunId]
