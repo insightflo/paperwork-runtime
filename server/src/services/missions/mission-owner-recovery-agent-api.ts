@@ -23,6 +23,7 @@ import {
 import { admitHumanCardForSource } from "./human-card-admission.js";
 import { isExactOwnerHumanReplay } from "./owner-human-request-submit.js";
 import { readOwnerHumanCurrent } from "./owner-human-request-state.js";
+import { readMissionScheduleHorizon } from "./mission-schedule-horizon.js";
 import {
   lockOwnerHumanSubmission,
   recordOwnerHumanSubmission,
@@ -190,6 +191,37 @@ export async function submitMissionOwnerDecision(input: {
             decision: effectiveSubmission.decision,
           },
         );
+      }
+      // [R4 2026-11-21] 스케줄 지평 게이트: 스케줄러가 주기적 런을 재생성하는 미션에서
+      //   1회 실패 사이클만으로 사람 상정을 올리는 것을 차단한다 — 다음 예정 실행이 있고
+      //   연속 실패 사이클이 2 미만이면 거부한다. 연속 실패는 미션을 낳은 워크플로의
+      //   스케줄 런 시리즈(triggerSource='schedule'/scheduledSlotId)를 최신순으로 센다
+      //   (사이클마다 새 미션이 생기므로 시리즈 전체가 '동일 미션 계열'이다).
+      //   면제는 [R3]와 동일 판정을 그대로 쓴다 — 동일 재전송(replay)과 현재 lifetime 을
+      //   명시한 CAS 교체는 새 상정이 아니므로 이 게이트를 통과한다.
+      if (!namesCurrentLifetime && !legacyInPlaceRepeat) {
+        const horizon = await readMissionScheduleHorizon(
+          tx as unknown as Db, issue.companyId, humanAuthority.scope.missionId,
+        );
+        if (horizon && horizon.consecutiveFailures < 2 && horizon.nextScheduledRunAt) {
+          throw unprocessable(
+            "이 미션은 스케줄이 다음 실행을 자동 생성합니다 — 첫 실패 사이클의 사람 상정은 성급합니다. no_action_waiting 또는 재시도 계열(retry_source_issue/replan_mission/recover_artifact)을 우선하고, 연속 실패가 누적되면 그 근거와 함께 다시 상정하세요.",
+            {
+              code: "mission_owner_premature_human_submission",
+              issueId: issue.id,
+              missionId: humanAuthority.scope.missionId,
+              workflowId: horizon.workflowId,
+              consecutiveFailures: horizon.consecutiveFailures,
+              nextScheduledRun: horizon.nextScheduledRunAt.toISOString(),
+              latestScheduledRunId: horizon.latestScheduledRunId,
+              latestScheduledRunStatus: horizon.latestScheduledRunStatus,
+              schedule: horizon.schedule,
+              timezone: horizon.timezone,
+              decision: effectiveSubmission.decision,
+              suggestedDecision: "no_action_waiting",
+            },
+          );
+        }
       }
     }
     const human = needsHumanAlert
