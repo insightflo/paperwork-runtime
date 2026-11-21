@@ -1,4 +1,5 @@
 import path from "node:path";
+import { findRuntimeBroadScanCommandViaRust } from "./runtime-guard-core-client.js";
 export { extractRuntimeCommand } from "./runtime-command-extractor.js";
 import {
   cleanShellToken,
@@ -66,6 +67,16 @@ export function extractShellVariableAssignments(command: string): ReadonlyMap<st
 }
 
 export function findRuntimeBroadScanCommand(input: RuntimeBroadScanCommandInput) {
+  // Opt-in Rust 시임 — 게이트(PAPERCLIP_RUNTIME_GUARD_CORE_BIN 절대경로)가 닫혀 있거나
+  // 스폰·JSON·shape 이 실패하면 null 이 돌아와 아래 TS 본문이 parity 출처로 실행된다.
+  // 성공 value 는 null("미탐지")일 수 있어 { ok, value } 포장으로 폴백 null 과 구분한다.
+  const viaRust = findRuntimeBroadScanCommandViaRust(input);
+  if (viaRust !== null) return viaRust.value;
+  return findRuntimeBroadScanCommandTs(input);
+}
+
+/** 게이트 폐쇄·폴백 시 실행되는 TS 본문 — parity 의 최종 출처다. */
+function findRuntimeBroadScanCommandTs(input: RuntimeBroadScanCommandInput) {
   for (const candidate of COMMAND_PREFIX_PATTERNS) {
     if (!candidate.pattern.test(input.command)) continue;
     return evaluateCandidate(candidate.label, input);
