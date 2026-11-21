@@ -26,6 +26,10 @@ import {
   MISSION_OWNER_HUMAN_INPUT_SOURCE_TYPE,
 } from "./mission-owner-human-input-card.js";
 import {
+  admitHumanCardForSource,
+  type HumanCardAdmission,
+} from "./human-card-admission.js";
+import {
   missionWorkflowContinuationRemains,
   type ValidationVerdictObservation,
   type WorkflowContinuationStepRow,
@@ -51,6 +55,7 @@ const TERMINAL_REPORT_EVENT_TYPE = "terminal_mission_human_operator_report";
 const TERMINAL_REPORT_LAYER = "workflow_validation";
 const TERMINAL_REPORT_DECISION = "escalate";
 const TERMINAL_HUMAN_INPUT_CARD_FAILURE_ACTION = "mission.owner.human_input_card_failed";
+const TERMINAL_HUMAN_INPUT_CARD_SUPPRESSED_ACTION = "mission.owner.human_input_card_suppressed";
 const TITLE_MAX = 120;
 const TOKEN_MAX = 80;
 const EVIDENCE_MAX = 240;
@@ -337,6 +342,43 @@ async function recordTerminalHumanInputCardFailure(
   logger.warn({ decisionEventId: context.decisionEventId, stage: failure.stage, error: failure.error }, "terminal-mission human input decision card not created");
 }
 
+// [Admission v2 2026-11-21] 정책 스킵(자동 복구 소유)은 실패가 아니다 — failure activity 가
+//   아니라 별도 suppressed activity 로 남겨 억제 근거(원인 클래스·복구 소유자)를 감사한다.
+async function recordTerminalHumanInputCardSuppression(
+  db: Db,
+  context: Pick<TerminalHumanInputCardContext, "companyId" | "issue" | "decisionEventId">,
+  admission: HumanCardAdmission,
+): Promise<void> {
+  try {
+    await db.insert(activityLog).values({
+      companyId: context.companyId,
+      actorType: "system",
+      actorId: "system",
+      action: TERMINAL_HUMAN_INPUT_CARD_SUPPRESSED_ACTION,
+      entityType: "issue",
+      entityId: context.issue.id,
+      details: {
+        schemaVersion: 1,
+        decisionEventId: context.decisionEventId,
+        requestKey: buildHumanInputDecisionCardRequestKey(context.decisionEventId),
+        sourceType: MISSION_OWNER_HUMAN_INPUT_SOURCE_TYPE,
+        sourceIssueId: context.issue.originId,
+        admissionCause: admission.cause ?? null,
+        causeClass: admission.causeClass ?? null,
+        recoveryOwner: admission.recoveryOwner ?? null,
+        matchedSignal: admission.matchedSignal ?? null,
+        runId: admission.runId ?? null,
+        errorCode: admission.errorCode ?? null,
+      },
+    });
+  } catch (error) {
+    logger.warn({ err: error, decisionEventId: context.decisionEventId }, "failed to record terminal-mission human input card suppression");
+  }
+  logger.info({ decisionEventId: context.decisionEventId, admissionCause: admission.cause,
+    causeClass: admission.causeClass, recoveryOwner: admission.recoveryOwner },
+    "terminal-mission human input decision card suppressed by source admission");
+}
+
 // [시스템 경로 카드 보증] 결정 이벤트 1건 = 카드 1건(moi1:{decisionEventId} 멱등). 기존 카드가
 //   있으면 재사용하고, 없으면 기존 카드 빌더(mission-owner-human-input-card)로 생성한다.
 //   실패는 throw 하지 않고 activity 에 기록한다 — 발신(이슈·인박스·알림)은 이미 커밋된 상태다.
@@ -365,6 +407,19 @@ export async function ensureTerminalHumanInputDecisionCard(
   );
   if (!hasEnoughActionableOptions(cardOptions.structuredOptions)) {
     return { ensured: false, reason: "insufficient-actionable-options" };
+  }
+  // [Admission v2 2026-11-21] terminal report 카드도 원천(source) admission 게이트를 지킨다.
+  //   원천의 마지막 terminal 런이 자동 복구 소유(provider_transient/auth_refreshable)이면
+  //   재시도·갱신이 회수하므로 사람 결정 카드를 만들지 않는다 — terminal report(이벤트·
+  //   코멘트·인박스)는 이미 기록됐고 여기서 억제되는 것은 카드뿐이다. internal_bug/unknown
+  //   은 fail-closed 로 계속 카드를 연다. 이 경로는 시스템 에스컬레이션(명시적 사람 결정
+  //   요청이 아님)이므로 auto-recoverable 억제가 항상 적용된다.
+  if (context.issue.originId) {
+    const admission = await admitHumanCardForSource(db, context.companyId, context.issue.originId);
+    if (!admission.admit) {
+      await recordTerminalHumanInputCardSuppression(db, context, admission);
+      return { ensured: false, reason: `admission-suppressed:${admission.cause ?? "unknown"}` };
+    }
   }
   try {
     await createMissionOwnerHumanInputDecisionCard(db, {
