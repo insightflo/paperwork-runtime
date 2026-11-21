@@ -3,12 +3,30 @@ import { missionPlanArtifacts, type Db } from "@paperclipai/db";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Server-owned context keys — persisted on the stored row but excluded when rebuilding
+ * the caller-authored immutable card input for the strict public schema / requestHash.
+ * planDecisionHash·missionOwnerHumanInput are joined at create/merge time; the choice-card
+ * keys (decisionKind/decisionPoint/choiceOptions/ttlMs/suggestedDecision/safeAutoAdvance/
+ * irreversible) are joined by the owner-choice-card producer — neither may be caller-forged.
+ */
+const SERVER_OWNED_CONTEXT_KEYS = new Set([
+  "planDecisionHash",
+  "missionOwnerHumanInput",
+  "decisionKind",
+  "decisionPoint",
+  "choiceOptions",
+  "ttlMs",
+  "suggestedDecision",
+  "safeAutoAdvance",
+  "irreversible",
+]);
+
 /** Server-owned context is excluded when rebuilding the caller-authored immutable card input. */
 export function stripOperatorDecisionServerContext(sourceContext: unknown): Record<string, unknown> {
   if (sourceContext === null || typeof sourceContext !== "object" || Array.isArray(sourceContext)) return {};
-  const { planDecisionHash: _plan, missionOwnerHumanInput: _display, ...publicContext }
-    = sourceContext as Record<string, unknown>;
-  return publicContext;
+  return Object.fromEntries(Object.entries(sourceContext as Record<string, unknown>)
+    .filter(([key]) => !SERVER_OWNED_CONTEXT_KEYS.has(key)));
 }
 
 /** Current active owner-plan decision hash used to bind a human approval to one revision. */
