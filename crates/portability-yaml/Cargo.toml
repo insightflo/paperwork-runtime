@@ -1,0 +1,9 @@
+[package]
+name = "paperclip-portability-yaml"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+icu_collator = "2.4.0"
+icu_locale_core = "2.4.0"
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
