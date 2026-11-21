@@ -1,7 +1,10 @@
-//! paperclip-heartbeat-core — Stage 1 soft-mode port of the pure heartbeat
-//! classification modules:
-//!   server/src/services/heartbeat-failure-classification.ts
-//!   server/src/services/heartbeat-codex-auth-classification.ts
+//! paperclip-heartbeat-core — soft-mode port of the pure heartbeat modules:
+//!   Stage 1: server/src/services/heartbeat-failure-classification.ts
+//!            server/src/services/heartbeat-codex-auth-classification.ts
+//!   Stage 2: server/src/services/heartbeat-stability.ts
+//!            server/src/services/heartbeat-run-context.ts
+//!            server/src/services/heartbeat-session-reset.ts
+//!            server/src/services/heartbeat-output-validation.ts
 //! stdin JSON -> stdout JSON subcommands. Err(_) mirrors TS throws (TypeError
 //! etc.): the message goes to stderr and the process exits 1.
 use serde_json::{json, Value};
@@ -10,12 +13,15 @@ use std::io::{self, Read};
 use std::process;
 
 mod classify;
+mod stability;
 
 /// JS-semantics shims — same conventions as paperclip-mission-core/js and
 /// paperclip-workflow-core/js_value.
 #[rustfmt::skip]
 mod js {
+    use regex::Regex;
     use serde_json::Value;
+    use std::sync::LazyLock;
 
     /// String#trim domain: Unicode White_Space minus U+0085 (NEL), plus U+FEFF.
     fn is_js_trim_char(c: char) -> bool { (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}' }
@@ -100,13 +106,106 @@ mod js {
         let exp: i32 = exp.parse().unwrap_or(0);
         format!("{}e{}{}", mant, if exp >= 0 { "+" } else { "-" }, exp.abs())
     }
+
+    static JS_DECIMAL: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"\A[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?\z").expect("static regex")
+    });
+
+    /// JS StringToNumber: JS-WS trim; "" -> +0; exact-case "Infinity"; unsigned
+    /// 0x/0o/0b literals; ASCII decimal with optional sign/exponent; else NaN.
+    pub fn js_str_to_num(s: &str) -> f64 {
+        let t = js_trim(s);
+        if t.is_empty() { return 0.0; }
+        match t {
+            "Infinity" | "+Infinity" => return f64::INFINITY,
+            "-Infinity" => return f64::NEG_INFINITY,
+            _ => {}
+        }
+        for (prefix, base) in [('x', 16), ('o', 8), ('b', 2)] {
+            if let Some(digits) = t
+                .strip_prefix('0')
+                .and_then(|r| r.strip_prefix(|c: char| c.eq_ignore_ascii_case(&prefix)))
+            {
+                return if digits.is_empty() || !digits.chars().all(|c| c.is_digit(base)) {
+                    f64::NAN
+                } else {
+                    digits.chars().fold(0.0, |a, c| {
+                        a * f64::from(base) + c.to_digit(base).unwrap_or(0) as f64
+                    })
+                };
+            }
+        }
+        if JS_DECIMAL.is_match(t) { t.parse().unwrap_or(f64::NAN) } else { f64::NAN }
+    }
+
+    /// JS ToNumber for JSON values; `None` models `undefined` -> NaN.
+    pub fn js_number(v: Option<&Value>) -> f64 {
+        match v {
+            None | Some(Value::Object(_)) => f64::NAN,
+            Some(Value::Null) => 0.0,
+            Some(Value::Bool(b)) => if *b { 1.0 } else { 0.0 },
+            Some(Value::Number(n)) => n.as_f64().unwrap_or(f64::NAN),
+            Some(Value::String(s)) => js_str_to_num(s),
+            Some(Value::Array(_)) => js_str_to_num(&js_to_string(v)),
+        }
+    }
+
+    /// Math.max propagates NaN (Rust f64::max silently drops it).
+    pub fn js_max(a: f64, b: f64) -> f64 {
+        if a.is_nan() || b.is_nan() { f64::NAN } else { a.max(b) }
+    }
+
+    /// JS parseInt(s, 10): JS-WS trim, ONE optional sign, longest ASCII-digit
+    /// prefix; no digits -> NaN ("1e3" -> 1, "0x10" -> 0 at radix 10).
+    pub fn js_parse_int10(s: &str) -> f64 {
+        let t = js_trim(s);
+        let (neg, rest) = match t.as_bytes().first() {
+            Some(b'-') => (true, &t[1..]),
+            Some(b'+') => (false, &t[1..]),
+            _ => (false, t),
+        };
+        let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+        let v = rest[..end].parse::<f64>().unwrap_or(f64::NAN);
+        if neg { -v } else { v }
+    }
+
+    /// `v?.[key]` — null/undefined and non-object primitives all read
+    /// `undefined` (property access on primitives never throws).
+    pub fn prop<'a>(v: Option<&'a Value>, key: &str) -> Option<&'a Value> {
+        v.and_then(|v| v.get(key))
+    }
+
+    /// heartbeat-run-context readNonEmptyString: string + non-blank JS-trim ->
+    /// Some(TRIMMED) — unlike as_nonempty_string which keeps the original.
+    pub fn read_nonempty_trimmed(v: Option<&Value>) -> Option<String> {
+        let t = js_trim(v?.as_str()?);
+        if t.is_empty() { None } else { Some(t.to_string()) }
+    }
+
+    /// `(x ?? null) === (y ?? null)`: `undefined` maps to null; arrays/objects
+    /// never compare equal (JS reference identity cannot survive JSON).
+    pub fn js_nullish_eq(l: Option<&Value>, r: Option<&Value>) -> bool {
+        match (l, r) {
+            (None | Some(Value::Null), None | Some(Value::Null)) => true,
+            (Some(Value::Bool(a)), Some(Value::Bool(b))) => a == b,
+            (Some(Value::Number(a)), Some(Value::Number(b))) => a.as_f64() == b.as_f64(),
+            (Some(Value::String(a)), Some(Value::String(b))) => a == b,
+            _ => false,
+        }
+    }
 }
 
-const SUBCOMMANDS: [&str; 4] = [
+const SUBCOMMANDS: [&str; 10] = [
     "classify-run-failure",
     "run-failure-text",
     "contains-tool-limit-failure",
     "detect-codex-auth-failure",
+    "stability-env",
+    "stability-compute",
+    "run-context",
+    "session-reset",
+    "output-validation",
+    "progress-evidence",
 ];
 
 const MAX_STDIN_BYTES: usize = 4 * 1024 * 1024;
@@ -141,7 +240,13 @@ fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
         "classify-run-failure" => classify::classify_run_failure(&input),
         "run-failure-text" => Ok(json!(classify::run_failure_text(&input))),
         "contains-tool-limit-failure" => Ok(json!(classify::contains_tool_limit(&input))),
-        _ => classify::detect_codex_auth(&input),
+        "detect-codex-auth-failure" => classify::detect_codex_auth(&input),
+        "stability-env" => stability::stability_env(&input),
+        "stability-compute" => stability::stability_compute(&input),
+        "run-context" => Ok(stability::run_context(&input)),
+        "session-reset" => Ok(stability::session_reset(&input)),
+        "output-validation" => stability::output_validation(&input),
+        _ => stability::progress_evidence(&input),
     }
 }
 
