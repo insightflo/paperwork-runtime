@@ -62,11 +62,11 @@ vi.mock("../services/workflow/validation-verdict-ledger.js", () => ({
   recordWorkflowValidationVerdictFromText: mockRecordWorkflowValidationVerdictFromText,
 }));
 
-function createApp() {
+function createApp(actor?: Record<string, unknown>) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as any).actor = {
+    (req as any).actor = actor ?? {
       type: "agent",
       agentId: "22222222-2222-4222-8222-222222222222",
       companyId: "company-1",
@@ -241,5 +241,60 @@ describe("issue routes agent patch guard", () => {
       status: "done",
       linkedRunIds: [undefined, undefined, "run-1"],
     });
+  });
+
+  const inProgressIssue = {
+    id: "11111111-1111-4111-8111-111111111111",
+    companyId: "company-1",
+    status: "in_progress",
+    assigneeAgentId: "22222222-2222-4222-8222-222222222222",
+    assigneeUserId: null,
+    identifier: "PAP-1001",
+    title: "Issue being marked blocked",
+  };
+
+  it("passes excludeRunId so an agent marking its own issue blocked is not self-cancelled", async () => {
+    mockIssueService.getById.mockResolvedValue(inProgressIssue);
+    mockIssueService.update.mockResolvedValue({ ...inProgressIssue, status: "blocked" });
+    mockIssueService.addComment.mockResolvedValue({ id: "comment-1", body: "blocked" });
+
+    const res = await request(createApp())
+      .patch(`/api/issues/${inProgressIssue.id}`)
+      .send({ status: "blocked", comment: "blocked on upstream decision" });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(mockHeartbeatService.finalizeLinkedRunsForIssueStatus).toHaveBeenCalledWith({
+      issueId: inProgressIssue.id,
+      companyId: inProgressIssue.companyId,
+      status: "blocked",
+      linkedRunIds: [undefined, undefined, "run-1"],
+      excludeRunId: "run-1",
+    });
+  });
+
+  it("does not pass excludeRunId when a board actor marks the issue blocked", async () => {
+    mockIssueService.getById.mockResolvedValue(inProgressIssue);
+    mockIssueService.update.mockResolvedValue({ ...inProgressIssue, status: "blocked" });
+
+    const app = createApp({
+      type: "board",
+      userId: "user-1",
+      companyIds: ["company-1"],
+      source: "authenticated",
+      isInstanceAdmin: true,
+    });
+    const res = await request(app)
+      .patch(`/api/issues/${inProgressIssue.id}`)
+      .send({ status: "blocked" });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const callArg = mockHeartbeatService.finalizeLinkedRunsForIssueStatus.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(callArg).toEqual({
+      issueId: inProgressIssue.id,
+      companyId: inProgressIssue.companyId,
+      status: "blocked",
+      linkedRunIds: [undefined, undefined, null],
+    });
+    expect("excludeRunId" in callArg).toBe(false);
   });
 });
