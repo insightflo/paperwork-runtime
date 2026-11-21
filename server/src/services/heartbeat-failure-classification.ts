@@ -1,4 +1,9 @@
 import type { heartbeatRuns } from "@paperclipai/db";
+import {
+  classifyHeartbeatRunFailureViaRust,
+  containsToolLimitLifecycleFailureViaRust,
+  heartbeatRunFailureTextViaRust,
+} from "./heartbeat-core-client.js";
 export type HeartbeatFailureClassification = {
   category: "timeout" | "cancelled" | "overload" | "quota" | "auth" | "command" | "adapter";
   reasonCode: string;
@@ -6,7 +11,8 @@ export type HeartbeatFailureClassification = {
   fallbackCandidates: string[];
 };
 
-export function heartbeatRunFailureText(input: {
+// TS 본문 — classifyHeartbeatRunFailure 의 폴백 경로도 이 함수를 쓴다(이중 스폰 방지).
+function heartbeatRunFailureTextTs(input: {
   errorCode?: string | null;
   errorMessage?: string | null;
   stdoutExcerpt?: string | null;
@@ -16,6 +22,15 @@ export function heartbeatRunFailureText(input: {
     .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
     .join("\n")
     .trim();
+}
+
+export function heartbeatRunFailureText(input: {
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  stdoutExcerpt?: string | null;
+  stderrExcerpt?: string | null;
+}) {
+  return heartbeatRunFailureTextViaRust(input) ?? heartbeatRunFailureTextTs(input);
 }
 
 export function classifyHeartbeatRunFailure(input: {
@@ -29,7 +44,9 @@ export function classifyHeartbeatRunFailure(input: {
   model?: string | null;
   command?: string | null;
 }): HeartbeatFailureClassification {
-  const haystack = heartbeatRunFailureText(input);
+  const viaRust = classifyHeartbeatRunFailureViaRust(input);
+  if (viaRust !== null) return viaRust;
+  const haystack = heartbeatRunFailureTextTs(input);
   const normalized = haystack.toLowerCase();
   const providerModelCommand = [input.provider, input.model, input.command, input.adapterType]
     .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
@@ -125,6 +142,8 @@ export function classifyHeartbeatRunFailure(input: {
 }
 
 export function containsToolLimitLifecycleFailure(run: typeof heartbeatRuns.$inferSelect) {
+  const viaRust = containsToolLimitLifecycleFailureViaRust(run);
+  if (viaRust !== null) return viaRust;
   const text = [run.stdoutExcerpt, run.stderrExcerpt, run.error].filter(Boolean).join("\n");
   return /reached maximum iterations|tool[-\s]?call limit|tool capacity|could not post|couldn't post|not able to post|before i could post|could not .*mark|couldn't .*mark/iu.test(text);
 }
