@@ -26,6 +26,7 @@ import {
 import { buildDependencyIndex, unitDependsOn } from "./mission-plan-unit-dependencies.js";
 import { reviewPublicationVerificationTopology, type PlanningArtifactTool } from "./mission-plan-publication-contract.js";
 import { extractUnitRoles, hasPostDeliveryReadbackQa, type PlanQaUnitRole } from "./mission-plan-unit-roles.js";
+import { reviewPlanAgainstIntentViaRust } from "./mission-core-client-s9.js";
 
 export { extractUnitRoles } from "./mission-plan-unit-roles.js";
 export type { PlanQaUnitRole } from "./mission-plan-unit-roles.js";
@@ -117,6 +118,11 @@ export function reviewPlanAgainstIntent(input: {
   successCriteria?: unknown[];
   tools?: readonly PlanningArtifactTool[];
 }): PlanQaDiagnostic[] {
+  // [Rust opt-in] PAPERCLIP_MISSION_CORE_BIN 설정 시 9D 서브커맨드를 우선 실행한다. 단 critiqueHook
+  //   이 등록돼 있으면 Rust 를 우회하고 TS 를 직접 실행한다(LLM 확장점 활성 시 검증된 TS 경로 유지).
+  //   null(게이트 폐쇄/스폰 실패/non-zero 종료/shape 불량)이면 아래 TS 본문이 실행된다.
+  const viaRust = getMissionPlanQaCritiqueHook() === null ? reviewPlanAgainstIntentViaRust(input) : null;
+  if (viaRust !== null) return viaRust;
   const { intent, selectedExecutionUnits, tools = [] } = input;
   const diagnostics: PlanQaDiagnostic[] = [
     ...reviewArtifactWorkProductMarkers(selectedExecutionUnits, tools),

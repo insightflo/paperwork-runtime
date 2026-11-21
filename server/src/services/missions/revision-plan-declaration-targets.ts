@@ -14,6 +14,8 @@
 //   (readStepDeclaredDependencyUnitIds) 이 이 계약을 그대로 쓴다.
 // [수정시 주의] 이 계약을 normalizer 와 다르게 바꾸면 steps 선언이 상속 게이트에서 다른 유닛에
 //   적용되어 생략된 필수 템플릿 연결이 조용히 누락된다(2026-10-03 revision-mission 확정 결함).
+import { readStepDeclaredDependencyUnitIdsViaRust } from "./mission-core-client-s9.js";
+
 type PlanRecord = Record<string, unknown>;
 
 const UNIT_ALIAS_KEYS = ["id", "unitId", "stepId", "executionUnitId", "selectedExecutionUnitId"] as const;
@@ -67,6 +69,10 @@ export function readStepDeclaredDependencyUnitIds(
   decision: PlanRecord,
   declaredUnits: readonly PlanRecord[],
 ): Set<string> {
+  // [Rust opt-in] PAPERCLIP_MISSION_CORE_BIN 설정 시 9A 서브커맨드를 우선 실행한다. null(게이트
+  //   폐쇄/스폰 실패/non-zero 종료/shape 불량)이면 아래 TS 본문이 parity 의 최종 출처로 실행된다.
+  const viaRust = readStepDeclaredDependencyUnitIdsViaRust(decision, declaredUnits);
+  if (viaRust !== null) return viaRust;
   const canonicalUnitIds = new Set<string>();
   const unitIdsByAlias = new Map<string, Set<string>>();
   for (const unit of declaredUnits) {

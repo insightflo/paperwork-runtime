@@ -3,6 +3,7 @@
 //   고정 축소 카드(증상 ≤2줄 / 선택지 1줄 / 쉬운 해석 1문장 / 근거 링크)로만 바꾼다.
 //   구 카드(링크 없는 장문 evidence 등) 입력은 안전하게 폴백 출력한다.
 import { extractMissionOwnerDecisionFromText } from "./mission-owner-recovery-events.js";
+import { formatOperatorDecisionSummaryViaRust } from "./mission-core-client-s9.js";
 
 const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 const URL_PATTERN = /https?:\/\/[^\s)<>"']+/g;
@@ -142,6 +143,10 @@ function interpretationSentence(decision: OperatorCardSummaryInput["decision"]):
 }
 
 export function formatOperatorDecisionSummary(input: OperatorCardSummaryInput): string {
+  // [Rust opt-in] PAPERCLIP_MISSION_CORE_BIN 설정 시 9C 서브커맨드를 우선 실행한다. null(게이트
+  //   폐쇄/스폰 실패/non-zero 종료/shape 불량)이면 아래 TS 본문이 parity 의 최종 출처로 실행된다.
+  const viaRust = formatOperatorDecisionSummaryViaRust(input);
+  if (viaRust !== null) return viaRust;
   const unpacked = input.reason ? unpackStructuredReason(input.reason) : null;
   const rawReason = unpacked?.reason ?? input.reason ?? null;
   const rawNextAction = unpacked?.nextAction ?? input.nextAction ?? null;
