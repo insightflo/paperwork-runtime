@@ -32,16 +32,16 @@ pub fn utf16_len(s: &str) -> usize {
     s.chars().map(char::len_utf16).sum()
 }
 
+/// JS `Number::toString` — JS JSON.parse 는 JSON 숫자 전부를 IEEE-754 f64 로
+///   읽으므로 큰 i64/u64 도 f64 반올림이 정답이다(2^63 → "9223372036854776000").
+///   crate::js 공유 구현(js_num_str: |x|>=1e21·|x|<1e-6 지수 표기까지 ECMA 규칙)
+///   으로 전부 보낸다.
 fn num_str(n: &serde_json::Number) -> String {
-    if let Some(i) = n.as_i64().or_else(|| n.as_u64().map(|u| u as i64)) {
-        return i.to_string();
-    }
     let f = n.as_f64().unwrap_or(f64::NAN);
-    if f == f.trunc() && f.abs() < 1e21 {
-        format!("{}", f.trunc() as i64)
-    } else {
-        format!("{f}")
+    if !f.is_finite() {
+        return format!("{f}"); // serde_json Number 는 항상 유한 — 방어적 텍스트 유지
     }
+    crate::js::js_num_str(f)
 }
 /// `${v}` template interpolation (array → join ",", object → "[object Object]").
 pub fn js_str(v: &Value) -> String {
@@ -291,3 +291,6 @@ pub fn parse_delta_units(raw: &Value) -> Option<Vec<Value>> {
     }
     Some(out)
 }
+
+#[cfg(test)]
+mod tests;

@@ -88,26 +88,24 @@ mod js {
         }
         let neg = f.is_sign_negative();
         let a = f.abs();
-        let body = if a.fract() == 0.0 && a < 1e21 {
-            format!("{a:.0}")
+        // 정수 shortcut 없이 전부 ECMA 최단 왕복 자리로 — 2^63 같은 큰 정수는
+        // 정확한 확장(9223372036854775808)이 아니라 최단 왕복(9223372036854776000)이 JS 정답이다.
+        let e = format!("{a:e}");
+        let (mant, exp) = e.split_once('e').unwrap_or((e.as_str(), "0"));
+        let digits: String = mant.chars().filter(|c| *c != '.').collect();
+        let n = exp.parse::<i32>().unwrap_or(0) + 1;
+        let k = digits.len() as i32;
+        let body = if (k..=21).contains(&n) {
+            format!("{digits}{}", "0".repeat((n - k).max(0) as usize))
+        } else if (1..=21).contains(&n) {
+            format!("{}.{}", &digits[..n as usize], &digits[n as usize..])
+        } else if n > -6 && n <= 0 {
+            format!("0.{}{digits}", "0".repeat((-n).max(0) as usize))
+        } else if k == 1 {
+            format!("{digits}e{}{}", if n >= 1 { "+" } else { "-" }, (n - 1).abs())
         } else {
-            let e = format!("{a:e}");
-            let (mant, exp) = e.split_once('e').unwrap_or((e.as_str(), "0"));
-            let digits: String = mant.chars().filter(|c| *c != '.').collect();
-            let n = exp.parse::<i32>().unwrap_or(0) + 1;
-            let k = digits.len() as i32;
-            if (k..=21).contains(&n) {
-                format!("{digits}{}", "0".repeat((n - k).max(0) as usize))
-            } else if (1..=21).contains(&n) {
-                format!("{}.{}", &digits[..n as usize], &digits[n as usize..])
-            } else if n > -6 && n <= 0 {
-                format!("0.{}{digits}", "0".repeat((-n).max(0) as usize))
-            } else if k == 1 {
-                format!("{digits}e{}{}", if n >= 1 { "+" } else { "-" }, (n - 1).abs())
-            } else {
-                let (h, t) = (&digits[..1], &digits[1..]);
-                format!("{h}.{t}e{}{}", if n >= 1 { "+" } else { "-" }, (n - 1).abs())
-            }
+            let (h, t) = (&digits[..1], &digits[1..]);
+            format!("{h}.{t}e{}{}", if n >= 1 { "+" } else { "-" }, (n - 1).abs())
         };
         if neg {
             format!("-{body}")
