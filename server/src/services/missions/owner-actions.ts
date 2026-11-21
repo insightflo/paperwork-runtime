@@ -362,7 +362,7 @@ export function createOwnerActions({ db, deps }: { db: Db; deps: MissionServiceD
     stepRun: typeof workflowStepRuns.$inferSelect;
     step: WorkflowStep | null;
     workflowName: string;
-  }): Promise<{ issue: IssueRow; created: boolean; classification: ToolStepFailureClassification; toolNames: string[] }> {
+  }): Promise<{ issue: IssueRow | null; created: boolean; classification: ToolStepFailureClassification; toolNames: string[] }> {
     return ensureToolRecoveryCard(db, deps, input, (tx, companyId, data) =>
       createOwnerActions({ db: tx, deps: {} }).createMissionOwnerActionIssue(companyId, data));
   }

@@ -254,13 +254,13 @@ export async function runMissionPostLoopPhases({
           workflowName,
         });
         const toolNamesLabel = recovery.toolNames.length > 0 ? recovery.toolNames.join(",") : "unknown";
-        findings.push(`tool_step_failed_requires_recovery: run=${row.run.id} step=${row.stepRun.stepId} tool=${toolNamesLabel} class=${recovery.classification.className}${recovery.created ? " recovery_issue_created" : " recovery_issue_exists"}`);
+        findings.push(`tool_step_failed_requires_recovery: run=${row.run.id} step=${row.stepRun.stepId} tool=${toolNamesLabel} class=${recovery.classification.className}${recovery.created ? " recovery_issue_created" : recovery.issue ? " recovery_issue_exists" : " recovery_issue_capped"}`);
         addRecommendation({
           type: "request_replan",
           missionId: mission.id,
           workflowRunId: row.run.id,
           stepId: row.stepRun.stepId,
-          issueId: recovery.issue.id,
+          issueId: recovery.issue?.id,
           sourceRef: {
             type: "native_workflow_run",
             id: row.run.id,
