@@ -1363,6 +1363,9 @@ export function issueRoutes(db: Db, storage: StorageService) {
         companyId: issue.companyId,
         status: updateFields.status,
         linkedRunIds: [existing.checkoutRunId, existing.executionRunId, actor.runId],
+        ...(updateFields.status === "blocked" && actor.actorType === "agent" && actor.runId
+          ? { excludeRunId: actor.runId }
+          : {}),
       });
     }
     await routinesSvc.syncRunStatusForIssue(issue.id);
