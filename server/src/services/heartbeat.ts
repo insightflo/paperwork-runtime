@@ -2124,6 +2124,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     companyId: string;
     status: string;
     linkedRunIds?: Array<string | null | undefined>;
+    excludeRunId?: string | null;
   }) {
     // [run honesty] issue→blocked 로 진행 중 런이 잘리는 것은 통제판 결정이지 에이전트/어댑트 결함이
     //   아니다(2026-08-19 GAZ 실측: 오너 종결 진행 중이던 리뷰 런이 failed+issue_status_blocked 로
@@ -2158,7 +2159,18 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
 
     const finalizedRunIds: string[] = [];
     const now = new Date();
+    // [self-block 가드] 에이전트가 자기 이슈를 blocked 로 보고하는 것은 깨끗한 종료 보고인데,
+    //   연결 run 전부를 절단하면 호출 중인 자기 run 에 SIGTERM 이 가고 cancelled/
+    //   issue_status_blocked 로 기록되어 복구·재기상 루프를 만든다(2026-11 Oracle A1 실측:
+    //   7일간 207회/17시간). blocked + excludeRunId 지정 시 그 run 만 건너뛰고 나머지
+    //   queued/running run 은 그대로 절단한다.
+    const selfExcludedRunId = input.status === "blocked" &&
+      typeof input.excludeRunId === "string" &&
+      input.excludeRunId.length > 0
+      ? input.excludeRunId
+      : null;
     for (const run of runs) {
+      if (selfExcludedRunId !== null && run.id === selfExcludedRunId) continue;
       const trackedProcess = runningProcesses.get(run.id) ?? null;
       if (trackedProcess) {
         trackedProcess.child.kill("SIGTERM");
