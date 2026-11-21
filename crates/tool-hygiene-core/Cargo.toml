@@ -1,0 +1,11 @@
+[package]
+name = "paperclip-tool-hygiene-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+icu_collator = "2.4.0"
+icu_locale_core = "2.4.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
