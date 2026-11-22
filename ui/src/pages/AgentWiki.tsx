@@ -12,15 +12,18 @@ import { useCompany } from "../context/CompanyContext";
 import { L, useCompanyLanguage } from "../lib/companyLanguage";
 import { WikiMetricsBar } from "../components/WikiMetricsBar";
 import { MistologyCardList } from "../components/MistologyCardList";
+import { KbTreePanel } from "../components/KbTreePanel";
 import { classifyMistologyTab, groupAgentWikiEntries, type MistologyTab } from "../components/wikiHumanize";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+
+type WikiPageTab = MistologyTab | "kb";
 
 export function AgentWiki() {
   const { selectedCompanyId } = useCompany();
   const lang = useCompanyLanguage();
   const [q, setQ] = useState("");
-  const [tab, setTab] = useState<MistologyTab>("recent");
+  const [tab, setTab] = useState<WikiPageTab>("recent");
 
   const { data: patternData, isLoading, isError, error } = useQuery({
     queryKey: ["knowledge-patterns", selectedCompanyId, q, "with-superseded"],
@@ -52,7 +55,7 @@ export function AgentWiki() {
   const activeEntryGroups = groupAgentWikiEntries(activeEntries).length;
   const closedEntryGroups = groupAgentWikiEntries(closedEntries).length;
 
-  const tabs: { id: MistologyTab; label: string }[] = [
+  const tabs: { id: WikiPageTab; label: string }[] = [
     { id: "canon", label: L(lang, { en: `★ Standard Rules (${canonPatterns.length})`, ko: `★ 표준 규약 (${canonPatterns.length})` }) },
     {
       id: "recent",
@@ -68,6 +71,7 @@ export function AgentWiki() {
         ko: `은퇴 · 해결 이력 (${retiredPatterns.length + closedEntryGroups})`,
       }),
     },
+    { id: "kb", label: L(lang, { en: "KB Tree", ko: "KB 트리" }) },
   ];
   const shown =
     tab === "canon"
@@ -118,7 +122,9 @@ export function AgentWiki() {
         </div>
       </div>
 
-      {isLoading ? (
+      {tab === "kb" ? (
+        <KbTreePanel companyId={selectedCompanyId} />
+      ) : isLoading ? (
         <p className="text-sm text-muted-foreground">{L(lang, { en: "Loading…", ko: "불러오는 중…" })}</p>
       ) : isError ? (
         <p className="text-sm text-red-400">
