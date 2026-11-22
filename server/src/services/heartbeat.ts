@@ -74,6 +74,7 @@ import { budgetService, type BudgetEnforcementScope } from "./budgets.js";
 import { secretService } from "./secrets.js";
 import { resolveWorkflowStepToolContext } from "./heartbeat-workflow-tool-context.js";
 import { resolveWorkflowStepKnowledgeContext } from "./heartbeat-workflow-knowledge-context.js";
+import { applyWorkflowAndAgentKbContext } from "./knowledge/kb-auto-compile.js";
 import { resolveMaintenanceGuidanceContext } from "./heartbeat-maintenance-guidance.js";
 import { classifyHeartbeatRunFailure, heartbeatRunFailureText, type HeartbeatFailureClassification } from "./heartbeat-failure-classification.js";
 import { normalizeUsageTotals, readRawUsageTotals, deriveNormalizedUsageDelta, formatCount, type UsageTotals } from "./heartbeat-usage-totals.js";
@@ -3188,11 +3189,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     } else {
       delete context[RUN_TOOL_CONTRACT_CONTEXT_KEY];
     }
-    if (workflowStepKnowledgeContext) {
-      context.paperclipWorkflowStepKnowledgeContext = workflowStepKnowledgeContext;
-    } else {
-      delete context.paperclipWorkflowStepKnowledgeContext;
-    }
+    await applyWorkflowAndAgentKbContext(context, workflowStepKnowledgeContext, db, agent.companyId, agent.id);
 
     // [P2 — 사람 큐레이션 패턴 카드 관련도 주입, 측정 롤아웃] 실험 플래그(on) + 결정론적
     //   50/50 군 배정. durable 규약(kind='constraint')은 양 군 모두 신선도 무관하게 주입하고,
