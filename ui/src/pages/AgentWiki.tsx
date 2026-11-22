@@ -12,7 +12,7 @@ import { useCompany } from "../context/CompanyContext";
 import { L, useCompanyLanguage } from "../lib/companyLanguage";
 import { WikiMetricsBar } from "../components/WikiMetricsBar";
 import { MistologyCardList } from "../components/MistologyCardList";
-import { classifyMistologyTab, type MistologyTab } from "../components/wikiHumanize";
+import { classifyMistologyTab, groupAgentWikiEntries, type MistologyTab } from "../components/wikiHumanize";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -48,21 +48,24 @@ export function AgentWiki() {
   const retiredPatterns = patterns.filter((c) => classifyMistologyTab(c) === "retired");
   const activeEntries = entries.filter((e) => e.status === "active");
   const closedEntries = entries.filter((e) => e.status !== "active");
+  // 탭 배지는 카드 리스트와 같은 패턴 그룹화 기준으로 세야 실제 카드 수와 일치한다.
+  const activeEntryGroups = groupAgentWikiEntries(activeEntries).length;
+  const closedEntryGroups = groupAgentWikiEntries(closedEntries).length;
 
   const tabs: { id: MistologyTab; label: string }[] = [
     { id: "canon", label: L(lang, { en: `★ Standard Rules (${canonPatterns.length})`, ko: `★ 표준 규약 (${canonPatterns.length})` }) },
     {
       id: "recent",
       label: L(lang, {
-        en: `Recent Mistakes · 30d (${recentPatterns.length + activeEntries.length})`,
-        ko: `최근 오답 · 30일 (${recentPatterns.length + activeEntries.length})`,
+        en: `Recent Mistakes · 30d (${recentPatterns.length + activeEntryGroups})`,
+        ko: `최근 오답 · 30일 (${recentPatterns.length + activeEntryGroups})`,
       }),
     },
     {
       id: "retired",
       label: L(lang, {
-        en: `Retired & Resolved (${retiredPatterns.length + closedEntries.length})`,
-        ko: `은퇴 · 해결 이력 (${retiredPatterns.length + closedEntries.length})`,
+        en: `Retired & Resolved (${retiredPatterns.length + closedEntryGroups})`,
+        ko: `은퇴 · 해결 이력 (${retiredPatterns.length + closedEntryGroups})`,
       }),
     },
   ];

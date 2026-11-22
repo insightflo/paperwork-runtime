@@ -26,6 +26,8 @@ const ENTRY = {
   updatedAt: "2026-11-20T00:00:00.000Z",
 };
 const CLOSED_ENTRY = { ...ENTRY, id: "e-2", status: "resolved" };
+// 같은 패턴을 다른 에이전트가 다시 기록한 행 — 카드 리스트·탭 배지에서 1장으로 묶여야 한다.
+const DUP_ENTRY = { ...ENTRY, id: "e-3", agentId: "a-2", frequency: 6, lastSeenAt: "2026-11-21T00:00:00.000Z" };
 
 vi.mock("@tanstack/react-query", () => ({
   useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) =>
@@ -33,8 +35,8 @@ vi.mock("@tanstack/react-query", () => ({
       ? { data: { patterns: [PATTERN, CANON, RETIRED] }, isLoading: false, isError: false, error: null }
       : {
           data: {
-            entries: [ENTRY, CLOSED_ENTRY], timeseries: [],
-            summary: { totalEntries: 2, activeEntries: 1, resolvedEntries: 1, totalHits: 8 },
+            entries: [ENTRY, DUP_ENTRY, CLOSED_ENTRY], timeseries: [],
+            summary: { totalEntries: 3, activeEntries: 2, resolvedEntries: 1, totalHits: 14 },
           },
           isLoading: false, isError: false, error: null,
         },
@@ -58,7 +60,8 @@ describe("AgentWiki 3-tab Mistology UI (locale-aware)", () => {
     expect(markup).toContain("무슨 문제였나");
     expect(markup).toContain("원인");
     expect(markup).toContain("해결·규칙");
-    expect(markup).toContain("4회 관측");
+    expect(markup).toContain("10회 관측 · 에이전트 2명");
+    expect(markup.match(/Issue stalled in blocked state/g) ?? []).toHaveLength(1);
     expect(markup).not.toContain("주입 허용");
     expect(markup).not.toContain("초안 승인");
   });
@@ -73,7 +76,7 @@ describe("AgentWiki 3-tab Mistology UI (locale-aware)", () => {
     expect(markup).toContain("What happened");
     expect(markup).toContain("Root cause");
     expect(markup).toContain("Fix / Rule");
-    expect(markup).toContain("Seen 4x");
+    expect(markup).toContain("Seen 10x · 2 agents");
     expect(markup).toContain("Auto-collected");
   });
 });

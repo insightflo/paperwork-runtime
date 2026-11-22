@@ -12,10 +12,12 @@ import { cn } from "../lib/utils";
 import {
   classifyMistologyTab,
   formatAgeAndTtl,
+  groupAgentWikiEntries,
   humanizeKind,
   humanizeRetireReason,
   humanizeSource,
   humanizeText,
+  type GroupedWikiEntry,
 } from "./wikiHumanize";
 
 export interface MistologyCardListProps {
@@ -125,7 +127,7 @@ function PatternCard({ card, lang }: { card: KnowledgePatternCardDto; lang: Comp
   );
 }
 
-function EntryCard({ entry, lang }: { entry: AgentWikiEntryDto; lang: CompanyDefaultLanguage }) {
+function EntryCard({ entry, lang }: { entry: GroupedWikiEntry; lang: CompanyDefaultLanguage }) {
   return (
     <article className="rounded-lg border bg-card p-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-1.5">
@@ -133,7 +135,12 @@ function EntryCard({ entry, lang }: { entry: AgentWikiEntryDto; lang: CompanyDef
           {L(lang, { en: "Mistake · Agent", ko: "오답 기록 · 에이전트" })}
         </span>
         <span className={MUTED_BADGE}>
-          {L(lang, { en: `Seen ${entry.frequency}x`, ko: `${entry.frequency}회 관측` })}
+          {entry.agentCount > 1
+            ? L(lang, {
+                en: `Seen ${entry.totalFrequency}x · ${entry.agentCount} agents`,
+                ko: `${entry.totalFrequency}회 관측 · 에이전트 ${entry.agentCount}명`,
+              })
+            : L(lang, { en: `Seen ${entry.totalFrequency}x`, ko: `${entry.totalFrequency}회 관측` })}
         </span>
       </div>
       <SummaryGrid
@@ -164,7 +171,7 @@ export function MistologyCardList({ patterns, entries = [], language }: Mistolog
       {patterns.map((card) => (
         <PatternCard key={card.id} card={card} lang={lang} />
       ))}
-      {entries.map((entry) => (
+      {groupAgentWikiEntries(entries).map((entry) => (
         <EntryCard key={entry.id} entry={entry} lang={lang} />
       ))}
     </div>
