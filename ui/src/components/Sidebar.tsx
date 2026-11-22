@@ -305,7 +305,7 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
             <SidebarNavItem to="/activity" label="Activity" icon={History} />
             <SidebarNavItem to="/goals" label="Goals" icon={Target} />
             <SidebarNavItem to="/channels" label="Channel" icon={MessageSquare} />
-            <SidebarNavItem to="/worktree/rules" label="Execution Rules" icon={ShieldCheck} />
+            <SidebarNavItem to="/worktree/rules" label="Approval Gates" icon={ShieldCheck} />
             <SidebarNavItem to="/worktree/proposals" label="Proposals" icon={GitPullRequest} />
             <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
           </SidebarSection>
