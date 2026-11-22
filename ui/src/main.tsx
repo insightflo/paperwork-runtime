@@ -28,11 +28,28 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+// Recover once when a post-deploy navigation hits a stale lazy-loaded Vite chunk.
+window.addEventListener("vite:preloadError", (event) => {
+  try {
+    const key = "__pc_chunk_reload_at";
+    const last = Number(window.sessionStorage.getItem(key) ?? "0");
+    if (Date.now() - last > 30_000) {
+      event.preventDefault();
+      window.sessionStorage.setItem(key, String(Date.now()));
+      window.location.reload();
+    }
+  } catch {
+    // Ignore storage errors in restricted browsing modes.
+  }
+});
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
       refetchOnWindowFocus: true,
+      retry: 1,
+      retryDelay: 800,
     },
   },
 });
