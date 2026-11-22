@@ -43,6 +43,7 @@ import { assertCompanyAccess, getActorInfo } from "./authz.js";
 import { shouldWakeAssigneeOnCheckout } from "./issues-checkout-wakeup.js";
 import { isAllowedContentType, MAX_ATTACHMENT_BYTES } from "../attachment-types.js";
 import { queueIssueAssignmentWakeup } from "../services/issue-assignment-wakeup.js";
+import { autoResealStaleProducerWorkProductsOnDone } from "../services/work-products/auto-reseal-on-done.js";
 import { applyIssueCreatedSideEffects } from "../services/issue-create-side-effects.js";
 import { buildContextSafeFileViews } from "../services/context-safe-file-views.js";
 import { buildMaintenanceDecisionContext } from "../services/maintenance/decision-context.js";
@@ -1352,6 +1353,13 @@ export function issueRoutes(db: Db, storage: StorageService) {
     if (!issue) {
       res.status(404).json({ error: "Issue not found" });
       return;
+    }
+    if (updateFields.status === "done" && existing.status !== "done" && actor.runId) {
+      await autoResealStaleProducerWorkProductsOnDone(db, {
+        companyId: issue.companyId,
+        issueId: issue.id,
+        heartbeatRunId: actor.runId,
+      });
     }
     if (
       typeof updateFields.status === "string" &&
