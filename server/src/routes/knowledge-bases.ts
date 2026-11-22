@@ -14,6 +14,10 @@ import {
   compileCompletedMissionToKb,
   runCompanyKbLint,
 } from "../services/knowledge/kb-auto-compile.js";
+import {
+  listCompanyKbTree,
+  setKbNodeCertified,
+} from "../services/knowledge/kb-tree-admin.js";
 
 function resolveScopedAgentId(req: Request): string | undefined {
   if (req.actor.type === "board") return undefined;
@@ -51,6 +55,42 @@ export function knowledgeBasesRoutes(db: Db) {
       const maxTokens = rawMax !== undefined && Number.isFinite(rawMax) ? Math.min(Math.max(rawMax, 100), 1000) : undefined;
       buildAgentKbTocContext(db, { companyId, agentId, maxTokens })
         .then((toc) => res.json(toc))
+        .catch(next);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get("/companies/:companyId/knowledge-bases/tree", (req, res, next) => {
+    try {
+      assertBoard(req);
+      const { companyId } = req.params;
+      assertCompanyAccess(req, companyId);
+      listCompanyKbTree(db, companyId)
+        .then((tree) => res.json(tree))
+        .catch(next);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch("/companies/:companyId/knowledge-bases/nodes/:nodeId/certified", (req, res, next) => {
+    try {
+      assertBoard(req);
+      const { companyId, nodeId } = req.params;
+      assertCompanyAccess(req, companyId);
+      const actor = getActorInfo(req);
+      const body = req.body ?? {};
+      if (typeof body.certified !== "boolean") {
+        throw badRequest("certified boolean is required");
+      }
+      setKbNodeCertified(db, {
+        companyId,
+        nodeId,
+        certified: body.certified,
+        actorId: actor.actorId,
+      })
+        .then((node) => res.json(node))
         .catch(next);
     } catch (err) {
       next(err);
