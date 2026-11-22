@@ -3,6 +3,7 @@ import { activityLog, heartbeatRuns, issueWorkProducts, workflowStepRuns, type D
 import { workProductSelectorsSchema } from "@paperclipai/shared/validators/workflow-artifact";
 import { conflict } from "../../errors.js";
 import { workProductService } from "../work-products.js";
+import { autoResealStaleProducerWorkProductsOnDone } from "../work-products/auto-reseal-on-done.js";
 import { loadExecutionDefinition } from "./execution-definition.js";
 
 type ReworkContract = { kind: "workflow_qa_rework"; producerStepId: string };
@@ -117,15 +118,36 @@ export async function runMadeObservableProgress(db: Db, runId: string): Promise<
   return Number(row?.n ?? 0) > 0;
 }
 
-export async function assertReworkCompletionReady(input: {
-  db: Db;
-  companyId: string;
-  issueId: string;
-  heartbeatRunId: string | null;
-}): Promise<void> {
-  if (!input.heartbeatRunId || !await isWorkflowReworkRun(input.db, input.heartbeatRunId)) return;
-  await restampReworkProductsOnCompletion({ ...input, heartbeatRunId: input.heartbeatRunId });
-  if (!await runMadeObservableProgress(input.db, input.heartbeatRunId)) {
+export async function assertReworkCompletionReady(
+  input: {
+    db: Db;
+    companyId: string;
+    issueId: string;
+    heartbeatRunId: string | null;
+  },
+  deps: {
+    autoResealFn?: typeof autoResealStaleProducerWorkProductsOnDone;
+    isReworkFn?: typeof isWorkflowReworkRun;
+    restampFn?: typeof restampReworkProductsOnCompletion;
+    progressFn?: typeof runMadeObservableProgress;
+  } = {},
+): Promise<void> {
+  if (!input.heartbeatRunId) return;
+  const autoResealFn = deps.autoResealFn ?? autoResealStaleProducerWorkProductsOnDone;
+  const isReworkFn = deps.isReworkFn ?? isWorkflowReworkRun;
+  const restampFn = deps.restampFn ?? restampReworkProductsOnCompletion;
+  const progressFn = deps.progressFn ?? runMadeObservableProgress;
+
+  // [RES-12523] workflow/complete 경로는 routes/issues.ts 를 거치지 않으므로, restamp 이전에
+  //   stale 로컬 산출물을 먼저 자동 재봉인해 sourceExecutionGeneration + workflowProducer 를 최신화한다.
+  await autoResealFn(input.db, {
+    companyId: input.companyId,
+    issueId: input.issueId,
+    heartbeatRunId: input.heartbeatRunId,
+  });
+  if (!await isReworkFn(input.db, input.heartbeatRunId)) return;
+  await restampFn({ ...input, heartbeatRunId: input.heartbeatRunId });
+  if (!await progressFn(input.db, input.heartbeatRunId)) {
     throw conflict(
       "QA rework run made no observable progress; resolve the REQUEST_CHANGES and update or register the artifact before completing the workflow issue.",
     );
