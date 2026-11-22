@@ -6,6 +6,7 @@
 // [연결] consumer: ui/src/components/MistologyCardList.tsx, ui/src/pages/AgentWiki.tsx.
 import type { CompanyDefaultLanguage } from "@paperclipai/shared";
 import type { KnowledgePatternCardDto } from "../api/knowledgePatterns";
+import type { AgentWikiEntryDto } from "../api/agentWiki";
 import { L } from "../lib/companyLanguage";
 
 export type MistologyTab = "canon" | "recent" | "retired";
@@ -107,4 +108,37 @@ export function formatAgeAndTtl(
     en: `${daysAgo === 0 ? "Today" : `${daysAgo}d ago`} · D-${rem}`,
     ko: `${daysAgo === 0 ? "오늘" : `${daysAgo}일 전`} · 만료 D-${rem}`,
   });
+}
+
+export interface GroupedWikiEntry extends AgentWikiEntryDto {
+  totalFrequency: number;
+  agentCount: number;
+}
+
+const seenMs = (entry: AgentWikiEntryDto): number =>
+  Date.parse(entry.lastSeenAt || entry.createdAt) || 0;
+
+// [패턴 그룹화] 정규화된 pattern(양끝 공백·대소문자 무시)이 같은 entry를 1장으로 묶고
+//   frequency 합계·관측 에이전트 수를 합산한다. 대표 행은 최신 관측(lastSeenAt→createdAt)
+//   우선이고, 비어 있는 cause/solution은 그룹 내 최신 비어있지 않은 값으로 채운다.
+export function groupAgentWikiEntries(entries: AgentWikiEntryDto[]): GroupedWikiEntry[] {
+  const groups = new Map<string, AgentWikiEntryDto[]>();
+  for (const entry of entries) {
+    const key = entry.pattern.trim().toLowerCase();
+    const members = groups.get(key);
+    if (members) members.push(entry);
+    else groups.set(key, [entry]);
+  }
+  const grouped = [...groups.values()].map((members) => {
+    members.sort((a, b) => seenMs(b) - seenMs(a));
+    const rep = members[0];
+    return {
+      ...rep,
+      cause: rep.cause.trim() ? rep.cause : (members.find((m) => m.cause.trim())?.cause ?? rep.cause),
+      solution: rep.solution.trim() ? rep.solution : (members.find((m) => m.solution.trim())?.solution ?? rep.solution),
+      totalFrequency: members.reduce((sum, m) => sum + m.frequency, 0),
+      agentCount: new Set(members.map((m) => m.agentId)).size,
+    };
+  });
+  return grouped.sort((a, b) => b.totalFrequency - a.totalFrequency || seenMs(b) - seenMs(a));
 }
