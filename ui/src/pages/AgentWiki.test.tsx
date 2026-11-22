@@ -2,86 +2,96 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { CompanyLanguageProvider } from "../lib/companyLanguage";
+import { humanizeText } from "../components/wikiHumanize";
 
-// [사고→패턴 카드 화면 노출] 기존 Agent 자가학습 Wiki 페이지에 카드 섹션이 뜨는지,
-//   "자동 주입되는 자가학습 교훈"과 "주입 없는 큐레이션 카드"의 층 구분이 드러나는지.
-//   정적 마크업 렌더로 검증(레포 규약) — 클릭 확장은 초기 마크업에 detail이 없음으로 확인.
+const PATTERN = {
+  id: "card-1", companyId: "company-1", kind: "failure_mode",
+  title: "Structural gate token mismatch stalls QA step",
+  summary: "Double completion causes permanent gate token mismatch.",
+  evidence: [], symptoms: "Run stays running while QA step stays pending",
+  rootCause: "Double completion restamps completedAt", whatWorked: "Gate CAS requeue + reverify",
+  scopeTags: ["workflow"], source: "auto_rework_draft", status: "active", audience: "ops",
+  defectSignature: null, createdByAgentId: null, supersededById: null,
+  createdAt: "2026-11-01T00:00:00.000Z",
+};
+const CANON = { ...PATTERN, id: "card-2", kind: "constraint", title: "Always requeue via gate CAS" };
+const RETIRED = { ...PATTERN, id: "card-3", status: "retired", title: "Stale failure card" };
+const ENTRY = {
+  id: "e-1", companyId: "company-1", agentId: "a-1", missionId: null,
+  pattern: "Issue stalled in blocked state", cause: "Upstream issue unresolved",
+  solution: "Check parent issue before blocked transition", errorCode: null, stepId: null,
+  frequency: 4, status: "active",
+  createdAt: "2026-11-01T00:00:00.000Z", lastSeenAt: "2026-11-20T00:00:00.000Z",
+  updatedAt: "2026-11-20T00:00:00.000Z",
+};
+const CLOSED_ENTRY = { ...ENTRY, id: "e-2", status: "resolved" };
+
 vi.mock("@tanstack/react-query", () => ({
-  useQueryClient: () => ({ invalidateQueries: () => undefined }),
-  useMutation: ({ mutationFn, onSuccess }: { mutationFn: (input: unknown) => Promise<unknown>; onSuccess?: () => void }) => ({
-    mutate: () => undefined,
-    isPending: false,
-    isError: false,
-    mutationFn,
-    onSuccess,
-  }),
-  useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => {
-    if (queryKey[0] === "knowledge-patterns") {
-      return {
-        data: {
-          patterns: [{
-            id: "card-1",
-            companyId: "company-1",
-            kind: "failure_mode",
-            title: "구조 게이트 토큰 불일치로 QA 스텝 무발사",
-            summary: "이중완료가 게이트 토큰과 영구 불일치를 만든다.",
-            evidence: [{ type: "workflow_run", id: "38fb7ef5", note: "PR #156" }],
-            symptoms: "런 running 유지 + QA 스텝 pending 지속",
-            rootCause: "이중완료가 completedAt을 재스탬프",
-            whatWorked: "게이트 CAS 재큐 + 재검증",
-            scopeTags: ["workflow", "structural-gate"],
-            source: "mission_owner_compile",
-            status: "active",
-            audience: "ops",
-            defectSignature: null,
-            createdByAgentId: null,
-            supersededById: null,
-            createdAt: "2026-08-29T12:00:00.000Z",
-          }],
+  useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) =>
+    queryKey[0] === "knowledge-patterns"
+      ? { data: { patterns: [PATTERN, CANON, RETIRED] }, isLoading: false, isError: false, error: null }
+      : {
+          data: {
+            entries: [ENTRY, CLOSED_ENTRY], timeseries: [],
+            summary: { totalEntries: 2, activeEntries: 1, resolvedEntries: 1, totalHits: 8 },
+          },
+          isLoading: false, isError: false, error: null,
         },
-        isLoading: false,
-        isError: false,
-        error: null,
-      };
-    }
-    return {
-      data: {
-        entries: [],
-        timeseries: [],
-        summary: { totalEntries: 0, activeEntries: 0, resolvedEntries: 0, totalHits: 0 },
-      },
-      isLoading: false,
-      isError: false,
-      error: null,
-    };
-  },
 }));
-vi.mock("../context/CompanyContext", () => ({ useCompany: () => ({ selectedCompanyId: "company-1" }) }));
+vi.mock("../context/CompanyContext", async (orig) => {
+  const actual = await orig<typeof import("../context/CompanyContext")>();
+  return { ...actual, useCompany: () => ({ selectedCompanyId: "company-1", selectedCompany: { defaultLanguage: "en" } }) };
+});
 vi.mock("../lib/router", () => ({ Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a> }));
 
 import { AgentWiki } from "./AgentWiki";
 
-describe("AgentWiki pattern cards section", () => {
-  const markup = renderToStaticMarkup(<AgentWiki />);
-
-  it("renders curated pattern cards with kind, title, tags, and owner-compiled source", () => {
-    expect(markup).toContain("사고→패턴 카드 (1)");
-    expect(markup).toContain("구조 게이트 토큰 불일치로 QA 스텝 무발사");
-    expect(markup).toContain("#workflow #structural-gate");
-    expect(markup).toContain("오너 컴파일");
-    expect(markup).toContain("failure_mode");
+describe("AgentWiki 3-tab Mistology UI (locale-aware)", () => {
+  it("renders Korean labels when company language is ko", () => {
+    const markup = renderToStaticMarkup(
+      <CompanyLanguageProvider language="ko"><AgentWiki /></CompanyLanguageProvider>,
+    );
+    expect(markup).toContain("★ 표준 규약 (1)");
+    expect(markup).toContain("최근 오답 · 30일 (2)");
+    expect(markup).toContain("은퇴 · 해결 이력 (2)");
+    expect(markup).toContain("무슨 문제였나");
+    expect(markup).toContain("원인");
+    expect(markup).toContain("해결·규칙");
+    expect(markup).toContain("4회 관측");
+    expect(markup).not.toContain("주입 허용");
+    expect(markup).not.toContain("초안 승인");
   });
 
-  it("keeps the layer distinction visible: curated cards are not auto-injected (gated + measured rollout only)", () => {
-    expect(markup).toContain("실행 프롬프트 주입은 별도 계약(게이트+측정 롤아웃)으로만");
-    expect(markup).toContain("자동 주입");
-    // [P2 주입 큐레이션] active 카드에는 주입 토글이 노출된다.
-    expect(markup).toContain("주입 허용");
+  it("renders English labels when company language is en", () => {
+    const markup = renderToStaticMarkup(
+      <CompanyLanguageProvider language="en"><AgentWiki /></CompanyLanguageProvider>,
+    );
+    expect(markup).toContain("★ Standard Rules (1)");
+    expect(markup).toContain("Recent Mistakes · 30d (2)");
+    expect(markup).toContain("Retired &amp; Resolved (2)");
+    expect(markup).toContain("What happened");
+    expect(markup).toContain("Root cause");
+    expect(markup).toContain("Fix / Rule");
+    expect(markup).toContain("Seen 4x");
+    expect(markup).toContain("Auto-collected");
+  });
+});
+
+describe("humanizeText", () => {
+  it("strips raw UUIDs and run noise, collapses whitespace", () => {
+    const out = humanizeText("Run 38fb7ef5-1111-2222-3333-444455556666 failed   (run abc123)", "en");
+    expect(out).toBe("Run failed");
   });
 
-  it("collapses card detail by default (symptoms/rootCause not in initial markup)", () => {
-    expect(markup).not.toContain("이중완료가 completedAt을 재스탬프");
-    expect(markup).not.toContain("런 running 유지 + QA 스텝 pending 지속");
-    expect(markup).not.toContain("workflow_run:38fb7ef5");
+  it("translates cryptic codes according to configured language", () => {
+    expect(humanizeText("55P03", "ko")).toBe("DB 잠금 초과(55P03)");
+    expect(humanizeText("55P03", "en")).toBe("DB lock timeout(55P03)");
+    expect(humanizeText("x issue_status_blocked y", "en")).toBe("x Issue blocked(issue_status_blocked) y");
+  });
+
+  it("returns empty string for blank input", () => {
+    expect(humanizeText(null, "en")).toBe("");
+    expect(humanizeText("   ", "ko")).toBe("");
   });
 });
