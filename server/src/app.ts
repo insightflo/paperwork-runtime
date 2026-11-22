@@ -44,6 +44,7 @@ import { companyDataStorageRoutes } from "./routes/company-data-storage.js";
 import { costRoutes } from "./routes/costs.js";
 import { agentWikiRoutes } from "./routes/agent-wiki.js";
 import { knowledgePatternsRoutes } from "./routes/knowledge-patterns.js";
+import { knowledgeBasesRoutes } from "./routes/knowledge-bases.js";
 import { selfImprovementAdoptionsRoutes } from "./routes/self-improvement-adoptions.js";
 import { channelConfigRoutes } from "./routes/channel-config.js";
 import { strategyPlaybookRoutes } from "./routes/strategy-playbook.js";
@@ -656,6 +657,7 @@ export async function createApp(
   api.use(costRoutes(db));
   api.use(agentWikiRoutes(db));
   api.use(knowledgePatternsRoutes(db));
+  api.use(knowledgeBasesRoutes(db));
   api.use(selfImprovementAdoptionsRoutes(db));
   api.use(channelConfigRoutes(db));
   api.use(strategyPlaybookRoutes(db));
