@@ -4,27 +4,11 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { activityLog, agentKbGrants, knowledgeBases, knowledgeNodes, type Db } from "@paperclipai/db";
 import { badRequest, notFound } from "../../errors.js";
 import { logger } from "../../middleware/logger.js";
-import { compileCompletedMissionToKb } from "./kb-auto-compile.js";
+import { ensureDefaultCompanyKb } from "./kb-auto-compile.js";
+import { upsertKbNode } from "./kb-nodes.js";
 
 const MAX_TREE_NODES = 200;
-const MAX_CONCURRENT_AUTO_COMPILES = 2;
-const inFlightAutoCompiles = new Set<string>();
-const pendingAutoCompileQueue: Array<() => void> = [];
-let activeAutoCompiles = 0;
-
-function acquireAutoCompileSlot(): Promise<void> {
-  if (activeAutoCompiles < MAX_CONCURRENT_AUTO_COMPILES) {
-    activeAutoCompiles += 1;
-    return Promise.resolve();
-  }
-  return new Promise((resolve) => pendingAutoCompileQueue.push(() => { activeAutoCompiles += 1; resolve(); }));
-}
-
-function releaseAutoCompileSlot(): void {
-  activeAutoCompiles = Math.max(0, activeAutoCompiles - 1);
-  const next = pendingAutoCompileQueue.shift();
-  if (next) next();
-}
+const QUALITY_ROOT_SLUG = "quality-standards-and-pitfalls";
 
 export interface KbTreeNodeSummary {
   id: string; kbId: string; parentId: string | null; slug: string; title: string;
@@ -155,32 +139,86 @@ export async function setKbNodeCertified(
   });
 }
 
-/** 미션이 completed로 확정(post-commit)된 경우에만 동시성 제한·중복 제거·fail-open으로 KB 자동 컴파일을 실행한다. */
-export function scheduleMissionKbAutoCompileIfCompleted(
-  db: Db,
-  input: { companyId: string; missionId: string; status: "completed" | "cancelled" },
-  compiler: typeof compileCompletedMissionToKb = compileCompletedMissionToKb,
-): Promise<void> | null {
-  if (input.status !== "completed") return null;
-  const dedupeKey = `${input.companyId}:${input.missionId}`;
-  if (inFlightAutoCompiles.has(dedupeKey)) return null;
-  inFlightAutoCompiles.add(dedupeKey);
+export function canonNodeSlugFor(code: string): string {
+  const norm = code.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+  return `canon-${norm || "rule"}`;
+}
 
-  return acquireAutoCompileSlot()
-    .then(() => compiler(db, {
+/** Quality RSI에서 ★ 표준 규약으로 승격된 품질 기준/주의사항을 회사 KB 트리에 단방향·fail-open 반영한다. */
+export async function syncPromotedCanonToKb(
+  db: Db,
+  input: {
+    companyId: string;
+    patternId: string;
+    code: string;
+    title: string;
+    summary: string;
+    whatWorked?: string | null;
+    tags?: string[];
+  },
+): Promise<{ synced: boolean; skippedCertified?: boolean }> {
+  try {
+    const kb = await ensureDefaultCompanyKb(db, {
       companyId: input.companyId,
-      missionId: input.missionId,
-      actorId: "system:mission-auto-compile",
-    }))
-    .then(() => undefined)
-    .catch((err) => {
-      logger.warn(
-        { err, companyId: input.companyId, missionId: input.missionId },
-        "non-blocking mission KB auto-compile failed",
-      );
-    })
-    .finally(() => {
-      inFlightAutoCompiles.delete(dedupeKey);
-      releaseAutoCompileSlot();
+      actorId: "system:quality-rsi",
     });
+
+    const [existingRoot] = await db
+      .select({ id: knowledgeNodes.id })
+      .from(knowledgeNodes)
+      .where(and(
+        eq(knowledgeNodes.companyId, input.companyId),
+        eq(knowledgeNodes.kbId, kb.id),
+        eq(knowledgeNodes.slug, QUALITY_ROOT_SLUG),
+      ))
+      .limit(1);
+
+    const rootId = existingRoot?.id ?? (await upsertKbNode(db, {
+      companyId: input.companyId,
+      kbId: kb.id,
+      slug: QUALITY_ROOT_SLUG,
+      title: "품질 기준 및 주의사항 (Quality Standards & Pitfalls)",
+      summary: "반복 검증되어 표준 규약으로 확정된 품질 기준·통과 조건·주의사항",
+      content: "# 품질 기준 및 주의사항\n\nQuality RSI 및 운영 검증을 통해 확정된 재사용 기준 모음입니다.",
+      nodeType: "policy",
+      certified: true,
+      tags: ["quality-standards", "policy"],
+      actorId: "system:quality-rsi",
+    })).node.id;
+
+    const slug = canonNodeSlugFor(input.code);
+    const [existingChild] = await db
+      .select({ certified: knowledgeNodes.certified })
+      .from(knowledgeNodes)
+      .where(and(
+        eq(knowledgeNodes.companyId, input.companyId),
+        eq(knowledgeNodes.kbId, kb.id),
+        eq(knowledgeNodes.slug, slug),
+      ))
+      .limit(1);
+    if (existingChild?.certified) {
+      return { synced: false, skippedCertified: true };
+    }
+
+    const lines = [`# ${input.title}`, "", input.summary];
+    if (input.whatWorked?.trim()) lines.push("", "## 적용 기준", `- ${input.whatWorked.trim()}`);
+    await upsertKbNode(db, {
+      companyId: input.companyId,
+      kbId: kb.id,
+      parentId: rootId,
+      slug,
+      title: input.title,
+      summary: input.summary.slice(0, 180),
+      content: lines.join("\n"),
+      nodeType: "policy",
+      certified: false,
+      tags: Array.from(new Set(["quality-rsi", "canon", ...(input.tags ?? [])])).slice(0, 8),
+      sourceRefs: [{ type: "manual", id: input.patternId, label: input.title, updatedAt: new Date().toISOString() }],
+      actorId: "system:quality-rsi",
+    });
+    return { synced: true };
+  } catch (err) {
+    logger.warn({ err, companyId: input.companyId, patternId: input.patternId }, "non-blocking Quality RSI canon KB sync failed");
+    return { synced: false };
+  }
 }

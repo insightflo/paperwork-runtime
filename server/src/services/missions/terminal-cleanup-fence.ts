@@ -3,7 +3,6 @@ import type { Db } from "@paperclipai/db";
 import { activityLog, issues, missionAgents, missionPlanArtifacts, missionSessions, missions, operatorDecisions } from "@paperclipai/db";
 import type { MissionRow } from "../missions.js";
 import { logger } from "../../middleware/logger.js";
-import { scheduleMissionKbAutoCompileIfCompleted } from "../knowledge/kb-tree-admin.js";
 import {
   captureMissionTerminalAuthority,
   lockAndCheckMissionTerminalAuthority,
@@ -166,13 +165,6 @@ export async function runMissionTerminalCleanup(
     const resources = await executeMissionTerminalCleanup(tx, input);
     return { aborted: false, reason: null, ...resources };
   });
-  if (!settled.aborted) {
-    stopMissionTerminalProcesses(settled.processStops);
-    scheduleMissionKbAutoCompileIfCompleted(db, {
-      companyId: input.companyId,
-      missionId: input.missionId,
-      status: input.status,
-    });
-  }
+  if (!settled.aborted) stopMissionTerminalProcesses(settled.processStops);
   return { aborted: settled.aborted, reason: settled.reason, stoppedRuntimeIds: settled.stoppedRuntimeIds };
 }

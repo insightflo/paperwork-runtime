@@ -2,6 +2,7 @@
 //   QA 자체 RSI(Plan QA pass 후 취소/실패 미탐 → Plan QA 체크리스트 보강) + 완료/취소 미션 방치 항목 자동 정리.
 import { and, desc, eq, inArray, isNotNull, isNull, notInArray } from "drizzle-orm";
 import { companyKnowledgePatterns, missionPlanQaVerdicts, missions, qualityReviewItems, type Db } from "@paperclipai/db";
+import { syncPromotedCanonToKb } from "./knowledge/kb-tree-admin.js";
 
 export const QUALITY_RSI_CLOSED_STATUSES = [
   "resolved_pass", "resolved_fail", "dismissed", "closed", "evaluator_promoted", "evaluator_rejected",
@@ -264,20 +265,21 @@ export async function promoteQualityPatternToCanon(
   db: Db, companyId: string, signature: string,
 ): Promise<{ patternId: string; alreadyCanon: boolean }> {
   const trimmed = signature.trim(), canonSig = canonSignatureFor(trimmed);
-  return db.transaction(async (tx) => {
+  const res = await db.transaction(async (tx) => {
     const [existingCanon] = await tx.select({ id: companyKnowledgePatterns.id }).from(companyKnowledgePatterns)
       .where(and(eq(companyKnowledgePatterns.companyId, companyId), eq(companyKnowledgePatterns.defectSignature, canonSig), eq(companyKnowledgePatterns.status, "active"), isNull(companyKnowledgePatterns.supersededById))).limit(1);
-    if (existingCanon) return { patternId: existingCanon.id, alreadyCanon: true };
+    if (existingCanon) return { patternId: existingCanon.id, alreadyCanon: true, syncPayload: null };
 
     const [prev] = await tx.select().from(companyKnowledgePatterns)
       .where(and(eq(companyKnowledgePatterns.companyId, companyId), eq(companyKnowledgePatterns.defectSignature, trimmed))).limit(1);
     const code = trimmed.replace(/^quality-rsi:/, "");
+    const title = prev?.title ?? `Canonical QA rule: ${code}`;
+    const summary = prev?.summary ?? `Durable QA standard rule promoted from ${code}.`;
+    const whatWorked = prev?.whatWorked ?? "Enforce this check before passing or submitting plans.";
+    const tags = prev?.scopeTags?.length ? prev.scopeTags : ["quality-rsi", "plan-qa", ...(code.startsWith("qa_escaped_") ? ["qa-escaped"] : []), code];
     const [created] = await tx.insert(companyKnowledgePatterns).values({
-      companyId, kind: "constraint", title: prev?.title ?? `Canonical QA rule: ${code}`,
-      summary: prev?.summary ?? `Durable QA standard rule promoted from ${code}.`,
-      symptoms: prev?.symptoms ?? null, rootCause: prev?.rootCause ?? `Promoted from Quality RSI (${code})`,
-      whatWorked: prev?.whatWorked ?? "Enforce this check before passing or submitting plans.",
-      scopeTags: prev?.scopeTags?.length ? prev.scopeTags : ["quality-rsi", "plan-qa", ...(code.startsWith("qa_escaped_") ? ["qa-escaped"] : []), code],
+      companyId, kind: "constraint", title, summary, symptoms: prev?.symptoms ?? null,
+      rootCause: prev?.rootCause ?? `Promoted from Quality RSI (${code})`, whatWorked, scopeTags: tags,
       errorSignatures: [trimmed], defectSignature: canonSig, source: "operator", status: "active", audience: "agent", versionNumber: prev ? prev.versionNumber + 1 : 1,
     }).onConflictDoNothing().returning({ id: companyKnowledgePatterns.id });
 
@@ -285,11 +287,13 @@ export async function promoteQualityPatternToCanon(
       const [raced] = await tx.select({ id: companyKnowledgePatterns.id }).from(companyKnowledgePatterns)
         .where(and(eq(companyKnowledgePatterns.companyId, companyId), eq(companyKnowledgePatterns.defectSignature, canonSig), isNull(companyKnowledgePatterns.supersededById))).limit(1);
       if (!raced) throw new Error("quality_rsi_canon_conflict");
-      return { patternId: raced.id, alreadyCanon: true };
+      return { patternId: raced.id, alreadyCanon: true, syncPayload: null };
     }
     if (prev && !prev.supersededById) {
       await tx.update(companyKnowledgePatterns).set({ supersededById: created.id, supersedeReason: "Promoted to canonical constraint via Quality RSI" }).where(eq(companyKnowledgePatterns.id, prev.id));
     }
-    return { patternId: created.id, alreadyCanon: false };
+    return { patternId: created.id, alreadyCanon: false, syncPayload: { companyId, patternId: created.id, code, title, summary, whatWorked, tags } };
   });
+  if (!res.alreadyCanon && res.syncPayload) void syncPromotedCanonToKb(db, res.syncPayload);
+  return { patternId: res.patternId, alreadyCanon: res.alreadyCanon };
 }
