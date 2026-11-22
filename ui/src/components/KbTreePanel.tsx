@@ -22,6 +22,7 @@ export function KbTreePanel({ companyId }: KbTreePanelProps) {
   const [searchText, setSearchText] = useState("");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [lintResult, setLintResult] = useState<KbLintResultDto | null>(null);
+  const [lintError, setLintError] = useState<string | null>(null);
   const [certError, setCertError] = useState<string | null>(null);
 
   const trimmedQuery = searchText.trim();
@@ -31,13 +32,13 @@ export function KbTreePanel({ companyId }: KbTreePanelProps) {
     enabled: Boolean(companyId),
   });
 
-  const { data: searchData, isFetching: isSearching } = useQuery({
+  const { data: searchData, isFetching: isSearching, isError: isSearchError, error: searchError } = useQuery({
     queryKey: ["kb-search", companyId, trimmedQuery],
     queryFn: () => knowledgeBasesApi.search(companyId, trimmedQuery, 8),
     enabled: Boolean(companyId) && trimmedQuery.length >= 2,
   });
 
-  const { data: nodeDetail, isLoading: isNodeLoading } = useQuery({
+  const { data: nodeDetail, isLoading: isNodeLoading, isError: isNodeError, error: nodeError } = useQuery({
     queryKey: ["kb-node", companyId, selectedNodeId],
     queryFn: () => knowledgeBasesApi.readNode(companyId, selectedNodeId!),
     enabled: Boolean(companyId && selectedNodeId),
@@ -45,16 +46,18 @@ export function KbTreePanel({ companyId }: KbTreePanelProps) {
 
   const lintMutation = useMutation({
     mutationFn: () => knowledgeBasesApi.lint(companyId, { autoRetire: false }),
+    onMutate: () => setLintError(null),
     onSuccess: (res) => setLintResult(res),
+    onError: (err) => setLintError((err as Error)?.message ?? "Lint failed"),
   });
 
   const certifyMutation = useMutation({
     mutationFn: (vars: { nodeId: string; certified: boolean }) =>
       knowledgeBasesApi.setCertified(companyId, vars.nodeId, vars.certified),
     onMutate: () => setCertError(null),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void queryClient.invalidateQueries({ queryKey: ["kb-tree", companyId] });
-      void queryClient.invalidateQueries({ queryKey: ["kb-node", companyId, selectedNodeId] });
+      void queryClient.invalidateQueries({ queryKey: ["kb-node", companyId, vars.nodeId] });
       void queryClient.invalidateQueries({ queryKey: ["kb-search", companyId] });
     },
     onError: (err) => setCertError((err as Error)?.message ?? "Update failed"),
@@ -72,29 +75,31 @@ export function KbTreePanel({ companyId }: KbTreePanelProps) {
   }
 
   const kbs = tree?.knowledgeBases ?? [];
-  const renderNodes = (nodes: KbTreeNodeDto[], parentId: string | null, depth: number) =>
+  const renderNodes = (nodes: KbTreeNodeDto[], parentId: string | null, depth: number, visited = new Set<string>()) =>
     nodes
-      .filter((n) => n.parentId === parentId)
-      .map((node) => (
-        <div key={node.id} style={{ paddingLeft: depth * 14 }}>
-          <button
-            type="button"
-            onClick={() => setSelectedNodeId(node.id)}
-            className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs transition hover:bg-muted/60 ${
-              selectedNodeId === node.id ? "bg-muted font-medium" : ""
-            }`}
-          >
-            <span className="flex items-center gap-1.5 truncate">
-              {node.certified ? <Star className="h-3 w-3 shrink-0 fill-amber-400 text-amber-400" /> : <BookMarked className="h-3 w-3 shrink-0 text-muted-foreground" />}
-              <span className="truncate">{node.title}</span>
-            </span>
-            <span className="ml-2 shrink-0 text-[10px] text-muted-foreground">
-              {node.status !== "active" ? `[${node.status}]` : node.nodeType}
-            </span>
-          </button>
-          {renderNodes(nodes, node.id, depth + 1)}
-        </div>
-      ));
+      .filter((n) => n.parentId === parentId && !visited.has(n.id))
+      .map((node) => {
+        const nextVisited = new Set(visited);
+        nextVisited.add(node.id);
+        return (
+          <div key={node.id} style={{ paddingLeft: depth * 14 }}>
+            <button
+              type="button"
+              onClick={() => setSelectedNodeId(node.id)}
+              className={`flex w-full items-center justify-between rounded px-2 py-1 text-left text-xs transition hover:bg-muted/60 ${
+                selectedNodeId === node.id ? "bg-muted font-medium" : ""
+              }`}
+            >
+              <span className="flex items-center gap-1.5 truncate">
+                {node.certified ? <Star className="h-3 w-3 shrink-0 fill-amber-400 text-amber-400" /> : <BookMarked className="h-3 w-3 shrink-0 text-muted-foreground" />}
+                <span className="truncate">{node.title}</span>
+              </span>
+              <span className="ml-2 shrink-0 text-[10px] text-muted-foreground">{node.nodeType}</span>
+            </button>
+            {renderNodes(nodes, node.id, depth + 1, nextVisited)}
+          </div>
+        );
+      });
 
   return (
     <div className="space-y-4">
@@ -122,6 +127,8 @@ export function KbTreePanel({ companyId }: KbTreePanelProps) {
           </Button>
         </div>
       </div>
+
+      {lintError && <p className="text-xs text-red-400">{L(lang, { en: "Lint failed", ko: "Lint 점검 실패" })}: {lintError}</p>}
 
       {lintResult && (
         <div className="rounded-md border bg-muted/30 p-3 text-xs">
@@ -166,7 +173,9 @@ export function KbTreePanel({ companyId }: KbTreePanelProps) {
                   ko: `근거 검색 결과 (${searchData?.hits.length ?? 0}건)`,
                 })}
           </div>
-          {!isSearching && (searchData?.hits.length ?? 0) === 0 ? (
+          {isSearchError ? (
+            <p className="text-xs text-red-400">{L(lang, { en: "Search failed", ko: "검색 실패" })}: {(searchError as Error)?.message ?? "unknown"}</p>
+          ) : !isSearching && (searchData?.hits.length ?? 0) === 0 ? (
             <p className="text-xs text-muted-foreground">{L(lang, { en: "No matching nodes.", ko: "일치하는 노드가 없습니다." })}</p>
           ) : (
             <div className="space-y-1.5">
@@ -225,6 +234,10 @@ export function KbTreePanel({ companyId }: KbTreePanelProps) {
             {!selectedNodeId ? (
               <p className="text-xs text-muted-foreground">
                 {L(lang, { en: "Select a node from the tree or search results to inspect.", ko: "트리 또는 검색 결과에서 노드를 선택하면 상세 내용을 볼 수 있습니다." })}
+              </p>
+            ) : isNodeError ? (
+              <p className="text-xs text-red-400">
+                {L(lang, { en: "Failed to load node", ko: "노드 조회 실패" })}: {(nodeError as Error)?.message ?? "unknown"}
               </p>
             ) : isNodeLoading || !nodeDetail ? (
               <p className="text-xs text-muted-foreground">{L(lang, { en: "Loading node…", ko: "노드 불러오는 중…" })}</p>

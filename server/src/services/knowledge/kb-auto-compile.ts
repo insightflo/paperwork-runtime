@@ -208,7 +208,7 @@ export async function runCompanyKbLint(
     })
     .from(knowledgeNodes)
     .where(eq(knowledgeNodes.companyId, input.companyId))
-    .orderBy(desc(knowledgeNodes.updatedAt))
+    .orderBy(asc(knowledgeNodes.updatedAt))
     .limit(MAX_LINT_NODES + 1);
 
   const truncated = rawRows.length > MAX_LINT_NODES;
