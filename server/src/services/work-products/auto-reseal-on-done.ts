@@ -27,6 +27,7 @@ export interface AutoResealDeps {
 export function needsProducerReseal(
   existingMetadata: Record<string, unknown> | null | undefined,
   currentProducer: ActiveProducerIdentity,
+  sourceExecutionGeneration?: number | null,
 ): boolean {
   if (!existingMetadata || typeof existingMetadata !== "object" || Array.isArray(existingMetadata)) return false;
   if (Object.hasOwn(existingMetadata, "qaCorrection")) return false;
@@ -49,6 +50,7 @@ export function needsProducerReseal(
   }
   return (
     prev.executionGeneration !== currentProducer.executionGeneration ||
+    (sourceExecutionGeneration !== undefined && sourceExecutionGeneration !== currentProducer.executionGeneration) ||
     prev.iterationIndex !== currentProducer.iterationIndex ||
     prev.retryCount !== currentProducer.retryCount ||
     prev.heartbeatRunId !== currentProducer.heartbeatRunId
@@ -89,7 +91,7 @@ export async function autoResealStaleProducerWorkProductsOnDone(
         );
 
       const eligible = rows.filter((r) =>
-        needsProducerReseal(r.metadata as Record<string, unknown> | null, producer),
+        needsProducerReseal(r.metadata as Record<string, unknown> | null, producer, r.sourceExecutionGeneration),
       );
       if (eligible.length === 0) return { resealed: 0, productIds: [] };
 

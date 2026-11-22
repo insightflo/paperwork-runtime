@@ -75,9 +75,9 @@ export function KbTreePanel({ companyId }: KbTreePanelProps) {
   }
 
   const kbs = tree?.knowledgeBases ?? [];
-  const renderNodes = (nodes: KbTreeNodeDto[], parentId: string | null, depth: number, visited = new Set<string>()) =>
+  const renderNodes = (nodes: KbTreeNodeDto[], parentId: string | null, depth: number, visited = new Set<string>(), nodeIds = new Set(nodes.map((n) => n.id))) =>
     nodes
-      .filter((n) => n.parentId === parentId && !visited.has(n.id))
+      .filter((n) => (parentId === null ? (n.parentId === null || !nodeIds.has(n.parentId)) : n.parentId === parentId) && !visited.has(n.id))
       .map((node) => {
         const nextVisited = new Set(visited);
         nextVisited.add(node.id);
@@ -96,7 +96,7 @@ export function KbTreePanel({ companyId }: KbTreePanelProps) {
               </span>
               <span className="ml-2 shrink-0 text-[10px] text-muted-foreground">{node.nodeType}</span>
             </button>
-            {renderNodes(nodes, node.id, depth + 1, nextVisited)}
+            {renderNodes(nodes, node.id, depth + 1, nextVisited, nodeIds)}
           </div>
         );
       });
