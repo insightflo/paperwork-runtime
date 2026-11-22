@@ -1,10 +1,10 @@
 // [파일 목적] 기계적 내부 오류(workproduct_selector_stale_producer 등)로 실패한 최상위 워크플로 런에 대해
 //   사람 휴먼카드 없이 최대 1회만 자동 대체 실행을 시작하는 안전망.
-//   Phase A: FOR UPDATE 행 잠금으로 원자적 claim(5분 TTL) → 커밋.
+//   Phase A: FOR UPDATE 행 잠금 + activity_log claim 행 삽입(5분 TTL, workflow_runs 직접 UPDATE 없음) → 커밋.
 //   Phase B: 커밋 후 root db로 workflowService.trigger 호출(wake-after-commit 준수),
-//            실패 시 새 트랜잭션에서 대체 런 미존재 + claimId 일치 확인 후에만 claim 해제.
+//            실패 시 새 트랜잭션에서 대체 런 미존재 확인 후에만 claim 행 삭제.
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { activityLog, missions, workflowRuns, workflowStepRuns, type Db } from "@paperclipai/db";
 import { workflowService } from "./engine.js";
 
@@ -15,6 +15,8 @@ export const MECHANICAL_AUTO_RESTART_ERRORS: ReadonlySet<string> = new Set([
 ]);
 
 export const MECHANICAL_CLAIM_TTL_MS = 5 * 60 * 1000;
+const CLAIM_ACTION = "workflow_run.mechanical_auto_restart_claim";
+const RESTART_ACTION = "workflow_run.mechanical_auto_restart";
 
 export interface MechanicalAutoRestartClaim {
   claimId: string;
@@ -80,6 +82,7 @@ export function evaluateMechanicalAutoRestartEligibility(input: {
   missionId: string | null;
   missionStatus: string | null;
   metadata: Record<string, unknown> | null;
+  activeClaim?: unknown;
   hasExistingReplacement: boolean;
   hasActiveSibling: boolean;
   failedSteps: Array<{ status: string; metadata?: Record<string, unknown> | null }>;
@@ -89,7 +92,7 @@ export function evaluateMechanicalAutoRestartEligibility(input: {
   if (input.parentRunId !== null) return { eligible: false, reason: "child_run_excluded" };
   if (input.missionId && input.missionStatus !== "active") return { eligible: false, reason: "mission_not_active" };
   if (input.metadata?.mechanicalAutoRestart) return { eligible: false, reason: "max_one_auto_restart_reached" };
-  if (isMechanicalClaimActive(input.metadata?.mechanicalAutoRestartClaimed, input.nowMs)) {
+  if (isMechanicalClaimActive(input.activeClaim ?? input.metadata?.mechanicalAutoRestartClaimed, input.nowMs)) {
     return { eligible: false, reason: "claim_active_or_completed" };
   }
   if (input.hasExistingReplacement) return { eligible: false, reason: "replacement_already_exists" };
@@ -120,7 +123,7 @@ export async function maybeAutoRestartMechanicalFailure(
   const claimId = randomUUID();
   const claimedAt = new Date().toISOString();
 
-  // Phase A: lock source row with standard SQL FOR UPDATE and atomically record claim.
+  // Phase A: lock source row with standard SQL FOR UPDATE and atomically insert activityLog claim.
   const claimed = await db.transaction(async (tx) => {
     const tdb = tx as unknown as Db;
     const [source] = await tx
@@ -133,7 +136,7 @@ export async function maybeAutoRestartMechanicalFailure(
     const [missionRow] = source.missionId
       ? await tx.select({ status: missions.status }).from(missions).where(eq(missions.id, source.missionId)).limit(1)
       : [null];
-    const [existingReplacementId, activeSiblingRows, stepRows] = await Promise.all([
+    const [existingReplacementId, activeSiblingRows, stepRows, latestClaimRows] = await Promise.all([
       findExistingReplacementRunId(tdb, input.companyId, source.id),
       source.missionId
         ? tx
@@ -154,7 +157,24 @@ export async function maybeAutoRestartMechanicalFailure(
         .select({ status: workflowStepRuns.status, metadata: workflowStepRuns.metadata })
         .from(workflowStepRuns)
         .where(eq(workflowStepRuns.workflowRunId, source.id)),
+      tx
+        .select({ details: activityLog.details, createdAt: activityLog.createdAt })
+        .from(activityLog)
+        .where(
+          and(
+            eq(activityLog.companyId, input.companyId),
+            eq(activityLog.entityType, "workflow_run"),
+            eq(activityLog.entityId, source.id),
+            eq(activityLog.action, CLAIM_ACTION),
+          ),
+        )
+        .orderBy(desc(activityLog.createdAt))
+        .limit(1),
     ]);
+
+    const latestClaim = latestClaimRows[0]
+      ? { ...(latestClaimRows[0].details ?? {}), claimedAt: latestClaimRows[0].createdAt.toISOString() }
+      : null;
 
     const verdict = evaluateMechanicalAutoRestartEligibility({
       runStatus: source.status,
@@ -162,25 +182,33 @@ export async function maybeAutoRestartMechanicalFailure(
       missionId: source.missionId,
       missionStatus: missionRow?.status ?? null,
       metadata: source.metadata as Record<string, unknown> | null,
+      activeClaim: latestClaim,
       hasExistingReplacement: existingReplacementId !== null,
       hasActiveSibling: activeSiblingRows.length > 0,
       failedSteps: stepRows,
     });
     if (!verdict.eligible) return { ok: false as const, reason: verdict.reason };
 
-    const claim: MechanicalAutoRestartClaim = { claimId, claimedAt, reasonCode: verdict.reasonCode };
-    await tx
-      .update(workflowRuns)
-      .set({ metadata: { ...(source.metadata ?? {}), mechanicalAutoRestartClaimed: claim } })
-      .where(eq(workflowRuns.id, source.id));
+    const [claimRow] = await tx
+      .insert(activityLog)
+      .values({
+        companyId: input.companyId,
+        actorType: "system",
+        actorId: "mechanical-failure-auto-restart",
+        action: CLAIM_ACTION,
+        entityType: "workflow_run",
+        entityId: source.id,
+        details: { claimId, claimedAt, reasonCode: verdict.reasonCode },
+      })
+      .returning({ id: activityLog.id });
 
-    return { ok: true as const, source, reasonCode: verdict.reasonCode };
+    return { ok: true as const, source, reasonCode: verdict.reasonCode, claimLogId: claimRow.id };
   });
 
   if (!claimed.ok) return { restarted: false, reason: claimed.reason };
 
   // Phase B: strictly post-commit trigger on root db (wake-after-commit safe).
-  const { source, reasonCode } = claimed;
+  const { source, reasonCode, claimLogId } = claimed;
   const carriedMetadata = stripPerRunMetadataStamps(source.metadata as Record<string, unknown> | null);
   try {
     const result = await workflowService.trigger(
@@ -204,38 +232,25 @@ export async function maybeAutoRestartMechanicalFailure(
       { actor: { type: "none" } },
     );
 
-    await db.transaction(async (tx) => {
-      const [cur] = await tx.select({ metadata: workflowRuns.metadata }).from(workflowRuns).where(eq(workflowRuns.id, source.id)).for("update");
-      const meta = (cur?.metadata ?? {}) as Record<string, unknown>;
-      await tx.update(workflowRuns).set({
-        metadata: { ...meta, mechanicalAutoRestartClaimed: { claimId, claimedAt, reasonCode, completedRunId: result.runId } },
-      }).where(eq(workflowRuns.id, source.id));
-      await tx.insert(activityLog).values({
-        companyId: input.companyId,
-        actorType: "system",
-        actorId: "mechanical-failure-auto-restart",
-        action: "workflow_run.mechanical_auto_restart",
-        entityType: "workflow_run",
-        entityId: result.runId,
-        details: { workflowId: source.workflowId, missionId: source.missionId, sourceWorkflowRunId: source.id, reasonCode },
-      });
+    await db.insert(activityLog).values({
+      companyId: input.companyId,
+      actorType: "system",
+      actorId: "mechanical-failure-auto-restart",
+      action: RESTART_ACTION,
+      entityType: "workflow_run",
+      entityId: result.runId,
+      details: { workflowId: source.workflowId, missionId: source.missionId, sourceWorkflowRunId: source.id, reasonCode },
     });
 
     return { restarted: true, reason: "auto_restarted", newRunId: result.runId, reasonCode };
   } catch (err) {
-    // Conditional release in a fresh transaction: only clear claim if no replacement run committed AND claimId still matches.
+    // Conditional release in a fresh transaction: only remove claim row if no replacement run committed.
     await db.transaction(async (tx) => {
       const tdb = tx as unknown as Db;
-      const [cur] = await tx.select({ metadata: workflowRuns.metadata }).from(workflowRuns).where(eq(workflowRuns.id, source.id)).for("update");
+      await tx.select({ id: workflowRuns.id }).from(workflowRuns).where(eq(workflowRuns.id, source.id)).for("update");
       const existingId = await findExistingReplacementRunId(tdb, input.companyId, source.id);
-      const meta = { ...((cur?.metadata ?? {}) as Record<string, unknown>) };
-      const curClaim = meta.mechanicalAutoRestartClaimed as Record<string, unknown> | undefined;
-      if (existingId) {
-        meta.mechanicalAutoRestartClaimed = { claimId, claimedAt, reasonCode, completedRunId: existingId };
-        await tx.update(workflowRuns).set({ metadata: meta }).where(eq(workflowRuns.id, source.id));
-      } else if (curClaim?.claimId === claimId) {
-        delete meta.mechanicalAutoRestartClaimed;
-        await tx.update(workflowRuns).set({ metadata: meta }).where(eq(workflowRuns.id, source.id));
+      if (!existingId) {
+        await tx.delete(activityLog).where(eq(activityLog.id, claimLogId));
       }
     }).catch(() => {});
     throw err;
