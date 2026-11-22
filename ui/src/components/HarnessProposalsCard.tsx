@@ -1,19 +1,27 @@
 // ui/src/components/HarnessProposalsCard.tsx
 //
-// [파일 목적] RRSI 승인 게이트 제안 검토 카드 (읽기 전용 — 뮤테이션·auto-apply 없음).
-//   Round/Budget·Stalled·Approval Required 배지와 함께 제안 목록(severity 배지,
-//   component pill, Critic Gate, 가설·권장 조치·크리틱 이의)을 렌더한다.
-//   "Hide critic-flagged"는 클라이언트 표시 토글일 뿐 서버 상태를 바꾸지 않는다.
-//   data/isLoading/error 주입 시 쿼리 없이 순수 렌더(테스트용); 미주입 시 useQuery로 로드.
+// [파일 목적] RRSI 승인 게이트 제안 검토 카드 — Stage 4C 대시보드 승인 UI.
+//   제안 목록(Round/Budget·Stalled·Approval Required 배지, severity·component pill,
+//   Critic Gate·이의) 렌더 + onDecide 시 "Approve (Record)"/"Reject" → Stage 4B 장부 기록
+//   (auto-apply 없음 — critic 실패 승인은 overrideReason>=10자 가드, 서버 계약과 동일).
+//   제안 목록 아래 HarnessLedgerHistory(L_t 이력·Evaluate 트리거) 마운트.
+//   "Hide critic-flagged"는 클라이언트 표시 토글. data/isLoading/error 주입 시 순수 렌더.
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ClipboardList } from "lucide-react";
 import {
   harnessRsiApi,
+  type HarnessLedgerEntry,
   type HarnessProposal,
   type HarnessProposalsResponse,
+  type RecordProposalDecisionInput,
 } from "../api/harnessRsi";
+import { HarnessLedgerHistory } from "./HarnessLedgerHistory";
 import { cn } from "../lib/utils";
+
+export type DecideHandler = (
+  proposal: HarnessProposal, decision: "approved" | "rejected", overrideReason?: string,
+) => void;
 
 export interface HarnessProposalsCardProps {
   companyId: string;
@@ -23,6 +31,10 @@ export interface HarnessProposalsCardProps {
   error?: Error | null;
   /** Initial state of the client-side "Hide critic-flagged" toggle (default false). */
   defaultHideFlagged?: boolean;
+  onDecide?: DecideHandler;
+  ledgerEntries?: HarnessLedgerEntry[];
+  onEvaluate?: (entryId: string) => void;
+  evaluatingId?: string | null;
 }
 
 const SEVERITY_STYLE: Record<HarnessProposal["severity"], string> = {
@@ -38,8 +50,10 @@ const CRITIC_GATE_STYLE = {
 
 const PILL = "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]";
 
-function ProposalRow({ item }: { item: HarnessProposal }) {
+function ProposalRow({ item, onDecide }: { item: HarnessProposal; onDecide?: DecideHandler }) {
   const flagged = !item.critic.pass;
+  const [overrideReason, setOverrideReason] = useState("");
+  const approveBlocked = flagged && overrideReason.trim().length < 10;
   return (
     <li className="space-y-1 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
       <div className="flex flex-wrap items-center gap-1.5">
@@ -68,6 +82,35 @@ function ProposalRow({ item }: { item: HarnessProposal }) {
           ))}
         </ul>
       )}
+      {onDecide && (
+        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+          <button
+            type="button"
+            disabled={approveBlocked}
+            onClick={() => onDecide(item, "approved", overrideReason.trim() || undefined)}
+            className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-300"
+          >
+            Approve (Record)
+          </button>
+          <button
+            type="button"
+            onClick={() => onDecide(item, "rejected")}
+            className="rounded border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-700 hover:bg-rose-500/20 dark:text-rose-300"
+          >
+            Reject
+          </button>
+          {flagged && (
+            <input
+              type="text"
+              value={overrideReason}
+              onChange={(e) => setOverrideReason(e.target.value)}
+              placeholder="Override reason (min 10 chars)..."
+              aria-label="Override reason"
+              className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-0.5 text-[11px] text-foreground placeholder:text-muted-foreground"
+            />
+          )}
+        </div>
+      )}
     </li>
   );
 }
@@ -77,9 +120,16 @@ interface ViewProps {
   isLoading: boolean;
   error: Error | null;
   defaultHideFlagged?: boolean;
+  onDecide?: DecideHandler;
+  ledgerEntries?: HarnessLedgerEntry[];
+  onEvaluate?: (entryId: string) => void;
+  evaluatingId?: string | null;
 }
 
-function HarnessProposalsView({ data, isLoading, error, defaultHideFlagged = false }: ViewProps) {
+function HarnessProposalsView({
+  data, isLoading, error, defaultHideFlagged = false,
+  onDecide, ledgerEntries, onEvaluate, evaluatingId,
+}: ViewProps) {
   const [hideFlagged, setHideFlagged] = useState(defaultHideFlagged);
   const result = data?.result;
   const proposals = result?.proposals ?? [];
@@ -140,10 +190,11 @@ function HarnessProposalsView({ data, isLoading, error, defaultHideFlagged = fal
           ) : (
             <ul className="space-y-2">
               {visible.map((item) => (
-                <ProposalRow key={item.id} item={item} />
+                <ProposalRow key={item.id} item={item} onDecide={onDecide} />
               ))}
             </ul>
           )}
+          <HarnessLedgerHistory entries={ledgerEntries ?? []} onEvaluate={onEvaluate} evaluatingId={evaluatingId} />
         </>
       )}
     </section>
@@ -151,23 +202,62 @@ function HarnessProposalsView({ data, isLoading, error, defaultHideFlagged = fal
 }
 
 function HarnessProposalsCardLive({ companyId, windowHours }: { companyId: string; windowHours: number }) {
-  const { data, isLoading, error } = useQuery({
+  const queryClient = useQueryClient();
+  const proposalsQuery = useQuery({
     queryKey: ["harness-rsi-proposals", companyId, windowHours],
     queryFn: () => harnessRsiApi.proposals(companyId, { windowHours }),
     enabled: !!companyId,
     retry: false,
     staleTime: 60_000,
   });
-  return <HarnessProposalsView data={data} isLoading={isLoading} error={error} />;
+  const ledgerQuery = useQuery({
+    queryKey: ["harness-rsi-ledger", companyId],
+    queryFn: () => harnessRsiApi.ledger(companyId, 20),
+    enabled: !!companyId,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ["harness-rsi-proposals"] });
+    void queryClient.invalidateQueries({ queryKey: ["harness-rsi-ledger"] });
+  };
+  const decideMutation = useMutation({
+    mutationFn: (input: RecordProposalDecisionInput) =>
+      harnessRsiApi.recordDecision(companyId, input),
+    onSuccess: invalidate,
+  });
+  const evaluateMutation = useMutation({
+    mutationFn: (entryId: string) => harnessRsiApi.evaluateEntry(companyId, entryId),
+    onSuccess: invalidate,
+  });
+  const handleDecide: DecideHandler = (proposal, decision, overrideReason) =>
+    decideMutation.mutate({
+      round: proposalsQuery.data?.result.round,
+      variant: proposal.id,
+      component: proposal.component,
+      hypothesis: proposal.hypothesis,
+      diffRef: proposal.id,
+      decision,
+      decidedBy: "board",
+      criticPassed: proposal.critic.pass,
+      overrideReason,
+    });
+  return (
+    <HarnessProposalsView
+      data={proposalsQuery.data}
+      isLoading={proposalsQuery.isLoading}
+      error={proposalsQuery.error}
+      onDecide={handleDecide}
+      ledgerEntries={ledgerQuery.data?.entries}
+      onEvaluate={(entryId) => evaluateMutation.mutate(entryId)}
+      evaluatingId={evaluateMutation.isPending ? (evaluateMutation.variables ?? null) : null}
+    />
+  );
 }
 
 export function HarnessProposalsCard({
-  companyId,
-  windowHours = 24,
-  data,
-  isLoading,
-  error,
-  defaultHideFlagged,
+  companyId, windowHours = 24, data, isLoading, error, defaultHideFlagged,
+  onDecide, ledgerEntries, onEvaluate, evaluatingId,
 }: HarnessProposalsCardProps) {
   if (data !== undefined || isLoading !== undefined || error !== undefined) {
     return (
@@ -176,6 +266,10 @@ export function HarnessProposalsCard({
         isLoading={isLoading ?? false}
         error={error ?? null}
         defaultHideFlagged={defaultHideFlagged}
+        onDecide={onDecide}
+        ledgerEntries={ledgerEntries}
+        onEvaluate={onEvaluate}
+        evaluatingId={evaluatingId}
       />
     );
   }
