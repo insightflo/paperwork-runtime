@@ -2,11 +2,29 @@
 // [외부 연결] server/src/routes/knowledge-bases.ts, server/src/services/missions/terminal-cleanup-fence.ts.
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { activityLog, agentKbGrants, knowledgeBases, knowledgeNodes, type Db } from "@paperclipai/db";
-import { notFound } from "../../errors.js";
+import { badRequest, notFound } from "../../errors.js";
 import { logger } from "../../middleware/logger.js";
 import { compileCompletedMissionToKb } from "./kb-auto-compile.js";
 
 const MAX_TREE_NODES = 200;
+const MAX_CONCURRENT_AUTO_COMPILES = 2;
+const inFlightAutoCompiles = new Set<string>();
+const pendingAutoCompileQueue: Array<() => void> = [];
+let activeAutoCompiles = 0;
+
+function acquireAutoCompileSlot(): Promise<void> {
+  if (activeAutoCompiles < MAX_CONCURRENT_AUTO_COMPILES) {
+    activeAutoCompiles += 1;
+    return Promise.resolve();
+  }
+  return new Promise((resolve) => pendingAutoCompileQueue.push(() => { activeAutoCompiles += 1; resolve(); }));
+}
+
+function releaseAutoCompileSlot(): void {
+  activeAutoCompiles = Math.max(0, activeAutoCompiles - 1);
+  const next = pendingAutoCompileQueue.shift();
+  if (next) next();
+}
 
 export interface KbTreeNodeSummary {
   id: string; kbId: string; parentId: string | null; slug: string; title: string;
@@ -60,7 +78,7 @@ export async function listCompanyKbTree(db: Db, companyId: string): Promise<Comp
       updatedAt: knowledgeNodes.updatedAt,
     })
       .from(knowledgeNodes)
-      .where(eq(knowledgeNodes.companyId, companyId))
+      .where(and(eq(knowledgeNodes.companyId, companyId), eq(knowledgeNodes.status, "active")))
       .orderBy(desc(knowledgeNodes.certified), desc(knowledgeNodes.updatedAt), asc(knowledgeNodes.title))
       .limit(MAX_TREE_NODES + 1),
   ]);
@@ -100,12 +118,23 @@ export async function listCompanyKbTree(db: Db, companyId: string): Promise<Comp
   };
 }
 
-/** 보드 전용: 지식 노드의 공인(★ certified) 상태를 트랜잭션으로 변경하고 감사 로그를 남긴다. */
+/** 보드 전용: 활성 지식 노드의 공인(★ certified) 상태를 트랜잭션으로 변경하고 감사 로그를 남긴다. */
 export async function setKbNodeCertified(
   db: Db,
   input: { companyId: string; nodeId: string; certified: boolean; actorId: string },
 ) {
   return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(knowledgeNodes)
+      .where(and(eq(knowledgeNodes.id, input.nodeId), eq(knowledgeNodes.companyId, input.companyId)))
+      .limit(1);
+    if (!existing) throw notFound("Knowledge node not found in company");
+    if (existing.status !== "active") {
+      throw badRequest("Only active knowledge nodes can be certified or uncertified");
+    }
+    if (existing.certified === input.certified) return existing;
+
     const [updated] = await tx
       .update(knowledgeNodes)
       .set({ certified: input.certified, updatedAt: new Date() })
@@ -126,14 +155,18 @@ export async function setKbNodeCertified(
   });
 }
 
-/** 미션이 completed로 확정(post-commit)된 경우에만 비동기·fail-open으로 KB 자동 컴파일을 실행한다. */
+/** 미션이 completed로 확정(post-commit)된 경우에만 동시성 제한·중복 제거·fail-open으로 KB 자동 컴파일을 실행한다. */
 export function scheduleMissionKbAutoCompileIfCompleted(
   db: Db,
   input: { companyId: string; missionId: string; status: "completed" | "cancelled" },
   compiler: typeof compileCompletedMissionToKb = compileCompletedMissionToKb,
 ): Promise<void> | null {
   if (input.status !== "completed") return null;
-  const p = Promise.resolve()
+  const dedupeKey = `${input.companyId}:${input.missionId}`;
+  if (inFlightAutoCompiles.has(dedupeKey)) return null;
+  inFlightAutoCompiles.add(dedupeKey);
+
+  return acquireAutoCompileSlot()
     .then(() => compiler(db, {
       companyId: input.companyId,
       missionId: input.missionId,
@@ -145,7 +178,9 @@ export function scheduleMissionKbAutoCompileIfCompleted(
         { err, companyId: input.companyId, missionId: input.missionId },
         "non-blocking mission KB auto-compile failed",
       );
+    })
+    .finally(() => {
+      inFlightAutoCompiles.delete(dedupeKey);
+      releaseAutoCompileSlot();
     });
-  void p;
-  return p;
 }

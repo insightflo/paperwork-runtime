@@ -97,15 +97,17 @@ export function AgentWiki() {
       <WikiMetricsBar patterns={patterns} entries={entries} />
 
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={L(lang, { en: "Search title, symptoms, tags", ko: "제목·증상·태그 검색" })}
-            className="h-8 w-64 pl-7"
-          />
-        </div>
+        {tab !== "kb" && (
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={L(lang, { en: "Search title, symptoms, tags", ko: "제목·증상·태그 검색" })}
+              className="h-8 w-64 pl-7"
+            />
+          </div>
+        )}
         <div className="flex gap-1" role="tablist" aria-label="Mistology tabs">
           {tabs.map((t) => (
             <Button
@@ -122,17 +124,18 @@ export function AgentWiki() {
         </div>
       </div>
 
-      {tab === "kb" ? (
-        <KbTreePanel companyId={selectedCompanyId} />
-      ) : isLoading ? (
-        <p className="text-sm text-muted-foreground">{L(lang, { en: "Loading…", ko: "불러오는 중…" })}</p>
-      ) : isError ? (
-        <p className="text-sm text-red-400">
-          {L(lang, { en: "Failed to load", ko: "조회 실패" })}: {(error as Error)?.message ?? "unknown"}
-        </p>
-      ) : (
-        <MistologyCardList patterns={shown.patterns} entries={shown.entries} language={lang} />
-      )}
+      {(() => {
+        if (tab === "kb") return <KbTreePanel key={selectedCompanyId} companyId={selectedCompanyId} />;
+        if (isLoading) return <p className="text-sm text-muted-foreground">{L(lang, { en: "Loading…", ko: "불러오는 중…" })}</p>;
+        if (isError) {
+          return (
+            <p className="text-sm text-red-400">
+              {L(lang, { en: "Failed to load", ko: "조회 실패" })}: {(error as Error)?.message ?? "unknown"}
+            </p>
+          );
+        }
+        return <MistologyCardList patterns={shown.patterns} entries={shown.entries} language={lang} />;
+      })()}
     </div>
   );
 }
