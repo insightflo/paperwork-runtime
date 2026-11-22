@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
 import type { Db } from "@paperclipai/db";
 import {
   agents, issues, labels, projects, workflowStepRuns,
@@ -21,6 +21,11 @@ import {
 import { validate } from "../middleware/validate.js";
 import { hermesOpsMutationGuard } from "../middleware/hermes-ops-mutation-guard.js";
 import { logActivity } from "../services/activity-log.js";
+import {
+  CONFIG_HYGIENE_WARNINGS_HEADER,
+  collectWorkflowAuthoringWarnings,
+  type ConfigHygieneWarning,
+} from "../services/config-hygiene-warnings.js";
 import { issueService } from "../services/issues.js";
 import {
   NOT_WAITING_ON_OPERATOR_APPROVAL,
@@ -80,6 +85,14 @@ function logDefinitionStepWarnings(scope: { workflowId: string; companyId: strin
     workflowId: scope.workflowId, companyId: scope.companyId,
     definitionWarnings: warnings.map(({ kind, stepId, referencedStepId, message }) => ({ kind, stepId, referencedStepId, message })),
   }, "workflow definition saved with selector-less work product references");
+}
+
+/** [config hygiene] 저장 시점의 비차단 advisory 경고 — warn 로그 + JSON header.
+ * body 계약은 건드리지 않아 기존 응답 assertion/UI가 그대로 동작한다. */
+function emitConfigHygieneWarnings(res: Response, scope: Record<string, unknown>, warnings: readonly ConfigHygieneWarning[]): void {
+  if (!warnings.length) return;
+  logger.warn({ ...scope, configHygieneWarnings: warnings }, "config hygiene advisory warnings");
+  res.setHeader(CONFIG_HYGIENE_WARNINGS_HEADER, JSON.stringify(warnings));
 }
 
 type AgentNameById = ReadonlyMap<string, string>;
@@ -411,6 +424,7 @@ export function workflowRoutes(db: Db) {
     // POST는 항상 steps를 저장하므로 저장된 정의로 경고를 계산한다(빈 배열 포함, additive 필드).
     const warnings = await findWorkflowDefinitionStepWarningsWithNodeFallback(definition.steps);
     logDefinitionStepWarnings({ workflowId: definition.id, companyId }, warnings);
+    emitConfigHygieneWarnings(res, { workflowId: definition.id, companyId }, collectWorkflowAuthoringWarnings(definition.steps));
     const actor = actorForActivity(req);
     await logActivity(db, {
       companyId,
@@ -447,6 +461,9 @@ export function workflowRoutes(db: Db) {
     // PATCH는 이번에 steps를 쓴 경우에만 경고를 계산한다(steps 미포함 패치는 경고 없음).
     const warnings = req.body.steps !== undefined ? await findWorkflowDefinitionStepWarningsWithNodeFallback(definition.steps) : undefined;
     if (warnings) logDefinitionStepWarnings({ workflowId, companyId: existing.companyId }, warnings);
+    if (req.body.steps !== undefined) {
+      emitConfigHygieneWarnings(res, { workflowId, companyId: existing.companyId }, collectWorkflowAuthoringWarnings(definition.steps));
+    }
     const actor = actorForActivity(req);
     await logActivity(db, {
       companyId: existing.companyId,

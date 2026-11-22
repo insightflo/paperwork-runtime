@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
 import path from "node:path";
 import type { Db } from "@paperclipai/db";
@@ -28,6 +28,11 @@ import {
   writePaperclipSkillSyncPreference,
 } from "@paperclipai/adapter-utils/server-utils";
 import { validate } from "../middleware/validate.js";
+import {
+  CONFIG_HYGIENE_WARNINGS_HEADER,
+  collectAgentConfigHygieneWarnings,
+  type ConfigHygieneWarning,
+} from "../services/config-hygiene-warnings.js";
 import {
   agentService,
   agentInstructionsService,
@@ -332,6 +337,14 @@ export function agentRoutes(db: Db) {
   function asRecord(value: unknown): Record<string, unknown> | null {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
     return value as Record<string, unknown>;
+  }
+
+  /** [config hygiene] 저장 시점의 비차단 advisory 경고 — warn 로그 + JSON header.
+   * body 계약은 건드리지 않아 기존 응답 assertion/UI가 그대로 동작한다. */
+  function emitConfigHygieneWarnings(res: Response, scope: Record<string, unknown>, warnings: readonly ConfigHygieneWarning[]): void {
+    if (!warnings.length) return;
+    logger.warn({ ...scope, configHygieneWarnings: warnings }, "config hygiene advisory warnings");
+    res.setHeader(CONFIG_HYGIENE_WARNINGS_HEADER, JSON.stringify(warnings));
   }
 
   function asNonEmptyString(value: unknown): string | null {
@@ -1365,6 +1378,11 @@ export function agentRoutes(db: Db) {
       });
     }
 
+    emitConfigHygieneWarnings(res, { agentId: agent.id, companyId }, collectAgentConfigHygieneWarnings({
+      role: agent.role,
+      adapterType: agent.adapterType,
+      adapterConfig: asRecord(agent.adapterConfig) ?? normalizedHireInput.adapterConfig,
+    }));
     res.status(201).json({ agent, approval });
   });
 
@@ -1449,6 +1467,11 @@ export function agentRoutes(db: Db) {
       );
     }
 
+    emitConfigHygieneWarnings(res, { agentId: agent.id, companyId }, collectAgentConfigHygieneWarnings({
+      role: agent.role,
+      adapterType: agent.adapterType,
+      adapterConfig: asRecord(agent.adapterConfig) ?? normalizedAdapterConfig,
+    }));
     res.status(201).json(agent);
   });
 
@@ -1858,6 +1881,11 @@ export function agentRoutes(db: Db) {
       details: summarizeAgentUpdateDetails(patchData),
     });
 
+    emitConfigHygieneWarnings(res, { agentId: agent.id, companyId: agent.companyId }, collectAgentConfigHygieneWarnings({
+      role: agent.role,
+      adapterType: agent.adapterType,
+      adapterConfig: asRecord(agent.adapterConfig),
+    }));
     res.json(agent);
   });
 
