@@ -162,3 +162,4 @@ export { strategyPlaybookEntries } from "./strategy_playbook_entries.js";
 export { judgmentDefinitions, judgmentCalls } from "./judgment.js";
 export { effectIntents } from "./effect_intents.js";
 export type { EffectIntent, NewEffectIntent } from "./effect_intents.js";
+export { harnessRsiLedger } from "./harness_rsi_ledger.js";
