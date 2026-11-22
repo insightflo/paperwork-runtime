@@ -10,6 +10,10 @@ import {
   searchKbNodes,
   upsertKbNode,
 } from "../services/knowledge/kb-nodes.js";
+import {
+  compileCompletedMissionToKb,
+  runCompanyKbLint,
+} from "../services/knowledge/kb-auto-compile.js";
 
 function resolveScopedAgentId(req: Request): string | undefined {
   if (req.actor.type === "board") return undefined;
@@ -63,6 +67,50 @@ export function knowledgeBasesRoutes(db: Db) {
           if (!node) return next(notFound("Knowledge node not found"));
           return res.json(node);
         })
+        .catch(next);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post("/companies/:companyId/knowledge-bases/lint", (req, res, next) => {
+    try {
+      assertBoard(req);
+      const { companyId } = req.params;
+      assertCompanyAccess(req, companyId);
+      const actor = getActorInfo(req);
+      const body = req.body ?? {};
+      const staleDays = typeof body.staleDays === "number" && Number.isFinite(body.staleDays)
+        ? Math.min(Math.max(Math.floor(body.staleDays), 1), 3650)
+        : undefined;
+      runCompanyKbLint(db, {
+        companyId,
+        staleDays,
+        autoRetire: body.autoRetire === true,
+        actorId: actor.actorId,
+      })
+        .then((result) => res.json(result))
+        .catch(next);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post("/companies/:companyId/knowledge-bases/compile-mission/:missionId", (req, res, next) => {
+    try {
+      assertBoard(req);
+      const { companyId, missionId } = req.params;
+      assertCompanyAccess(req, companyId);
+      const actor = getActorInfo(req);
+      const body = req.body ?? {};
+      const kbId = typeof body.kbId === "string" && body.kbId.trim() ? body.kbId.trim() : undefined;
+      compileCompletedMissionToKb(db, {
+        companyId,
+        missionId,
+        kbId,
+        actorId: actor.actorId,
+      })
+        .then((result) => res.status(result.created ? 201 : 200).json(result))
         .catch(next);
     } catch (err) {
       next(err);
