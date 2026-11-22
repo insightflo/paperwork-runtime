@@ -1,20 +1,23 @@
 // server/src/services/knowledge-pattern-injection.ts
 //
 // [purpose] P2 — 사람 큐레이션 패턴 카드의 스텝 디스패치 관련도 주입(측정 롤아웃).
-//   active + audience='agent' + 신선도 창 내 카드만 후보. 결정론적 관련도 선택기
-//   (knowledge-pattern-relevance, LLM 없음)로 상위 K(≤2)를 골라 formatWikiLessons 스타일의
-//   짧은 한국어 섹션으로 만든다.
+//   active + audience='agent' 카드 중 kind='constraint' 정준 규약은 신선도와 무관하게
+//   durable 후보(90일 컷오프 면제), failure_mode/success_recipe는 신선도 창 내 카드만 후보.
+//   결정론적 관련도 선택기(knowledge-pattern-relevance, LLM 없음)로 상위 K(≤2)를 골라
+//   formatWikiLessons 스타일의 짧은 한국어 섹션으로 만든다.
 //
 // [계약 — #163 교훈(WikiSkill ablation) 준수]
 //   - 기계 카운터 위키(agent_wiki_entries)와 혼용 금지 — 이 모듈은 카드만 다룬다.
 //   - fail-closed: audience 기본 'ops' = 주입 없음. 플래그 off면 아예 호출되지 않는다.
 //   - 길이 상한: 카드당 제목/증상/해결 절단 — 주입량은 소량(≤2카드)으로 유계.
+//   - durable 규약: onlyConstraints 조회는 규약 카드만 반환하고, 규약 카드는 [★규약] 표기.
 //
 // [측정 롤아웃] injectionGroupFor가 결정론적 50/50 군 배정을 제공하고, 호출부(heartbeat)는
 //   군+카드 id를 스텝런 메타데이터에 기록해 주입군/비주입군 성공률 비교를 가능하게 한다.
+//   constraint 규약은 실험 대상이 아니라 양 군 공통으로 주입되는 durable 정준 규칙이다.
 
 import { createHash } from "node:crypto";
-import { and, gte, isNull, eq } from "drizzle-orm";
+import { and, or, gte, isNull, eq } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { companyKnowledgePatterns } from "@paperclipai/db";
 import { selectRelatedKnowledgePatterns } from "./knowledge-pattern-relevance.js";
@@ -39,11 +42,13 @@ function truncate(text: string, max: number): string {
   return oneLine.length <= max ? oneLine : `${oneLine.slice(0, max - 1)}…`;
 }
 
-/** 주입 후보 — active + audience='agent' + 신선도 창 내 + superseded 아님. */
+/** 주입 후보 — active + audience='agent' + superseded 아님.
+ *  constraint(정준 규약)는 durable — 신선도 창 면제. onlyConstraints는 규약만 반환. */
 export async function listInjectableCards(
   db: Db,
   companyId: string,
   now: Date = new Date(),
+  options?: { onlyConstraints?: boolean },
 ) {
   const since = new Date(now.getTime() - PATTERN_INJECTION_FRESH_DAYS * 24 * 60 * 60 * 1000);
   return db
@@ -54,17 +59,19 @@ export async function listInjectableCards(
       eq(companyKnowledgePatterns.status, "active"),
       eq(companyKnowledgePatterns.audience, "agent"),
       isNull(companyKnowledgePatterns.supersededById),
-      gte(companyKnowledgePatterns.createdAt, since),
+      options?.onlyConstraints
+        ? eq(companyKnowledgePatterns.kind, "constraint")
+        : or(eq(companyKnowledgePatterns.kind, "constraint"), gte(companyKnowledgePatterns.createdAt, since)),
     ));
 }
 
 /** 관련도 상위 K 선택 — 결정론적 토큰/태그 매칭(점수 ≥2 미만 탈락). 문맥이 없으면 빈 배열. */
 export async function selectCardsForInjection(
   db: Db,
-  input: { companyId: string; contextTexts: readonly string[]; limit?: number },
+  input: { companyId: string; contextTexts: readonly string[]; limit?: number; onlyConstraints?: boolean },
 ) {
   const limit = Math.min(input.limit ?? PATTERN_INJECTION_LIMIT, PATTERN_INJECTION_LIMIT);
-  const cards = await listInjectableCards(db, input.companyId);
+  const cards = await listInjectableCards(db, input.companyId, new Date(), { onlyConstraints: input.onlyConstraints });
   if (cards.length === 0) return [];
   const related = selectRelatedKnowledgePatterns(cards, [...input.contextTexts], limit);
   const cardById = new Map(cards.map((card) => [card.id, card]));
@@ -73,13 +80,14 @@ export async function selectCardsForInjection(
 
 /** formatWikiLessons 스타일의 한국어 섹션. 후보가 없으면 null(섹션 미생성). */
 export function formatKnowledgePatternCards(
-  cards: Array<Pick<typeof companyKnowledgePatterns.$inferSelect, "id" | "title" | "symptoms" | "whatWorked">>,
+  cards: Array<Pick<typeof companyKnowledgePatterns.$inferSelect, "id" | "title" | "symptoms" | "whatWorked"> & { kind?: string }>,
 ): string | null {
   if (cards.length === 0) return null;
   const lines = cards.map((card) => {
     const symptom = card.symptoms ? truncate(card.symptoms, SYMPTOM_MAX) : null;
     const solution = card.whatWorked ? truncate(card.whatWorked, SOLUTION_MAX) : null;
-    const parts = [`[패턴] ${truncate(card.title, TITLE_MAX)}`];
+    const label = card.kind === "constraint" ? "[★규약]" : "[패턴]";
+    const parts = [`${label} ${truncate(card.title, TITLE_MAX)}`];
     if (symptom) parts.push(`증상: ${symptom}`);
     if (solution) parts.push(`해결: ${solution}`);
     return `- ${parts.join(" — ")}`;
