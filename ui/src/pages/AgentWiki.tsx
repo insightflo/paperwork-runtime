@@ -11,6 +11,7 @@ import { Brain } from "lucide-react";
 import { agentWikiApi } from "../api/agentWiki";
 import { knowledgePatternsApi, type KnowledgePatternCardDto } from "../api/knowledgePatterns";
 import { useCompany } from "../context/CompanyContext";
+import { WikiMetricsBar } from "../components/WikiMetricsBar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -122,15 +123,6 @@ function PatternCardsSection({ companyId }: { companyId: string }) {
     queryFn: () => knowledgePatternsApi.list(companyId, { q, includeSuperseded }),
   });
 
-  // [P1/P2] 자동 초안 승인 — 사람 전용 활성화 경로. audience='agent'면 주입 큐레이션 동반.
-  const approveMutation = useMutation({
-    mutationFn: (input: { id: string; audience?: "agent" | "ops" }) =>
-      knowledgePatternsApi.approve(companyId, input.id, input.audience),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["knowledge-patterns", companyId] });
-    },
-  });
-
   // [P2] 주입 큐레이션 토글 — audience만 변경(내용 불변).
   const audienceMutation = useMutation({
     mutationFn: (input: { id: string; audience: "agent" | "ops" }) =>
@@ -141,17 +133,15 @@ function PatternCardsSection({ companyId }: { companyId: string }) {
   });
 
   const patterns = data?.patterns ?? [];
-  const draftCount = patterns.filter((card) => card.status === "draft").length;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">
-          🗂️ 사고→패턴 카드 ({patterns.length}){draftCount > 0 ? <span className="ml-2 text-xs font-semibold text-amber-400">초안 {draftCount}건 승인 대기</span> : null}
+          🗂️ 사고→패턴 카드 ({patterns.length})
         </CardTitle>
         <CardDescription>
-          오너/운영자가 큐레이션한 사고 패턴 원장(append-only). 기계 교정 반복 감지 시 자동 초안이
-          생성되며 사람 승인 전까지는 검색·주입 어디에도 쓰이지 않습니다. 실행 프롬프트 주입은 별도
+          오너/운영자가 큐레이션한 사고 패턴 원장(append-only). 실행 프롬프트 주입은 별도
           계약(게이트+측정 롤아웃)으로만 — 위 자가학습 교훈(자동 주입)과는 별개 층입니다.
         </CardDescription>
         <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -189,7 +179,6 @@ function PatternCardsSection({ companyId }: { companyId: string }) {
                 {patterns.map((card: KnowledgePatternCardDto) => {
                   const createdKst = new Date(card.createdAt).toLocaleString("sv-SE", { timeZone: "Asia/Seoul" });
                   const superseded = !!card.supersededById;
-                  const isDraft = card.status === "draft";
                   const expanded = expandedId === card.id;
                   return (
                     <Fragment key={card.id}>
@@ -201,7 +190,6 @@ function PatternCardsSection({ companyId }: { companyId: string }) {
                           <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", KIND_STYLE[card.kind] ?? "bg-zinc-500/15 text-zinc-400")}>
                             {card.kind}
                           </span>
-                          {isDraft ? <div className="mt-1 text-[10px] font-semibold text-amber-400">초안(승인 대기)</div> : null}
                           {superseded ? <div className="mt-1 text-[10px] text-muted-foreground">대체됨</div> : null}
                         </td>
                         <td className="max-w-[420px] px-2 py-2 font-medium">
@@ -213,36 +201,7 @@ function PatternCardsSection({ companyId }: { companyId: string }) {
                         </td>
                         <td className="px-2 py-2 text-xs text-muted-foreground">
                           {SOURCE_LABEL[card.source] ?? card.source}
-                          {isDraft ? (
-                            <div className="mt-1 flex gap-1">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-6 px-2 text-[11px]"
-                                disabled={approveMutation.isPending}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  approveMutation.mutate({ id: card.id, audience: undefined });
-                                }}
-                              >
-                                승인
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-6 px-2 text-[11px] text-blue-400"
-                                disabled={approveMutation.isPending}
-                                title="승인과 동시에 스텝 디스패치 주입 대상으로 큐레이션(측정 롤아웃)"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  approveMutation.mutate({ id: card.id, audience: "agent" });
-                                }}
-                              >
-                                승인+주입
-                              </Button>
-                              {approveMutation.isError ? <div className="mt-1 text-[10px] text-red-400">승인 실패</div> : null}
-                            </div>
-                          ) : !superseded ? (
+                          {!superseded ? (
                             <div className="mt-1 flex items-center gap-1">
                               <span className={cn("text-[10px] font-semibold", card.audience === "agent" ? "text-blue-400" : "text-muted-foreground")}>
                                 {card.audience === "agent" ? "주입: 허용" : "주입: 끔"}
@@ -306,6 +265,16 @@ export function AgentWiki() {
     enabled: !!selectedCompanyId,
   });
 
+  // 지표 스트립용 전체 패턴 카드(대체 이력 포함) — 아래 섹션의 검색/토글 필터와 독립.
+  const { data: metricsData } = useQuery({
+    queryKey: ["knowledge-patterns", selectedCompanyId, "", true],
+    queryFn: () => knowledgePatternsApi.list(selectedCompanyId!, { includeSuperseded: true }),
+    enabled: !!selectedCompanyId,
+  });
+
+  const patterns = metricsData?.patterns ?? [];
+  const entries = data?.entries ?? [];
+
   if (!selectedCompanyId) {
     return <p className="p-6 text-sm text-muted-foreground">회사를 선택하세요.</p>;
   }
@@ -318,7 +287,7 @@ export function AgentWiki() {
             <Brain className="h-5 w-5" /> Agent 자가학습 Wiki
           </h1>
           <p className="text-sm text-muted-foreground">
-            반복 실패에서 자동 축적된 교훈. 같은 step을 만나면 에이전트 프롬프트에 자동 주입됩니다.
+            자동 수집·중복 제거·30일 TTL로 관리되는 오답·규약 기록 및 지표입니다(수동 승인 불필요).
           </p>
         </div>
         <div className="flex gap-1">
@@ -336,6 +305,8 @@ export function AgentWiki() {
         <p className="text-sm text-red-400">조회 실패: {(error as Error)?.message ?? "unknown"}</p>
       ) : !data ? null : (
         <>
+          <WikiMetricsBar patterns={patterns} entries={entries} />
+
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               ["교훈 entry 수", data.summary.totalEntries],
