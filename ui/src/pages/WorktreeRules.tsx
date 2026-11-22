@@ -587,7 +587,7 @@ export function WorktreeRules() {
   const [mainTab, setMainTab] = useState<"rules" | "ops">("rules");
 
   useEffect(() => {
-    setBreadcrumbs([{ label: "Worktree Rules" }]);
+    setBreadcrumbs([{ label: "Approval Gates" }]);
   }, [setBreadcrumbs]);
 
   const { data: rules, isLoading, error } = useQuery({
@@ -611,7 +611,7 @@ export function WorktreeRules() {
   });
 
   if (!selectedCompanyId) {
-    return <EmptyState icon={ShieldCheck} message="Select a company to view worktree rules." />;
+    return <EmptyState icon={ShieldCheck} message="Select a company to manage approval gates." />;
   }
 
   if (isLoading) {
@@ -635,7 +635,7 @@ export function WorktreeRules() {
       {/* Segmented main tabs */}
       <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40">
         {([
-          { id: "rules", label: "실행 규칙" },
+          { id: "rules", label: "승인 가드레일 (Approval Gates)" },
           { id: "ops", label: "Hermit Gate & 리소스 콘솔" },
         ] as const).map((tab) => (
           <button
@@ -658,7 +658,7 @@ export function WorktreeRules() {
 
       {mainTab === "rules" && (
       <>
-      {/* Header */}
+      <p className="text-xs text-muted-foreground">외부 발행·배포·신고·결제 등 자유 미션에서도 반드시 사람 승인이 필요한 하드 가드레일을 설정합니다. 일반 업무 규정·플레이북은 Wiki → KB 트리에 등록하세요.</p>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         {/* Severity filter tabs */}
         <div className="flex items-center gap-1 flex-wrap">
