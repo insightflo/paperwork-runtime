@@ -98,7 +98,12 @@ export async function autoResealStaleProducerWorkProductsOnDone(
         const { metadata } = await sealFn(row, producer);
         await tx
           .update(issueWorkProducts)
-          .set({ metadata, createdByRunId: input.heartbeatRunId, updatedAt: new Date() })
+          .set({
+            metadata,
+            createdByRunId: input.heartbeatRunId,
+            sourceExecutionGeneration: producer.executionGeneration,
+            updatedAt: new Date(),
+          })
           .where(and(eq(issueWorkProducts.id, row.id), eq(issueWorkProducts.companyId, input.companyId)));
         resealedIds.push(row.id);
       }

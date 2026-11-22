@@ -5,6 +5,7 @@ import {
   needsProducerReseal,
   type ActiveProducerIdentity,
 } from "../services/work-products/auto-reseal-on-done.js";
+import { assertReworkCompletionReady } from "../services/workflow/rework-completion-restamp.js";
 
 const COMPANY_ID = "11111111-1111-4111-8111-111111111111";
 const MISSION_ID = "22222222-2222-4222-8222-222222222222";
@@ -144,5 +145,75 @@ describe("autoResealStaleProducerWorkProductsOnDone rollback & audit", () => {
       runId: HB_NEW,
       details: { reason: "workproduct_producer_file_unreadable" },
     });
+  });
+
+  it("updates sourceExecutionGeneration to current producer generation on successful reseal", async () => {
+    const updatePayloads: Array<Record<string, unknown>> = [];
+    const fakeProducts = [
+      { id: "wp-1", companyId: COMPANY_ID, issueId: ISSUE_ID, provider: "local_file", status: "active", metadata: STALE_METADATA, url: null },
+    ];
+    const fakeDb = {
+      transaction: async <T>(fn: (tx: unknown) => Promise<T>) => fn({
+        select: () => ({ from: () => ({ where: async () => fakeProducts }) }),
+        update: () => ({
+          set: (payload: Record<string, unknown>) => {
+            updatePayloads.push(payload);
+            return { where: async () => {} };
+          },
+        }),
+        insert: () => ({ values: async () => {} }),
+      }),
+    } as unknown as Db;
+
+    const sealFn = vi.fn(async () => ({
+      metadata: { ...STALE_METADATA, sha256: "d".repeat(64) },
+      seal: { sha256: "d".repeat(64), byteSize: 99 },
+    })) as unknown as NonNullable<Parameters<typeof autoResealStaleProducerWorkProductsOnDone>[2]>["sealFn"];
+
+    const res = await autoResealStaleProducerWorkProductsOnDone(
+      fakeDb,
+      { companyId: COMPANY_ID, issueId: ISSUE_ID, heartbeatRunId: HB_NEW },
+      { resolveProducer: async () => CURRENT_PRODUCER, sealFn },
+    );
+
+    expect(res).toEqual({ resealed: 1, productIds: ["wp-1"] });
+    expect(updatePayloads).toHaveLength(1);
+    expect(updatePayloads[0]).toMatchObject({
+      createdByRunId: HB_NEW,
+      sourceExecutionGeneration: CURRENT_PRODUCER.executionGeneration,
+    });
+  });
+});
+
+describe("assertReworkCompletionReady auto-reseal wiring & order", () => {
+  const fakeDb = {} as unknown as Db;
+
+  it("returns early without resealing when heartbeatRunId is null", async () => {
+    const autoResealFn = vi.fn();
+    await assertReworkCompletionReady(
+      { db: fakeDb, companyId: COMPANY_ID, issueId: ISSUE_ID, heartbeatRunId: null },
+      { autoResealFn },
+    );
+    expect(autoResealFn).not.toHaveBeenCalled();
+  });
+
+  it("runs autoReseal strictly before restampReworkProductsOnCompletion on rework runs", async () => {
+    const order: string[] = [];
+    await assertReworkCompletionReady(
+      { db: fakeDb, companyId: COMPANY_ID, issueId: ISSUE_ID, heartbeatRunId: HB_NEW },
+      {
+        autoResealFn: vi.fn(async () => {
+          order.push("autoReseal");
+          return { resealed: 1, productIds: ["wp-1"] };
+        }),
+        isReworkFn: vi.fn(async () => true),
+        restampFn: vi.fn(async () => {
+          order.push("restamp");
+          return 1;
+        }),
+        progressFn: vi.fn(async () => true),
+      },
+    );
+    expect(order).toEqual(["autoReseal", "restamp"]);
   });
 });
