@@ -58,13 +58,12 @@ describe("needsProducerReseal", () => {
     ).toBe(true);
   });
 
-  it("is idempotent (returns false when already resealed to current producer)", () => {
-    expect(
-      needsProducerReseal(
-        { workflowProducer: { ...CURRENT_PRODUCER, sha256: "b".repeat(64), byteSize: 456 } },
-        CURRENT_PRODUCER,
-      ),
-    ).toBe(false);
+  it("is idempotent (returns false when already resealed to current producer) and detects stale column", () => {
+    const freshMeta = { workflowProducer: { ...CURRENT_PRODUCER, sha256: "b".repeat(64), byteSize: 456 } };
+    expect(needsProducerReseal(freshMeta, CURRENT_PRODUCER)).toBe(false);
+    expect(needsProducerReseal(freshMeta, CURRENT_PRODUCER, CURRENT_PRODUCER.executionGeneration)).toBe(false);
+    expect(needsProducerReseal(freshMeta, CURRENT_PRODUCER, 1)).toBe(true);
+    expect(needsProducerReseal(freshMeta, CURRENT_PRODUCER, null)).toBe(true);
   });
 
   it("excludes qaCorrection, missing provenance, mismatched run/step, and backwards generation/iteration", () => {

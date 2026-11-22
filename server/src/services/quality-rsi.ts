@@ -266,13 +266,13 @@ export async function promoteQualityPatternToCanon(
 ): Promise<{ patternId: string; alreadyCanon: boolean }> {
   const trimmed = signature.trim(), canonSig = canonSignatureFor(trimmed);
   const res = await db.transaction(async (tx) => {
-    const [existingCanon] = await tx.select({ id: companyKnowledgePatterns.id }).from(companyKnowledgePatterns)
+    const code = trimmed.replace(/^quality-rsi:/, "");
+    const [existingCanon] = await tx.select().from(companyKnowledgePatterns)
       .where(and(eq(companyKnowledgePatterns.companyId, companyId), eq(companyKnowledgePatterns.defectSignature, canonSig), eq(companyKnowledgePatterns.status, "active"), isNull(companyKnowledgePatterns.supersededById))).limit(1);
-    if (existingCanon) return { patternId: existingCanon.id, alreadyCanon: true, syncPayload: null };
+    if (existingCanon) return { patternId: existingCanon.id, alreadyCanon: true, syncPayload: { companyId, patternId: existingCanon.id, code, title: existingCanon.title, summary: existingCanon.summary, whatWorked: existingCanon.whatWorked, tags: existingCanon.scopeTags } };
 
     const [prev] = await tx.select().from(companyKnowledgePatterns)
       .where(and(eq(companyKnowledgePatterns.companyId, companyId), eq(companyKnowledgePatterns.defectSignature, trimmed))).limit(1);
-    const code = trimmed.replace(/^quality-rsi:/, "");
     const title = prev?.title ?? `Canonical QA rule: ${code}`;
     const summary = prev?.summary ?? `Durable QA standard rule promoted from ${code}.`;
     const whatWorked = prev?.whatWorked ?? "Enforce this check before passing or submitting plans.";
@@ -294,6 +294,6 @@ export async function promoteQualityPatternToCanon(
     }
     return { patternId: created.id, alreadyCanon: false, syncPayload: { companyId, patternId: created.id, code, title, summary, whatWorked, tags } };
   });
-  if (!res.alreadyCanon && res.syncPayload) void syncPromotedCanonToKb(db, res.syncPayload);
+  if (res.syncPayload) void syncPromotedCanonToKb(db, res.syncPayload);
   return { patternId: res.patternId, alreadyCanon: res.alreadyCanon };
 }
