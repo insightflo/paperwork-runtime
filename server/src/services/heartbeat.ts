@@ -3189,7 +3189,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     } else {
       delete context[RUN_TOOL_CONTRACT_CONTEXT_KEY];
     }
-    await applyWorkflowAndAgentKbContext(context, workflowStepKnowledgeContext, db, agent.companyId, agent.id);
+    await applyWorkflowAndAgentKbContext(context, workflowStepKnowledgeContext, db, agent.companyId, agent.id, undefined, runtimeConfig);
 
     // [P2 — 사람 큐레이션 패턴 카드 관련도 주입, 측정 롤아웃] 실험 플래그(on) + 결정론적
     //   50/50 군 배정. durable 규약(kind='constraint')은 양 군 모두 신선도 무관하게 주입하고,

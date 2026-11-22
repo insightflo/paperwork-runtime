@@ -2,6 +2,7 @@ import type { Db } from "@paperclipai/db";
 import { MISSION_REVISION_DELTA_SCHEMA_VERSION, type MissionRevisionDelta } from "@paperclipai/shared/validators/mission-revision";
 import { buildMissionPlanningDescription, type MissionPlanningDescriptionInput } from "./mission-planning-description.js";
 import { buildMissionRevisionContext } from "./mission-revision-context.js";
+import { buildAgentKbTocContext } from "../knowledge/kb-nodes.js";
 
 /** Used for both initial planning and bounded plan-submission revision.
  *  [Q5] 매핑 규칙 안내는 실제 계약과 일치해야 한다 — sourceStepId 는 원본 단계 재사용/재실행/수정에만
@@ -10,7 +11,16 @@ import { buildMissionRevisionContext } from "./mission-revision-context.js";
 export async function buildRevisionMissionPlanningDescription(db: Pick<Db, "select">,
   input: MissionPlanningDescriptionInput & { companyId: string }) {
   const revisionContext = await buildMissionRevisionContext(db, input);
-  const description = buildMissionPlanningDescription({ ...input, sourceRevisionContext: revisionContext });
+  let kbTocContent = input.kbTocContent;
+  if (kbTocContent === undefined) {
+    try {
+      const toc = await buildAgentKbTocContext(db as Db, { companyId: input.companyId, maxTokens: 380 });
+      kbTocContent = toc.nodeCount > 0 ? toc.content : null;
+    } catch {
+      kbTocContent = null;
+    }
+  }
+  const description = buildMissionPlanningDescription({ ...input, kbTocContent, sourceRevisionContext: revisionContext });
   if (!revisionContext?.sourceWorkflowRunId) return description;
   const revisionDeltaExample = {
     schemaVersion: MISSION_REVISION_DELTA_SCHEMA_VERSION,
