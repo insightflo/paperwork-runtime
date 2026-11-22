@@ -932,6 +932,13 @@
       "when": 1794677136424,
       "tag": "0133_knowledge_pattern_lineage",
       "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "7",
+      "when": 1795331309286,
+      "tag": "0134_harness_rsi_ledger",
+      "breakpoints": true
     }
   ]
 }
