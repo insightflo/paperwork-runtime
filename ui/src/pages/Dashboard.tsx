@@ -23,6 +23,7 @@ import { timeAgo } from "../lib/timeAgo";
 import { formatCents } from "../lib/utils";
 import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, PauseCircle, Rocket } from "lucide-react";
 import { ActiveAgentsPanel } from "../components/ActiveAgentsPanel";
+import { HarnessDiagnosisCard } from "../components/HarnessDiagnosisCard";
 import { DashboardCommandHeader } from "../components/DashboardCommandHeader";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { PageSkeleton } from "../components/PageSkeleton";
@@ -219,6 +220,8 @@ export function Dashboard() {
       )}
 
       <ActiveAgentsPanel companyId={selectedCompanyId!} />
+
+      <HarnessDiagnosisCard companyId={selectedCompanyId} />
 
       {data && (
         <DashboardCommandHeader
