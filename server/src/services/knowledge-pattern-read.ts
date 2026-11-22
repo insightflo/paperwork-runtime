@@ -21,6 +21,7 @@ import {
 } from "@paperclipai/db";
 import { isUuidLike } from "@paperclipai/shared";
 import { knowledgePatternEntitiesSchema } from "@paperclipai/shared/validators/knowledge-pattern";
+import { buildFailureModeTtlCondition, DEFAULT_FAILURE_MODE_TTL_DAYS } from "./knowledge-pattern-dedupe.js";
 import { selectRelatedKnowledgePatterns } from "./knowledge-pattern-relevance.js";
 import type { KnowledgePattern } from "./knowledge-patterns.js";
 
@@ -228,6 +229,8 @@ export type KnowledgePatternSearchInput = {
   symbols?: readonly string[] | null;
   includeSuperseded?: boolean;
   includeDrafts?: boolean;
+  /** [미스톨로지 위생] failure_mode 읽기 TTL(일) — 기본 active 검색에만 적용. null이면 해제. */
+  maxFailureModeAgeDays?: number | null;
   limit?: number;
 };
 
@@ -249,6 +252,10 @@ export async function searchKnowledgePatterns(db: Db, input: KnowledgePatternSea
   }
   if (!input.includeDrafts) {
     conditions.push(eq(companyKnowledgePatterns.status, KNOWLEDGE_PATTERN_STATUS_ACTIVE));
+  }
+  // [미스톨로지 위생] 기본 active 검색은 오래된 failure_mode를 TTL로 제외(내구 kind·감사 경로 미적용).
+  if (input.maxFailureModeAgeDays !== null && !input.includeSuperseded && !input.includeDrafts) {
+    conditions.push(buildFailureModeTtlCondition(input.maxFailureModeAgeDays ?? DEFAULT_FAILURE_MODE_TTL_DAYS));
   }
   if (input.kind && KINDS.includes(input.kind)) {
     conditions.push(eq(companyKnowledgePatterns.kind, input.kind));

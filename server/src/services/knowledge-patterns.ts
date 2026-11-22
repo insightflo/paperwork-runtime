@@ -21,6 +21,7 @@ import type { Db } from "@paperclipai/db";
 import { activityLog, companyKnowledgePatterns } from "@paperclipai/db";
 import type { AdoptionAssetRegistryEntry } from "./self-improvement-adoption-planner.js";
 import type { RelatedKnowledgePattern } from "./knowledge-pattern-relevance.js";
+import { findFuzzyDuplicateActivePattern } from "./knowledge-pattern-dedupe.js";
 import {
   applyEvidenceGate,
   assertNoDuplicateSignature,
@@ -129,6 +130,11 @@ export function knowledgePatternsService(db: Db) {
 
         // [T2b 서명 중복 — 명시 충돌] 사람·에이전트 제출은 onConflictDoNothing 대신 409 신호.
         if (defectSignature) await assertNoDuplicateSignature(tx, { companyId: input.companyId, defectSignature });
+        if (!input.supersedeId) {
+          // [미스톨로지 위생] failure_mode 퍼지 중복 적중 시 새 행 대신 기존 active 카드 반환.
+          const fuzzyDuplicate = await findFuzzyDuplicateActivePattern(tx, { companyId: input.companyId, kind, title, errorSignatures });
+          if (fuzzyDuplicate) return fuzzyDuplicate;
+        }
 
         let created: KnowledgePattern;
         try {
