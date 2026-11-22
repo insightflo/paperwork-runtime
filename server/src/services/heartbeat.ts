@@ -3195,10 +3195,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     }
 
     // [P2 — 사람 큐레이션 패턴 카드 관련도 주입, 측정 롤아웃] 실험 플래그(on) + 결정론적
-    //   50/50 군 배정의 injection 군일 때만 active+audience='agent'+신선 카드 상위 2건을
-    //   프롬프트에 소량 주입한다. 군+카드 id는 스텝런 메타데이터에 1회 기록(측정 원장 —
-    //   주입군/비주입군 성공률 비교). 기계 카운터 위키 주입과 혼용되지 않는 별도 섹션이다.
-    //   non-blocking(실패 시 skip) + 플래그 기본 off(fail-closed).
+    //   50/50 군 배정. durable 규약(kind='constraint')은 양 군 모두 신선도 무관하게 주입하고,
+    //   그 외 카드는 injection 군의 신선 카드 상위 2건만 주입한다(규약 100% 커버리지).
+    //   군+카드 id는 스텝런 메타데이터에 1회 기록(측정 원장 — 주입군/비주입군 성공률 비교).
+    //   기계 카운터 위키 주입과 혼용되지 않는 별도 섹션. non-blocking + 플래그 기본 off.
     try {
       const experimentalFlags = await instanceSettings.getExperimental();
       const workflowStepContract = experimentalFlags.enableKnowledgePatternInjection && issueRef
@@ -3206,18 +3206,17 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         : null;
       if (workflowStepContract) {
         const injectionGroup = injectionGroupFor(`${agent.companyId}:${workflowStepContract.workflowRunId}:${workflowStepContract.stepId}`);
-        const injectableCards = injectionGroup === "injection"
-          ? await selectCardsForInjection(db, {
-              companyId: agent.companyId,
-              contextTexts: [
-                issueContext?.title ?? "",
-                issueContext?.description ?? "",
-                workflowStepToolContext?.stepName ?? "",
-                readNonEmptyString(context.note) ?? "",
-              ],
-            })
-          : [];
-        const cardSection = injectionGroup === "injection" ? formatKnowledgePatternCards(injectableCards) : null;
+        const injectableCards = await selectCardsForInjection(db, {
+          companyId: agent.companyId,
+          contextTexts: [
+            issueContext?.title ?? "",
+            issueContext?.description ?? "",
+            workflowStepToolContext?.stepName ?? "",
+            readNonEmptyString(context.note) ?? "",
+          ],
+          onlyConstraints: injectionGroup !== "injection",
+        });
+        const cardSection = formatKnowledgePatternCards(injectableCards);
         if (cardSection) {
           const basePrompt = readNonEmptyString(runtimeConfig.promptTemplate);
           runtimeConfig.promptTemplate = basePrompt ? `${basePrompt}\n\n${cardSection}` : cardSection;

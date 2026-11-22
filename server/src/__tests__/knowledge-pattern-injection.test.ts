@@ -13,6 +13,7 @@ import {
   PATTERN_INJECTION_LIMIT,
   formatKnowledgePatternCards,
   injectionGroupFor,
+  listInjectableCards,
   selectCardsForInjection,
 } from "../services/knowledge-pattern-injection.js";
 import { knowledgePatternsRoutes } from "../routes/knowledge-patterns.js";
@@ -46,6 +47,7 @@ describeEP("knowledge pattern injection (audience + freshness + relevance + roll
 
   async function seedCard(input: {
     title: string;
+    kind?: string;
     symptoms?: string;
     whatWorked?: string;
     scopeTags?: string[];
@@ -56,7 +58,7 @@ describeEP("knowledge pattern injection (audience + freshness + relevance + roll
   }) {
     const [card] = await db.insert((await import("@paperclipai/db")).companyKnowledgePatterns).values({
       companyId,
-      kind: "failure_mode",
+      kind: input.kind ?? "failure_mode",
       title: input.title,
       summary: "테스트 카드 요약",
       symptoms: input.symptoms ?? null,
@@ -114,6 +116,54 @@ describeEP("knowledge pattern injection (audience + freshness + relevance + roll
     expect(section).toContain("[패턴]");
     // 제목 80자 상한(말줄임 포함).
     expect(section!.split("\n")[1]!.length).toBeLessThan(200);
+  });
+
+  it("keeps durable constraint cards beyond the freshness window while stale failure_mode stays out", async () => {
+    const durable = await seedCard({
+      title: "정준 규약 — durable 유지", kind: "constraint", audience: "agent",
+      createdAtOffsetDays: 200, scopeTags: ["내구검증"], symptoms: "규약 내구 검증 시그",
+    });
+    const stale = await seedCard({
+      title: "오래된 실패모드 — 컷오프 유지", audience: "agent",
+      createdAtOffsetDays: 200, scopeTags: ["내구검증"], symptoms: "규약 내구 검증 시그",
+    });
+    const injectable = await listInjectableCards(db, companyId);
+    const ids = new Set(injectable.map((card) => card.id));
+    expect(ids.has(durable.id)).toBe(true);
+    expect(ids.has(stale.id)).toBe(false);
+
+    const selected = await selectCardsForInjection(db, { companyId, contextTexts: ["규약 내구 검증 시그"] });
+    expect(selected.some((card) => card.id === durable.id)).toBe(true);
+    expect(selected.some((card) => card.id === stale.id)).toBe(false);
+  });
+
+  it("onlyConstraints selects only constraint cards and never failure_mode", async () => {
+    const canon = await seedCard({
+      title: "규약 전용 선택 검증", kind: "constraint", audience: "agent",
+      createdAtOffsetDays: 300, scopeTags: ["제약필터"], symptoms: "제약필터 시그",
+    });
+    await seedCard({
+      title: "신선 실패모드 — onlyConstraints 제외", audience: "agent",
+      scopeTags: ["제약필터"], symptoms: "제약필터 시그",
+    });
+    const listed = await listInjectableCards(db, companyId, new Date(), { onlyConstraints: true });
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed.every((card) => card.kind === "constraint")).toBe(true);
+
+    const selected = await selectCardsForInjection(db, {
+      companyId, contextTexts: ["제약필터 시그"], onlyConstraints: true,
+    });
+    expect(selected.map((card) => card.id)).toContain(canon.id);
+    expect(selected.every((card) => card.kind === "constraint")).toBe(true);
+  });
+
+  it("labels constraint cards with [★규약] and other cards with [패턴]", async () => {
+    const section = formatKnowledgePatternCards([
+      { id: randomUUID(), kind: "constraint", title: "정준 규약 제목", symptoms: null, whatWorked: "항상 지킨다" },
+      { id: randomUUID(), title: "일반 패턴 제목", symptoms: "재발 증상", whatWorked: null },
+    ]);
+    expect(section).toContain("[★규약] 정준 규약 제목");
+    expect(section).toContain("[패턴] 일반 패턴 제목");
   });
 
   it("assigns groups deterministically and reaches both groups", async () => {
