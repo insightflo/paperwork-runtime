@@ -13,6 +13,8 @@ import {
   lockCascadeObservation, writeStuckCascade, writeDeadlockCascade,
   type CascadeTx, type FailureCascadeRun, type FailureCascadeStep, type DeadlockCascadeStep,
 } from "./failure-cascade-writes.js";
+import { logger } from "../../middleware/logger.js";
+import { maybeAutoRestartMechanicalFailure } from "./mechanical-failure-auto-restart.js";
 
 type Finalized = Extract<TerminalFinalizeResult, { kind: "finalized" }>;
 type Cancelled = Exclude<TerminalFinalizeResult, Finalized> | "stale_observation";
@@ -149,6 +151,8 @@ export async function settleStuckFailureCascade(
       return null;
     });
     const effectNote = boundary ? await terminalEffectNote(db, boundary.decisionId) : "";
+    void maybeAutoRestartMechanicalFailure(db, { companyId: run.companyId, workflowRunId: run.id })
+      .catch((err) => logger.debug({ err, runId: run.id }, "mechanical-failure auto-restart failed"));
     return {
       runId: run.id,
       action: "recovered",
@@ -209,6 +213,8 @@ export async function settleDeadlockFailureCascade(
     });
     if (!mayFinalize) return null;
     const effectNote = boundary ? await terminalEffectNote(db, boundary.decisionId) : "";
+    void maybeAutoRestartMechanicalFailure(db, { companyId: run.companyId, workflowRunId: run.id })
+      .catch((err) => logger.debug({ err, runId: run.id }, "mechanical-failure auto-restart failed"));
     return {
       runId: run.id,
       action: "recovered",
