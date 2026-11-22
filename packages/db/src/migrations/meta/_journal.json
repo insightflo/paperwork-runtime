@@ -939,6 +939,13 @@
       "when": 1795331309286,
       "tag": "0134_harness_rsi_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1795359600000,
+      "tag": "0135_knowledge_nodes",
+      "breakpoints": true
     }
   ]
 }
