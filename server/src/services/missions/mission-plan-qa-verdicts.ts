@@ -24,6 +24,8 @@ import { issueService } from "../issues.js";
 import type { ValidationVerdict } from "../validation-verdict.js";
 import { lockMissionPlanQaAuthority } from "./plan-qa-admission-lock.js";
 import { buildPlanQaResultComment, loadCompanySystemLanguage } from "./system-comment-display.js";
+import { logger } from "../../middleware/logger.js";
+import { syncQualityRsi } from "../quality-rsi.js";
 
 export type PlanQaVerdictActor =
   | { actorType: "agent"; actorId: string }
@@ -46,6 +48,11 @@ export async function recordMissionPlanQaVerdict(input: {
       ...(input.reviewedBy.actorType === "agent" ? { agentId: input.reviewedBy.actorId } : {}),
     });
   } catch { /* Display failure does not change structured authority. */ }
+  if (input.verdict === "request_changes") {
+    void syncQualityRsi(input.db, input.companyId).catch((err) =>
+      logger.debug({ err, companyId: input.companyId }, "quality-rsi post-verdict auto-sync failed"),
+    );
+  }
   return { status: "recorded", planQaIssueId: input.planQaIssueId, verdict: input.verdict };
 }
 

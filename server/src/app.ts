@@ -51,6 +51,7 @@ import { hermesChatRoutes } from "./routes/hermes-chat.js";
 import { activityRoutes } from "./routes/activity.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { qualityRoutes } from "./routes/quality.js";
+import { qualityRsiRoutes } from "./routes/quality-rsi.js";
 import { qualityPolicyRoutes } from "./routes/quality-policies.js";
 import { qualityActionsRoutes } from "./routes/quality-actions.js";
 import { qualityEvaluationRoutes } from "./routes/quality-evaluations.js";
@@ -661,6 +662,7 @@ export async function createApp(
   api.use(activityRoutes(db));
   api.use(dashboardRoutes(db));
   api.use(qualityRoutes(db));
+  api.use(qualityRsiRoutes(db));
   api.use(qualityActionsRoutes(db));
   api.use(qualityEvaluationRoutes(db));
   api.use(harnessRsiRoutes(db));
