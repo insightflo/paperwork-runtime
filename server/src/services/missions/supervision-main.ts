@@ -24,7 +24,8 @@ import { formatGovernanceThreadEvidenceLines, governanceThreadReasonSuffix } fro
 import { type MissionOwnerDecisionWakeupDispatchStatus, type MissionOwnerSupervisionAppliedAction, type MissionOwnerSupervisionRecommendation, type MissionOwnerSupervisionResult } from "./supervision-types.js";
 import { isTerminalMissionStatus } from "./shared-types.js";
 import { reconcileSupervisionMission } from "./supervision-lifecycle.js";
-import { activePlanRecoveryGateReason, executionUnitKey } from "./supervision-helpers.js";
+import { activePlanRecoveryGateReason } from "./supervision-helpers.js";
+import { maybeDispatchMissionOwnerPeriodicReview } from "./supervision-periodic-review.js";
 import { runMissionPreLoopPhases } from "./supervision-pre-loop-phases.js";
 import { runMissionPostLoopPhases } from "./supervision-post-loop-phases.js";
 import { runMissionOwnerDecisionPhases } from "./supervision-owner-decision-phases.js";
@@ -36,11 +37,7 @@ import { qualityService } from "../quality.js";
 import { createMissionWorkSettlement } from "./mission-work-settlement.js";
 import { isQaReworkCapOversightIssue } from "./qa-rework-cap-oversight.js";
 import { TERMINAL_FAILURE_RUN_STATUSES } from "./terminal-mission-human-operator-alert.js";
-import {
-  hasRecoveryIdempotency,
-  claimSupervisionMarkerOnce,
-  ACTIVE_SUPERVISION_EXECUTION_STATUSES_FOR_REVIEW,
-} from "./supervision-support.js";
+import { hasRecoveryIdempotency } from "./supervision-support.js";
 import {
   STALE_SOURCE_WAKEUP_AUTO_THRESHOLD,
   countStaleSourceWakeupDiagnoses,
@@ -142,52 +139,19 @@ export function createRunMainExecutorSupervision({
     const missionHasActiveHeartbeat = [...heartbeatRunsByIssueId.values()]
       .some((runs) => runs.some((run) => run.status === "queued" || run.status === "running"));
 
-    // [owner on-duty monitoring] 활성 미션에 점검할 상황(진행 중 실행 단위 또는 열린 오너 액션)이 있으면
-    //   일정 주기마다 오너를 깨워 미션 상황을 스스로 점검하게 한다. 사건별 깨움만으로는 오너가
-    //   "지시 후 대기"에 머문다(2026-08-17 GAZ: 21시간 중 오너 자발 점검 0회). 버킷 멱등 클레임으로
-    //   5분 스윕이 리뷰를 쌓지 않게 하고, 기존 하트비트 가드(동일 미션 중복/동시성 제한)가 과잉을 막는다.
-    const MISSION_OWNER_PERIODIC_REVIEW_INTERVAL_MS = 30 * 60 * 1000;
-    if (
-      mission.status === "active"
-      && deps.onMissionOwnerPeriodicReviewWakeRequested
-      && (
-        executionSnapshot.units.some((unit) => ACTIVE_SUPERVISION_EXECUTION_STATUSES_FOR_REVIEW.has(unit.status))
-        || missionIssues.some((row) =>
-          row.hiddenAt == null
-          && row.originKind === "mission_main_executor_unblock"
-          && (row.status === "todo" || row.status === "in_progress" || row.status === "blocked"))
-      )
-    ) {
-      const reviewBucket = Math.floor(now.getTime() / MISSION_OWNER_PERIODIC_REVIEW_INTERVAL_MS);
-      const reviewKey = `mission-owner-periodic-review:${mission.id}:${reviewBucket}`;
-      const claimed = await claimSupervisionMarkerOnce({
-        db, companyId: mission.companyId, missionId: mission.id,
-        issueId: oversightIssue.id,
-        idempotencyKey: reviewKey, eventType: "mission_owner_periodic_review_wake",
-        payload: { bucket: reviewBucket },
-      });
-      if (claimed) {
-        const openOwnerActionIds = missionIssues
-          .filter((row) => row.hiddenAt == null
-            && row.originKind === "mission_main_executor_unblock"
-            && (row.status === "todo" || row.status === "in_progress" || row.status === "blocked"))
-          .map((row) => row.id);
-        const inFlightUnitLabels = executionSnapshot.units
-          .filter((unit) => ACTIVE_SUPERVISION_EXECUTION_STATUSES_FOR_REVIEW.has(unit.status))
-          .map((unit) => `${executionUnitKey(unit)}:${unit.status}`);
-        try {
-          await deps.onMissionOwnerPeriodicReviewWakeRequested({
-            mission,
-            openOwnerActionIds,
-            inFlightUnitLabels,
-            idempotencyKey: reviewKey,
-          });
-          findings.push(`mission_owner_periodic_review_wake_requested: open_owner_actions=${openOwnerActionIds.length} in_flight_units=${inFlightUnitLabels.length} bucket=${reviewBucket} — owner asked to review mission state and act (direct/coordinate/close) as needed`);
-        } catch (err) {
-          logger.warn({ err, missionId: mission.id }, "mission owner periodic review wake callback failed");
-        }
-      }
-    }
+    // [owner on-duty monitoring] 오너 주기 리뷰 게이트는 supervision-periodic-review.ts 로 분리 —
+    //   미션 상대 경과 버킷(월클록 동기 깨움/55P03 제거) + 30분 초기 유예 + 건강 진행 중 스킵.
+    await maybeDispatchMissionOwnerPeriodicReview({
+      db,
+      deps,
+      mission,
+      oversightIssueId: oversightIssue.id,
+      missionIssues,
+      executionSnapshot,
+      missionHasActiveHeartbeat,
+      now,
+      findings,
+    });
 
     // [2a 분해] terminal report·QA cap·plan decision·work-product reuse wake 준비는
     //   supervision-pre-loop-phases.ts 의 runMissionPreLoopPhases 로 옮겼다(본문 이동만, 동작 동일).

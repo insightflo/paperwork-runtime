@@ -54,6 +54,7 @@ import { registerMissionStaleRetryDispatchCases } from "./helpers/mission-servic
 import { registerMissionRetryIdempotencyCases } from "./helpers/mission-service-retry-idempotency-cases.js";
 import { registerMissionCloseoutCases } from "./helpers/mission-service-mission-closeout-cases.js";
 import { registerMissionOwnerWakeupCadenceCases } from "./helpers/mission-service-owner-wakeup-cadence-cases.js";
+import { registerMissionOwnerPeriodicReviewCases } from "./helpers/mission-service-owner-periodic-review-cases.js";
 import { registerMissionPlanSupervisionCases } from "./helpers/mission-service-plan-supervision-cases.js";
 import { registerMissionPlanReopenCases } from "./helpers/mission-service-plan-reopen-cases.js";
 import { registerMissionPlanSubmissionFollowupCases } from "./helpers/mission-service-plan-submission-followup-cases.js";
@@ -180,6 +181,7 @@ describeEmbeddedPostgres("mission service mission-linked subresources", () => {
   registerMissionRetryIdempotencyCases(() => db);
   registerMissionCloseoutCases(() => db);
   registerMissionOwnerWakeupCadenceCases(() => db);
+  registerMissionOwnerPeriodicReviewCases(() => db);
 
   registerMissionRetryApplicationCases(() => db);
   registerMissionOwnerActionExplanationCases(() => db);
