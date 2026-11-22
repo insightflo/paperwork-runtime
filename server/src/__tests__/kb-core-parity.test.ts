@@ -81,6 +81,21 @@ describe.runIf(hasRustBin)("kb-core Rust binary parity", () => {
       runKbCoreSubcommand("score-nodes", { schemaVersion: 2, query: "test", limit: 5, nodes: [] }),
     ).rejects.toThrow(/unsupported schemaVersion: 2/);
   });
+
+  it("handles extreme staleDays without overflow and flags broken parentId", async () => {
+    const res = await lintNodesViaRust({
+      schemaVersion: 1,
+      nowEpochMs: 1_763_856_000_000,
+      staleDays: 1_000_000_000_000,
+      nodes: [
+        { id: "c1", kbId: "kb1", parentId: "missing-parent", title: "Child", status: "active", certified: true, linkedNodeIds: [], updatedAtEpochMs: 1_000 },
+      ],
+    });
+    const codes = res.findings.map((f) => `${f.nodeId}:${f.code}`);
+    expect(codes).toContain("c1:broken_link_missing");
+    expect(codes).toContain("c1:orphan");
+    expect(res.staleRetireCandidateIds).toEqual([]);
+  });
 });
 
 describe("kb-core TS fallback & heartbeat TOC attachment", () => {

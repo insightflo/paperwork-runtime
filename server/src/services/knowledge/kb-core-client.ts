@@ -101,7 +101,11 @@ export function runKbCoreSubcommand<T>(
         return reject(new Error(`kb_core_exit_${code ?? "signal"}: ${stderrTail.trim() || raw}`));
       }
       try {
-        resolve(JSON.parse(raw) as T);
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        if (!parsed || typeof parsed !== "object" || parsed.schemaVersion !== 1) {
+          return reject(new Error("kb_core_bad_schema_version"));
+        }
+        resolve(parsed as T);
       } catch {
         reject(new Error("kb_core_bad_json"));
       }
@@ -132,7 +136,8 @@ function fallbackScoreNodes(req: RustScoreNodesRequest): RustScoreNodesResponse 
 }
 
 function fallbackLintNodes(req: RustLintNodesRequest): RustLintNodesResponse {
-  const staleMs = (req.staleDays ?? 90) * 86_400_000;
+  const clampedDays = Math.min(req.staleDays ?? 90, 36_500);
+  const staleMs = clampedDays * 86_400_000;
   const statusById = new Map(req.nodes.map((n) => [n.id, n.status]));
   const findings: RustLintFinding[] = [];
   const staleRetireCandidateIds: string[] = [];
@@ -150,11 +155,18 @@ function fallbackLintNodes(req: RustLintNodesRequest): RustLintNodesResponse {
       else if (st !== "active") findings.push({ nodeId: n.id, kbId: n.kbId, code: "broken_link_retired", detail: target });
       else activeOut += 1;
     }
-    if (!n.parentId && activeOut === 0 && !n.certified) {
-      findings.push({ nodeId: n.id, kbId: n.kbId, code: "orphan", detail: "no parentId and no active outgoing links" });
+    let hasValidParent = false;
+    if (n.parentId) {
+      const pst = statusById.get(n.parentId);
+      if (!pst) findings.push({ nodeId: n.id, kbId: n.kbId, code: "broken_link_missing", detail: `parent:${n.parentId}` });
+      else if (pst !== "active") findings.push({ nodeId: n.id, kbId: n.kbId, code: "broken_link_retired", detail: `parent:${n.parentId}` });
+      else hasValidParent = true;
     }
-    if (!n.certified && req.nowEpochMs - n.updatedAtEpochMs > staleMs) {
-      findings.push({ nodeId: n.id, kbId: n.kbId, code: "stale_uncertified", detail: `age>${req.staleDays ?? 90}d` });
+    if (!hasValidParent && activeOut === 0) {
+      findings.push({ nodeId: n.id, kbId: n.kbId, code: "orphan", detail: "rootless node with no active outgoing links" });
+    }
+    if (!n.certified && Math.max(0, req.nowEpochMs - n.updatedAtEpochMs) > staleMs) {
+      findings.push({ nodeId: n.id, kbId: n.kbId, code: "stale_uncertified", detail: `older than ${clampedDays}d` });
       staleRetireCandidateIds.push(n.id);
     }
   }
@@ -202,20 +214,29 @@ function fallbackCompileMission(req: RustCompileMissionRequest): RustCompileMiss
   };
 }
 
+const fallbackWarned = new Set<string>();
+function warnFallbackOnce(subcommand: string, err: unknown): void {
+  const reason = err instanceof Error ? err.message : String(err);
+  const key = `${subcommand}:${reason}`;
+  if (fallbackWarned.has(key)) return;
+  fallbackWarned.add(key);
+  console.warn(`[kb-core] Rust helper fallback to Node (${subcommand}): ${reason}`);
+}
+
 export async function scoreNodesViaRust(req: RustScoreNodesRequest): Promise<RustScoreNodesResponse> {
   if (!resolveKbCoreBin()) return fallbackScoreNodes(req);
   try { return await runKbCoreSubcommand<RustScoreNodesResponse>("score-nodes", req); }
-  catch { return fallbackScoreNodes(req); }
+  catch (err) { warnFallbackOnce("score-nodes", err); return fallbackScoreNodes(req); }
 }
 
 export async function lintNodesViaRust(req: RustLintNodesRequest): Promise<RustLintNodesResponse> {
   if (!resolveKbCoreBin()) return fallbackLintNodes(req);
   try { return await runKbCoreSubcommand<RustLintNodesResponse>("lint-nodes", req); }
-  catch { return fallbackLintNodes(req); }
+  catch (err) { warnFallbackOnce("lint-nodes", err); return fallbackLintNodes(req); }
 }
 
 export async function compileMissionViaRust(req: RustCompileMissionRequest): Promise<RustCompileMissionResponse> {
   if (!resolveKbCoreBin()) return fallbackCompileMission(req);
   try { return await runKbCoreSubcommand<RustCompileMissionResponse>("compile-mission", req); }
-  catch { return fallbackCompileMission(req); }
+  catch (err) { warnFallbackOnce("compile-mission", err); return fallbackCompileMission(req); }
 }

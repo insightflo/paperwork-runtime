@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
 const DEFAULT_STALE_DAYS: u64 = 90;
+const MAX_STALE_DAYS: u64 = 36_500;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -49,7 +50,11 @@ pub fn lint_nodes(req: LintNodesRequest) -> Result<LintNodesResponse, String> {
     if req.schema_version != SCHEMA_VERSION {
         return Err(format!("unsupported schemaVersion: {}", req.schema_version));
     }
-    let stale_ms = (req.stale_days.unwrap_or(DEFAULT_STALE_DAYS) as i64) * 24 * 60 * 60 * 1000;
+    let clamped_days = req
+        .stale_days
+        .unwrap_or(DEFAULT_STALE_DAYS)
+        .min(MAX_STALE_DAYS);
+    let stale_ms = (clamped_days as i64).saturating_mul(24 * 60 * 60 * 1000);
     let status_by_id: HashMap<&str, &str> = req
         .nodes
         .iter()
@@ -89,7 +94,32 @@ pub fn lint_nodes(req: LintNodesRequest) -> Result<LintNodesResponse, String> {
             }
         }
 
-        if node.parent_id.is_none() && active_outgoing == 0 {
+        let has_valid_parent = match node.parent_id.as_deref() {
+            None => false,
+            Some(pid) => match status_by_id.get(pid).copied() {
+                None => {
+                    findings.push(LintFinding {
+                        node_id: node.id.clone(),
+                        kb_id: node.kb_id.clone(),
+                        code: "broken_link_missing".into(),
+                        detail: format!("parent:{pid}"),
+                    });
+                    false
+                }
+                Some(st) if st != "active" => {
+                    findings.push(LintFinding {
+                        node_id: node.id.clone(),
+                        kb_id: node.kb_id.clone(),
+                        code: "broken_link_retired".into(),
+                        detail: format!("parent:{pid}"),
+                    });
+                    false
+                }
+                Some(_) => true,
+            },
+        };
+
+        if !has_valid_parent && active_outgoing == 0 {
             findings.push(LintFinding {
                 node_id: node.id.clone(),
                 kb_id: node.kb_id.clone(),
@@ -98,15 +128,12 @@ pub fn lint_nodes(req: LintNodesRequest) -> Result<LintNodesResponse, String> {
             });
         }
 
-        if !node.certified && req.now_epoch_ms - node.updated_at_epoch_ms > stale_ms {
+        if !node.certified && req.now_epoch_ms.saturating_sub(node.updated_at_epoch_ms) > stale_ms {
             findings.push(LintFinding {
                 node_id: node.id.clone(),
                 kb_id: node.kb_id.clone(),
                 code: "stale_uncertified".into(),
-                detail: format!(
-                    "older than {}d",
-                    req.stale_days.unwrap_or(DEFAULT_STALE_DAYS)
-                ),
+                detail: format!("older than {}d", clamped_days),
             });
             stale_ids.push(node.id.clone());
         }
