@@ -1,5 +1,6 @@
 import type { Db } from "@paperclipai/db";
 import { knowledgeService } from "./knowledge/base.js";
+import { buildAgentKbTocContext } from "./knowledge/kb-nodes.js";
 
 export type WorkflowStepKnowledgeContext = {
   workflowRunId: string;
@@ -109,4 +110,19 @@ export async function resolveWorkflowStepKnowledgeContext(input: {
     knowledgeBaseIds: contract.knowledgeBaseIds,
     entries,
   };
+}
+
+/** Lightweight L0 Tree TOC briefing for agents with KB grants (avoids dumping full static blobs or list-all). */
+export async function resolveAgentKbTocBriefing(input: {
+  db: Db;
+  companyId: string;
+  agentId: string;
+  maxTokens?: number;
+}) {
+  const toc = await buildAgentKbTocContext(input.db, {
+    companyId: input.companyId,
+    agentId: input.agentId,
+    maxTokens: input.maxTokens ?? 380,
+  });
+  return toc.nodeCount > 0 ? toc : null;
 }
