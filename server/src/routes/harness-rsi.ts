@@ -1,5 +1,7 @@
 // server/src/routes/harness-rsi.ts
-// [파일 목적] RRSI + Harness2 읽기 전용 라우트 — Stage 2 진단, Stage 3 제안·무상태 크리틱 스크리닝 (쓰기 없음).
+// [파일 목적] RRSI + Harness2 라우트 — Stage 2 진단, Stage 3 제안·무상태 크리틱 스크리닝,
+//   Stage 4 장부(ledger): 제안 결정 기록·평가 갱신·조회. DB 쓰기는 harness_rsi_ledger
+//   테이블로 한정되며 라이브 에이전트·워크플로·프롬프트는 변경하지 않는다 (dgate soft).
 
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
@@ -16,6 +18,13 @@ import {
 } from "../services/harness-rsi/proposal-loop.js";
 import type { RrsiCandidate } from "../services/harness-rsi/rrsi-selection.js";
 import { screenCandidateDiff } from "../services/harness-rsi/rrsi-critic.js";
+import {
+  evaluateLedgerEntry,
+  listCompanyLedger,
+  recordProposalDecision,
+  toEditHistoryRecords,
+  type RecordProposalDecisionInput,
+} from "../services/harness-rsi/ledger-store.js";
 import { badRequest } from "../errors.js";
 import { assertCompanyAccess } from "./authz.js";
 
@@ -88,7 +97,8 @@ export function harnessRsiRoutes(db: Db) {
     }
   });
 
-  // GET approval-gated proposals (read-only; ?round=1&totalRounds=6, same window clamp).
+  // GET approval-gated proposals (?round=1&totalRounds=6, same window clamp).
+  // Reads the ledger (newest 100) as Stage-1 history — evaluated rows feed pruneSet/stallFlag.
   router.get("/companies/:companyId/harness-rsi/proposals", (req, res, next) => {
     try {
       const { companyId } = req.params;
@@ -96,11 +106,19 @@ export function harnessRsiRoutes(db: Db) {
       const windowHours = parseWindowHours(req.query.windowHours);
       const round = parseClampedInt(req.query.round, 1, 1, 10_000);
       const totalRounds = parseClampedInt(req.query.totalRounds, 6, 1, 10_000);
-      loadCompanyHarnessDiagnosis(db, companyId, windowHours)
-        .then((report) => res.json({
+      Promise.all([
+        loadCompanyHarnessDiagnosis(db, companyId, windowHours),
+        listCompanyLedger(db, companyId, 100),
+      ])
+        .then(([report, ledgerRows]) => res.json({
           companyId,
           windowHours,
-          result: proposeHarnessCandidates({ report, round, totalRounds }),
+          result: proposeHarnessCandidates({
+            report,
+            history: toEditHistoryRecords(ledgerRows),
+            round,
+            totalRounds,
+          }),
         }))
         .catch(next);
     } catch (err) {
@@ -119,6 +137,68 @@ export function harnessRsiRoutes(db: Db) {
       const validated = validateOptionalSelection(baseline, candidate, policy);
       const selection = validated ? evaluateProposalCandidate(validated).selection : null;
       res.json({ companyId, critic, selection });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET ledger rows (newest first; ?limit=50, clamped 1..200). Read-only.
+  router.get("/companies/:companyId/harness-rsi/ledger", (req, res, next) => {
+    try {
+      const { companyId } = req.params;
+      assertCompanyAccess(req, companyId);
+      const limit = parseClampedInt(req.query.limit, 50, 1, 200);
+      listCompanyLedger(db, companyId, limit)
+        .then((entries) => res.json({ companyId, entries }))
+        .catch(next);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // POST a proposal decision into the ledger (201). Writes harness_rsi_ledger only.
+  // baselineJson defaults to the current 24h diagnosis summary when omitted.
+  router.post("/companies/:companyId/harness-rsi/proposals/decision", (req, res, next) => {
+    try {
+      const { companyId } = req.params;
+      assertCompanyAccess(req, companyId);
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const baselineJson = body.baselineJson == null
+        ? loadCompanyHarnessDiagnosis(db, companyId, DIAGNOSIS_DEFAULT_WINDOW_HOURS)
+            .then((r) => ({
+              score: r.summary.successRate,
+              cost: r.summary.avgDurationMs / 60_000,
+            }))
+        : Promise.resolve(body.baselineJson);
+      baselineJson
+        .then((baseline) =>
+          recordProposalDecision(db, {
+            ...body,
+            companyId,
+            baselineJson: baseline,
+          } as RecordProposalDecisionInput))
+        .then((entry) => res.status(201).json({ companyId, entry }))
+        .catch(next);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // POST evaluate a decided ledger row against the live 24h diagnosis summary.
+  // Updates only the evaluation columns on the scoped row.
+  router.post("/companies/:companyId/harness-rsi/ledger/:entryId/evaluate", (req, res, next) => {
+    try {
+      const { companyId, entryId } = req.params;
+      assertCompanyAccess(req, companyId);
+      loadCompanyHarnessDiagnosis(db, companyId, DIAGNOSIS_DEFAULT_WINDOW_HOURS)
+        .then((report) =>
+          evaluateLedgerEntry(db, {
+            companyId,
+            entryId,
+            currentSummary: report.summary,
+          }))
+        .then(({ entry, selection }) => res.json({ companyId, entry, selection }))
+        .catch(next);
     } catch (err) {
       next(err);
     }
