@@ -15,6 +15,7 @@ import {
 import { badRequest, notFound } from "../../errors.js";
 import { logger } from "../../middleware/logger.js";
 import { compileMissionViaRust, lintNodesViaRust } from "./kb-core-client.js";
+import { extractMissionDocumentFacts, mergeDedupedTags } from "./kb-document-extractor.js";
 import { upsertKbNode } from "./kb-nodes.js";
 import { resolveAgentKbTocBriefing } from "../heartbeat-workflow-knowledge-context.js";
 
@@ -114,24 +115,19 @@ export async function compileCompletedMissionToKb(
 
   const workProducts = await db
     .select({
+      type: issueWorkProducts.type,
       title: issueWorkProducts.title,
       summary: issueWorkProducts.summary,
       url: issueWorkProducts.url,
+      metadata: issueWorkProducts.metadata,
     })
     .from(issueWorkProducts)
     .innerJoin(issues, eq(issues.id, issueWorkProducts.issueId))
     .where(and(eq(issues.companyId, input.companyId), eq(issues.missionId, mission.id)))
     .orderBy(desc(issueWorkProducts.isPrimary), desc(issueWorkProducts.updatedAt))
-    .limit(12);
+    .limit(20);
 
-  const highlights: string[] = [];
-  if (mission.description?.trim()) {
-    highlights.push(mission.description.trim().slice(0, 260));
-  }
-  for (const wp of workProducts) {
-    const line = wp.summary?.trim() ? `${wp.title}: ${wp.summary.trim()}` : wp.title;
-    if (line.trim()) highlights.push(line.trim().slice(0, 240));
-  }
+  const extracted = await extractMissionDocumentFacts(workProducts, mission.description);
 
   const existingNodes = await db
     .select({ id: knowledgeNodes.id, title: knowledgeNodes.title, tags: knowledgeNodes.tags })
@@ -147,10 +143,11 @@ export async function compileCompletedMissionToKb(
   const compiled = await compileMissionViaRust({
     schemaVersion: 1,
     missionId: mission.id,
-    missionTitle: mission.title,
+    missionTitle: extracted.titleOverride ?? mission.title,
+    slugHint: mission.title,
     completedAt: (mission.completedAt ?? mission.updatedAt).toISOString(),
-    url: workProducts.find((w) => w.url)?.url ?? null,
-    highlights,
+    url: extracted.url,
+    highlights: extracted.highlights,
     existingNodes: existingNodes.map((n) => ({
       id: n.id,
       title: n.title,
@@ -182,7 +179,7 @@ export async function compileCompletedMissionToKb(
     content: compiled.content,
     nodeType: compiled.nodeType,
     certified: false,
-    tags: compiled.tags,
+    tags: mergeDedupedTags(compiled.tags, extracted.extraTags),
     linkedNodeIds: compiled.linkedNodeIds,
     sourceRefs: compiled.sourceRefs,
     actorId: input.actorId,
