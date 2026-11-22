@@ -272,10 +272,9 @@ export async function runCompanyKbLint(
 export async function applyWorkflowAndAgentKbContext(
   context: Record<string, unknown>,
   workflowStepKnowledgeContext: unknown,
-  db: Db,
-  companyId: string,
-  agentId: string,
+  db: Db, companyId: string, agentId: string,
   resolver: typeof resolveAgentKbTocBriefing = resolveAgentKbTocBriefing,
+  runtimeConfig?: Record<string, unknown>,
 ): Promise<void> {
   if (workflowStepKnowledgeContext) {
     context.paperclipWorkflowStepKnowledgeContext = workflowStepKnowledgeContext;
@@ -285,8 +284,13 @@ export async function applyWorkflowAndAgentKbContext(
   delete context.paperclipWorkflowStepKnowledgeContext;
   try {
     const briefing = await resolver({ db, companyId, agentId });
-    if (briefing) context.paperclipAgentKbToc = briefing;
-    else delete context.paperclipAgentKbToc;
+    if (briefing) {
+      context.paperclipAgentKbToc = briefing;
+      const base = typeof runtimeConfig?.promptTemplate === "string" ? runtimeConfig.promptTemplate : "";
+      if (runtimeConfig && base.trim().length > 0 && briefing.content.trim().length > 0 && !base.includes("## Knowledge Base Index (L0 TOC)")) {
+        runtimeConfig.promptTemplate = `${base}\n\n${briefing.content}`;
+      }
+    } else delete context.paperclipAgentKbToc;
   } catch (err) {
     logger.warn({ err, companyId, agentId }, "non-blocking agent KB TOC briefing failed");
     delete context.paperclipAgentKbToc;

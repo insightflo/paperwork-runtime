@@ -8,6 +8,8 @@ import {
   scoreNodesViaRust,
 } from "../services/knowledge/kb-core-client.js";
 import { applyWorkflowAndAgentKbContext } from "../services/knowledge/kb-auto-compile.js";
+import { buildMissionPlanningDescription } from "../services/missions/mission-planning-description.js";
+import { buildRevisionMissionPlanningDescription } from "../services/missions/mission-revision-planning.js";
 
 const savedBin = process.env.PAPERCLIP_KB_CORE_BIN;
 const hasRustBin = Boolean(resolveKbCoreBin());
@@ -147,5 +149,64 @@ describe("kb-core TS fallback & heartbeat TOC attachment", () => {
     ctx.paperclipAgentKbToc = sample;
     await applyWorkflowAndAgentKbContext(ctx, null, fakeDb, "c1", "a1", async () => { throw new Error("db unavailable"); });
     expect(ctx.paperclipAgentKbToc).toBeUndefined();
+  });
+
+  it("appends KB L0 TOC to non-empty promptTemplate idempotently and preserves adapter defaults when absent/blank/non-string", async () => {
+    const sample = { kbCount: 1, nodeCount: 1, tokenCount: 40, content: "## Knowledge Base Index (L0 TOC)\n- ★ [n1] Rules" };
+    const fakeDb = {} as never;
+
+    const rc: Record<string, unknown> = { promptTemplate: "Base task prompt" };
+    await applyWorkflowAndAgentKbContext({}, null, fakeDb, "c1", "a1", async () => sample, rc);
+    expect(rc.promptTemplate).toBe("Base task prompt\n\n## Knowledge Base Index (L0 TOC)\n- ★ [n1] Rules");
+    // Idempotent on second call
+    await applyWorkflowAndAgentKbContext({}, null, fakeDb, "c1", "a1", async () => sample, rc);
+    expect((rc.promptTemplate as string).match(/## Knowledge Base Index \(L0 TOC\)/g)?.length).toBe(1);
+
+    // Preserves adapter default prompt when absent, whitespace-only, or non-string
+    for (const rcCase of [{}, { promptTemplate: "   \n\t " }, { promptTemplate: 123 }] as Array<Record<string, unknown>>) {
+      const before = rcCase.promptTemplate;
+      await applyWorkflowAndAgentKbContext({}, null, fakeDb, "c1", "a1", async () => sample, rcCase);
+      expect(rcCase.promptTemplate).toBe(before);
+    }
+  });
+
+  it("renders company KB L0 TOC in mission planning description and fails open in revision funnel", async () => {
+    const toc = "## Knowledge Base Index (L0 TOC)\n- ★ [n1] Standards";
+    const withToc = buildMissionPlanningDescription({
+      missionId: "m1", title: "Ad-hoc mission", description: "Plan this", runnableRosterLines: [], kbTocContent: toc,
+    });
+    expect(withToc).toContain("## Company domain knowledge (KB L0 TOC)");
+    expect(withToc).toContain(toc);
+
+    const withoutToc = buildMissionPlanningDescription({
+      missionId: "m1", title: "Ad-hoc mission", description: "Plan this", runnableRosterLines: [], kbTocContent: "   ",
+    });
+    expect(withoutToc).not.toContain("## Company domain knowledge (KB L0 TOC)");
+
+    // Revision planning funnel passes explicit TOC and fails open when KB lookup throws
+    const makeRevisionDb = (throwOnKb: boolean) => {
+      let calls = 0;
+      return {
+        select: () => {
+          calls += 1;
+          if (throwOnKb && calls >= 2) throw new Error("kb db unavailable");
+          const chain = {
+            from: () => chain,
+            where: () => chain,
+            orderBy: () => chain,
+            limit: async () => (calls === 1 ? [{ id: "m1", sourceMissionId: null, sourceWorkflowRunId: null }] : []),
+          };
+          return chain;
+        },
+      } as never;
+    };
+    const passthrough = await buildRevisionMissionPlanningDescription(makeRevisionDb(false), {
+      companyId: "c1", missionId: "m1", title: "T", description: null, runnableRosterLines: [], kbTocContent: toc,
+    });
+    expect(passthrough).toContain(toc);
+    const failedOpen = await buildRevisionMissionPlanningDescription(makeRevisionDb(true), {
+      companyId: "c1", missionId: "m1", title: "T", description: null, runnableRosterLines: [],
+    });
+    expect(failedOpen).not.toContain("## Company domain knowledge (KB L0 TOC)");
   });
 });

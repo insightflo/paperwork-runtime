@@ -21,6 +21,7 @@ export type MissionPlanningDescriptionInput = {
   readonly planTemplateCatalog?: readonly MissionPlanningTemplateCatalogItem[];
   readonly revisionContext?: MissionPlanningRevisionContext;
   readonly sourceRevisionContext?: MissionRevisionContext;
+  readonly kbTocContent?: string | null;
 };
 function isPlainObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -168,6 +169,12 @@ export function buildMissionPlanningDescription(input: MissionPlanningDescriptio
     "```",
     "A Markdown `### Mission owner plan decision` comment is display-only and does not record or materialize a decision.",
     "",
+    ...(input.kbTocContent?.trim() ? [
+      "## Company domain knowledge (KB L0 TOC)",
+      "Consult certified (★) domain rules, playbooks, and quality criteria via the search/node endpoints below before finalizing units, and attach relevant `knowledgeBaseIds` to units that need them.",
+      input.kbTocContent.trim(),
+      "",
+    ] : []),
     "## Available runnable company roster",
     ...input.runnableRosterLines,
   ].join("\n");
