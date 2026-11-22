@@ -24,6 +24,7 @@ import { formatCents } from "../lib/utils";
 import { Bot, CircleDot, DollarSign, ShieldCheck, LayoutDashboard, PauseCircle, Rocket } from "lucide-react";
 import { ActiveAgentsPanel } from "../components/ActiveAgentsPanel";
 import { HarnessDiagnosisCard } from "../components/HarnessDiagnosisCard";
+import { HarnessProposalsCard } from "../components/HarnessProposalsCard";
 import { DashboardCommandHeader } from "../components/DashboardCommandHeader";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { PageSkeleton } from "../components/PageSkeleton";
@@ -222,6 +223,8 @@ export function Dashboard() {
       <ActiveAgentsPanel companyId={selectedCompanyId!} />
 
       <HarnessDiagnosisCard companyId={selectedCompanyId} />
+
+      <HarnessProposalsCard companyId={selectedCompanyId} />
 
       {data && (
         <DashboardCommandHeader
