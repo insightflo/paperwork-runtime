@@ -12,12 +12,18 @@ import {
   missions,
   type Db,
 } from "@paperclipai/db";
-import { notFound } from "../../errors.js";
+import { badRequest, notFound } from "../../errors.js";
+import { logger } from "../../middleware/logger.js";
 import { compileMissionViaRust, lintNodesViaRust } from "./kb-core-client.js";
 import { upsertKbNode } from "./kb-nodes.js";
 import { resolveAgentKbTocBriefing } from "../heartbeat-workflow-knowledge-context.js";
 
 const DEFAULT_KB_NAME = "Company Knowledge Base";
+const MAX_LINT_NODES = 1000;
+
+function normalizeKbSlug(raw: string): string {
+  return raw.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+}
 
 /** 회사 기본 온톨로지 KB를 보장하고 활성 에이전트 전원에게 읽기 권한(agent_kb_grants)을 멱등 부여한다. */
 export async function ensureDefaultCompanyKb(
@@ -27,7 +33,7 @@ export async function ensureDefaultCompanyKb(
   const [existing] = await db
     .select({ id: knowledgeBases.id, name: knowledgeBases.name })
     .from(knowledgeBases)
-    .where(eq(knowledgeBases.companyId, input.companyId))
+    .where(and(eq(knowledgeBases.companyId, input.companyId), eq(knowledgeBases.type, "ontology")))
     .orderBy(asc(knowledgeBases.createdAt))
     .limit(1);
 
@@ -52,10 +58,10 @@ export async function ensureDefaultCompanyKb(
       const [fallback] = await db
         .select({ id: knowledgeBases.id, name: knowledgeBases.name })
         .from(knowledgeBases)
-        .where(eq(knowledgeBases.companyId, input.companyId))
+        .where(and(eq(knowledgeBases.companyId, input.companyId), eq(knowledgeBases.type, "ontology")))
         .orderBy(asc(knowledgeBases.createdAt))
         .limit(1);
-      if (!fallback) throw notFound("Unable to resolve company knowledge base");
+      if (!fallback) throw notFound("Unable to resolve company ontology knowledge base");
       kb = fallback;
     }
   }
@@ -85,18 +91,14 @@ export async function compileCompletedMissionToKb(
   input: { companyId: string; missionId: string; kbId?: string; actorId: string },
 ) {
   const [mission] = await db
-    .select({
-      id: missions.id,
-      title: missions.title,
-      description: missions.description,
-      status: missions.status,
-      completedAt: missions.completedAt,
-      updatedAt: missions.updatedAt,
-    })
+    .select({ id: missions.id, title: missions.title, description: missions.description, status: missions.status, completedAt: missions.completedAt, updatedAt: missions.updatedAt })
     .from(missions)
     .where(and(eq(missions.id, input.missionId), eq(missions.companyId, input.companyId)))
     .limit(1);
   if (!mission) throw notFound("Mission not found in company");
+  if (mission.status !== "completed") {
+    throw badRequest(`Only completed missions can be compiled to KB (current status: ${mission.status})`);
+  }
 
   const targetKb = input.kbId
     ? await db
@@ -156,14 +158,15 @@ export async function compileCompletedMissionToKb(
     })),
   });
 
-  // 공인(certified=true) 노드는 자동 컴파일로 덮어쓰지 않는다.
+  // 공인(certified=true) 노드는 자동 컴파일로 덮어쓰지 않는다(upsertKbNode와 동일한 정규화 슬러그로 조회).
+  const normalizedSlug = normalizeKbSlug(compiled.slug);
   const [existingSlug] = await db
     .select()
     .from(knowledgeNodes)
     .where(and(
       eq(knowledgeNodes.companyId, input.companyId),
       eq(knowledgeNodes.kbId, targetKb.id),
-      eq(knowledgeNodes.slug, compiled.slug),
+      eq(knowledgeNodes.slug, normalizedSlug),
     ))
     .limit(1);
   if (existingSlug?.certified) {
@@ -192,7 +195,7 @@ export async function runCompanyKbLint(
   db: Db,
   input: { companyId: string; staleDays?: number; autoRetire?: boolean; actorId: string },
 ) {
-  const rows = await db
+  const rawRows = await db
     .select({
       id: knowledgeNodes.id,
       kbId: knowledgeNodes.kbId,
@@ -204,7 +207,12 @@ export async function runCompanyKbLint(
       updatedAt: knowledgeNodes.updatedAt,
     })
     .from(knowledgeNodes)
-    .where(eq(knowledgeNodes.companyId, input.companyId));
+    .where(eq(knowledgeNodes.companyId, input.companyId))
+    .orderBy(desc(knowledgeNodes.updatedAt))
+    .limit(MAX_LINT_NODES + 1);
+
+  const truncated = rawRows.length > MAX_LINT_NODES;
+  const rows = rawRows.slice(0, MAX_LINT_NODES);
 
   const linted = await lintNodesViaRust({
     schemaVersion: 1,
@@ -253,6 +261,7 @@ export async function runCompanyKbLint(
 
   return {
     scannedCount: rows.length,
+    truncated,
     findings: linted.findings,
     staleRetireCandidateIds: linted.staleRetireCandidateIds,
     retiredIds,
@@ -278,7 +287,8 @@ export async function applyWorkflowAndAgentKbContext(
     const briefing = await resolver({ db, companyId, agentId });
     if (briefing) context.paperclipAgentKbToc = briefing;
     else delete context.paperclipAgentKbToc;
-  } catch {
+  } catch (err) {
+    logger.warn({ err, companyId, agentId }, "non-blocking agent KB TOC briefing failed");
     delete context.paperclipAgentKbToc;
   }
 }
