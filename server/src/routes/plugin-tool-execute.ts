@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Request, Response, Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { eq } from "drizzle-orm";
 import { heartbeatRuns, type Db } from "@paperclipai/db";
 import type { ToolRunContext } from "@paperclipai/plugin-sdk";
@@ -10,7 +10,7 @@ import {
 } from "../services/plugin-tool-execution-receipt.js";
 import { finalizeHttpCoreResponse, isPositiveHttpDeferral } from "../services/http-core-response-finalization.js";
 import type { RuntimeExecutionIdentity } from "../services/runtime-execution-lifecycle.js";
-import type { createPluginToolHttpConsumer } from "../services/plugin-tool-http-consumer.js";
+import { createPluginToolHttpConsumer } from "../services/plugin-tool-http-consumer.js";
 import { executePluginCoreToolCall } from "../services/workflow/plugin-core-tool-call.js";
 import { listWorkflowToolCatalog } from "../services/workflow/tool-catalog.js";
 import { authorizeRunToolExecution } from "../services/workflow/plugin-tool-authorization.js";
@@ -48,26 +48,13 @@ export function registerPluginToolExecuteRoute(
 ): void {
   const { db, toolDeps, runtimeOptions, executePluginToolHttp } = ctx;
   /**
-   * POST /api/plugins/tools/execute
-   *
-   * Execute a plugin-contributed tool by its namespaced name.
-   *
-   * This is the primary endpoint used by the agent service to invoke
-   * plugin tools during an agent run.
-   *
-   * Request body:
-   * - `tool`: Fully namespaced tool name (e.g., "acme.linear:search-issues")
-   * - `parameters`: Parameters matching the tool's declared JSON Schema
-   * - `runContext`: Agent run context with agentId, runId, companyId, and optional projectId
-   * - `idempotencyKey`: Optional stable effect key — retries replay a completed response; during a provisional worker timeout they receive 409 until the actual result is durable, then replay that result
-   *
-   * Response: `ToolExecutionResult`
-   * Errors:
-   * - 400 if request validation fails
-   * - 404 if tool is not found
-   * - 409 if an execution with the same idempotency key is already in progress
-   * - 501 if tool dispatcher is not configured
-   * - 502 if the plugin worker is unavailable or the RPC call fails
+   * POST /api/plugins/tools/execute — execute a plugin-contributed tool by its
+   * namespaced name; the primary endpoint the agent service uses to invoke
+   * plugin tools during an agent run. Body: `tool`, `parameters`, `runContext`
+   * (agentId, runId, companyId, optional projectId), `idempotencyKey` (retries
+   * replay the durable response; 409 while a provisional result is in flight).
+   * Response `ToolExecutionResult`. Errors: 400 validation, 404 tool not found,
+   * 409 in progress, 501 dispatch disabled, 502 worker/RPC failure.
    */
   const executePluginToolHandler = async (req: Request, res: Response) => {
     const body = (req.body as PluginToolExecuteRequest | undefined);
@@ -296,4 +283,18 @@ export function registerPluginToolExecuteRoute(
     "/plugins/tools/execute",
     runtimeOptions ? runtimeOptions.lifetime.wrapTerminal(executePluginToolHandler) : executePluginToolHandler,
   );
+}
+
+/** Standalone router owning POST /plugins/tools/execute; mounted before pluginRoutes (which skips it). */
+export function pluginToolExecuteRoutes(
+  db: Db,
+  toolDeps?: PluginRouteToolDeps,
+  runtimeOptions?: PluginRouteRuntimeOptions,
+): Router {
+  const router = Router();
+  const executePluginToolHttp = toolDeps
+    ? createPluginToolHttpConsumer({ db, dispatcher: toolDeps.toolDispatcher })
+    : null;
+  registerPluginToolExecuteRoute(router, { db, toolDeps, runtimeOptions, executePluginToolHttp });
+  return router;
 }
