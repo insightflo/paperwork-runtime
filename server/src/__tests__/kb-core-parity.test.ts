@@ -8,6 +8,7 @@ import {
   scoreNodesViaRust,
 } from "../services/knowledge/kb-core-client.js";
 import { applyWorkflowAndAgentKbContext } from "../services/knowledge/kb-auto-compile.js";
+import { upsertKbNode } from "../services/knowledge/kb-nodes.js";
 import { buildMissionPlanningDescription } from "../services/missions/mission-planning-description.js";
 import { buildRevisionMissionPlanningDescription } from "../services/missions/mission-revision-planning.js";
 
@@ -208,5 +209,86 @@ describe("kb-core TS fallback & heartbeat TOC attachment", () => {
       companyId: "c1", missionId: "m1", title: "T", description: null, runnableRosterLines: [],
     });
     expect(failedOpen).not.toContain("## Company domain knowledge (KB L0 TOC)");
+  });
+});
+
+describe("upsertKbNode certified-preservation & conflict/delete concurrency", () => {
+  function makeUpsertDb(opts: {
+    insertReturns: Array<Array<Record<string, unknown>>>;
+    forUpdateReturns: Array<Array<Record<string, unknown>>>;
+    updateReturns?: Array<Array<Record<string, unknown>>>;
+  }) {
+    let insertIdx = 0;
+    let forUpdateIdx = 0;
+    let updateIdx = 0;
+    let updateCalls = 0;
+    let activityCalls = 0;
+    const setPayloads: Array<Record<string, unknown>> = [];
+
+    const tx = {
+      select: () => {
+        let locked = false;
+        const chain = {
+          from: () => chain,
+          where: () => chain,
+          for: () => { locked = true; return chain; },
+          limit: async () => (locked ? (opts.forUpdateReturns[forUpdateIdx++] ?? []) : [{ id: "kb-1" }]),
+        };
+        return chain;
+      },
+      insert: () => ({
+        values: () => ({
+          onConflictDoNothing: () => ({
+            returning: async () => opts.insertReturns[insertIdx++] ?? [],
+          }),
+          then: (resolve: (v: unknown) => void) => { activityCalls += 1; resolve(undefined); },
+        }),
+      }),
+      update: () => ({
+        set: (payload: Record<string, unknown>) => {
+          updateCalls += 1;
+          setPayloads.push(payload);
+          return {
+            where: () => ({
+              returning: async () => opts.updateReturns?.[updateIdx++] ?? [],
+            }),
+          };
+        },
+      }),
+    };
+    const db = { transaction: async <T>(fn: (t: typeof tx) => Promise<T>) => fn(tx) } as never;
+    return { db, getStats: () => ({ updateCalls, activityCalls, setPayloads }) };
+  }
+
+  it("skips update atomically when insert conflicts with an existing certified=true node under preserveCertified", async () => {
+    const certifiedNode = { id: "n1", companyId: "c1", kbId: "kb-1", slug: "canon-r1", title: "Certified", certified: true };
+    const { db, getStats } = makeUpsertDb({ insertReturns: [[]], forUpdateReturns: [[certifiedNode]] });
+    const res = await upsertKbNode(db, {
+      companyId: "c1", kbId: "kb-1", slug: "canon-r1", title: "Overwrite attempt", certified: false, preserveCertified: true, actorId: "sys",
+    });
+    expect(res).toEqual({ node: certifiedNode, created: false, skippedCertified: true });
+    expect(getStats().updateCalls).toBe(0);
+    expect(getStats().activityCalls).toBe(0);
+  });
+
+  it("preserves existing certified=true when input.certified is omitted", async () => {
+    const existing = { id: "n1", companyId: "c1", kbId: "kb-1", slug: "s1", title: "Old", certified: true };
+    const updated = { ...existing, title: "New" };
+    const { db, getStats } = makeUpsertDb({ insertReturns: [[]], forUpdateReturns: [[existing]], updateReturns: [[updated]] });
+    const res = await upsertKbNode(db, { companyId: "c1", kbId: "kb-1", slug: "s1", title: "New", actorId: "u1" });
+    expect(res).toEqual({ node: updated, created: false, skippedCertified: false });
+    expect(getStats().setPayloads[0]?.certified).toBe(true);
+  });
+
+  it("retries once on concurrent delete after conflict and throws 409 conflict if retries exhaust", async () => {
+    const created = { id: "n2", companyId: "c1", kbId: "kb-1", slug: "s2", title: "Recovered", certified: false };
+    const recovered = makeUpsertDb({ insertReturns: [[], [created]], forUpdateReturns: [[]] });
+    const ok = await upsertKbNode(recovered.db, { companyId: "c1", kbId: "kb-1", slug: "s2", title: "Recovered", actorId: "u1" });
+    expect(ok).toEqual({ node: created, created: true, skippedCertified: false });
+
+    const exhausted = makeUpsertDb({ insertReturns: [[], []], forUpdateReturns: [[], []] });
+    await expect(
+      upsertKbNode(exhausted.db, { companyId: "c1", kbId: "kb-1", slug: "s2", title: "Lost", actorId: "u1" }),
+    ).rejects.toThrow(/Concurrent knowledge node deletion/);
   });
 });

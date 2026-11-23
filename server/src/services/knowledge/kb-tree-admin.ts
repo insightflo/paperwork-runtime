@@ -187,22 +187,9 @@ export async function syncPromotedCanonToKb(
     })).node.id;
 
     const slug = canonNodeSlugFor(input.code);
-    const [existingChild] = await db
-      .select({ certified: knowledgeNodes.certified })
-      .from(knowledgeNodes)
-      .where(and(
-        eq(knowledgeNodes.companyId, input.companyId),
-        eq(knowledgeNodes.kbId, kb.id),
-        eq(knowledgeNodes.slug, slug),
-      ))
-      .limit(1);
-    if (existingChild?.certified) {
-      return { synced: false, skippedCertified: true };
-    }
-
     const lines = [`# ${input.title}`, "", input.summary];
     if (input.whatWorked?.trim()) lines.push("", "## 적용 기준", `- ${input.whatWorked.trim()}`);
-    await upsertKbNode(db, {
+    const out = await upsertKbNode(db, {
       companyId: input.companyId,
       kbId: kb.id,
       parentId: rootId,
@@ -212,11 +199,12 @@ export async function syncPromotedCanonToKb(
       content: lines.join("\n"),
       nodeType: "policy",
       certified: false,
+      preserveCertified: true,
       tags: Array.from(new Set(["quality-rsi", "canon", ...(input.tags ?? [])])).slice(0, 8),
       sourceRefs: [{ type: "manual", id: input.patternId, label: input.title, updatedAt: new Date().toISOString() }],
       actorId: "system:quality-rsi",
     });
-    return { synced: true };
+    return out.skippedCertified ? { synced: false, skippedCertified: true } : { synced: true };
   } catch (err) {
     logger.warn({ err, companyId: input.companyId, patternId: input.patternId }, "non-blocking Quality RSI canon KB sync failed");
     return { synced: false };
