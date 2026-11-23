@@ -146,8 +146,8 @@ pub fn stage_and_activate_with_hook(root: &Path, provider: ProviderId, version: 
         drop(ij);
         hook()?;
         Ok(rec)
-    })().map_err(|e| { unlink_at(&sdir, &leaf, 0); unlink_at(&sdir, "install.json", 0); unlink_at(&staging, &sname, libc::AT_REMOVEDIR); e })?;
-    rename_at(&staging, &sname, &versions, &sname).map_err(|e| { unlink_at(&staging, &sname, libc::AT_REMOVEDIR); e })?;
+    })().inspect_err(|_| { unlink_at(&sdir, &leaf, 0); unlink_at(&sdir, "install.json", 0); unlink_at(&staging, &sname, libc::AT_REMOVEDIR); })?;
+    rename_at(&staging, &sname, &versions, &sname).inspect_err(|_| { unlink_at(&staging, &sname, libc::AT_REMOVEDIR); })?;
     fsync_dir(&versions);
     let tmp = format!(".current.{n}.tmp");
     (|| -> io::Result<()> {
@@ -158,7 +158,7 @@ pub fn stage_and_activate_with_hook(root: &Path, provider: ProviderId, version: 
         rename_at(&prov, &tmp, &prov, "current.json")?;
         fsync_dir(&prov);
         Ok(())
-    })().map_err(|e| { unlink_at(&prov, &tmp, 0); unlink_at(&sdir, &leaf, 0); unlink_at(&sdir, "install.json", 0); unlink_at(&versions, &sname, libc::AT_REMOVEDIR); e })?;
+    })().inspect_err(|_| { unlink_at(&prov, &tmp, 0); unlink_at(&sdir, &leaf, 0); unlink_at(&sdir, "install.json", 0); unlink_at(&versions, &sname, libc::AT_REMOVEDIR); })?;
     Ok(pre)
 }
 fn read_current(prov: &OwnedFd) -> io::Result<Option<CurrentPointer>> {
