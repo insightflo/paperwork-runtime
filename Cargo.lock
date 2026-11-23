@@ -725,11 +725,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "paperclip-ops-control"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "paperclip-portability-yaml"
 version = "0.1.0"
 dependencies = [
  "icu_collator",
  "icu_locale_core",
+ "serde_json",
+]
+
+[[package]]
+name = "paperclip-provider-auth-core"
+version = "0.1.0"
+dependencies = [
+ "paperclip-provider-runtime-core",
+ "serde",
  "serde_json",
 ]
 
@@ -752,6 +771,14 @@ dependencies = [
  "libc",
  "serde_json",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "paperclip-quota-router"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
