@@ -16,8 +16,11 @@ const N_OTHER_KB = "30000000-0000-4000-8000-000000000003";
 const N_BAD_CO = "30000000-0000-4000-8000-000000000004";
 const N_UPG_CHILD = "30000000-0000-4000-8000-000000000005";
 const N_UPG_OTHER = "30000000-0000-4000-8000-000000000006";
+const N_0137_PARENT = "30000000-0000-4000-8000-000000000007";
+const N_0137_CHILD = "30000000-0000-4000-8000-000000000008";
+const N_0137_BAD = "30000000-0000-4000-8000-000000000009";
 
-describe("migration 0136 knowledge_nodes composite FK & FTS GIN constraints", () => {
+describe("migrations 0136-0137 knowledge_nodes composite FK, legacy FK drop & FTS GIN constraints", () => {
   let database: EmbeddedPostgresTestDatabase;
   let sql: ReturnType<typeof postgres>;
 
@@ -102,5 +105,45 @@ describe("migration 0136 knowledge_nodes composite FK & FTS GIN constraints", ()
       "knowledge_nodes_company_kb_fk",
       "knowledge_nodes_parent_same_kb_fk",
     ]);
+  });
+
+  it("0137 drops legacy auto-named *_fkey FKs idempotently and keeps composite FKs enforced", async () => {
+    // Simulate a real post-0136 state: the journaled 0135 file used inline REFERENCES, so
+    // Postgres auto-named its single-column FKs "*_fkey" — names 0136 never dropped.
+    await sql`ALTER TABLE knowledge_nodes ADD CONSTRAINT knowledge_nodes_kb_id_fkey FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE`;
+    await sql`ALTER TABLE knowledge_nodes ADD CONSTRAINT knowledge_nodes_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES knowledge_nodes(id) ON DELETE SET NULL`;
+    const sql0137 = await readFile(new URL("./migrations/0137_drop_legacy_knowledge_nodes_fks.sql", import.meta.url));
+    const hash0137 = createHash("sha256").update(sql0137).digest("hex");
+
+    const knowledgeNodeFkNames = async () =>
+      (
+        await sql<{ conname: string }[]>`
+          SELECT conname FROM pg_constraint
+          WHERE conrelid = 'public.knowledge_nodes'::regclass
+            AND conname IN ('knowledge_nodes_kb_id_fkey', 'knowledge_nodes_parent_id_fkey', 'knowledge_nodes_company_kb_fk', 'knowledge_nodes_parent_same_kb_fk')
+          ORDER BY conname
+        `
+      ).map((r) => r.conname);
+
+    // First run via the real migration path, then an idempotent re-run of the same file.
+    for (let run = 0; run < 2; run++) {
+      await sql`DELETE FROM drizzle.__drizzle_migrations WHERE hash = ${hash0137}`;
+      await applyPendingMigrations(database.connectionString);
+      expect(await knowledgeNodeFkNames()).toEqual([
+        "knowledge_nodes_company_kb_fk",
+        "knowledge_nodes_parent_same_kb_fk",
+      ]);
+    }
+
+    // Composite FKs still enforced after the legacy drops.
+    await expect(sql`
+      INSERT INTO knowledge_nodes (id, company_id, kb_id, slug, title)
+      VALUES (${N_0137_BAD}, ${C1}, ${KB3}, 'bad-0137', 'Bad 0137')
+    `).rejects.toThrow(/knowledge_nodes_company_kb_fk|foreign key/i);
+    await sql`INSERT INTO knowledge_nodes (id, company_id, kb_id, slug, title) VALUES (${N_0137_PARENT}, ${C1}, ${KB1}, 'p0137', 'Parent 0137')`;
+    await sql`INSERT INTO knowledge_nodes (id, company_id, kb_id, parent_id, slug, title) VALUES (${N_0137_CHILD}, ${C1}, ${KB1}, ${N_0137_PARENT}, 'c0137', 'Child 0137')`;
+    await expect(sql`
+      UPDATE knowledge_nodes SET parent_id = ${N_OTHER_KB} WHERE id = ${N_0137_CHILD}
+    `).rejects.toThrow(/knowledge_nodes_parent_same_kb_fk|foreign key/i);
   });
 });

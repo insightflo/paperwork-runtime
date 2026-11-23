@@ -1,0 +1,5 @@
+# Local env files copied into new git worktrees by the worktree bootstrap.
+# Copy uses COPYFILE_EXCL: existing files are never overwritten, so bootstrapping
+# is non-destructive and safe to re-run.
+.env
+.env.local

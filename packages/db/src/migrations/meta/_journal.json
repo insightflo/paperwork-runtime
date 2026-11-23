@@ -953,6 +953,13 @@
       "when": 1795370400000,
       "tag": "0136_knowledge_nodes_constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1795377600000,
+      "tag": "0137_drop_legacy_knowledge_nodes_fks",
+      "breakpoints": true
     }
   ]
 }
