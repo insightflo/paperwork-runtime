@@ -16,7 +16,6 @@ import type {
   PiCliProviderStatus,
   PiCliStatusSnapshot,
 } from "@paperclipai/shared/types/instance";
-import { resetAntigravityModelsCacheForTests } from "../adapters/antigravity-models.js";
 import { resetClaudeModelsCacheForTests } from "../adapters/claude-models.js";
 import { resetCodexModelsCacheForTests } from "../adapters/codex-models.js";
 import { resetCursorModelsCacheForTests } from "../adapters/cursor-models.js";
@@ -73,7 +72,6 @@ function flushAllAdapterModelCaches(): void {
   resetCommandCodeModelsCacheForTests();
   resetCodexModelsCacheForTests();
   resetClaudeModelsCacheForTests();
-  resetAntigravityModelsCacheForTests();
   resetHermesModelsCacheForTests();
   resetCursorModelsCacheForTests();
   resetGeminiModelsCacheForTests();

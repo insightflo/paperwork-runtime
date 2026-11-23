@@ -1,6 +1,5 @@
 import type { UIAdapterModule } from "./types";
 import { claudeLocalUIAdapter } from "./claude-local";
-import { antigravityLocalUIAdapter } from "./antigravity-local";
 import { codexLocalUIAdapter } from "./codex-local";
 import { cursorLocalUIAdapter } from "./cursor";
 import { geminiLocalUIAdapter } from "./gemini-local";
@@ -8,21 +7,18 @@ import { openCodeLocalUIAdapter } from "./opencode-local";
 import { piLocalUIAdapter } from "./pi-local";
 import { commandCodeLocalUIAdapter } from "./commandcode-local";
 import { hermesLocalUIAdapter } from "./hermes-local";
-import { openClawGatewayUIAdapter } from "./openclaw-gateway";
 import { processUIAdapter } from "./process";
 import { httpUIAdapter } from "./http";
 
 const uiAdapters: UIAdapterModule[] = [
   claudeLocalUIAdapter,
   codexLocalUIAdapter,
-  antigravityLocalUIAdapter,
   geminiLocalUIAdapter,
   openCodeLocalUIAdapter,
   piLocalUIAdapter,
   commandCodeLocalUIAdapter,
   hermesLocalUIAdapter,
   cursorLocalUIAdapter,
-  openClawGatewayUIAdapter,
   processUIAdapter,
   httpUIAdapter,
 ];
