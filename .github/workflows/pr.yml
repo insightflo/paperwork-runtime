@@ -16,6 +16,9 @@ on:
         options: [policy, full]
         default: policy
 
+# 최소 권한 기본값 — 잡별 permissions 를 명시하지 않은 잡은 읽기 전용 토큰만 받는다.
+permissions: { contents: read }
+
 concurrency:
   group: pr-${{ github.event.pull_request.number || github.ref }}-${{ ((github.event_name == 'pull_request' && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full'))) || (github.event_name == 'workflow_dispatch' && inputs.scope == 'full')) && format('full-{0}-{1}', github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha || 'dispatch') || 'fast' }}
   cancel-in-progress: true
@@ -95,7 +98,8 @@ jobs:
           else echo "::warning::PR head moved since event; keeping label $EVENT_LABEL"; fi
       - name: Skip heavy checks
         if: steps.finalize.outputs.heavy != 'true'
-        run: echo "경량 검사 생략 — reason=${{ steps.scope.outputs.reason }}"
+        env: { REASON: "${{ steps.scope.outputs.reason }}" }
+        run: echo "경량 검사 생략 — reason=$REASON"
       - name: Block manual lockfile edits
         if: steps.finalize.outputs.heavy == 'true' && github.event_name == 'pull_request' && github.head_ref != 'chore/refresh-lockfile'
         run: |
@@ -157,7 +161,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - run: 'echo "documentation-only change: full suite intentionally skipped (reason=${{ needs.policy.outputs.reason }})"'
+      - env: { REASON: "${{ needs.policy.outputs.reason }}" }
+        run: 'echo "documentation-only change: full suite intentionally skipped (reason=$REASON)"'
   # 아래 네 잡+게이트는 전체 스위트 — policy.outputs.full 또는 fork PR 의 full 트리거 이벤트에서만 실행
   # (fork 의 ci-scope.sh 는 신뢰할 수 없어 이벤트 자체로도 켠다).
   verify:
