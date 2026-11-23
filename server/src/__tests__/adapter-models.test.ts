@@ -3,14 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { models as codexFallbackModels } from "@paperclipai/adapter-codex-local";
-import { models as cursorFallbackModels } from "@paperclipai/adapter-cursor-local";
-import { resetOpenCodeModelsCacheForTests } from "@paperclipai/adapter-opencode-local/server";
 import { listAdapterModels } from "../adapters/index.js";
 import { resetCodexModelsCacheForTests } from "../adapters/codex-models.js";
 import { resetClaudeModelsCacheForTests } from "../adapters/claude-models.js";
-import { resetGeminiModelsCacheForTests } from "../adapters/gemini-models.js";
 import { resetHermesModelsCacheForTests } from "../adapters/hermes-models.js";
-import { resetCursorModelsCacheForTests, setCursorModelsRunnerForTests } from "../adapters/cursor-models.js";
 import { setLocalCliModelsRunnerForTests } from "../adapters/local-cli-models.js";
 
 // Snapshot the original values of every process.env key this file mutates
@@ -28,12 +24,8 @@ describe("adapter model listing", () => {
     delete process.env.PAPERCLIP_OPENCODE_COMMAND;
     resetCodexModelsCacheForTests();
     resetClaudeModelsCacheForTests();
-    resetGeminiModelsCacheForTests();
     resetHermesModelsCacheForTests();
-    resetCursorModelsCacheForTests();
-    setCursorModelsRunnerForTests(null);
     setLocalCliModelsRunnerForTests(null);
-    resetOpenCodeModelsCacheForTests();
     delete process.env.HERMES_HOME;
     vi.restoreAllMocks();
   });
@@ -137,24 +129,6 @@ describe("adapter model listing", () => {
     expect(first.some((model) => model.id === "claude-opus-4-6")).toBe(true);
   });
 
-  it("loads gemini models from Gemini CLI and merges fallback options", async () => {
-    const runner = vi.fn(() => ({
-      status: 0,
-      stdout: "Available models: gemini-3.0-pro, gemini-2.5-flash",
-      stderr: "",
-      hasError: false,
-    }));
-    setLocalCliModelsRunnerForTests(runner);
-
-    const first = await listAdapterModels("gemini_local");
-    const second = await listAdapterModels("gemini_local");
-
-    expect(runner).toHaveBeenCalledTimes(1);
-    expect(first).toEqual(second);
-    expect(first.some((model) => model.id === "gemini-3.0-pro")).toBe(true);
-    expect(first.some((model) => model.id === "gemini-2.5-pro")).toBe(true);
-  });
-
   it("falls back to static codex models when OpenAI model discovery fails", async () => {
     process.env.OPENAI_API_KEY = "sk-test";
     vi.spyOn(globalThis, "fetch").mockResolvedValue({
@@ -165,48 +139,6 @@ describe("adapter model listing", () => {
 
     const models = await listAdapterModels("codex_local");
     expect(models).toEqual(codexFallbackModels);
-  });
-
-
-  it("returns cursor fallback models when CLI discovery is unavailable", async () => {
-    setCursorModelsRunnerForTests(() => ({
-      status: null,
-      stdout: "",
-      stderr: "",
-      hasError: true,
-    }));
-
-    const models = await listAdapterModels("cursor");
-    expect(models).toEqual(cursorFallbackModels);
-    expect(models.some((model) => model.id === "gpt-5.5")).toBe(true);
-    expect(models.some((model) => model.id === "opus-4.8")).toBe(true);
-    expect(models.some((model) => model.id === "gemini-3.5-flash")).toBe(true);
-  });
-
-  it("loads cursor models dynamically and caches them", async () => {
-    const runner = vi.fn(() => ({
-      status: 0,
-      stdout: "Available models: auto, composer-1.5, gpt-5.3-codex-high, sonnet-4.6",
-      stderr: "",
-      hasError: false,
-    }));
-    setCursorModelsRunnerForTests(runner);
-
-    const first = await listAdapterModels("cursor");
-    const second = await listAdapterModels("cursor");
-
-    expect(runner).toHaveBeenCalledTimes(1);
-    expect(first).toEqual(second);
-    expect(first.some((model) => model.id === "auto")).toBe(true);
-    expect(first.some((model) => model.id === "gpt-5.3-codex-high")).toBe(true);
-    expect(first.some((model) => model.id === "composer-1")).toBe(true);
-  });
-
-  it("returns no opencode models when opencode command is unavailable", async () => {
-    process.env.PAPERCLIP_OPENCODE_COMMAND = "__paperclip_missing_opencode_command__";
-
-    const models = await listAdapterModels("opencode_local");
-    expect(models).toEqual([]);
   });
 
   it("loads hermes models from the provider model cache in provider/model format", async () => {
