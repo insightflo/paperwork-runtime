@@ -17,18 +17,16 @@ export const HERMES_PANEL_MEMORY_KEY = "paperclip.hermesPanelOpen";
 const LazyHermesChatPanel = lazy(async () => ({ default: (await import("./HermesChatPanel")).HermesChatPanel }));
 const LazyNewIssueDialog = lazy(async () => ({ default: (await import("./NewIssueDialog")).NewIssueDialog }));
 const LazyNewProjectDialog = lazy(async () => ({ default: (await import("./NewProjectDialog")).NewProjectDialog }));
-const LazyNewGoalDialog = lazy(async () => ({ default: (await import("./NewGoalDialog")).NewGoalDialog }));
 const LazyNewMissionDialog = lazy(async () => ({ default: (await import("./NewMissionDialog")).NewMissionDialog }));
 const LazyNewAgentDialog = lazy(async () => ({ default: (await import("./NewAgentDialog")).NewAgentDialog }));
 
 export function DialogMounts() {
-  const { newIssueOpen, newProjectOpen, newGoalOpen, newMissionOpen, newAgentOpen } = useDialog();
-  if (!newIssueOpen && !newProjectOpen && !newGoalOpen && !newMissionOpen && !newAgentOpen) return null;
+  const { newIssueOpen, newProjectOpen, newMissionOpen, newAgentOpen } = useDialog();
+  if (!newIssueOpen && !newProjectOpen && !newMissionOpen && !newAgentOpen) return null;
   return (
     <Suspense fallback={null}>
       {newIssueOpen && <LazyNewIssueDialog />}
       {newProjectOpen && <LazyNewProjectDialog />}
-      {newGoalOpen && <LazyNewGoalDialog />}
       {newMissionOpen && <LazyNewMissionDialog />}
       {newAgentOpen && <LazyNewAgentDialog />}
     </Suspense>

@@ -13,10 +13,6 @@ interface NewIssueDefaults {
   description?: string;
 }
 
-interface NewGoalDefaults {
-  parentId?: string;
-}
-
 // [수정 요청 미션] 미션 생성 다이얼로그 사전 채움 값 — MissionDetail의 수정 요청 버튼이 사용.
 interface NewMissionDefaults extends MissionRevisionSourceInput {
   title?: string;
@@ -37,10 +33,6 @@ interface DialogContextValue {
   newProjectOpen: boolean;
   openNewProject: () => void;
   closeNewProject: () => void;
-  newGoalOpen: boolean;
-  newGoalDefaults: NewGoalDefaults;
-  openNewGoal: (defaults?: NewGoalDefaults) => void;
-  closeNewGoal: () => void;
   newMissionOpen: boolean;
   newMissionDefaults: NewMissionDefaults;
   openNewMission: (defaults?: NewMissionDefaults) => void;
@@ -60,8 +52,6 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   const [newIssueOpen, setNewIssueOpen] = useState(false);
   const [newIssueDefaults, setNewIssueDefaults] = useState<NewIssueDefaults>({});
   const [newProjectOpen, setNewProjectOpen] = useState(false);
-  const [newGoalOpen, setNewGoalOpen] = useState(false);
-  const [newGoalDefaults, setNewGoalDefaults] = useState<NewGoalDefaults>({});
   const [newMissionOpen, setNewMissionOpen] = useState(false);
   const [newMissionDefaults, setNewMissionDefaults] = useState<NewMissionDefaults>({});
   const [newAgentOpen, setNewAgentOpen] = useState(false);
@@ -84,16 +74,6 @@ export function DialogProvider({ children }: { children: ReactNode }) {
 
   const closeNewProject = useCallback(() => {
     setNewProjectOpen(false);
-  }, []);
-
-  const openNewGoal = useCallback((defaults: NewGoalDefaults = {}) => {
-    setNewGoalDefaults(defaults);
-    setNewGoalOpen(true);
-  }, []);
-
-  const closeNewGoal = useCallback(() => {
-    setNewGoalOpen(false);
-    setNewGoalDefaults({});
   }, []);
 
   // [수정 요청 미션] 원본 미션 맥락(제목/설명/오너)을 사전 채움 — openNewIssue(defaults) 패턴과 동일.
@@ -135,10 +115,6 @@ export function DialogProvider({ children }: { children: ReactNode }) {
         newProjectOpen,
         openNewProject,
         closeNewProject,
-        newGoalOpen,
-        newGoalDefaults,
-        openNewGoal,
-        closeNewGoal,
         newMissionOpen,
         newMissionDefaults,
         openNewMission,
