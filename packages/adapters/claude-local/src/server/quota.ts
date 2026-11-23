@@ -455,7 +455,7 @@ export async function captureClaudeCliUsageText(timeoutMs = 12_000): Promise<str
     timeout: clampedTimeoutMs + 5_000,
     maxBuffer: 4 * 1024 * 1024,
   }).catch((error: Error & { stderr?: unknown }) => {
-    const detail = cleanTerminalText(String(error.stderr ?? "")).trim().slice(0, 500) || error.message;
+    const detail = cleanTerminalText(String(error.stderr ?? "")).trim().slice(0, 500) || error.message.trim().slice(0, 500);
     throw new Error(`Claude quota PTY probe failed: ${detail}`);
   });
   const result = parseClaudeQuotaPtyOutput(stdout);

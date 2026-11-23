@@ -140,7 +140,11 @@ export function createPaperworkEngineClient(opts: PaperworkEngineClientOptions =
       resetActive(proc, err("process_exited", "engine exited"));
     };
     for (const ev of ["exit", "close"] as const) proc.once(ev, gone);
-    proc.on("error", (e: NodeJS.ErrnoException) => resetActive(proc, err("process_exited", `engine process error: ${e.code ?? e.message}`)));
+    proc.on("error", (e: NodeJS.ErrnoException) => {
+      const msg = e.message ?? "";
+      const detail = e.code && msg.includes(e.code) ? msg : [e.code, msg].filter(Boolean).join(": ");
+      resetActive(proc, err("process_exited", detail ? `engine process error: ${detail}` : "engine process error"));
+    });
     proc.stdin?.on("error", () => resetActive(proc, err("process_exited", "stdin error")));
     proc.stdout?.on("end", () => resetActive(proc, err("process_exited", "stdout EOF")));
     proc.stdout?.on("data", (chunk: Buffer) => {
