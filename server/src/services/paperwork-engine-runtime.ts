@@ -78,5 +78,13 @@ export async function runOrderedShutdownSteps(steps: ReadonlyArray<() => Promise
     }
   }
   if (errors.length === 1) throw errors[0];
-  if (errors.length > 1) throw new AggregateError(errors, "Ordered shutdown failed");
+  if (errors.length > 1) {
+    // AggregateError.errors is non-enumerable, so pino's err serializer drops the
+    // individual causes; surface them on an enumerable field that reaches the logs.
+    throw Object.assign(new AggregateError(errors, "Ordered shutdown failed"), {
+      summary: errors.map((e) => {
+        try { return e instanceof Error ? e.message : String(e); } catch { return "[unprintable error]"; }
+      }).join("; "),
+    });
+  }
 }

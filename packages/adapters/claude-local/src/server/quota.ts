@@ -181,14 +181,8 @@ function formatCurrencyAmount(value: number, currency: string | null | undefined
 function formatExtraUsageLabel(extraUsage: AnthropicExtraUsage): string | null {
   const monthlyLimit = extraUsage.monthly_limit;
   const usedCredits = extraUsage.used_credits;
-  if (
-    typeof monthlyLimit !== "number" ||
-    !Number.isFinite(monthlyLimit) ||
-    typeof usedCredits !== "number" ||
-    !Number.isFinite(usedCredits)
-  ) {
-    return null;
-  }
+  if (typeof monthlyLimit !== "number" || !Number.isFinite(monthlyLimit)
+    || typeof usedCredits !== "number" || !Number.isFinite(usedCredits)) return null;
   return `${formatCurrencyAmount(usedCredits, extraUsage.currency)} / ${formatCurrencyAmount(monthlyLimit, extraUsage.currency)}`;
 }
 
@@ -460,10 +454,13 @@ export async function captureClaudeCliUsageText(timeoutMs = 12_000): Promise<str
     env: createClaudeQuotaEnv(),
     timeout: clampedTimeoutMs + 5_000,
     maxBuffer: 4 * 1024 * 1024,
+  }).catch((error: Error & { stderr?: unknown }) => {
+    const detail = cleanTerminalText(String(error.stderr ?? "")).trim().slice(0, 500) || error.message.trim().slice(0, 500);
+    throw new Error(`Claude quota PTY probe failed: ${detail}`);
   });
   const result = parseClaudeQuotaPtyOutput(stdout);
   if (usageOutputLooksComplete(cleanTerminalText(result.output))) return result.output;
-  throw new Error("Claude CLI usage probe ended before rendering usage.");
+  throw new Error(`Claude CLI usage probe ended before rendering usage (timedOut=${result.timedOut}, truncated=${result.truncated}).`);
 }
 
 export async function fetchClaudeCliQuota(): Promise<QuotaWindow[]> {
