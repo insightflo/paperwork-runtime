@@ -8,6 +8,7 @@ node_modules/
 dist/
 *.tsbuildinfo
 .vite/
+/target/
 crates/**/target/
 
 # Build artifacts in server src directories (TypeScript → JS)
