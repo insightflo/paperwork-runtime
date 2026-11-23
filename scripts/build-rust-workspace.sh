@@ -18,6 +18,7 @@ esac
 # compatibility with existing parity tests and A1 systemd PAPERCLIP_*_BIN paths.
 ARTIFACTS=(
   "artifact-io:paperclip-artifact-io"
+  "claude-quota-pty:paperclip-claude-quota-pty"
   "cli-runtime:paperclip-cli-runtime"
   "db-backup:paperclip-db-backup"
   "fs-scan:paperclip-fs-scan"
@@ -26,7 +27,9 @@ ARTIFACTS=(
   "log-redactor:libpaperclip_log_redactor.${CDYLIB_EXT}"
   "mission-core:paperclip-mission-core"
   "ops-control:paperclip-ops-control"
+  "paperwork-engine:paperwork-engine"
   "portability-yaml:paperclip-portability-yaml"
+  "process-supervisor:paperclip-process-supervisor"
   "provider-auth-core:paperclip-provider-auth-core"
   "provider-runtime-core:paperclip-provider-runtime-core"
   "qa-file-owner:paperclip-qa-file-owner"
