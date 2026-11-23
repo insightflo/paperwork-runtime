@@ -744,6 +744,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "paperclip-process-supervisor"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "paperclip-provider-auth-core"
 version = "0.1.0"
 dependencies = [
