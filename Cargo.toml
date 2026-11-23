@@ -10,6 +10,7 @@ members = [
   "crates/log-redactor",
   "crates/mission-core",
   "crates/portability-yaml",
+  "crates/provider-runtime-core",
   "crates/qa-file-owner",
   "crates/run-log",
   "crates/runtime-guard-core",

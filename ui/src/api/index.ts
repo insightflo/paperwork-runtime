@@ -8,8 +8,6 @@ export { projectsApi } from "./projects";
 export { workContextsApi } from "./projects";
 export { issuesApi } from "./issues";
 export { workItemsApi } from "./issues";
-export { routinesApi } from "./routines";
-export { recurringProceduresApi } from "./routines";
 export { executionWorkspacesApi } from "./execution-workspaces";
 export { executionContextsApi } from "./execution-workspaces";
 export { goalsApi } from "./goals";
