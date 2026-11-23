@@ -1,310 +1,308 @@
 name: PR
 
-# [CI-REDUCE 2026-11-13] 실행 횟수를 줄이기 위해 경량 잡 1개(policy, 비드래프트 push 마다 설치·타입체크)와
-#   조건부 전체 스위트(ready_for_review/ci-full 라벨/dispatch scope=full)로 나눈다(드래프트는 라벨 없으면 미실행).
-#   판정은 scripts/ci-scope.sh 소유(행렬 시험: ci-scope-script.test.ts) — `if:` 에 규칙을 복제하지 않는다.
+# [CI-REDUCE 2026-11-13] 경량 잡(policy)+조건부 전체 스위트(ready_for_review/ci-full 라벨/dispatch scope=full).
+# 판정은 scripts/ci-scope.sh 소유(행렬 시험: ci-scope-script.test.ts) — `if:` 에 규칙을 복제하지 않는다.
+# ci-full 은 one-shot: labeled 이벤트만 full 을 켜고 consume_label 로 라벨을 떼낸다.
 on:
   pull_request:
-    branches:
-      - main
-    # labeled 가 없으면 병합 파이프라인이 부착하는 ci-full 라벨로 전체 스위트를 깨울 수 없다.
+    branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
-  # GITHUB_TOKEN 봇 PR은 pull_request 이벤트가 없어 refresh-lockfile.yml 이 이 ref로 직접 dispatch한다
-  # (기본값 policy = 필수 검사만; scope=full 은 사람이 전체 스위트를 수동으로 도는 경로).
+  # GITHUB_TOKEN 봇 PR은 pull_request 이벤트가 없어 refresh-lockfile.yml 이 이 ref로 직접 dispatch한다.
   workflow_dispatch:
     inputs:
       scope:
         description: "policy = 필수 검사만(lockfile 봇 경로), full = 전체 스위트"
         type: choice
-        options:
-          - policy
-          - full
+        options: [policy, full]
         default: policy
 
+# 최소 권한 기본값 — 잡별 permissions 를 명시하지 않은 잡은 읽기 전용 토큰만 받는다.
+permissions: { contents: read }
+
 concurrency:
-  group: pr-${{ github.event.pull_request.number || github.ref }}
+  group: pr-${{ github.event.pull_request.number || github.ref }}-${{ ((github.event_name == 'pull_request' && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full'))) || (github.event_name == 'workflow_dispatch' && inputs.scope == 'full')) && format('full-{0}-{1}', github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha || 'dispatch') || 'fast' }}
   cancel-in-progress: true
 
 jobs:
-  # policy 는 브랜치 보호의 필수 상태 체크다(required_status_checks=[policy]). 이름·id 를 바꾸지 않는다.
+  # policy 는 브랜치 보호의 필수 상태 체크다. 이름·id 를 바꾸지 않는다.
   policy:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions: { contents: read, pull-requests: write, actions: read }
     outputs:
-      heavy: ${{ steps.scope.outputs.heavy }}
-      full: ${{ steps.scope.outputs.full }}
-      docs_only: ${{ steps.scope.outputs.docs_only }}
+      heavy: ${{ steps.finalize.outputs.heavy }}
+      full: ${{ steps.finalize.outputs.full }}
+      docs_only: ${{ steps.finalize.outputs.docs_only }}
       reason: ${{ steps.scope.outputs.reason }}
-
+      reused_full: ${{ steps.finalize.outputs.reused_full }}
+      reused_run_id: ${{ steps.attest.outputs.reused_run_id }}
+      reused_run_attempt: ${{ steps.attest.outputs.reused_run_attempt }}
+      full_bypass: ${{ steps.finalize.outputs.full_bypass }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          # 문서 전용 판정에 merge-base 가 필요하다.
-          fetch-depth: 0
-
-      # PR 변경 목록의 유일한 출처. 아래 검사 스텝들은 다시 git diff 하지 않고 이 파일을 읽는다.
+      - name: Find reusable full-CI attestation
+        id: attest
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}", HEAD_SHA: "${{ github.event.pull_request.head.sha }}", BASE_SHA: "${{ github.event.pull_request.base.sha }}" }
+        run: |
+          cat > "$RUNNER_TEMP/attest.cjs" <<'EOF'
+          const{execFileSync:X}=require("child_process"),fs=require("fs"),{GITHUB_REPOSITORY:G,HEAD_SHA:H,BASE_SHA:B,GITHUB_OUTPUT:O}=process.env;
+          const emit=(k,v)=>{console.log(`${k}=${v}`);if(O)fs.appendFileSync(O,`${k}=${v}\n`)},fin=(ok,i,a)=>{emit("has_valid_attestation",ok);emit("reused_run_id",i||"");emit("reused_run_attempt",a||"")};
+          try{const api=p=>JSON.parse(X("gh",["api",p],{encoding:"utf8",maxBuffer:1<<27})),runs=[];
+          const scan=r=>{const q=`repos/${G}/actions/workflows/pr.yml/runs?head_sha=${H}&event=pull_request&status=completed&per_page=100`+(r?`&created=${r}`:""),f=api(q+"&page=1"),t=f.total_count|0;
+          if(t>=1000){if(!r)return scan("2000-01-01.."+new Date().toISOString());const[a,b]=r.split(".."),m=new Date((+new Date(a)+ +new Date(b))/2).toISOString();
+          if(+new Date(b)- +new Date(a)<2e3)throw Error("runs truncated at "+r);scan(a+".."+m);scan(m+".."+b);return}
+          runs.push(...(f.workflow_runs||[]));for(let p=2;p<=Math.ceil(t/100);p++)runs.push(...api(`${q}&page=${p}`).workflow_runs)};scan("");
+          for(const r of runs){if(r.path!==".github/workflows/pr.yml"||r.event!=="pull_request"||r.head_sha!==H||!r.head_repository||!r.repository||r.head_repository.id!==r.repository.id||r.status!=="completed"||r.conclusion!=="success")continue;
+          const att=r.run_attempt,jobs=api(`repos/${G}/actions/runs/${r.id}/attempts/${att}/jobs?per_page=100`).jobs||[];
+          if(!jobs.some(j=>j.name==="verify-tests-full-gate"&&j.status==="completed"&&j.conclusion==="success"))continue;
+          const a=(api(`repos/${G}/actions/runs/${r.id}/artifacts?per_page=100`).artifacts||[]).find(z=>z.name===`ci-full-attest-${att}-${H}-${B}`&&!z.expired);if(!a)continue;
+          fs.writeFileSync("/tmp/att.zip",X("gh",["api",`repos/${G}/actions/artifacts/${a.id}/zip`],{maxBuffer:1<<27}));
+          let p;try{p=JSON.parse(X("unzip",["-p","/tmp/att.zip","ci-full-attest.json"],{encoding:"utf8"}))}catch(e){continue}
+          if(!p||p.schema_version!==1||String(p.run_id)!==String(r.id)||String(p.attempt)!==String(att)||p.head_sha!==H||p.base_sha!==B)continue;
+          fin("true",r.id,att);process.exit(0)}fin("false")}catch(e){fin("false");console.log("::warning::attestation lookup failed closed: "+e.message)}
+          EOF
+          node "$RUNNER_TEMP/attest.cjs"
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
       - name: Resolve change range
         id: range
         run: |
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          if [ -z "$base" ] || [ -z "$head" ]; then
-            # workflow_dispatch 에는 pull_request 페이로드가 없다.
-            base="$(git rev-parse origin/main)"
-            head="$(git rev-parse HEAD)"
+          base="${{ github.event.pull_request.base.sha }}"; head="${{ github.event.pull_request.head.sha }}"
+          [ -n "$base" ] && [ -n "$head" ] || { base="$(git rev-parse origin/main)"; head="$(git rev-parse HEAD)"; }
+          git diff --name-only "$base...$head" > "$RUNNER_TEMP/changed.txt" 2>/dev/null || git diff --name-only "$base" "$head" > "$RUNNER_TEMP/changed.txt" 2>/dev/null || : > "$RUNNER_TEMP/changed.txt"
+          ok=false
+          if [ "$(git rev-parse --verify -q HEAD^1)" = "$base" ] && [ "$(git rev-parse --verify -q HEAD^2)" = "$head" ]; then
+            git -c core.quotepath=false diff --name-only --no-renames "$base...$head" > "$RUNNER_TEMP/rust-changed.txt" 2>/dev/null && git -c core.quotepath=false diff --name-only --no-renames "$base" HEAD >> "$RUNNER_TEMP/rust-changed.txt" 2>/dev/null && ok=true
           fi
-          # 세 점(base...head)=merge-base..head — 두 점은 main 전진분을 오계산한다. 실패 시 두 점 → 빈 목록 순 폴백.
-          git diff --name-only "$base...$head" > "$RUNNER_TEMP/changed.txt" 2>/dev/null \
-            || git diff --name-only "$base" "$head" > "$RUNNER_TEMP/changed.txt" 2>/dev/null \
-            || : > "$RUNNER_TEMP/changed.txt"
-          echo "changed files: $(wc -l < "$RUNNER_TEMP/changed.txt" | tr -d ' ')"
-          cat "$RUNNER_TEMP/changed.txt"
-
+          [ "$ok" = true ] || : > "$RUNNER_TEMP/rust-changed.txt"
+          echo "merge_parents_ok=$ok" | tee -a "$GITHUB_OUTPUT"; wc -l "$RUNNER_TEMP/changed.txt" "$RUNNER_TEMP/rust-changed.txt"
       - name: Resolve CI scope
         id: scope
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_ACTION: ${{ github.event.action }}
-          PR_DRAFT: ${{ github.event.pull_request.draft }}
-          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-          INPUT_SCOPE: ${{ inputs.scope }}
-          CI_FULL_LABEL: ci-full
-          CHANGED_FILE_LIST: ${{ runner.temp }}/changed.txt
+        env: { EVENT_NAME: "${{ github.event_name }}", EVENT_ACTION: "${{ github.event.action }}", EVENT_LABEL: "${{ github.event.label.name }}", PR_DRAFT: "${{ github.event.pull_request.draft }}", PR_LABELS: "${{ join(github.event.pull_request.labels.*.name, ',') }}", INPUT_SCOPE: "${{ inputs.scope }}", CI_FULL_LABEL: "ci-full", CHANGED_FILE_LIST: "${{ runner.temp }}/changed.txt", RUST_CHANGED_FILE_LIST: "${{ runner.temp }}/rust-changed.txt" }
         run: bash scripts/ci-scope.sh
-
-      - name: Skip heavy checks (docs-only or draft)
-        if: steps.scope.outputs.heavy != 'true'
+      - name: Finalize scope
+        id: finalize
+        env: { HEAVY: "${{ steps.scope.outputs.heavy }}", FULL: "${{ steps.scope.outputs.full }}", DOCS_ONLY: "${{ steps.scope.outputs.docs_only }}", ATTEST: "${{ steps.attest.outputs.has_valid_attestation }}", PARENTS: "${{ steps.range.outputs.merge_parents_ok }}", FORK_FULL: "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full')) }}" }
         run: |
-          echo "경량 검사 생략 — reason=${{ steps.scope.outputs.reason }}"
-          echo "문서 전용 변경이면 CI 비용을 쓰지 않고, 라벨 없는 드래프트면 ready_for_review/ci-full 전까지 실행하지 않는다."
-
+          FULL="$FULL"; HEAVY="$HEAVY"; DOCS_ONLY="$DOCS_ONLY"; REUSED=false
+          if [ "$ATTEST" = "true" ] && [ "$PARENTS" = "true" ] && [ "$DOCS_ONLY" != "true" ]; then REUSED=true; FULL=false; fi
+          if [ "$FORK_FULL" = "true" ]; then FULL=true; DOCS_ONLY=false; HEAVY=true; fi
+          BYPASS=0; if [ "$FULL" = "false" ] && { [ "$DOCS_ONLY" = "true" ] || [ "$REUSED" = "true" ]; }; then BYPASS=1; fi
+          printf 'full=%s\nheavy=%s\ndocs_only=%s\nreused_full=%s\nfull_bypass=%s\n' "$FULL" "$HEAVY" "$DOCS_ONLY" "$REUSED" "$BYPASS" | tee -a "$GITHUB_OUTPUT"
+      - name: Consume one-shot ci-full label
+        if: steps.scope.outputs.consume_label == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}", PR_NUMBER: "${{ github.event.pull_request.number }}", HEAD_SHA: "${{ github.event.pull_request.head.sha }}", EVENT_LABEL: "${{ github.event.label.name }}" }
+        run: |
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)" = "$HEAD_SHA" ]; then
+            gh pr edit "$PR_NUMBER" --remove-label "$EVENT_LABEL" || echo "::warning::could not remove label $EVENT_LABEL"
+          else echo "::warning::PR head moved since event; keeping label $EVENT_LABEL"; fi
+      - name: Skip heavy checks
+        if: steps.finalize.outputs.heavy != 'true'
+        env: { REASON: "${{ steps.scope.outputs.reason }}" }
+        run: echo "경량 검사 생략 — reason=$REASON"
       - name: Block manual lockfile edits
-        if: steps.scope.outputs.heavy == 'true' && github.event_name == 'pull_request' && github.head_ref != 'chore/refresh-lockfile'
+        if: steps.finalize.outputs.heavy == 'true' && github.event_name == 'pull_request' && github.head_ref != 'chore/refresh-lockfile'
         run: |
           if grep -qx 'pnpm-lock.yaml' "$RUNNER_TEMP/changed.txt"; then
-            echo "Do not commit pnpm-lock.yaml in pull requests. CI owns lockfile updates."
-            exit 1
+            echo "Do not commit pnpm-lock.yaml in pull requests. CI owns lockfile updates."; exit 1
           fi
-
-      - name: Setup pnpm
-        if: steps.scope.outputs.heavy == 'true'
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9.15.4
-          run_install: false
-
-      - name: Setup Node.js
-        if: steps.scope.outputs.heavy == 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          # 이제 policy 가 설치·타입체크를 하므로 매 push 가 콜드 스토어로 돌지 않게 캐시를 쓴다.
-          cache: pnpm
-
-      # [write-chokepoint] heartbeat_runs/workflow_runs 직접 UPDATE 를 인가 쓰기 계층으로 강제
-      # (reboot-1107 §4.3, PR#679/#682 재발 차단) — --self-test 로 가드 탐지력을 매 실행 검증.
+      - uses: pnpm/action-setup@v4
+        if: steps.finalize.outputs.heavy == 'true'
+        with: { version: 9.15.4, run_install: false }
+      - uses: actions/setup-node@v4
+        if: steps.finalize.outputs.heavy == 'true'
+        with: { node-version-file: .nvmrc, cache: pnpm }
+      # [write-chokepoint] heartbeat_runs/workflow_runs 직접 UPDATE 를 인가 쓰기 계층으로 강제(PR#679/#682 재발 차단).
       - name: Enforce run-status write chokepoint
-        if: steps.scope.outputs.heavy == 'true'
-        run: |
-          node scripts/check-run-status-write-chokepoint.mjs --self-test
-          node scripts/check-run-status-write-chokepoint.mjs
-
+        if: steps.finalize.outputs.heavy == 'true'
+        run: node scripts/check-run-status-write-chokepoint.mjs --self-test && node scripts/check-run-status-write-chokepoint.mjs
       # 무조건 실행 — heavy 게이트를 두면 문서 전용/드래프트 판정으로 frozen 마이그레이션 편집이 우회된다.
       - name: Enforce frozen DB migrations
-        env:
-          BASE_REF: ${{ github.base_ref || 'main' }}
+        env: { BASE_REF: "${{ github.base_ref || 'main' }}" }
         run: |
-          # checkout 은 fetch-depth:0 이지만 base 브랜치의 원격 ref 는 없을 수 있어 없으면 fetch 한다.
-          if ! git rev-parse --verify --quiet "refs/remotes/origin/${BASE_REF}" >/dev/null; then
-            git fetch --no-tags origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"
-          fi
+          git rev-parse --verify --quiet "refs/remotes/origin/${BASE_REF}" >/dev/null || git fetch --no-tags origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"
           node scripts/check-frozen-migrations.mjs --base "origin/${BASE_REF}"
-
       - name: Validate Dockerfile deps stage
-        if: steps.scope.outputs.heavy == 'true'
+        if: steps.finalize.outputs.heavy == 'true'
         run: bash scripts/check-dockerfile-deps-stage.sh
-
       - name: Validate dependency resolution when manifests change
-        if: steps.scope.outputs.heavy == 'true'
+        id: depval
+        if: steps.finalize.outputs.heavy == 'true'
         run: |
-          manifest_pattern='(^|/)package\.json$|^pnpm-workspace\.yaml$|^\.npmrc$|^pnpmfile\.(cjs|js|mjs)$'
-          if grep -Eq "$manifest_pattern" "$RUNNER_TEMP/changed.txt"; then
-            pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
+          if grep -Eq '(^|/)package\.json$|^pnpm-workspace\.yaml$|^\.npmrc$|^pnpmfile\.(cjs|js|mjs)$' "$RUNNER_TEMP/changed.txt"; then
+            pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile && echo "ran=1" >> "$GITHUB_OUTPUT"
           fi
-
-      # 타입체크는 경량 잡으로 옮겼다(매 push 신호 유지). verify 는 번들·배포 산출물을 본다.
       - name: Install dependencies
-        if: steps.scope.outputs.heavy == 'true'
+        if: steps.finalize.outputs.heavy == 'true' && steps.depval.outputs.ran != '1'
         run: pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
-
       - name: Install dependencies from the CI-refreshed lockfile
-        if: steps.scope.outputs.heavy == 'true'
+        if: steps.finalize.outputs.heavy == 'true'
         run: pnpm install --frozen-lockfile
-
       - name: Typecheck
-        if: steps.scope.outputs.heavy == 'true'
+        if: steps.finalize.outputs.heavy == 'true'
         run: pnpm -r typecheck
-
-      - name: Setup Rust toolchain
-        if: steps.scope.outputs.heavy == 'true'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
-
-      - name: Verify Rust crates
-        if: steps.scope.outputs.heavy == 'true'
+      - name: Gate Rust on rust_changed
+        id: rust_gate
+        env: { RUST_CHANGED: "${{ steps.scope.outputs.rust_changed }}" }
         run: |
-          for manifest in crates/*/Cargo.toml; do
-            cargo clippy --manifest-path "$manifest" --all-targets -- -D warnings
-            cargo test --release --manifest-path "$manifest"
-          done
-
-  # [CI-REDUCE] 문서 전용 변경의 전체 스위트 생략을 구조화된 신호로 남긴다 — 성공한 verify-tests* 잡이
-  #   없으면 병합 가드(ci_baseline_guard)가 미병합 처리하므로 이 잡이 필요하다(선례: PR#701).
+          [ "$RUST_CHANGED" = "false" ] && echo "skip=1" >> "$GITHUB_OUTPUT" || echo "skip=0" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.scope.outputs.heavy == 'true' && steps.rust_gate.outputs.skip != '1'
+        with: { components: clippy }
+      - uses: Swatinem/rust-cache@v2
+        if: steps.scope.outputs.heavy == 'true' && steps.rust_gate.outputs.skip != '1'
+      - name: Verify Rust workspace
+        if: steps.scope.outputs.heavy == 'true' && steps.rust_gate.outputs.skip != '1'
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings && cargo test --workspace --locked
+  # 문서 전용 생략 신호 — 성공한 verify-tests* 잡이 없으면 병합 가드가 미병합 처리(PR#701). fork 는 docs_only 위조 가능해 같은 repo 만 허용.
   verify-tests-docs-only:
     needs: [policy]
-    if: needs.policy.outputs.docs_only == 'true'
+    if: needs.policy.outputs.docs_only == 'true' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 5
-
     steps:
-      - name: Attest documentation-only scope
-        run: |
-          echo "documentation-only change: full suite intentionally skipped"
-          echo "policy reason: ${{ needs.policy.outputs.reason }}"
-
-  # [verify-test-sharding] EP 풀스위트가 CI 한계 근접(2026-08-29 #170 초과 사례)이라 3 샤드 병렬 분산.
-  # [CI-REDUCE] 아래 네 잡은 전체 스위트 — policy.outputs.full == true(ready_for_review/ci-full/dispatch full) 일 때만.
+      - env: { REASON: "${{ needs.policy.outputs.reason }}" }
+        run: 'echo "documentation-only change: full suite intentionally skipped (reason=$REASON)"'
+  # 아래 네 잡+게이트는 전체 스위트 — policy.outputs.full 또는 fork PR 의 full 트리거 이벤트에서만 실행
+  # (fork 의 ci-scope.sh 는 신뢰할 수 없어 이벤트 자체로도 켠다).
   verify:
     needs: [policy]
-    if: needs.policy.outputs.full == 'true'
+    if: needs.policy.outputs.full == 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full')))
     runs-on: ubuntu-latest
     timeout-minutes: 20
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      # pnpm·Node 설정 + lockfile 2단계 설치는 composite action 하나로 모았다(.github/actions/ci-install).
+      - uses: actions/checkout@v4
+        with: { ref: "${{ github.sha }}" }
       - uses: ./.github/actions/ci-install
-
       - name: Build
         run: pnpm build
-
       - name: Release canary dry run
         run: |
           git checkout -B master HEAD
           git checkout -- pnpm-lock.yaml
           ./scripts/release.sh canary --skip-verify --dry-run
-
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: clippy }
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify Rust workspace
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings && cargo test --release --workspace --locked
   verify-tests:
     needs: [policy]
-    if: needs.policy.outputs.full == 'true'
+    if: needs.policy.outputs.full == 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full')))
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
-
+    strategy: { fail-fast: false, matrix: { shard: [1, 2, 3] } }
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
+        with: { ref: "${{ github.sha }}" }
       - uses: ./.github/actions/ci-install
-
-      # rust parity test 가 beforeAll 에서 cargo build 한다 — 명시 설치로 러너 이미지 변동을 흡수한다.
-      - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
+      - uses: dtolnay/rust-toolchain@stable
       - name: Build and stage Rust workspace binaries
         run: bash scripts/build-rust-workspace.sh
-
       - name: Run tests (shard ${{ matrix.shard }}/3)
-        # [ci-serial-split] 중량 4종은 verify-tests-serial 독점 — 샤드에서 제외해 중복 실행·경합 차단.
-        env:
-          PAPERCLIP_CI_EXCLUDE_SERIAL_SUITES: "1"
+        env: { PAPERCLIP_CI_EXCLUDE_SERIAL_SUITES: "1" }
         run: pnpm test:run --shard=${{ matrix.shard }}/3
-
-  # [ci-serial-split] 중량 통합 4종 전용 직렬 잡(4-fork embedded-PG + Python 락 경합 차단). 잡 이름을
-  #   verify-tests 접두사로 유지해 pi-serial-merge.sh 병합 가드가 자동 감시한다. 루트 pnpm test:run 고수
-  #   — Vitest 출력 형식을 샤드와 동일하게 유지(--filter exec vitest 금지 — 브래킷 경로가 달라짐).
+  # 중량 통합 4종 전용 직렬 잡 — verify-tests 접두사 유지로 병합 가드가 자동 감시한다.
   verify-tests-serial:
     needs: [policy]
-    if: needs.policy.outputs.full == 'true'
+    if: needs.policy.outputs.full == 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full')))
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
+        with: { ref: "${{ github.sha }}" }
       - uses: ./.github/actions/ci-install
-
       - name: Run heavy integration tests serially
-        run: |
-          pnpm test:run --no-file-parallelism \
-            server/src/__tests__/heartbeat-c5-public-activation.test.ts \
-            server/src/__tests__/qa-remediation-admission-root.test.ts \
-            server/src/__tests__/mission-owner-authority-flow.integration.test.ts \
-            server/src/__tests__/mission-owner-delegate-fix.integration.test.ts
-
+        run: pnpm test:run --no-file-parallelism server/src/__tests__/heartbeat-c5-public-activation.test.ts server/src/__tests__/qa-remediation-admission-root.test.ts server/src/__tests__/mission-owner-authority-flow.integration.test.ts server/src/__tests__/mission-owner-delegate-fix.integration.test.ts
   e2e:
     needs: [policy]
-    if: needs.policy.outputs.full == 'true'
-    # Playwright 미지원 회피 pin — ubuntu-latest 이주 시 E2E 가 통째로 스킵되지 않게 ubuntu-24.04 고정.
+    if: needs.policy.outputs.full == 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full')))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
+        with: { ref: "${{ github.sha }}" }
       - uses: ./.github/actions/ci-install
-
       - name: Build
         run: pnpm build
-
       - name: Install Playwright
-        # [ci-s1] ubuntu-24.04 apt 미러/목록 일시 오류(exit 100)에 대한 3회 재시도 + apt update 재시도 래퍼.
         run: |
           for attempt in 1 2 3; do
-            if sudo apt-get update -o Acquire::Retries=3 && npx playwright install --with-deps chromium; then
-              exit 0
-            fi
-            echo "Playwright install attempt ${attempt} failed; retrying in 10s..." >&2
-            sleep 10
-          done
-          exit 1
-
+            sudo apt-get update -o Acquire::Retries=3 && npx playwright install --with-deps chromium && exit 0
+            echo "Playwright install attempt ${attempt} failed; retrying in 10s..." >&2; sleep 10
+          done; exit 1
       - name: Generate Paperclip config
         run: |
           mkdir -p ~/.paperclip/instances/default
           cat > ~/.paperclip/instances/default/config.json << 'CONF'
-          {
-            "$meta": { "version": 1, "updatedAt": "2026-01-01T00:00:00.000Z", "source": "onboard" },
-            "database": { "mode": "embedded-postgres" },
-            "logging": { "mode": "file" },
-            "server": { "deploymentMode": "local_trusted", "host": "127.0.0.1", "port": 3100 },
-            "auth": { "baseUrlMode": "auto" },
-            "storage": { "provider": "local_disk" },
-            "secrets": { "provider": "local_encrypted", "strictMode": false }
-          }
+          {"$meta":{"version":1,"updatedAt":"2026-01-01T00:00:00.000Z","source":"onboard"},"database":{"mode":"embedded-postgres"},"logging":{"mode":"file"},"server":{"deploymentMode":"local_trusted","host":"127.0.0.1","port":3100},"auth":{"baseUrlMode":"auto"},"storage":{"provider":"local_disk"},"secrets":{"provider":"local_encrypted","strictMode":false}}
           CONF
-
       - name: Run e2e tests
-        env:
-          PAPERCLIP_E2E_PORT: "3100"
-          PAPERCLIP_E2E_SKIP_LLM: "true"
+        env: { PAPERCLIP_E2E_PORT: "3100", PAPERCLIP_E2E_SKIP_LLM: "true" }
         run: pnpm run test:e2e
-
-      - name: Upload Playwright report
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         if: always()
+        with: { name: playwright-report, path: "tests/e2e/playwright-report/\ntests/e2e/test-results/", retention-days: 14 }
+  # 전체 스위트 검문소 — 성공한 이 run 을 head/base 에 묶어 attestation 으로 남긴다(PR 코드 미실행). fork 는 bypass 면제 없이 통과 강제.
+  verify-tests-full-gate:
+    needs: [policy, verify, verify-tests, verify-tests-serial, e2e]
+    if: always() && (needs.policy.outputs.full == 'true' || (((github.event_name == 'pull_request' && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full'))) || (github.event_name == 'workflow_dispatch' && inputs.scope == 'full')) && !(needs.policy.result == 'success' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && needs.policy.outputs.full_bypass == '1')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read, actions: read }
+    env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}", POLICY_FULL: "${{ needs.policy.outputs.full }}", HEAD_SHA: "${{ github.event.pull_request.head.sha }}", BASE_SHA: "${{ github.event.pull_request.base.sha }}", RESULTS: "${{ join(needs.*.result, ' ') }}" }
+    steps:
+      - name: Enforce full-suite results
+        run: |
+          [ "$POLICY_FULL" = "true" ] || { echo "::error::policy.full=$POLICY_FULL (expected true)"; exit 1; }
+          for r in $RESULTS; do [ "$r" = "success" ] || { echo "::error::sibling job result=$r"; exit 1; }; done
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with: { ref: "${{ github.sha }}", fetch-depth: 2 }
+      - name: Verify parents + sibling jobs, write attestation
+        if: github.event_name == 'pull_request'
+        run: |
+          [ "$(git rev-parse HEAD^1)" = "$BASE_SHA" ] && [ "$(git rev-parse HEAD^2)" = "$HEAD_SHA" ] || { echo "::error::merge parents mismatch"; exit 1; }
+          node <<'EOF'
+          const{execFileSync:X}=require("child_process"),{GITHUB_REPOSITORY:G,GITHUB_RUN_ID:I,GITHUB_RUN_ATTEMPT:A}=process.env;
+          const jobs=JSON.parse(X("gh",["api",`repos/${G}/actions/runs/${I}/attempts/${A}/jobs?per_page=100`],{encoding:"utf8",maxBuffer:1<<26})).jobs||[];
+          const miss=["policy","verify","verify-tests (1)","verify-tests (2)","verify-tests (3)","verify-tests-serial","e2e"].filter(n=>!jobs.some(j=>j.name===n&&j.status==="completed"&&j.conclusion==="success"));
+          if(miss.length){console.log("::error::missing successful jobs in this attempt: "+miss.join(", "));process.exit(1)}
+          EOF
+          printf '{"schema_version":1,"run_id":"%s","attempt":"%s","head_sha":"%s","base_sha":"%s"}\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$HEAD_SHA" "$BASE_SHA" > /tmp/ci-full-attest.json
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request'
         with:
-          name: playwright-report
-          path: |
-            tests/e2e/playwright-report/
-            tests/e2e/test-results/
-          retention-days: 14
+          name: ci-full-attest-${{ github.run_attempt }}-${{ github.event.pull_request.head.sha }}-${{ github.event.pull_request.base.sha }}
+          path: /tmp/ci-full-attest.json
+          if-no-files-found: error
+          retention-days: 7
+  # 재사용 경로 — policy 가 찾은 attestation 을 이 잡이 독립 재검증한다(검증 주체 분리; PR 코드 미실행).
+  verify-tests-reused:
+    needs: [policy]
+    if: needs.policy.outputs.reused_full == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: { contents: read, actions: read }
+    env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}", HEAD_SHA: "${{ github.event.pull_request.head.sha }}", BASE_SHA: "${{ github.event.pull_request.base.sha }}", RUN_ID: "${{ needs.policy.outputs.reused_run_id }}", ATTEMPT: "${{ needs.policy.outputs.reused_run_attempt }}" }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ github.sha }}", fetch-depth: 2 }
+      - name: Re-verify attested run and payload
+        run: |
+          [ "$(git rev-parse HEAD^1)" = "$BASE_SHA" ] && [ "$(git rev-parse HEAD^2)" = "$HEAD_SHA" ] || { echo "::error::merge parents mismatch"; exit 1; }
+          cat > "$RUNNER_TEMP/rv.cjs" <<'EOF'
+          const{execFileSync:X}=require("child_process"),fs=require("fs"),{GITHUB_REPOSITORY:G,HEAD_SHA:H,BASE_SHA:B,RUN_ID:I,ATTEMPT:A}=process.env;
+          const die=m=>{console.log("::error::"+m);process.exit(1)},api=p=>JSON.parse(X("gh",["api",p],{encoding:"utf8",maxBuffer:1<<26}));
+          const ck=r=>r&&r.path===".github/workflows/pr.yml"&&r.event==="pull_request"&&r.status==="completed"&&r.conclusion==="success"&&String(r.run_attempt)===String(A)&&r.head_repository&&r.repository&&r.head_repository.id===r.repository.id&&r.head_sha===H;
+          if(!ck(api(`repos/${G}/actions/runs/${I}`)))die("candidate run failed re-check");
+          const jobs=api(`repos/${G}/actions/runs/${I}/attempts/${A}/jobs?per_page=100`).jobs||[];
+          if(!jobs.some(j=>j.name==="verify-tests-full-gate"&&j.status==="completed"&&j.conclusion==="success"))die("verify-tests-full-gate not successful in that attempt");
+          const art=(api(`repos/${G}/actions/runs/${I}/artifacts?per_page=100`).artifacts||[]).find(z=>z.name===`ci-full-attest-${A}-${H}-${B}`&&!z.expired);if(!art)die("attest artifact missing/expired");
+          fs.writeFileSync("/tmp/att.zip",X("gh",["api",`repos/${G}/actions/artifacts/${art.id}/zip`],{maxBuffer:1<<26}));
+          let p;try{p=JSON.parse(X("unzip",["-p","/tmp/att.zip","ci-full-attest.json"],{encoding:"utf8"}))}catch(e){die("attest payload unreadable")}
+          if(!p||p.schema_version!==1||String(p.run_id)!==String(I)||String(p.attempt)!==String(A)||p.head_sha!==H||p.base_sha!==B)die("attest payload invalid");
+          const again=api(`repos/${G}/actions/runs/${I}`);
+          if(again.status!=="completed"||again.conclusion!=="success"||String(again.run_attempt)!==String(A))die("run changed after attestation check");
+          EOF
+          node "$RUNNER_TEMP/rv.cjs"
