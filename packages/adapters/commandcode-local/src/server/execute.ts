@@ -14,17 +14,16 @@ import {
   loadInstructionsWithInlinedReferences,
 } from "@paperclipai/adapter-utils/instructions";
 import {
-  asBoolean,
   asNumber,
   asString,
   ensureAbsoluteDirectory,
   ensureCommandResolvable,
   runChildProcess,
 } from "@paperclipai/adapter-utils/server-utils";
+import { commandcodeFlavor } from "./commandcode-flavor.js";
 import type { ParsedCommandCodeOutput } from "./parse.js";
 import { extractRunEndRecovery, extractRunTailRecovery, isCommandCodeUnknownSessionError, parseCommandCodeJsonl } from "./parse.js";
 import {
-  buildCommandCodePermissionArgs,
   buildCommandCodeRunEnv,
   resolveEffectiveCwd,
   resolveExtraArgs,
@@ -72,7 +71,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const maxTurns = asNumber(config.maxTurns, 0);
   const timeoutSec = asNumber(config.timeoutSec, 0);
   const graceSec = asNumber(config.graceSec, 20);
-  const dangerouslySkipPermissions = asBoolean(config.dangerouslySkipPermissions, false);
 
   const sanitized = sanitizeCommandCodeExtraArgs(resolveExtraArgs(config));
   if (sanitized.dropped.length > 0) {
@@ -146,12 +144,9 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const userPrompt = joinPromptSections([renderedInstructions, renderedBootstrap, runtimeBrief, renderedHeartbeat]);
 
   // Session resume: target an explicit id when the cwd still matches.
-  const runtimeSessionParams =
-    typeof runtime.sessionParams === "object" && runtime.sessionParams !== null
-      ? (runtime.sessionParams as Record<string, unknown>)
-      : {};
-  const runtimeSessionId = asString(runtimeSessionParams.sessionId, asString(runtime.sessionId, ""));
-  const runtimeSessionCwd = asString(runtimeSessionParams.cwd, "");
+  const storedSession = commandcodeFlavor.sessionCodec.deserialize(runtime.sessionParams) ?? {};
+  const runtimeSessionId = asString(storedSession.sessionId, asString(runtime.sessionId, ""));
+  const runtimeSessionCwd = asString(storedSession.cwd, "");
   const canResumeSession =
     runtimeSessionId.length > 0 &&
     (runtimeSessionCwd.length === 0 || path.resolve(runtimeSessionCwd) === path.resolve(cwd));
@@ -164,30 +159,14 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     );
   }
 
-  const buildArgs = (sessionResumeId: string): string[] => {
-    const args: string[] = [];
-    if (sessionResumeId) args.push("--resume", sessionResumeId);
-    args.push(
-      "--skip-onboarding",
-      ...buildCommandCodePermissionArgs(dangerouslySkipPermissions),
-      "--trust",
-      "--output-format",
-      "json",
-      "--no-auto-update",
-    );
-    if (model) args.push("--model", model);
-    if (effort) args.push("--effort", effort);
-    if (maxTurns > 0) args.push("--max-turns", String(Math.floor(maxTurns)));
-    if (extraArgs.length > 0) args.push(...extraArgs);
-    args.push("-p", userPrompt);
-    return args;
-  };
-
   const provider = parseModelProvider(model || null);
   const biller = resolveCommandCodeBiller(runtimeEnv, provider);
 
   const runAttempt = async (sessionResumeId: string) => {
-    const args = buildArgs(sessionResumeId);
+    const args = commandcodeFlavor.buildArgs({
+      command, prompt: userPrompt, resumeSessionId: sessionResumeId || null,
+      model, effort, maxTurns, extraArgs, config,
+    });
     if (onMeta) {
       await onMeta({
         adapterType: "commandcode_local",
