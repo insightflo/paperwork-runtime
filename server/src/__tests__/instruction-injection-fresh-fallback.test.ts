@@ -5,9 +5,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { execute as executeClaude } from "@paperclipai/adapter-claude-local/server";
 import { execute as executeCodex } from "@paperclipai/adapter-codex-local/server";
 import { execute as executeCommandCode } from "@paperclipai/adapter-commandcode-local/server";
-import { execute as executeCursor } from "@paperclipai/adapter-cursor-local/server";
-import { execute as executeGemini } from "@paperclipai/adapter-gemini-local/server";
-import { execute as executeOpenCode } from "@paperclipai/adapter-opencode-local/server";
 import { execute as executePi } from "@paperclipai/adapter-pi-local/server";
 import {
   hashLoadedInstructions,
@@ -20,7 +17,7 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
 });
 
-type Adapter = "claude" | "codex" | "commandcode" | "cursor" | "gemini" | "opencode" | "pi";
+type Adapter = "claude" | "codex" | "commandcode" | "pi";
 
 async function fixture(adapter: Adapter) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), `paperclip-${adapter}-instruction-fallback-`));
@@ -124,15 +121,9 @@ async function run(adapter: Adapter, mode: "full" | "compact") {
     ? executeCodex
     : adapter === "claude"
       ? executeClaude
-        : adapter === "commandcode"
-          ? executeCommandCode
-      : adapter === "cursor"
-        ? executeCursor
-        : adapter === "gemini"
-          ? executeGemini
-          : adapter === "opencode"
-            ? executeOpenCode
-            : executePi;
+      : adapter === "commandcode"
+        ? executeCommandCode
+        : executePi;
   const result = await execute({
     runId: `${adapter}-${mode}`,
     agent: {
@@ -156,7 +147,7 @@ async function run(adapter: Adapter, mode: "full" | "compact") {
       env: { ATTEMPTS_PATH: f.attemptsPath },
       maxOverloadRetries: 0,
       provider: "openai",
-      model: adapter === "pi" || adapter === "opencode" ? "openai/gpt-4.1-mini" : undefined,
+      model: adapter === "pi" ? "openai/gpt-4.1-mini" : undefined,
     },
     context: {
       paperclipInstructionInjection: {
@@ -171,7 +162,7 @@ async function run(adapter: Adapter, mode: "full" | "compact") {
   return { result, attempts };
 }
 
-describe.each(["codex", "claude", "commandcode", "cursor", "gemini", "opencode", "pi"] as const)("%s instruction injection stale-session fallback", (adapter) => {
+describe.each(["codex", "claude", "commandcode", "pi"] as const)("%s instruction injection stale-session fallback", (adapter) => {
   it("preserves the existing same-call fresh fallback for full instructions", async () => {
     const { result, attempts } = await run(adapter, "full");
     expect(attempts).toHaveLength(2);

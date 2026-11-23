@@ -7,7 +7,6 @@ import { promisify } from "node:util";
 import { eq } from "drizzle-orm";
 import { instanceSettings, type Db } from "@paperclipai/db";
 import { resetCommandCodeModelsCacheForTests } from "@paperclipai/adapter-commandcode-local/server";
-import { resetOpenCodeModelsCacheForTests } from "@paperclipai/adapter-opencode-local/server";
 import { resetPiModelsCacheForTests } from "@paperclipai/adapter-pi-local/server";
 import type {
   CliRuntimeId,
@@ -18,8 +17,6 @@ import type {
 } from "@paperclipai/shared/types/instance";
 import { resetClaudeModelsCacheForTests } from "../adapters/claude-models.js";
 import { resetCodexModelsCacheForTests } from "../adapters/codex-models.js";
-import { resetCursorModelsCacheForTests } from "../adapters/cursor-models.js";
-import { resetGeminiModelsCacheForTests } from "../adapters/gemini-models.js";
 import { resetHermesModelsCacheForTests } from "../adapters/hermes-models.js";
 import { listAdapterModels } from "../adapters/registry.js";
 import { badRequest } from "../errors.js";
@@ -68,13 +65,10 @@ export function isValidCliRuntimeId(value: unknown): value is CliRuntimeId {
 
 function flushAllAdapterModelCaches(): void {
   resetPiModelsCacheForTests();
-  resetOpenCodeModelsCacheForTests();
   resetCommandCodeModelsCacheForTests();
   resetCodexModelsCacheForTests();
   resetClaudeModelsCacheForTests();
   resetHermesModelsCacheForTests();
-  resetCursorModelsCacheForTests();
-  resetGeminiModelsCacheForTests();
 }
 
 function resolveRustCliRuntimeBin(opts: PiCliManagerOptions): string | null {

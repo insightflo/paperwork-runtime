@@ -19,35 +19,8 @@ import {
   getQuotaWindows as codexGetQuotaWindows,
 } from "@paperclipai/adapter-codex-local/server";
 import { agentConfigurationDoc as codexAgentConfigurationDoc, models as codexModels } from "@paperclipai/adapter-codex-local";
-import {
-  execute as cursorExecute,
-  listCursorSkills,
-  syncCursorSkills,
-  testEnvironment as cursorTestEnvironment,
-  sessionCodec as cursorSessionCodec,
-} from "@paperclipai/adapter-cursor-local/server";
-import { agentConfigurationDoc as cursorAgentConfigurationDoc, models as cursorModels } from "@paperclipai/adapter-cursor-local";
-import {
-  execute as geminiExecute,
-  listGeminiSkills,
-  syncGeminiSkills,
-  testEnvironment as geminiTestEnvironment,
-  sessionCodec as geminiSessionCodec,
-} from "@paperclipai/adapter-gemini-local/server";
-import { agentConfigurationDoc as geminiAgentConfigurationDoc, models as geminiModels } from "@paperclipai/adapter-gemini-local";
-import {
-  execute as openCodeExecute,
-  listOpenCodeSkills,
-  syncOpenCodeSkills,
-  testEnvironment as openCodeTestEnvironment,
-  sessionCodec as openCodeSessionCodec,
-  listOpenCodeModels,
-} from "@paperclipai/adapter-opencode-local/server";
-import { agentConfigurationDoc as openCodeAgentConfigurationDoc } from "@paperclipai/adapter-opencode-local";
 import { listCodexModels } from "./codex-models.js";
 import { listClaudeModels } from "./claude-models.js";
-import { listCursorModels } from "./cursor-models.js";
-import { listGeminiModels } from "./gemini-models.js";
 import { listHermesModels } from "./hermes-models.js";
 import {
   execute as piExecute,
@@ -111,48 +84,6 @@ const codexLocalAdapter: ServerAdapterModule = {
   getQuotaWindows: codexGetQuotaWindows,
 };
 
-const cursorLocalAdapter: ServerAdapterModule = {
-  type: "cursor",
-  execute: cursorExecute,
-  testEnvironment: cursorTestEnvironment,
-  listSkills: listCursorSkills,
-  syncSkills: syncCursorSkills,
-  sessionCodec: cursorSessionCodec,
-  sessionManagement: getAdapterSessionManagement("cursor") ?? undefined,
-  models: cursorModels,
-  listModels: listCursorModels,
-  supportsLocalAgentJwt: true,
-  agentConfigurationDoc: cursorAgentConfigurationDoc,
-};
-
-const geminiLocalAdapter: ServerAdapterModule = {
-  type: "gemini_local",
-  execute: geminiExecute,
-  testEnvironment: geminiTestEnvironment,
-  listSkills: listGeminiSkills,
-  syncSkills: syncGeminiSkills,
-  sessionCodec: geminiSessionCodec,
-  sessionManagement: getAdapterSessionManagement("gemini_local") ?? undefined,
-  models: geminiModels,
-  listModels: listGeminiModels,
-  supportsLocalAgentJwt: true,
-  agentConfigurationDoc: geminiAgentConfigurationDoc,
-};
-
-const openCodeLocalAdapter: ServerAdapterModule = {
-  type: "opencode_local",
-  execute: openCodeExecute,
-  testEnvironment: openCodeTestEnvironment,
-  listSkills: listOpenCodeSkills,
-  syncSkills: syncOpenCodeSkills,
-  sessionCodec: openCodeSessionCodec,
-  sessionManagement: getAdapterSessionManagement("opencode_local") ?? undefined,
-  models: [],
-  listModels: listOpenCodeModels,
-  supportsLocalAgentJwt: true,
-  agentConfigurationDoc: openCodeAgentConfigurationDoc,
-};
-
 const piLocalAdapter: ServerAdapterModule = {
   type: "pi_local",
   execute: piExecute,
@@ -201,11 +132,8 @@ const adaptersByType = new Map<string, ServerAdapterModule>(
     acpxLocalAdapter,
     claudeLocalAdapter,
     codexLocalAdapter,
-    openCodeLocalAdapter,
     piLocalAdapter,
     commandCodeLocalAdapter,
-    cursorLocalAdapter,
-    geminiLocalAdapter,
     hermesLocalAdapter,
     processAdapter,
     httpAdapter,
