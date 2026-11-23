@@ -1,9 +1,11 @@
 // [파일 목적] Rust provider-auth-core(paperclip-provider-auth-core) JSON 브리지 — 인증 증거 메타데이터 전용, Node 폴백 없음(fail-closed).
-// [외부 연결] crates/provider-auth-core (`probe-all`/`plan-login` 서브커맨드), server/src/routes/instance-settings.ts.
+// [외부 연결] paperwork-engine JSON-RPC, provider-auth-core CLI, server/src/routes/instance-settings.ts.
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { PaperworkEngineError, type PaperworkEngineClient, type PaperworkEngineErrorCode } from "./paperwork-engine-client.js";
+import { getSharedPaperworkEngineClient } from "./paperwork-engine-runtime.js";
 
 const TIMEOUT_MS = 5_000;
 const MAX_STDOUT_BYTES = 512 * 1024;
@@ -65,6 +67,41 @@ export function resolveProviderAuthBin(
 interface RunOpts {
   binPath?: string | null;
   timeoutMs?: number;
+  engineClient?: PaperworkEngineClient | null;
+}
+
+function selectEngine(opts?: RunOpts): PaperworkEngineClient | null {
+  if (opts?.engineClient != null) return opts.engineClient;
+  if (opts?.engineClient === null || opts?.binPath !== undefined
+    || process.env.PAPERCLIP_PROVIDER_AUTH_BIN !== undefined) return null;
+  return getSharedPaperworkEngineClient();
+}
+
+const ENGINE_ERROR_REASONS: Record<PaperworkEngineErrorCode, ProviderAuthClientReason> = {
+  timeout: "timeout",
+  response_too_large: "stdout_overflow",
+  process_exited: "non_zero_exit",
+  closed: "non_zero_exit",
+  bin_not_configured: "binary_missing",
+  rpc_error: "invalid_json",
+  protocol_error: "invalid_json",
+  request_too_large: "invalid_json",
+  queue_full: "invalid_json",
+};
+
+async function callEngine(
+  engine: PaperworkEngineClient,
+  method: "provider.auth_probe_all" | "provider.auth_plan_login",
+  params: Record<string, string>,
+  timeoutMs?: number,
+): Promise<unknown> {
+  try {
+    return await engine.call(method, params, { timeoutMs });
+  } catch (error) {
+    // Once selected, an engine failure is terminal for this request.
+    throw new ProviderAuthClientError(error instanceof PaperworkEngineError
+      ? ENGINE_ERROR_REASONS[error.code] ?? "spawn_error" : "spawn_error");
+  }
 }
 
 function runProviderAuthBin(argv: readonly string[], opts?: RunOpts): Promise<unknown> {
@@ -148,6 +185,12 @@ function projectStatus(v: unknown): ProviderAuthStatus {
 }
 
 export async function probeAllProviders(opts?: RunOpts): Promise<ProviderAuthStatus[]> {
+  const engine = selectEngine(opts);
+  if (engine) {
+    const raw = await callEngine(engine, "provider.auth_probe_all", {}, opts?.timeoutMs);
+    if (!isRecord(raw) || !Array.isArray(raw.providers)) throw invalid();
+    return raw.providers.map(projectStatus);
+  }
   const raw = await runProviderAuthBin(["probe-all"], opts);
   if (!Array.isArray(raw)) throw invalid();
   return raw.map(projectStatus);
@@ -159,8 +202,13 @@ export async function planProviderLogin(
 ): Promise<ProviderAuthLoginPlan> {
   // 런타임 방어: allowlist 밖 provider 는 spawn 이전에 fail-closed(타입 우회 호출자 차단).
   if (!isValidProviderAuthId(provider)) throw new ProviderAuthClientError("invalid_provider");
-  const raw = await runProviderAuthBin(["plan-login", provider], opts);
-  if (!isRecord(raw) || !isValidProviderAuthId(raw.provider)) throw invalid();
+  const engine = selectEngine(opts);
+  const raw = engine
+    ? await callEngine(engine, "provider.auth_plan_login", { provider }, opts?.timeoutMs)
+    : await runProviderAuthBin(["plan-login", provider], opts);
+  if (!isRecord(raw) || !isValidProviderAuthId(raw.provider) || (engine && Object.keys(raw).length !== 5)) {
+    throw invalid();
+  }
   const plan: ProviderAuthLoginPlan = {
     provider: raw.provider,
     command: reqStr(raw.command),
