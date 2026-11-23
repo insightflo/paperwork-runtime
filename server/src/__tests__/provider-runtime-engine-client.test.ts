@@ -132,6 +132,7 @@ describe("POST /instance/settings/provider-runtimes/check-blocklist", () => {
     })],
     ["rpc failure", () => mocks.engineCall.mockRejectedValue(new Error("timeout"))],
     ["malformed reply {blocked:'no'}", () => mocks.engineCall.mockResolvedValue({ blocked: "no" })],
+    ["malformed reply {reason:123}", () => mocks.engineCall.mockResolvedValue({ blocked: false, reason: 123 })],
     ["null reply", () => mocks.engineCall.mockResolvedValue(null)],
   ])("returns sanitized 503 on %s", async (_label, setup) => {
     setup();
@@ -154,8 +155,8 @@ describe("POST /instance/settings/provider-runtimes/check-blocklist", () => {
     );
   });
 
-  it("returns advisory unblocked verdict", async () => {
-    mocks.engineCall.mockResolvedValue({ provider: "claude", version: "1.2.3", blocked: false });
+  it("returns advisory unblocked verdict when engine replies reason:null", async () => {
+    mocks.engineCall.mockResolvedValue({ provider: "claude", version: "1.2.3", blocked: false, reason: null });
     const res = await request(createApp(ADMIN)).post(ROUTE).send(VALID_BODY);
     expect(res.status).toBe(200);
     expect(res.headers["cache-control"]).toBe("no-store");

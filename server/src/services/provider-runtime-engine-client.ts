@@ -101,11 +101,11 @@ export async function checkProviderRuntimeBlocklist(
   }
   if (
     !isRecord(raw) || typeof raw.blocked !== "boolean"
-    || (raw.reason !== undefined && typeof raw.reason !== "string")
+    || (raw.reason !== undefined && raw.reason !== null && typeof raw.reason !== "string")
   ) {
     throw new ProviderRuntimeEngineError("invalid_response");
   }
-  return raw.reason === undefined
+  return raw.reason === undefined || raw.reason === null
     ? { blocked: raw.blocked }
     : { blocked: raw.blocked, reason: raw.reason };
 }
