@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Link } from "@/lib/router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Project } from "@paperclipai/shared";
 import { StatusBadge } from "./StatusBadge";
@@ -531,9 +530,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                   key={goal.id}
                   className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs"
                 >
-                  <Link to={`/goals/${goal.id}`} className="hover:underline max-w-[220px] truncate">
-                    {goal.title}
-                  </Link>
+                  <span className="max-w-[220px] truncate">{goal.title}</span>
                   {(onUpdate || onFieldUpdate) && (
                     <button
                       className="text-muted-foreground hover:text-foreground"
