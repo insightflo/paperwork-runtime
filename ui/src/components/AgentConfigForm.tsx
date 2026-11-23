@@ -45,7 +45,6 @@ import { ChoosePathButton } from "./PathInstructionsModal";
 import { ReportsToPicker } from "./ReportsToPicker";
 import { shouldShowLegacyWorkingDirectoryField } from "../lib/legacy-agent-config";
 import { useAdapterModelEfforts } from "../hooks/useAdapterModelEfforts";
-import { useAdapterProviderModels } from "../hooks/useAdapterProviderModels";
 import { buildCommandCodeEffortOptions, shouldResetCommandCodeEffort } from "../lib/commandcode-efforts";
 import {
   sessionTokenThresholdFieldValue,
@@ -312,19 +311,14 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const isLocal =
     adapterType === "claude_local" ||
     adapterType === "codex_local" ||
-    adapterType === "gemini_local" ||
-    adapterType === "opencode_local" ||
     adapterType === "hermes_local" ||
-    adapterType === "antigravity_local" ||
     adapterType === "commandcode_local" ||
-    adapterType === "pi_local" ||
-    adapterType === "cursor";
+    adapterType === "pi_local";
   const supportsAdapterFallback =
     adapterType === "claude_local" ||
     adapterType === "codex_local" ||
-    adapterType === "gemini_local" ||
-    adapterType === "opencode_local" ||
-    adapterType === "cursor";
+    adapterType === "commandcode_local" ||
+    adapterType === "pi_local";
   const showLegacyWorkingDirectoryField =
     isLocal && shouldShowLegacyWorkingDirectoryField({ isCreate, adapterConfig: config });
   const uiAdapter = useMemo(() => getUIAdapter(adapterType), [adapterType]);
@@ -367,12 +361,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   // Popover states
   const [modelOpen, setModelOpen] = useState(false);
   const [providerOpen, setProviderOpen] = useState(false);
-  const [fallbackModelOpen, setFallbackModelOpen] = useState(false);
   const [thinkingEffortOpen, setThinkingEffortOpen] = useState(false);
-  // opencode_local provider→model 2-step: locally-tracked pending provider (selected
-  // before a model is chosen). The effective provider is derived from the model id,
-  // falling back to this pending selection when no model is set yet.
-  const [openCodeSelectedProvider, setOpenCodeSelectedProvider] = useState("");
 
   // Create mode helpers
   const val = isCreate ? props.values : null;
@@ -446,43 +435,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       label: extractModelName(model.id) || model.label,
     }));
   }, [adapterType, currentHermesProvider, models]);
-  // opencode_local provider→model: provider is derived from the model id (provider/model),
-  // falling back to a locally-tracked pending selection when no model is chosen yet.
-  const currentOpenCodeProvider =
-    adapterType === "opencode_local"
-      ? extractProviderId(currentModelId) ?? openCodeSelectedProvider
-      : "";
-  const { data: openCodeProviderModels } = useAdapterProviderModels(
-    selectedCompanyId,
-    adapterType,
-    currentOpenCodeProvider || null,
-  );
-  const openCodeProviderOptions = useMemo(() => {
-    if (adapterType !== "opencode_local") return [];
-    const options = listModelProviders(models);
-    if (!currentOpenCodeProvider || options.some((option) => option.id === currentOpenCodeProvider)) {
-      return options;
-    }
-    return [
-      ...options,
-      { id: currentOpenCodeProvider, label: currentOpenCodeProvider, modelCount: 0 },
-    ].sort((left, right) => left.id.localeCompare(right.id));
-  }, [adapterType, currentOpenCodeProvider, models]);
-  const openCodeModelOptions = useMemo<AdapterModel[]>(() => {
-    if (adapterType !== "opencode_local") return models;
-    // Prefer the reliable provider-filtered query. While it loads (or if it fails),
-    // fall back to a client-side filter of the full list so the dropdown is never empty.
-    if (openCodeProviderModels && openCodeProviderModels.length > 0) return openCodeProviderModels;
-    return currentOpenCodeProvider
-      ? filterModelsByProvider(models, currentOpenCodeProvider)
-      : [];
-  }, [adapterType, openCodeProviderModels, models, currentOpenCodeProvider]);
   const currentModelOptions =
-    adapterType === "hermes_local"
-      ? hermesModelOptions
-      : adapterType === "opencode_local"
-        ? openCodeModelOptions
-        : models;
+    adapterType === "hermes_local" ? hermesModelOptions : models;
 
   function handleHermesProviderChange(provider: string) {
     const nextModelId = provider
@@ -498,17 +452,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       "model",
       nextModelId ? extractModelName(nextModelId) : undefined,
     );
-  }
-
-  function handleOpenCodeProviderChange(provider: string) {
-    // opencode stores model as provider/model. Switching provider clears the model;
-    // the pending provider is tracked locally so the provider-filtered query loads.
-    setOpenCodeSelectedProvider(provider);
-    if (isCreate) {
-      set!({ model: "" });
-    } else {
-      mark("adapterConfig", "model", undefined);
-    }
   }
 
   function handleModelChange(modelId: string) {
@@ -542,9 +485,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
           String(config.fallbackCommand ?? currentFallbackConfig.command ?? ""),
         ) ?? "",
       );
-  const currentFallbackModelId = isCreate
-    ? (val!.fallbackModel ?? "")
-    : String(currentFallbackConfig.model ?? "");
 
   function markFallbackConfigField(field: string, value: unknown) {
     if (isCreate) return;
@@ -569,11 +509,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       ? "modelReasoningEffort"
       : adapterType === "pi_local"
         ? "thinking"
-        : adapterType === "cursor"
-        ? "mode"
-        : adapterType === "opencode_local"
-          ? "variant"
-          : "effort";
+        : "effort";
   const thinkingEffortOptions =
     adapterType === "commandcode_local"
       ? buildCommandCodeEffortOptions(commandCodeEfforts ?? [])
@@ -588,12 +524,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
         )
       : adapterType === "pi_local"
         ? eff("adapterConfig", "thinking", String(config.thinking ?? ""))
-        : adapterType === "cursor"
-        ? eff("adapterConfig", "mode", String(config.mode ?? ""))
-      : adapterType === "opencode_local"
-        ? eff("adapterConfig", "variant", String(config.variant ?? ""))
-      : eff("adapterConfig", "effort", String(config.effort ?? ""));
-  const showThinkingEffort = adapterType !== "gemini_local";
+        : eff("adapterConfig", "effort", String(config.effort ?? ""));
   // When the Command Code model changes, a previously-selected effort may no
   // longer be supported by the new model. Reset to Auto ONLY after the effort
   // list has been successfully loaded — never while loading, to avoid clearing
@@ -778,8 +709,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                             : "",
                         effort: "",
                         modelReasoningEffort: "",
-                        variant: "",
-                        mode: "",
+                        thinking: "",
                         ...(t === "codex_local"
                           ? {
                               dangerouslyBypassApprovalsAndSandbox:
@@ -884,19 +814,13 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   placeholder={
                     adapterType === "codex_local"
                       ? "codex"
-                      : adapterType === "gemini_local"
-                        ? "gemini"
-                        : adapterType === "cursor"
-                          ? "agent"
-                        : adapterType === "opencode_local"
-                          ? "opencode"
-                          : adapterType === "hermes_local"
-                            ? "hermes"
-                        : adapterType === "antigravity_local"
-                          ? "agy"
+                      : adapterType === "hermes_local"
+                        ? "hermes"
                         : adapterType === "commandcode_local"
                           ? "cmd"
-                          : "claude"
+                          : adapterType === "pi_local"
+                            ? "pi"
+                            : "claude"
                   }
                 />
               </Field>
@@ -914,50 +838,11 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                     }
                     immediate
                     className={inputClass}
-                    placeholder={
-                      adapterType === "codex_local"
-                        ? "e.g. cursor, gemini"
-                        : adapterType === "gemini_local"
-                          ? "e.g. codex, cursor"
-                          : adapterType === "cursor"
-                            ? "e.g. codex, gemini"
-                            : adapterType === "opencode_local"
-                              ? "e.g. codex, cursor"
-                              : "e.g. codex, cursor"
-                    }
+                    placeholder="e.g. codex, claude"
                   />
                 </Field>
               )}
 
-              {adapterType === "opencode_local" && (
-                <ModelDropdown
-                  label="Fallback model"
-                  hint={help.fallbackModel}
-                  models={models}
-                  value={currentFallbackModelId}
-                  onChange={(v) =>
-                    isCreate
-                      ? set!({ fallbackModel: v })
-                      : markFallbackConfigField("model", v || undefined)
-                  }
-                  open={fallbackModelOpen}
-                  onOpenChange={setFallbackModelOpen}
-                  allowDefault
-                  required={false}
-                  groupByProvider
-                />
-              )}
-
-              {adapterType === "opencode_local" && (
-                <ProviderDropdown
-                  hint="OpenCode provider to scan for models. Scanning a single provider avoids intermittent omissions when many providers are configured."
-                  providers={openCodeProviderOptions}
-                  value={currentOpenCodeProvider}
-                  onChange={handleOpenCodeProviderChange}
-                  open={providerOpen}
-                  onOpenChange={setProviderOpen}
-                />
-              )}
               {adapterType === "hermes_local" && (
                 <ProviderDropdown
                   providers={hermesProviderOptions}
@@ -974,9 +859,9 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 onChange={handleModelChange}
                 open={modelOpen}
                 onOpenChange={setModelOpen}
-                allowDefault={adapterType !== "opencode_local" && adapterType !== "hermes_local"}
-                required={adapterType === "opencode_local" || adapterType === "hermes_local"}
-                groupByProvider={adapterType === "opencode_local"}
+                allowDefault={adapterType !== "hermes_local"}
+                required={adapterType === "hermes_local"}
+                groupByProvider={false}
               />
               {fetchedModelsError && (
                 <p className="text-xs text-destructive">
@@ -1018,28 +903,24 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 </div>
               )}
 
-              {showThinkingEffort && (
-                <>
-                  <ThinkingEffortDropdown
-                    value={currentThinkingEffort}
-                    options={thinkingEffortOptions}
-                    onChange={(v) =>
-                      isCreate
-                        ? set!({ thinkingEffort: v })
-                        : mark("adapterConfig", thinkingEffortKey, v || undefined)
-                    }
-                    open={thinkingEffortOpen}
-                    onOpenChange={setThinkingEffortOpen}
-                  />
-                  {adapterType === "codex_local" &&
-                    codexSearchEnabled &&
-                    currentThinkingEffort === "minimal" && (
-                      <p className="text-xs text-amber-400">
-                        Codex may reject `minimal` thinking when search is enabled.
-                      </p>
-                    )}
-                </>
-              )}
+              <ThinkingEffortDropdown
+                value={currentThinkingEffort}
+                options={thinkingEffortOptions}
+                onChange={(v) =>
+                  isCreate
+                    ? set!({ thinkingEffort: v })
+                    : mark("adapterConfig", thinkingEffortKey, v || undefined)
+                }
+                open={thinkingEffortOpen}
+                onOpenChange={setThinkingEffortOpen}
+              />
+              {adapterType === "codex_local" &&
+                codexSearchEnabled &&
+                currentThinkingEffort === "minimal" && (
+                  <p className="text-xs text-amber-400">
+                    Codex may reject `minimal` thinking when search is enabled.
+                  </p>
+                )}
               {!isCreate && typeof config.bootstrapPromptTemplate === "string" && config.bootstrapPromptTemplate && (
                 <>
                   <Field label="Bootstrap prompt (legacy)" hint={help.bootstrapPrompt}>
