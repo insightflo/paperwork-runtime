@@ -9,6 +9,7 @@ members = [
   "crates/kb-core",
   "crates/log-redactor",
   "crates/mission-core",
+  "crates/ops-control",
   "crates/portability-yaml",
   "crates/provider-runtime-core",
   "crates/qa-file-owner",
