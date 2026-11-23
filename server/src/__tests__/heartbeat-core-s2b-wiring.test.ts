@@ -248,8 +248,11 @@ describe("heartbeat-core s2b wiring", () => {
       expect(gateCall({ issue: { originKind: "x", title: "create report" } })).toBe(refs.gate);
       expect(resolveStepRunRequiresWorkProduct({ graphWorkProductRequired: true })).toBe(refs.meta);
       expect(hasRunProgressEvidenceViaRust(PROGRESS_EMPTY)).toBeNull();
-      expect(warn).toHaveBeenCalledTimes(3);
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining(reason));
+      const fallbackWarnings = warn.mock.calls.map(([message]) => message).filter(
+        (message) => typeof message === "string" && message.startsWith("[heartbeat-core-s2b] Rust helper fallback to Node ("),
+      );
+      expect(fallbackWarnings).toHaveLength(3);
+      expect(fallbackWarnings).toContainEqual(expect.stringContaining(reason));
       resetHeartbeatCoreS2bFallbackWarningsForTests();
       warn.mockClear();
     }

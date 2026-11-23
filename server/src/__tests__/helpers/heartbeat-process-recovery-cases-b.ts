@@ -429,8 +429,8 @@ export function registerHeartbeatProcessRecoveryCasesB(deps: {
       issueId,
       wakeupRequestId,
       contextSnapshot: {},
+      processLossRetryCount: 1, // Exhaust the retry so the reaper takes the SKIP LOCKED release path.
     });
-    // Link execution_run_id AFTER the run exists (FK: issues.execution_run_id -> heartbeat_runs.id).
     await db
       .update(issues)
       .set({ executionRunId: runId })
