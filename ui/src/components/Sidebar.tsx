@@ -1,7 +1,6 @@
 import {
   Inbox,
   CircleDot,
-  Target,
   LayoutDashboard,
   DollarSign,
   History,
@@ -303,7 +302,6 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
             </button>
             <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
             <SidebarNavItem to="/activity" label="Activity" icon={History} />
-            <SidebarNavItem to="/goals" label="Goals" icon={Target} />
             <SidebarNavItem to="/channels" label="Channel" icon={MessageSquare} />
             <SidebarNavItem to="/worktree/rules" label="Approval Gates" icon={ShieldCheck} />
             <SidebarNavItem to="/worktree/proposals" label="Proposals" icon={GitPullRequest} />
