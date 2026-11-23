@@ -44,15 +44,34 @@ const boardApp = (router: express.Router) => {
 type RouteLayer = {
   route?: { path: string; methods: Record<string, boolean> };
   handle?: { stack?: RouteLayer[] };
+  match?: (path: string) => boolean;
 };
 
-/** Recursively finds every route layer serving POST /plugins/tools/execute, tagged with its owning router stack. */
-const collectExecuteLayers = (stack: RouteLayer[], hits: Array<{ stack: RouteLayer[]; layer: RouteLayer }>) => {
+/** Recursively finds every route layer serving POST `routePath`, tagged with its owning router stack. */
+const collectPostLayers = (stack: RouteLayer[], routePath: string, hits: Array<{ stack: RouteLayer[]; layer: RouteLayer }>) => {
   for (const layer of stack) {
-    if (layer.route?.path === "/plugins/tools/execute" && layer.route.methods.post) hits.push({ stack, layer });
+    if (layer.route?.path === routePath && layer.route.methods.post) hits.push({ stack, layer });
     const nested = layer.handle?.stack;
-    if (Array.isArray(nested)) collectExecuteLayers(nested, hits);
+    if (Array.isArray(nested)) collectPostLayers(nested, routePath, hits);
   }
+};
+
+/** Recursively collects every route layer (any method/path) in a router stack. */
+const collectRouteLayers = (stack: RouteLayer[], hits: RouteLayer[]) => {
+  for (const layer of stack) {
+    if (layer.route) hits.push(layer);
+    const nested = layer.handle?.stack;
+    if (Array.isArray(nested)) collectRouteLayers(nested, hits);
+  }
+};
+
+/** True when the layer is a mounted sub-router whose stack recursively serves POST `routePath`. */
+const ownsPostRoute = (layer: RouteLayer, routePath: string) => {
+  const stack = layer.handle?.stack;
+  if (!Array.isArray(stack)) return false;
+  const owned: Array<{ stack: RouteLayer[]; layer: RouteLayer }> = [];
+  collectPostLayers(stack, routePath, owned);
+  return owned.length > 0;
 };
 
 let fixture: Awaited<ReturnType<typeof startPluginRouteReceiptFixture>>;
@@ -77,7 +96,7 @@ describe("standalone plugin tool execute mount (Phase 0-2 Step 1b-1)", () => {
     expect(res.status).toBe(404);
   });
 
-  it("(c) real app registers POST /plugins/tools/execute exactly once, owned by the standalone router", async () => {
+  it("(c) real app mounts the standalone execute router as a direct /api sibling before pluginRoutes", async () => {
     const localPluginDir = await mkdtemp(path.join(tmpdir(), "p02-s1b1-plugins-"));
     const app = await createApp(fixture.db, {
       uiMode: "none", serverPort: 3100, storageService: {} as never,
@@ -88,9 +107,25 @@ describe("standalone plugin tool execute mount (Phase 0-2 Step 1b-1)", () => {
     try {
       const root = (app as unknown as { router: { stack: RouteLayer[] } }).router.stack;
       const hits: Array<{ stack: RouteLayer[]; layer: RouteLayer }> = [];
-      collectExecuteLayers(root, hits);
+      collectPostLayers(root, "/plugins/tools/execute", hits);
       expect(hits).toHaveLength(1);
       expect(hits[0]!.stack.filter((layer) => layer.route)).toEqual([hits[0]!.layer]);
+      const apiLayer = root.find((layer) => Array.isArray(layer.handle?.stack)
+        && layer.match?.("/api") === true && layer.match?.("/zzz-nomatch") === false);
+      expect(apiLayer).toBeDefined();
+      const apiStack = apiLayer!.handle!.stack!;
+      const standaloneIdx = apiStack.findIndex((layer) => ownsPostRoute(layer, "/plugins/tools/execute"));
+      const pluginRoutesIdx = apiStack.findIndex((layer) => ownsPostRoute(layer, "/plugins/install"));
+      expect(standaloneIdx).toBeGreaterThanOrEqual(0);
+      expect(pluginRoutesIdx).toBeGreaterThanOrEqual(0);
+      expect(standaloneIdx).toBeLessThan(pluginRoutesIdx);
+      expect(hits[0]!.stack).toBe(apiStack[standaloneIdx]!.handle!.stack!);
+      const standaloneRoutes: RouteLayer[] = [];
+      collectRouteLayers(apiStack[standaloneIdx]!.handle!.stack!, standaloneRoutes);
+      expect(standaloneRoutes).toEqual([hits[0]!.layer]);
+      const nestedExecute: Array<{ stack: RouteLayer[]; layer: RouteLayer }> = [];
+      collectPostLayers(apiStack[pluginRoutesIdx]!.handle!.stack!, "/plugins/tools/execute", nestedExecute);
+      expect(nestedExecute).toHaveLength(0);
     } finally {
       await app.runtimeShutdown.dispose();
       await rm(localPluginDir, { recursive: true, force: true });
