@@ -22,6 +22,9 @@ export {
   sanitizeInheritedPaperclipEnv,
 } from "./paperclip-env.js";
 
+export { createChildProcessStreamRunner, createManagedProviderDriver } from "./managed-driver.js";
+export type { ChildProcessStreamRunner, DriverStreamRunOptions, ManagedProviderDriver, ManagedProviderDriverOptions } from "./managed-driver.js";
+
 export interface RunProcessResult {
   exitCode: number | null;
   signal: string | null;
