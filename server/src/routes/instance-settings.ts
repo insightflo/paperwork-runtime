@@ -18,6 +18,10 @@ import {
   probeAllProviders,
   ProviderAuthClientError,
 } from "../services/provider-auth-core-client.js";
+import {
+  checkProviderRuntimeBlocklist,
+  ProviderRuntimeEngineError,
+} from "../services/provider-runtime-engine-client.js";
 import { getActorInfo } from "./authz.js";
 
 function assertCanManageInstanceSettings(req: Request) {
@@ -199,6 +203,25 @@ export function instanceSettingsRoutes(db: Db) {
       res.json({ plan: await planProviderLogin(provider) });
     } catch (err) {
       sendProviderAuthError(res, err);
+    }
+  });
+
+  router.post("/instance/settings/provider-runtimes/check-blocklist", async (req, res) => {
+    assertCanManageInstanceSettings(req);
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      const result = await checkProviderRuntimeBlocklist(req.body);
+      res.json({
+        advisory: true,
+        blocked: result.blocked,
+        ...(result.reason !== undefined ? { reason: result.reason } : {}),
+      });
+    } catch (err) {
+      if (err instanceof ProviderRuntimeEngineError && err.reason === "invalid_input") {
+        res.status(400).json({ error: "Invalid provider runtime blocklist request" });
+        return;
+      }
+      res.status(503).json({ error: "Provider runtime blocklist check unavailable" });
     }
   });
 
