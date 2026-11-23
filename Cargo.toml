@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/artifact-io",
+  "crates/cli-runtime",
+  "crates/db-backup",
+  "crates/fs-scan",
+  "crates/heartbeat-core",
+  "crates/kb-core",
+  "crates/log-redactor",
+  "crates/mission-core",
+  "crates/portability-yaml",
+  "crates/qa-file-owner",
+  "crates/run-log",
+  "crates/runtime-guard-core",
+  "crates/schedule-core",
+  "crates/settler",
+  "crates/tool-hygiene-core",
+  "crates/verdict-core",
+  "crates/workflow-core",
+]
+
+[profile.release]
+opt-level = 3
+lto = "thin"

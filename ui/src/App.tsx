@@ -26,8 +26,6 @@ const Projects = lazy(async () => ({ default: (await import("./pages/Projects"))
 const ProjectDetail = lazy(async () => ({ default: (await import("./pages/ProjectDetail")).ProjectDetail }));
 const Issues = lazy(async () => ({ default: (await import("./pages/Issues")).Issues }));
 const IssueDetail = lazy(async () => ({ default: (await import("./pages/IssueDetail")).IssueDetail }));
-const Routines = lazy(async () => ({ default: (await import("./pages/Routines")).Routines }));
-const RoutineDetail = lazy(async () => ({ default: (await import("./pages/RoutineDetail")).RoutineDetail }));
 const ExecutionWorkspaceDetail = lazy(async () => ({ default: (await import("./pages/ExecutionWorkspaceDetail")).ExecutionWorkspaceDetail }));
 const Goals = lazy(async () => ({ default: (await import("./pages/Goals")).Goals }));
 const GoalDetail = lazy(async () => ({ default: (await import("./pages/GoalDetail")).GoalDetail }));
@@ -193,8 +191,6 @@ function boardRoutes() {
       <Route path="issues/done" element={<Navigate to="/issues" replace />} />
       <Route path="issues/recent" element={<Navigate to="/issues" replace />} />
       <Route path="issues/:issueId" element={lazyRoute(<IssueDetail />)} />
-      <Route path="routines" element={lazyRoute(<Routines />)} />
-      <Route path="routines/:routineId" element={lazyRoute(<RoutineDetail />)} />
       <Route path="workflows" element={lazyRoute(<Workflows />)} />
       <Route path="execution-workspaces/:workspaceId" element={lazyRoute(<ExecutionWorkspaceDetail />)} />
       <Route path="goals" element={lazyRoute(<Goals />)} />
@@ -380,8 +376,6 @@ export function App() {
           <Route path="quality" element={<UnprefixedBoardRedirect />} />
           <Route path="issues" element={<UnprefixedBoardRedirect />} />
           <Route path="issues/:issueId" element={<UnprefixedBoardRedirect />} />
-          <Route path="routines" element={<UnprefixedBoardRedirect />} />
-          <Route path="routines/:routineId" element={<UnprefixedBoardRedirect />} />
           <Route path="workflows" element={<UnprefixedBoardRedirect />} />
           <Route path="skills/*" element={<UnprefixedBoardRedirect />} />
           <Route path="instructions" element={<UnprefixedBoardRedirect />} />
