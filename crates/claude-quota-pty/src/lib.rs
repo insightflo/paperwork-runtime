@@ -3,7 +3,7 @@
 //! Group signals cover same-group descendants on normal exit, timeout, SIGTERM and
 //! errors. Descendants that escape via setsid(), and helper SIGKILL on macOS, are
 //! outside the guarantees of a single helper. macOS can return EPERM from
-//! killpg for a group containing only zombies; this is reported as a cleanup error.
+//! killpg for a zombie-only group; tolerate it only after waitid confirms leader exit.
 
 pub struct ScheduledInput {
     pub delay_ms: u64,
@@ -77,6 +77,7 @@ mod unix {
     struct PtyChildGuard {
         owned_pid: Option<pid_t>,
         master: Option<OwnedFd>,
+        leader_exited: bool,
     }
     impl PtyChildGuard {
         fn exited(&mut self, pid: pid_t) -> Result<bool, String> {
@@ -99,17 +100,17 @@ mod unix {
             };
             // The unreaped leader reserves its PID/PGID throughout escalation.
             let mut errors = Vec::new();
-            let mut signal = |name, ret| {
-                if let Err(e) = cvt(ret) {
-                    if e.raw_os_error() != Some(ESRCH) {
-                        errors.push(format!("{name}: {e}"));
-                    }
-                }
+            let mut signal = |name, ret, _is_group: bool| match cvt(ret) {
+                Ok(_) => (),
+                Err(e) if e.raw_os_error() == Some(ESRCH) => (),
+                #[cfg(target_os = "macos")]
+                Err(e) if _is_group && self.leader_exited && e.raw_os_error() == Some(EPERM) => (),
+                Err(e) => errors.push(format!("{name}: {e}")),
             };
-            signal("killpg SIGTERM", unsafe { killpg(pid, SIGTERM) });
+            signal("killpg SIGTERM", unsafe { killpg(pid, SIGTERM) }, true);
             sleep(Duration::from_millis(TERM_GRACE_MS));
-            signal("killpg SIGKILL", unsafe { killpg(pid, SIGKILL) });
-            signal("kill SIGKILL", unsafe { kill(pid, SIGKILL) });
+            signal("killpg SIGKILL", unsafe { killpg(pid, SIGKILL) }, true);
+            signal("kill SIGKILL", unsafe { kill(pid, SIGKILL) }, false);
             self.master.take();
             let deadline = Instant::now() + Duration::from_millis(REAP_TIMEOUT_MS);
             let mut status = 0;
@@ -179,7 +180,7 @@ mod unix {
         let start = Instant::now();
         let child = command.spawn().map_err(|e| format!("spawn: {e}"))?;
         let pid = child.id() as pid_t;
-        let mut guard = PtyChildGuard { owned_pid: Some(pid), master: Some(master) };
+        let mut guard = PtyChildGuard { owned_pid: Some(pid), master: Some(master), leader_exited: false };
         drop(slave);
         let capture = collect(&mut guard, pid, m, start, spec);
         let status = guard.cleanup()?;
@@ -203,7 +204,8 @@ mod unix {
         let mut truncated = false;
         let timeout = Duration::from_millis(spec.timeout_ms);
         let timed_out = loop {
-            if drain_until.is_none() && guard.exited(pid)? {
+            if !guard.leader_exited && guard.exited(pid)? {
+                guard.leader_exited = true;
                 drain_until = Some(Instant::now() + Duration::from_millis(EXIT_DRAIN_MS));
             }
             let now = Instant::now();

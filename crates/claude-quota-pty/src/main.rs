@@ -79,8 +79,7 @@ mod tests {
     #[test]
     fn scheduled_echo() {
         let _lock = TEST.lock().unwrap();
-        // Keep a live group member until escalation: Darwin rejects zombie-only groups.
-        let mut spec = shell("trap '' TERM HUP; /bin/sleep 10 </dev/null >/dev/null 2>&1 & stty -echo; IFS= read -r line && printf '<%s>\\n' \"$line\"");
+        let mut spec = shell("stty -echo; IFS= read -r line && printf '<%s>\\n' \"$line\"");
         spec.inputs.push(ScheduledInput { delay_ms: 150, bytes: b"hello\r".to_vec() });
         let got = run_pty_probe(&spec).unwrap();
         assert_eq!((got.exit_code, got.schema_version, got.timed_out), (Some(0), 1, false));
@@ -169,11 +168,11 @@ mod tests {
         }
         assert_eq!(fd_count(), before);
     }
-    #[cfg(target_os = "macos")]
     #[test]
-    fn zombie_only_group_fails_closed() {
+    fn normal_exit() {
         let _lock = TEST.lock().unwrap();
-        let error = run_pty_probe(&shell("exit 0")).unwrap_err();
-        assert!(error.starts_with("killpg SIGTERM:"), "{error}");
+        let got = run_pty_probe(&shell("exit 0")).expect("expected Ok");
+        assert_eq!(got.exit_code, Some(0));
+        assert!(!got.timed_out);
     }
 }
