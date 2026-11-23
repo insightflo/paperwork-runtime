@@ -77,3 +77,31 @@ export {
 export type { PaperclipRunToolContractV1, ParsedRunToolContract, RunToolContractTool } from "./run-tool-contract.js";
 export { inferOpenAiCompatibleBiller } from "./billing.js";
 export * from "./skills.js";
+export {
+  DRIVER_EVENT_PROTOCOL_VERSION,
+  createDefaultSessionCodec,
+  driverArgsList,
+  isTrustedProtocolEvent,
+  parseDriverFrame,
+  resolveDriverCwd,
+  stripReservedDriverArgs,
+} from "./acp-flavor.js";
+export type {
+  AcpFlavor,
+  AcpFlavorBuildArgsInput,
+  DriverErrorEvent,
+  DriverEventFrame,
+  DriverOutputEvent,
+  DriverSessionEvent,
+  DriverStreamOrigin,
+  DriverUsageEvent,
+  ParsedDriverEvent,
+  ProtocolTransport,
+  ProviderDescriptor,
+} from "./acp-flavor.js";
+export type {
+  ChildProcessStreamRunner,
+  DriverStreamRunOptions,
+  ManagedProviderDriver,
+  ManagedProviderDriverOptions,
+} from "./managed-driver.js";

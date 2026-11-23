@@ -110,6 +110,17 @@ jobs:
           node scripts/check-run-status-write-chokepoint.mjs --self-test
           node scripts/check-run-status-write-chokepoint.mjs
 
+      # 무조건 실행 — heavy 게이트를 두면 문서 전용/드래프트 판정으로 frozen 마이그레이션 편집이 우회된다.
+      - name: Enforce frozen DB migrations
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: |
+          # checkout 은 fetch-depth:0 이지만 base 브랜치의 원격 ref 는 없을 수 있어 없으면 fetch 한다.
+          if ! git rev-parse --verify --quiet "refs/remotes/origin/${BASE_REF}" >/dev/null; then
+            git fetch --no-tags origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+          fi
+          node scripts/check-frozen-migrations.mjs --base "origin/${BASE_REF}"
+
       - name: Validate Dockerfile deps stage
         if: steps.scope.outputs.heavy == 'true'
         run: bash scripts/check-dockerfile-deps-stage.sh
