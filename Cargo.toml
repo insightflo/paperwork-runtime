@@ -12,6 +12,7 @@ members = [
   "crates/portability-yaml",
   "crates/provider-runtime-core",
   "crates/qa-file-owner",
+  "crates/quota-router",
   "crates/redactor-core",
   "crates/run-log",
   "crates/runtime-guard-core",
