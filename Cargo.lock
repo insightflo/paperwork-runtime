@@ -734,6 +734,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "paperclip-provider-auth-core"
+version = "0.1.0"
+dependencies = [
+ "paperclip-provider-runtime-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "paperclip-provider-runtime-core"
 version = "0.1.0"
 dependencies = [
