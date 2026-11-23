@@ -28,15 +28,9 @@ struct PlanLoginParams {
     provider: String,
 }
 
-/// Dispatches one auth/quota method; auth probes read the live process
-/// environment snapshot.
-pub(crate) fn dispatch(id: Value, method: &str, params: Option<&Value>) -> Value {
-    dispatch_with(id, method, params, &ProbeEnv::from_process())
-}
-
-/// Same gates as `dispatch`, but auth evidence comes from an injected `env`
-/// so tests stay deterministic and host-independent.
-fn dispatch_with(id: Value, method: &str, params: Option<&Value>, env: &ProbeEnv) -> Value {
+/// Dispatches one auth/quota method; auth evidence comes from an injected
+/// `env` snapshot so tests stay deterministic and host-independent.
+pub(crate) fn dispatch_with(id: Value, method: &str, params: Option<&Value>, env: &ProbeEnv) -> Value {
     match method {
         "provider.auth_probe_all" => match params {
             None => ok(id, json!({"providers": probe_all(env)})),
@@ -86,17 +80,28 @@ mod tests {
         })
     }
 
+    /// Raw JSON-RPC bytes through the real request parser (crate::handle_with)
+    /// so the probe_all param gate is covered end-to-end. An empty ProbeEnv is
+    /// host-independent: every provider reports missing.
     #[test]
-    fn probe_all_param_shapes() {
-        for params in [None, Some(json!({}))] {
-            let r = call("provider.auth_probe_all", params);
-            assert_eq!(r["id"], 7);
+    fn probe_all_through_jsonrpc_parser() {
+        let env = ProbeEnv::from_pairs(&[]);
+        let r1 = crate::handle_with(br#"{"jsonrpc":"2.0","id":1,"method":"provider.auth_probe_all"}"#, &env);
+        let r2 = crate::handle_with(br#"{"jsonrpc":"2.0","id":2,"method":"provider.auth_probe_all","params":{}}"#, &env);
+        for (r, id) in [(r1, 1), (r2, 2)] {
+            assert_eq!(r["id"], json!(id));
             let providers = r["result"]["providers"].as_array().unwrap();
             assert_eq!(providers.len(), 5);
             assert!(providers.iter().all(|p| p["evidence"] == "missing"));
         }
-        for bad in [json!(null), json!([]), json!({"extra": 1}), json!("x"), json!(3)] {
-            assert_eq!(code(&call("provider.auth_probe_all", Some(bad))), -32602);
+        for req in [
+            br#"{"jsonrpc":"2.0","id":3,"method":"provider.auth_probe_all","params":null}"#.as_slice(),
+            br#"{"jsonrpc":"2.0","id":4,"method":"provider.auth_probe_all","params":[]}"#,
+            br#"{"jsonrpc":"2.0","id":5,"method":"provider.auth_probe_all","params":{"extra":1}}"#,
+            br#"{"jsonrpc":"2.0","id":6,"method":"provider.auth_probe_all","params":"x"}"#,
+            br#"{"jsonrpc":"2.0","id":7,"method":"provider.auth_probe_all","params":3}"#,
+        ] {
+            assert_eq!(code(&crate::handle_with(req, &env)), -32602);
         }
     }
 
