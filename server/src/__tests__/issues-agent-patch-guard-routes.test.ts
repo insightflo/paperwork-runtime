@@ -49,17 +49,17 @@ vi.mock("../services/index.js", () => ({
   },
   workProductService: () => ({}),
 }));
-
 vi.mock("../services/srb/source-status-sync.js", () => ({
   syncSrbSourceIssueStatus: vi.fn(async () => []),
 }));
-
 vi.mock("../services/maintenance/decision-audit.js", () => ({
   logMaintenanceDecisionActionMismatch: mockLogMaintenanceDecisionActionMismatch,
 }));
-
 vi.mock("../services/workflow/validation-verdict-ledger.js", () => ({
   recordWorkflowValidationVerdictFromText: mockRecordWorkflowValidationVerdictFromText,
+}));
+vi.mock("../services/work-products/auto-reseal-on-done.js", () => ({
+  autoResealStaleProducerWorkProductsOnDone: vi.fn(async () => ({ resealed: 0, productIds: [] })),
 }));
 
 function createApp(actor?: Record<string, unknown>) {
