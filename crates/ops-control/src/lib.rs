@@ -16,7 +16,7 @@ use std::ffi::CString;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::os::unix::ffi::OsStrExt;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::io::{AsRawFd, FromRawFd, OwnedFd};
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -137,9 +137,11 @@ pub fn read_routine_hold(dir: &Path) -> Result<Option<RoutineHold>, OpsControlEr
     serde_json::from_reader(f).map(Some).map_err(|_| bad("corrupt routine-hold.json"))
 }
 pub fn write_routine_hold(dir: &Path, hold: &RoutineHold) -> Result<(), OpsControlError> {
-    if dir.metadata().is_err() {
-        fs::create_dir_all(dir)?;
-        fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+    // mode applied atomically at mkdir; an existing entry (raced or malicious
+    // replacement) is never chmod'd — open_state_dir fstat-verifies it instead.
+    match fs::DirBuilder::new().mode(0o700).create(dir) {
+        Err(e) if e.kind() != io::ErrorKind::AlreadyExists => return Err(e.into()),
+        _ => {}
     }
     let d = open_state_dir(dir)?;
     let tmp = format!(".{HOLD_FILE}.{}.tmp", nonce());
@@ -180,6 +182,7 @@ pub fn validate_control_socket_dir(dir: &Path) -> Result<(), OpsControlError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
     use std::path::PathBuf;
     fn tmp(tag: &str) -> PathBuf {
         let p = std::env::temp_dir().join(format!("opsctl-{tag}-{}", nonce()));
