@@ -1,4 +1,8 @@
-import type { AdapterSessionCodec, UsageSummary } from "./types.js";
+import type {
+  AdapterExecutionContext,
+  AdapterSessionCodec,
+  UsageSummary,
+} from "./types.js";
 
 /**
  * Versioned driver-event protocol for managed provider drivers. Provenance is
@@ -180,12 +184,44 @@ export interface AcpFlavorBuildArgsInput {
   config: Record<string, unknown>;
 }
 
+/**
+ * Sanitized retry-consult input: numeric/coded signals only — never raw
+ * stdout/stderr or free-form error text, which a flaky provider could spoof.
+ */
+export interface AcpFlavorRetryInput {
+  exitCode: number | null;
+  signal: string | null;
+  timedOut: boolean;
+  trustedErrorCodes: readonly string[];
+  attempt: number;
+  remainingRetries: number;
+  resumeSessionId: string | null;
+}
+
+export interface AcpFlavorRetryDecision {
+  retry: boolean;
+  clearSession?: boolean;
+  delayMs?: number;
+  reason?: string;
+}
+
 /** Per-provider flavor: transport, reserved flags, argv builder, codec. */
 export interface AcpFlavor extends ProviderDescriptor {
   sessionCodec?: AdapterSessionCodec;
   /** Flags the driver controls; matching user-supplied args are stripped. */
   reservedArgs?: readonly string[];
   buildArgs(input: AcpFlavorBuildArgsInput): string[];
+  /** Optional stdin payload for the child; undefined leaves stdin ignored. */
+  buildStdin?(input: AcpFlavorBuildArgsInput): string | undefined;
+  /** Optional env post-processing after the built-in paperclip env merge. */
+  buildEnv?(
+    baseEnv: Record<string, string>,
+    ctx: AdapterExecutionContext,
+  ): Record<string, string> | Promise<Record<string, string>>;
+  /** Opt-in for shouldRetry consults on timeout (default: skipped). */
+  retryOnTimeout?: boolean;
+  /** Fail-closed retry consult; null or {retry:false} stops the run. */
+  shouldRetry?(input: AcpFlavorRetryInput): AcpFlavorRetryDecision | null;
 }
 
 export function driverArgsList(value: unknown): string[] {

@@ -7,6 +7,7 @@ import {
   resolveDriverCwd,
   stripReservedDriverArgs,
   type AcpFlavor,
+  type AcpFlavorRetryDecision,
   type DriverStreamOrigin,
   type ParsedDriverEvent,
   type ProtocolTransport,
@@ -20,6 +21,7 @@ import {
   ensureAbsoluteDirectory,
   ensureCommandResolvable,
   parseObject,
+  redactEnvForLogs,
   runChildProcess,
   type RunProcessResult,
 } from "./server-utils.js";
@@ -33,6 +35,7 @@ import type {
 export interface DriverStreamRunOptions {
   runId: string; command: string; args: string[]; cwd: string;
   env: Record<string, string>; timeoutSec: number; graceSec: number;
+  stdin?: string;
   onLog?: (stream: "stdout" | "stderr", chunk: string) => Promise<void>;
   onSpawn?: (meta: { pid: number; startedAt: string }) => Promise<void>;
   onEvent?: (event: ParsedDriverEvent) => void | Promise<void>;
@@ -88,7 +91,7 @@ export function createChildProcessStreamRunner(
     };
     const result = await runChildProcess(opts.runId, opts.command, opts.args, {
       cwd: opts.cwd, env: opts.env, timeoutSec: opts.timeoutSec, graceSec: opts.graceSec,
-      onLog, onSpawn: opts.onSpawn,
+      onLog, onSpawn: opts.onSpawn, stdin: opts.stdin,
     });
     for (const stream of ["stdout", "stderr"] as const) {
       if (buffers[stream]) emitLine(stream, buffers[stream]);
@@ -96,6 +99,21 @@ export function createChildProcessStreamRunner(
     await eventChain;
     return result;
   };
+}
+
+const MAX_TOTAL_RETRIES = 2;
+
+export function clampRetryDelayMs(delayMs: number | undefined): number {
+  return Math.min(5000, Math.max(0, Math.trunc(delayMs ?? 0)));
+}
+
+/** Fail-closed flavor retry consult: sanitized inputs only; timeouts opt-in. */
+function consultFlavorRetry(flavor: AcpFlavor, proc: RunProcessResult, codes: string[], retriesUsed: number, resumeId: string): AcpFlavorRetryDecision | null {
+  const failed = proc.exitCode !== 0 || proc.signal !== null || proc.timedOut || codes.length > 0;
+  if (!failed || !flavor.shouldRetry || retriesUsed >= MAX_TOTAL_RETRIES) return null;
+  if (proc.timedOut && flavor.retryOnTimeout !== true) return null;
+  return flavor.shouldRetry({ exitCode: proc.exitCode, signal: proc.signal, timedOut: proc.timedOut, trustedErrorCodes: codes,
+    attempt: retriesUsed + 1, remainingRetries: MAX_TOTAL_RETRIES - retriesUsed, resumeSessionId: resumeId || null });
 }
 
 export interface ManagedProviderDriverOptions {
@@ -127,7 +145,8 @@ export function createManagedProviderDriver(
       parseObject(config.env),
       authToken,
     );
-    await ensureCommandResolvable(command, cwd, runtimeEnv);
+    const finalEnv = flavor.buildEnv ? await flavor.buildEnv(runtimeEnv, ctx) : runtimeEnv;
+    await ensureCommandResolvable(command, cwd, finalEnv);
 
     const templateData = {
       agentId: agent.id,
@@ -172,11 +191,11 @@ export function createManagedProviderDriver(
     let summaryTail = "";
     let firstErrorMessage: string | null = null;
     const usageRollup: UsageSummary = { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0 };
-    let sawUnknownSession = false;
+    let sawUnknownSession = false, trustedErrorCodes: string[] = [];
 
     const handleEvent = async (event: ParsedDriverEvent) => {
-      if (isTrustedProtocolEvent(event) && event.kind === "error" && event.code === "unknown_session") {
-        sawUnknownSession = true;
+      if (isTrustedProtocolEvent(event) && event.kind === "error") {
+        trustedErrorCodes.push(event.code); sawUnknownSession ||= event.code === "unknown_session";
       }
       if (event.kind === "output") {
         if (event.origin !== "stderr") summaryTail = (summaryTail + event.text + "\n").slice(-8000);
@@ -207,28 +226,36 @@ export function createManagedProviderDriver(
     };
 
     const attempt = async (sessionResumeId: string) => {
-      sawUnknownSession = false;
-      usageRollup.inputTokens = 0;
-      usageRollup.outputTokens = 0;
-      usageRollup.cachedInputTokens = 0;
-      const args = flavor.buildArgs({
-        command, prompt, resumeSessionId: sessionResumeId || null,
-        model, effort, maxTurns, extraArgs, config,
-      });
+      sawUnknownSession = false; trustedErrorCodes = [];
+      usageRollup.inputTokens = 0; usageRollup.outputTokens = 0; usageRollup.cachedInputTokens = 0;
+      const argsInput = { command, prompt, resumeSessionId: sessionResumeId || null, model, effort, maxTurns, extraArgs, config };
+      const args = flavor.buildArgs(argsInput);
+      if (ctx.onMeta) await ctx.onMeta({ adapterType: flavor.key, command, cwd, commandArgs: args, env: redactEnvForLogs(finalEnv), prompt });
+      const stdin = flavor.buildStdin?.(argsInput);
       const proc = await runner({
-        runId, command, args, cwd, env: runtimeEnv, timeoutSec, graceSec,
-        onLog, onSpawn, onEvent: handleEvent,
+        runId, command, args, cwd, env: finalEnv, timeoutSec, graceSec,
+        onLog, onSpawn, onEvent: handleEvent, stdin,
       });
-      return { proc, unknownSession: sawUnknownSession };
+      return { proc, unknownSession: sawUnknownSession, trustedErrorCodes };
     };
 
-    let result = await attempt(resumeId);
-    // Single fresh retry, only on a validated top-level v1 provider_protocol
-    // unknown_session error frame; spoofed JSON never reaches this branch.
-    if (resumeId && result.unknownSession) {
-      const msg = `[paperclip] ${flavor.key} session "${resumeId}" is unavailable; retrying with a fresh run.\n`;
-      await onLog("stdout", msg);
-      result = await attempt("");
+    // Shared fail-closed retry budget: built-in unknown_session retry runs first.
+    let retriesUsed = 0, activeResumeId = resumeId, result = await attempt(activeResumeId);
+    for (;;) {
+      if (activeResumeId && result.unknownSession && retriesUsed < MAX_TOTAL_RETRIES) {
+        await onLog("stdout", `[paperclip] ${flavor.key} session "${activeResumeId}" is unavailable; retrying with a fresh run.\n`);
+        retriesUsed += 1; activeResumeId = ""; result = await attempt(activeResumeId); continue;
+      }
+      const decision = consultFlavorRetry(flavor, result.proc, result.trustedErrorCodes, retriesUsed, activeResumeId);
+      if (!decision?.retry) break;
+      if (decision.delayMs !== undefined && !Number.isFinite(decision.delayMs)) {
+        await onLog("stdout", `[paperclip] ${flavor.key} shouldRetry returned a non-finite delayMs; refusing to retry.\n`);
+        break;
+      }
+      const delayMs = clampRetryDelayMs(decision.delayMs); if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs));
+      retriesUsed += 1; if (decision.clearSession) activeResumeId = "";
+      await onLog("stdout", `[paperclip] ${flavor.key} retrying attempt ${retriesUsed + 1}${decision.reason ? ` (${decision.reason})` : ""}.\n`);
+      result = await attempt(activeResumeId);
     }
 
     const { proc } = result;

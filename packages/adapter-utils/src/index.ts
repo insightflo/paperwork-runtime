@@ -89,6 +89,8 @@ export {
 export type {
   AcpFlavor,
   AcpFlavorBuildArgsInput,
+  AcpFlavorRetryDecision,
+  AcpFlavorRetryInput,
   DriverErrorEvent,
   DriverEventFrame,
   DriverOutputEvent,
