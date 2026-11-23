@@ -8,14 +8,43 @@ fn fail(code: u8, error: &str) -> ExitCode {
 }
 
 #[cfg(unix)]
-mod cli;
+fn probe_spec() -> Result<PtyProbeSpec, String> {
+    let mut args = std::env::args_os().skip(1);
+    let timeout_ms = match args.next() {
+        None => 12000,
+        Some(flag) if flag == "--timeout-ms" => args
+            .next()
+            .and_then(|value| value.to_str()?.parse::<u64>().ok())
+            .ok_or("--timeout-ms needs an unsigned integer")?
+            .clamp(1000, 60000),
+        Some(flag) => return Err(format!("unknown flag: {flag:?}")),
+    };
+    if let Some(flag) = args.next() {
+        return Err(format!("unexpected argument: {flag:?}"));
+    }
+    let program = match std::env::var("CLAUDE_CLI_PATH") {
+        Ok(path) if std::path::Path::new(&path).is_absolute() => path,
+        Err(std::env::VarError::NotPresent) => "claude".into(),
+        _ => return Err("CLAUDE_CLI_PATH must be a non-empty absolute UTF-8 path".into()),
+    };
+    Ok(PtyProbeSpec {
+        program,
+        args: vec!["--tools".into(), "".into()],
+        timeout_ms,
+        strip_anthropic_env: true,
+        inputs: [(2000, &b"/usage\r"[..]), (8000, b"\x1b"), (9000, b"\x03")]
+            .into_iter()
+            .map(|(delay_ms, bytes)| ScheduledInput { delay_ms, bytes: bytes.to_vec() })
+            .collect(),
+    })
+}
 
 #[cfg(unix)]
 fn main() -> ExitCode {
     if let Err(e) = reset_sigchld_default().and_then(|()| install_cancel_signal_handlers()) {
         return fail(1, &e);
     }
-    let spec = match cli::probe_spec() {
+    let spec = match probe_spec() {
         Ok(spec) => spec,
         Err(e) => return fail(2, &e),
     };
@@ -93,20 +122,66 @@ mod tests {
     #[test]
     fn inherited_sigterm_mask() { check_cancel("tests::inherited_sigterm_mask", true); }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn shipped_binary_cancels_yes_with_blocked_sigterm() {
+        use std::process::Stdio;
+        let _lock = TEST.lock().unwrap();
+        // Unit-test targets don't get CARGO_BIN_EXE; locate the actual build artifact.
+        let build = Command::new(env!("CARGO"))
+            .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .args(["build", "--locked", "--bin", env!("CARGO_PKG_NAME"), "--message-format=json"])
+            .output().unwrap();
+        assert!(build.status.success(), "{}", String::from_utf8_lossy(&build.stderr));
+        let binary = String::from_utf8(build.stdout).unwrap().lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .find_map(|event| event["executable"].as_str().map(str::to_owned)).unwrap();
+        let mut command = Command::new(binary);
+        command.env("CLAUDE_CLI_PATH", "/usr/bin/yes").args(["--timeout-ms", "5000"])
+            .stdout(Stdio::piped()).stderr(Stdio::piped());
+        unsafe { command.pre_exec(block_sigterm); }
+        let child = command.spawn().unwrap();
+        let pid = child.id().to_string();
+        let start = Instant::now();
+        // Wait for yes to exec, not merely for the helper to spawn.
+        let ready = loop {
+            let ps = Command::new("/bin/ps").args(["-axo", "ppid=,comm="]).output().unwrap();
+            assert!(ps.status.success());
+            if String::from_utf8_lossy(&ps.stdout).lines().any(|line| {
+                let mut fields = line.split_whitespace();
+                fields.next() == Some(pid.as_str()) && fields.next() == Some("/usr/bin/yes")
+            }) { break true; }
+            if start.elapsed() >= Duration::from_secs(2) { break false; }
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        let sent = unsafe { libc::kill(child.id() as libc::pid_t, libc::SIGTERM) };
+        let got = child.wait_with_output().unwrap();
+        assert!(ready, "yes did not start");
+        assert_eq!(sent, 0);
+        assert_eq!(got.status.code(), Some(0), "{}", String::from_utf8_lossy(&got.stderr));
+        let report: serde_json::Value = serde_json::from_slice(&got.stdout).unwrap();
+        assert_eq!(report["timed_out"].as_bool(), Some(false));
+        assert_eq!(report["signal"].as_i64(), Some(i64::from(libc::SIGTERM)));
+    }
+
+    fn block_sigterm() -> std::io::Result<()> {
+        unsafe {
+            let mut set = std::mem::zeroed();
+            if libc::sigemptyset(&mut set) != 0 || libc::sigaddset(&mut set, libc::SIGTERM) != 0
+                || libc::sigprocmask(libc::SIG_BLOCK, &set, std::ptr::null_mut()) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+        }
+        Ok(())
+    }
+
     fn check_cancel(test: &str, inherited_mask: bool) {
         const ISOLATE: &str = "PAPERCLIP_PTY_TEST_CANCEL_CHILD";
         if std::env::var_os(ISOLATE).is_none() {
             let mut command = Command::new(std::env::current_exe().unwrap());
             command.args(["--exact", test]).env(ISOLATE, "1");
             if inherited_mask {
-                unsafe { command.pre_exec(|| {
-                    let mut set = std::mem::zeroed();
-                    if libc::sigemptyset(&mut set) != 0 || libc::sigaddset(&mut set, libc::SIGTERM) != 0
-                        || libc::sigprocmask(libc::SIG_BLOCK, &set, std::ptr::null_mut()) != 0 {
-                        return Err(std::io::Error::last_os_error());
-                    }
-                    Ok(())
-                }); }
+                unsafe { command.pre_exec(block_sigterm); }
             }
             assert!(command.status().unwrap().success());
             return;
