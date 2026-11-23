@@ -41,7 +41,6 @@ import {
 import { defaultCreateValues, getStaticThinkingEffortOptions } from "./agent-config-defaults";
 import { getUIAdapter } from "../adapters";
 import { ClaudeLocalAdvancedFields } from "../adapters/claude-local/config-fields";
-import { AntigravityLocalAdvancedFields } from "../adapters/antigravity-local/config-fields";
 import { CommandCodeLocalAdvancedFields } from "../adapters/commandcode-local/config-fields";
 import { MarkdownEditor } from "./MarkdownEditor";
 import { ChoosePathButton } from "./PathInstructionsModal";
@@ -1086,9 +1085,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
               )}
               {adapterType === "claude_local" && (
                 <ClaudeLocalAdvancedFields {...adapterFieldProps} />
-              )}
-              {adapterType === "antigravity_local" && (
-                <AntigravityLocalAdvancedFields {...adapterFieldProps} />
               )}
               {adapterType === "commandcode_local" && (
                 <CommandCodeLocalAdvancedFields {...adapterFieldProps} />
