@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, request } from "./client";
+import { ApiError, isRetryableQueryError, request } from "./client";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -42,5 +42,17 @@ describe("api client request timeout & abort handling", () => {
     const err = await p.catch((e: unknown) => e);
     expect(err).not.toBeInstanceOf(ApiError);
     expect((err as { name?: string })?.name).toBe("AbortError");
+  });
+
+  it("classifies 4xx (except 408/429) and AbortError as non-retryable, and 408/429/5xx/network errors as retryable", () => {
+    for (const status of [400, 401, 403, 404, 422]) {
+      expect(isRetryableQueryError(new ApiError("client error", status, null))).toBe(false);
+    }
+    expect(isRetryableQueryError(new DOMException("Aborted", "AbortError"))).toBe(false);
+
+    for (const status of [408, 429, 500, 502, 503]) {
+      expect(isRetryableQueryError(new ApiError("transient", status, null))).toBe(true);
+    }
+    expect(isRetryableQueryError(new TypeError("Failed to fetch"))).toBe(true);
   });
 });

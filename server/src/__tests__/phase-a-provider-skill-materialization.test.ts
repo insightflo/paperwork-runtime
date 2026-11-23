@@ -4,9 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import { listClaudeSkills, syncClaudeSkills } from "@paperclipai/adapter-claude-local/server";
 import { listCodexSkills, syncCodexSkills } from "@paperclipai/adapter-codex-local/server";
-import { listCursorSkills, syncCursorSkills } from "@paperclipai/adapter-cursor-local/server";
-import { listGeminiSkills, syncGeminiSkills } from "@paperclipai/adapter-gemini-local/server";
-import { listOpenCodeSkills, syncOpenCodeSkills } from "@paperclipai/adapter-opencode-local/server";
 import { resolveProviderSkillsDir, type AdapterSkillContext } from "@paperclipai/adapter-utils";
 
 async function makeTempDir(prefix: string) {
@@ -45,9 +42,6 @@ function contextFor(adapterType: string, workDir: string, sourceDir: string): Ad
 const adapters = [
   { adapterType: "claude-local", list: listClaudeSkills, sync: syncClaudeSkills },
   { adapterType: "codex-local", list: listCodexSkills, sync: syncCodexSkills },
-  { adapterType: "gemini-local", list: listGeminiSkills, sync: syncGeminiSkills },
-  { adapterType: "opencode-local", list: listOpenCodeSkills, sync: syncOpenCodeSkills },
-  { adapterType: "cursor-local", list: listCursorSkills, sync: syncCursorSkills },
 ];
 
 describe("Phase A provider-native skill materialization", () => {

@@ -7,8 +7,6 @@
     { "path": "./packages/db" },
     { "path": "./packages/adapters/claude-local" },
     { "path": "./packages/adapters/codex-local" },
-    { "path": "./packages/adapters/cursor-local" },
-    { "path": "./packages/adapters/opencode-local" },
     { "path": "./packages/adapters/pi-local" },
     { "path": "./server" },
     { "path": "./ui" },

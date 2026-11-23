@@ -4,6 +4,7 @@ import * as ReactDOM from "react-dom";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "@/lib/router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { isRetryableQueryError } from "./api/client";
 import { App } from "./App";
 import { CompanyProvider } from "./context/CompanyContext";
 import { LiveUpdatesProvider } from "./context/LiveUpdatesProvider";
@@ -30,11 +31,11 @@ if ("serviceWorker" in navigator) {
 
 // Recover once when a post-deploy navigation hits a stale lazy-loaded Vite chunk.
 window.addEventListener("vite:preloadError", (event) => {
+  event.preventDefault();
   try {
     const key = "__pc_chunk_reload_at";
     const last = Number(window.sessionStorage.getItem(key) ?? "0");
     if (Date.now() - last > 30_000) {
-      event.preventDefault();
       window.sessionStorage.setItem(key, String(Date.now()));
       window.location.reload();
     }
@@ -48,7 +49,7 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 30_000,
       refetchOnWindowFocus: true,
-      retry: 1,
+      retry: (failureCount, error) => failureCount < 1 && isRetryableQueryError(error),
       retryDelay: 800,
     },
   },
