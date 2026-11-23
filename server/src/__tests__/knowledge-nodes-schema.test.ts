@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import { companies, createDb, knowledgeBases, knowledgeNodes } from "@paperclipai/db";
@@ -101,7 +100,7 @@ describeDb("knowledge_nodes schema and migration 0135", () => {
 
     // Idempotent upgrade re-apply check: re-running 0135 SQL statements must succeed without error.
     const migrationSql = await readFile(
-      path.resolve(process.cwd(), "../packages/db/src/migrations/0135_knowledge_nodes.sql"),
+      new URL("../../../packages/db/src/migrations/0135_knowledge_nodes.sql", import.meta.url),
       "utf8",
     );
     for (const stmt of migrationSql.split("--> statement-breakpoint").map((s) => s.trim()).filter(Boolean)) {

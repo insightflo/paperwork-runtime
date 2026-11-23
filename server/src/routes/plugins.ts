@@ -329,6 +329,8 @@ export interface PluginRouteBridgeDeps {
 export interface PluginRouteRuntimeOptions {
   lifetime: ReturnType<typeof createHttpHandlerLifetime>;
   runtimeLifecycle?: RuntimeExecutionLifecycle;
+  /** Skip registering POST /plugins/tools/execute (mounted standalone in app.ts). */
+  skipToolExecuteRoute?: boolean;
 }
 
 /**
@@ -946,14 +948,10 @@ export function pluginRoutes(
     res.json(tools);
   });
 
-  // POST /api/plugins/tools/execute — moved verbatim to plugin-tool-execute.ts
-  // (Phase 0-2 Step 1); registered here at its original position in the router.
-  registerPluginToolExecuteRoute(router, {
-    db,
-    toolDeps,
-    runtimeOptions,
-    executePluginToolHttp,
-  });
+  // POST /api/plugins/tools/execute — moved to plugin-tool-execute.ts; skipped when mounted standalone.
+  if (!runtimeOptions?.skipToolExecuteRoute) {
+    registerPluginToolExecuteRoute(router, { db, toolDeps, runtimeOptions, executePluginToolHttp });
+  }
 
   /**
    * POST /api/plugins/install
