@@ -13,6 +13,11 @@ describe("company mission routes", () => {
     expect(extractCompanyPrefixFromPath("/missions")).toBeNull();
   });
 
+  it("does not classify retired /goals paths as board routes", () => {
+    expect(isBoardPathWithoutPrefix("/goals")).toBe(false);
+    expect(isBoardPathWithoutPrefix("/goals/goal-1")).toBe(false);
+  });
+
   it("applies a company prefix to quality board navigation", () => {
     expect(isBoardPathWithoutPrefix("/quality")).toBe(true);
     expect(extractCompanyPrefixFromPath("/quality")).toBeNull();
