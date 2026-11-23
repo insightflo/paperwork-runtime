@@ -5,6 +5,7 @@ import {
   integer,
   timestamp,
   jsonb,
+  unique,
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
@@ -26,5 +27,6 @@ export const knowledgeBases = pgTable(
   (table) => ({
     companyIdIdx: index("idx_knowledge_bases_company_id").on(table.companyId),
     uniqueIdx: uniqueIndex("knowledge_bases_company_id_name_key").on(table.companyId, table.name),
+    companyIdIdUq: unique("knowledge_bases_company_id_id_uq").on(table.companyId, table.id),
   }),
 );
