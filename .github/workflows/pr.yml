@@ -207,6 +207,9 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Build and stage Rust workspace binaries
+        run: bash scripts/build-rust-workspace.sh
+
       - name: Run tests (shard ${{ matrix.shard }}/3)
         # [ci-serial-split] 중량 4종은 verify-tests-serial 독점 — 샤드에서 제외해 중복 실행·경합 차단.
         env:
