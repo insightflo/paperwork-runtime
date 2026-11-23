@@ -62,7 +62,7 @@ describe("Phase 0-3 Goals Wave 2: /goals routes removed", () => {
     host.remove();
   });
 
-  async function renderPath(path: string) {
+  async function renderPath(path: string, expected: string) {
     await act(async () => {
       root.render(
         <MemoryRouter initialEntries={[path]}>
@@ -70,10 +70,9 @@ describe("Phase 0-3 Goals Wave 2: /goals routes removed", () => {
         </MemoryRouter>,
       );
     });
-    for (let i = 0; i < 5; i += 1) {
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      });
+    const deadline = Date.now() + 3000;
+    while (!host.textContent?.includes(expected) && Date.now() < deadline) {
+      await act(() => new Promise<void>((resolve) => setTimeout(resolve, 25)));
     }
   }
 
@@ -82,13 +81,13 @@ describe("Phase 0-3 Goals Wave 2: /goals routes removed", () => {
     { path: "/RES/goals/goal-1", title: "Page not found" },
     { path: "/goals", title: "Company not found" },
   ])("$path falls through to NotFoundPage", async ({ path, title }) => {
-    await renderPath(path);
+    await renderPath(path, title);
     expect(host.textContent).toContain(title);
     expect(host.textContent).toContain(`Requested path: ${path}`);
   });
 
   it("adjacent /RES/company/settings still resolves", async () => {
-    await renderPath("/RES/company/settings");
+    await renderPath("/RES/company/settings", "CompanySettingsPage");
     expect(host.textContent).toContain("CompanySettingsPage");
     expect(host.textContent).not.toContain("Page not found");
   });
