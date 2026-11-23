@@ -29,7 +29,9 @@ WHERE c."parent_id" IS NOT NULL
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_bases_company_id_id_uq'
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'knowledge_bases_company_id_id_uq'
+      AND conrelid = '"knowledge_bases"'::regclass
   ) THEN
     ALTER TABLE "knowledge_bases"
       ADD CONSTRAINT "knowledge_bases_company_id_id_uq" UNIQUE ("company_id", "id");
@@ -39,7 +41,9 @@ END $$;
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_nodes_company_kb_id_uq'
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'knowledge_nodes_company_kb_id_uq'
+      AND conrelid = '"knowledge_nodes"'::regclass
   ) THEN
     ALTER TABLE "knowledge_nodes"
       ADD CONSTRAINT "knowledge_nodes_company_kb_id_uq" UNIQUE ("company_id", "kb_id", "id");
@@ -55,7 +59,9 @@ ALTER TABLE "knowledge_nodes"
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_nodes_company_kb_fk'
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'knowledge_nodes_company_kb_fk'
+      AND conrelid = '"knowledge_nodes"'::regclass
   ) THEN
     ALTER TABLE "knowledge_nodes"
       ADD CONSTRAINT "knowledge_nodes_company_kb_fk"
@@ -68,7 +74,9 @@ END $$;
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'knowledge_nodes_parent_same_kb_fk'
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'knowledge_nodes_parent_same_kb_fk'
+      AND conrelid = '"knowledge_nodes"'::regclass
   ) THEN
     ALTER TABLE "knowledge_nodes"
       ADD CONSTRAINT "knowledge_nodes_parent_same_kb_fk"

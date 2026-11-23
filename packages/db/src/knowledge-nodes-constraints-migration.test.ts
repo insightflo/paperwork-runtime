@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyPendingMigrations } from "./client.js";
@@ -21,7 +23,7 @@ describe("migration 0136 knowledge_nodes composite FK & FTS GIN constraints", ()
     database = await startEmbeddedPostgresTestDatabase("kb-nodes-0136-");
     sql = postgres(database.connectionString, { max: 1, onnotice: () => {} });
     await sql`INSERT INTO companies (id, name, issue_prefix) VALUES (${C1}, 'Co1', 'CO1'), (${C2}, 'Co2', 'CO2')`;
-    await sql`INSERT INTO knowledge_bases (id, company_id, name, type) VALUES (${KB1}, ${C1}, 'KB1', 'domain'), (${KB2}, ${C1}, 'KB2', 'domain'), (${KB3}, ${C2}, 'KB3', 'domain')`;
+    await sql`INSERT INTO knowledge_bases (id, company_id, name, type) VALUES (${KB1}, ${C1}, 'KB1', 'ontology'), (${KB2}, ${C1}, 'KB2', 'ontology'), (${KB3}, ${C2}, 'KB3', 'ontology')`;
   }, 120_000);
 
   afterAll(async () => {
@@ -67,13 +69,18 @@ describe("migration 0136 knowledge_nodes composite FK & FTS GIN constraints", ()
     await sql`ALTER TABLE knowledge_bases DROP CONSTRAINT IF EXISTS knowledge_bases_company_id_id_uq`;
     await sql`ALTER TABLE knowledge_nodes ADD CONSTRAINT knowledge_nodes_kb_id_knowledge_bases_id_fk FOREIGN KEY (kb_id) REFERENCES knowledge_bases(id) ON DELETE CASCADE`;
     await sql`ALTER TABLE knowledge_nodes ADD CONSTRAINT knowledge_nodes_parent_id_knowledge_nodes_id_fk FOREIGN KEY (parent_id) REFERENCES knowledge_nodes(id) ON DELETE SET NULL`;
-    await sql`DELETE FROM drizzle.__drizzle_migrations WHERE created_at >= 1795370400000`;
+    const sql0136 = await readFile(new URL("./migrations/0136_knowledge_nodes_constraints.sql", import.meta.url));
+    const hash0136 = createHash("sha256").update(sql0136).digest("hex");
+    await sql`DELETE FROM drizzle.__drizzle_migrations WHERE hash = ${hash0136}`;
 
     // Legacy invalid cross-company kb_id row (allowed under 0135) must fail closed
     await sql`INSERT INTO knowledge_nodes (id, company_id, kb_id, slug, title) VALUES (${N_BAD_CO}, ${C1}, ${KB3}, 'legacy-bad-co', 'Legacy Bad Co')`;
     await expect(applyPendingMigrations(database.connectionString)).rejects.toThrow(/0136 preflight failed/);
 
-    // After operator remediates cross-company row, legacy cross-KB parent_id is sanitized to NULL
+    // After operator remediates cross-company row, legacy cross-KB parent_id is sanitized to NULL.
+    // Also verify a same-named constraint in another schema does not cause 0136 to skip installing FKs.
+    await sql`CREATE SCHEMA IF NOT EXISTS other_schema`;
+    await sql`CREATE TABLE IF NOT EXISTS other_schema.dummy (id uuid PRIMARY KEY, kb_id uuid, company_id uuid, parent_id uuid, CONSTRAINT knowledge_nodes_company_kb_fk CHECK (id IS NOT NULL), CONSTRAINT knowledge_nodes_parent_same_kb_fk CHECK (id IS NOT NULL))`;
     await sql`DELETE FROM knowledge_nodes WHERE id = ${N_BAD_CO}`;
     await sql`UPDATE knowledge_nodes SET parent_id = ${N_OTHER_KB} WHERE id = ${N_CHILD}`;
     await applyPendingMigrations(database.connectionString);
@@ -82,5 +89,15 @@ describe("migration 0136 knowledge_nodes composite FK & FTS GIN constraints", ()
       SELECT parent_id::text FROM knowledge_nodes WHERE id = ${N_CHILD}
     `;
     expect(sanitized?.parent_id).toBeNull();
+    const installedFks = await sql<{ conname: string }[]>`
+      SELECT conname FROM pg_constraint
+      WHERE conrelid = 'public.knowledge_nodes'::regclass
+        AND conname IN ('knowledge_nodes_company_kb_fk', 'knowledge_nodes_parent_same_kb_fk')
+      ORDER BY conname
+    `;
+    expect(installedFks.map((r) => r.conname)).toEqual([
+      "knowledge_nodes_company_kb_fk",
+      "knowledge_nodes_parent_same_kb_fk",
+    ]);
   });
 });
