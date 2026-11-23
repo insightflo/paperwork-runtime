@@ -27,8 +27,6 @@ const ProjectDetail = lazy(async () => ({ default: (await import("./pages/Projec
 const Issues = lazy(async () => ({ default: (await import("./pages/Issues")).Issues }));
 const IssueDetail = lazy(async () => ({ default: (await import("./pages/IssueDetail")).IssueDetail }));
 const ExecutionWorkspaceDetail = lazy(async () => ({ default: (await import("./pages/ExecutionWorkspaceDetail")).ExecutionWorkspaceDetail }));
-const Goals = lazy(async () => ({ default: (await import("./pages/Goals")).Goals }));
-const GoalDetail = lazy(async () => ({ default: (await import("./pages/GoalDetail")).GoalDetail }));
 const Inbox = lazy(async () => ({ default: (await import("./pages/Inbox")).Inbox }));
 const CompanySettings = lazy(async () => ({ default: (await import("./pages/CompanySettings")).CompanySettings }));
 const OrgChart = lazy(async () => ({ default: (await import("./pages/OrgChart")).OrgChart }));
@@ -186,8 +184,6 @@ function boardRoutes() {
       <Route path="issues/:issueId" element={lazyRoute(<IssueDetail />)} />
       <Route path="workflows" element={lazyRoute(<Workflows />)} />
       <Route path="execution-workspaces/:workspaceId" element={lazyRoute(<ExecutionWorkspaceDetail />)} />
-      <Route path="goals" element={lazyRoute(<Goals />)} />
-      <Route path="goals/:goalId" element={lazyRoute(<GoalDetail />)} />
       <Route path="missions" element={lazyRoute(<Missions />)} />
       <Route path="missions/:missionId" element={lazyRoute(<MissionDetail />)} />
       <Route path="scheduler" element={lazyRoute(<SchedulerConfig />)} />
