@@ -418,11 +418,11 @@ export function resolveClaudeQuotaPtyBin({
   env = process.env,
   existsSync: exists = existsSync,
 }: { repoRoot?: string; env?: NodeJS.ProcessEnv; existsSync?: (p: string) => boolean } = {}): string {
-  const override = env.PAPERCLIP_CLAUDE_QUOTA_PTY_BIN?.trim();
-  if (override) {
-    if (!path.isAbsolute(override)) throw new Error("PAPERCLIP_CLAUDE_QUOTA_PTY_BIN must be an absolute path.");
-    if (!exists(override)) throw new Error(`PAPERCLIP_CLAUDE_QUOTA_PTY_BIN does not exist: ${override}`);
-    return override;
+  if (env.PAPERCLIP_CLAUDE_QUOTA_PTY_BIN !== undefined) {
+    const trimmed = env.PAPERCLIP_CLAUDE_QUOTA_PTY_BIN.trim();
+    if (!trimmed || !path.isAbsolute(trimmed)) throw new Error("PAPERCLIP_CLAUDE_QUOTA_PTY_BIN must be a non-empty absolute path.");
+    if (!exists(trimmed)) throw new Error(`PAPERCLIP_CLAUDE_QUOTA_PTY_BIN does not exist: ${trimmed}`);
+    return trimmed;
   }
   if (!path.isAbsolute(repoRoot)) throw new Error("Claude quota PTY repoRoot must be an absolute path.");
   const bin = "paperclip-claude-quota-pty";
@@ -453,7 +453,8 @@ export function parseClaudeQuotaPtyOutput(stdout: string): { output: string; tim
 }
 
 export async function captureClaudeCliUsageText(timeoutMs = 12_000): Promise<string> {
-  const clampedTimeoutMs = Math.min(60_000, Math.max(1_000, Math.floor(timeoutMs)));
+  const safeMs = Number.isFinite(timeoutMs) ? Math.floor(timeoutMs) : 12_000;
+  const clampedTimeoutMs = Math.min(60_000, Math.max(1_000, safeMs));
   const bin = resolveClaudeQuotaPtyBin();
   const { stdout } = await execFileAsync(bin, ["--timeout-ms", String(clampedTimeoutMs)], {
     env: createClaudeQuotaEnv(),
@@ -461,8 +462,7 @@ export async function captureClaudeCliUsageText(timeoutMs = 12_000): Promise<str
     maxBuffer: 4 * 1024 * 1024,
   });
   const result = parseClaudeQuotaPtyOutput(stdout);
-  const cleaned = cleanTerminalText(result.output);
-  if (usageOutputLooksComplete(cleaned)) return result.output;
+  if (usageOutputLooksComplete(cleanTerminalText(result.output))) return result.output;
   throw new Error("Claude CLI usage probe ended before rendering usage.");
 }
 
