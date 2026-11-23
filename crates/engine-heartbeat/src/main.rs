@@ -42,46 +42,50 @@ fn validate_transition_from_stdin(bytes: &[u8]) -> Result<String, String> {
     .to_string())
 }
 
-fn run() -> ExitCode {
-    let mut args = std::env::args().skip(1);
-    let Some(sub) = args.next() else {
+fn run_with_args(args: &[String]) -> u8 {
+    let Some(sub) = args.get(1).map(String::as_str) else {
         eprintln!("{}", json_error("missing subcommand"));
-        return ExitCode::from(2);
+        return 2;
     };
-    match sub.as_str() {
+    if !matches!(sub, "-h" | "--help" | "validate-transition") {
+        eprintln!("{}", json_error(&format!("unknown argument: {sub}")));
+        return 2;
+    }
+    if let Some(extra) = args.get(2) {
+        eprintln!("{}", json_error(&format!("unexpected argument: {extra}")));
+        return 2;
+    }
+    match sub {
         "-h" | "--help" => {
             println!("{}", usage());
-            ExitCode::SUCCESS
+            0
         }
-        "validate-transition" => {
+        _ => {
             let mut buf = Vec::new();
             if let Err(e) = std::io::stdin()
                 .take(MAX_STDIN_BYTES as u64 + 1)
                 .read_to_end(&mut buf)
             {
                 eprintln!("{}", json_error(&format!("failed to read stdin: {e}")));
-                return ExitCode::FAILURE;
+                return 1;
             }
             match validate_transition_from_stdin(&buf) {
                 Ok(line) => {
                     println!("{line}");
-                    ExitCode::SUCCESS
+                    0
                 }
                 Err(msg) => {
                     eprintln!("{}", json_error(&msg));
-                    ExitCode::FAILURE
+                    1
                 }
             }
-        }
-        other => {
-            eprintln!("{}", json_error(&format!("unknown argument: {other}")));
-            ExitCode::from(2)
         }
     }
 }
 
 fn main() -> ExitCode {
-    run()
+    let args: Vec<String> = std::env::args().collect();
+    ExitCode::from(run_with_args(&args))
 }
 
 #[cfg(test)]
@@ -115,6 +119,14 @@ mod tests {
             br#"{"expected_statuses":["bogus"],"next_status":"running"}"#,
         )
         .is_err());
+    }
+
+    #[test]
+    fn cli_rejects_trailing_args() {
+        let argv = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(run_with_args(&argv(&["bin", "validate-transition", "--bogus"])), 2);
+        assert_eq!(run_with_args(&argv(&["bin", "--help", "extra"])), 2);
+        assert_eq!(run_with_args(&argv(&["bin", "bogus"])), 2);
     }
 }
 
@@ -187,7 +199,7 @@ mod pg_tests {
             setup.execute("INSERT INTO agents (id, company_id, name) VALUES ($1, $2, 'hb-pg-test')", &[&seeded.agent, &seeded.company]).unwrap();
             for i in 0..2usize {
                 // Index 0 (row 1) gets the strictly earlier timestamp; both are stale.
-                let ts = Utc::now() - Duration::hours(2 + i as i64);
+                let ts = Utc::now() - Duration::hours(3 - i as i64);
                 setup.execute(
                     "INSERT INTO agent_wakeup_requests (id, company_id, agent_id, source, status, requested_at) VALUES ($1, $2, $3, 'pg_test', 'queued', $4)",
                     &[&seeded.wakes[i], &seeded.company, &seeded.agent, &ts],
