@@ -17,7 +17,6 @@ const BOARD_ROUTE_ROOTS = new Set([
   "activity",
   "agent-wiki",
   "inbox",
-  "design-guide",
 ]);
 
 const GLOBAL_ROUTE_ROOTS = new Set([

@@ -80,7 +80,7 @@ describe("Phase 0-4/5 Wave 1: design-guide and ux-lab routes removed", () => {
   }
 
   it.each([
-    ["/design-guide", "/RES/design-guide"],
+    ["/design-guide", "/design-guide"],
     ["/RES/design-guide", "/RES/design-guide"],
     ["/run-transcript-ux-lab", "/run-transcript-ux-lab"],
     ["/RES/run-transcript-ux-lab", "/RES/run-transcript-ux-lab"],
