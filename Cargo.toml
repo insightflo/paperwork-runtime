@@ -13,6 +13,7 @@ members = [
   "crates/ops-control",
   "crates/paperwork-engine",
   "crates/portability-yaml",
+  "crates/process-supervisor",
   "crates/provider-auth-core",
   "crates/provider-runtime-core",
   "crates/qa-file-owner",
