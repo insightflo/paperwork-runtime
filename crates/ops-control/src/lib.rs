@@ -127,7 +127,7 @@ fn open_state_dir(dir: &Path) -> Result<OwnedFd, OpsControlError> {
     let st = stat_fd(fd.as_raw_fd())?;
     if st.st_mode & libc::S_IFMT != libc::S_IFDIR { return Err(bad("state dir is not a directory")); }
     if st.st_uid != unsafe { libc::geteuid() } { return Err(bad("state dir not owned by euid")); }
-    if st.st_mode & 0o777 != 0o700 { return Err(bad("state dir mode must be exactly 0700")); }
+    if st.st_mode & 0o7777 != 0o700 { return Err(bad("state dir mode must be exactly 0700")); }
     Ok(fd)
 }
 pub fn read_routine_hold(dir: &Path) -> Result<Option<RoutineHold>, OpsControlError> {
@@ -167,7 +167,7 @@ pub fn validate_control_socket_dir(dir: &Path) -> Result<(), OpsControlError> {
         let st = stat_fd(next.as_raw_fd())?;
         if i == comps.len() - 1 {
             if st.st_uid != euid { return Err(bad("control socket dir not owned by euid")); }
-            if st.st_mode & 0o777 != 0o700 { return Err(bad("control socket dir mode must be exactly 0700")); }
+            if st.st_mode & 0o7777 != 0o700 { return Err(bad("control socket dir mode must be exactly 0700")); }
         } else {
             if st.st_uid != 0 && st.st_uid != euid { return Err(bad("ancestor dir owned by foreign uid")); }
             if st.st_mode & 0o022 != 0 && st.st_mode & 0o1000 == 0 { return Err(bad("ancestor dir group/world writable without sticky bit")); }
@@ -236,6 +236,8 @@ mod tests {
         mode(&loose, 0o755);
         assert!(read_routine_hold(&loose).is_err()); // regression: non-0700 state dir must fail closed
         assert!(write_routine_hold(&loose, &hold()).is_err());
+        mode(&loose, 0o1700);
+        assert!(read_routine_hold(&loose).is_err()); // sticky bit must not pass exact-0700 mask
         fs::write(d.join("notdir"), b"x").unwrap();
         assert!(read_routine_hold(&d.join("notdir")).is_err());
     }
@@ -249,6 +251,8 @@ mod tests {
         validate_control_socket_dir(&leaf).unwrap();
         mode(&leaf, 0o750);
         assert!(validate_control_socket_dir(&leaf).is_err());
+        mode(&leaf, 0o1700);
+        assert!(validate_control_socket_dir(&leaf).is_err()); // sticky bit must fail exact-0700 mask
         mode(&leaf, 0o700);
         let mid = d.join("mid");
         fs::create_dir(&mid).unwrap();
@@ -262,6 +266,10 @@ mod tests {
         let real = d.join("real");
         fs::create_dir(&real).unwrap();
         mode(&real, 0o700);
+        let rx = real.join("x");
+        fs::create_dir(&rx).unwrap();
+        mode(&rx, 0o700);
+        validate_control_socket_dir(&rx).unwrap(); // positive control: real target is a valid leaf
         let link = d.join("link");
         std::os::unix::fs::symlink(&real, &link).unwrap();
         assert!(validate_control_socket_dir(&link.join("x")).is_err()); // regression: ancestor symlink
