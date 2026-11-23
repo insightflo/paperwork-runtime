@@ -27,8 +27,6 @@ const ProjectDetail = lazy(async () => ({ default: (await import("./pages/Projec
 const Issues = lazy(async () => ({ default: (await import("./pages/Issues")).Issues }));
 const IssueDetail = lazy(async () => ({ default: (await import("./pages/IssueDetail")).IssueDetail }));
 const ExecutionWorkspaceDetail = lazy(async () => ({ default: (await import("./pages/ExecutionWorkspaceDetail")).ExecutionWorkspaceDetail }));
-const Goals = lazy(async () => ({ default: (await import("./pages/Goals")).Goals }));
-const GoalDetail = lazy(async () => ({ default: (await import("./pages/GoalDetail")).GoalDetail }));
 const Inbox = lazy(async () => ({ default: (await import("./pages/Inbox")).Inbox }));
 const CompanySettings = lazy(async () => ({ default: (await import("./pages/CompanySettings")).CompanySettings }));
 const OrgChart = lazy(async () => ({ default: (await import("./pages/OrgChart")).OrgChart }));
@@ -49,15 +47,12 @@ const CompanySkills = lazy(async () => ({ default: (await import("./pages/Compan
 const CompanyInstructions = lazy(async () => ({ default: (await import("./pages/CompanyInstructions")).CompanyInstructions }));
 const HermesChat = lazy(async () => ({ default: (await import("./pages/HermesChat")).HermesChat }));
 const HumanOperator = lazy(async () => ({ default: (await import("./pages/HumanOperator")).HumanOperator }));
-const DesignGuide = lazy(async () => ({ default: (await import("./pages/DesignGuide")).DesignGuide }));
 const InstanceGeneralSettings = lazy(async () => ({ default: (await import("./pages/InstanceGeneralSettings")).InstanceGeneralSettings }));
 const InstanceSettings = lazy(async () => ({ default: (await import("./pages/InstanceSettings")).InstanceSettings }));
 const InstanceExperimentalSettings = lazy(async () => ({ default: (await import("./pages/InstanceExperimentalSettings")).InstanceExperimentalSettings }));
 const PluginManager = lazy(async () => ({ default: (await import("./pages/PluginManager")).PluginManager }));
 const PluginSettings = lazy(async () => ({ default: (await import("./pages/PluginSettings")).PluginSettings }));
 const PluginPage = lazy(async () => ({ default: (await import("./pages/PluginPage")).PluginPage }));
-const RunTranscriptUxLab = lazy(async () => ({ default: (await import("./pages/RunTranscriptUxLab")).RunTranscriptUxLab }));
-
 function lazyRoute(element: ReactNode) {
   return (
     <Suspense fallback={<div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>}>
@@ -189,8 +184,6 @@ function boardRoutes() {
       <Route path="issues/:issueId" element={lazyRoute(<IssueDetail />)} />
       <Route path="workflows" element={lazyRoute(<Workflows />)} />
       <Route path="execution-workspaces/:workspaceId" element={lazyRoute(<ExecutionWorkspaceDetail />)} />
-      <Route path="goals" element={lazyRoute(<Goals />)} />
-      <Route path="goals/:goalId" element={lazyRoute(<GoalDetail />)} />
       <Route path="missions" element={lazyRoute(<Missions />)} />
       <Route path="missions/:missionId" element={lazyRoute(<MissionDetail />)} />
       <Route path="scheduler" element={lazyRoute(<SchedulerConfig />)} />
@@ -209,8 +202,6 @@ function boardRoutes() {
       <Route path="inbox/unread" element={lazyRoute(<Inbox />)} />
       <Route path="inbox/all" element={lazyRoute(<Inbox />)} />
       <Route path="inbox/new" element={<Navigate to="/inbox/recent" replace />} />
-      <Route path="design-guide" element={lazyRoute(<DesignGuide />)} />
-      <Route path="tests/ux/runs" element={lazyRoute(<RunTranscriptUxLab />)} />
       <Route path=":pluginRoutePath" element={lazyRoute(<PluginPage />)} />
       <Route path="*" element={<NotFoundPage scope="board" />} />
     </>
@@ -390,7 +381,7 @@ export function App() {
           <Route path="projects/:projectId/issues" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/issues/:filter" element={<UnprefixedBoardRedirect />} />
           <Route path="projects/:projectId/configuration" element={<UnprefixedBoardRedirect />} />
-          <Route path="tests/ux/runs" element={<UnprefixedBoardRedirect />} />
+          <Route path="design-guide" element={<UnprefixedBoardRedirect />} />
           <Route path=":companyPrefix" element={<Layout />}>
             {boardRoutes()}
           </Route>
