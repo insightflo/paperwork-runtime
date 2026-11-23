@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
 import type { Db } from "@paperclipai/db";
 import { patchInstanceExperimentalSettingsSchema, patchInstanceGeneralSettingsSchema } from "@paperclipai/shared";
 import { llmStructuredTestConnectionSchema } from "@paperclipai/shared/validators/instance";
@@ -12,6 +12,12 @@ import {
   runCliRuntimeUpdate,
   syncInstanceProvidersWithPiCli,
 } from "../services/pi-cli-manager.js";
+import {
+  isValidProviderAuthId,
+  planProviderLogin,
+  probeAllProviders,
+  ProviderAuthClientError,
+} from "../services/provider-auth-core-client.js";
 import { getActorInfo } from "./authz.js";
 
 function assertCanManageInstanceSettings(req: Request) {
@@ -22,6 +28,14 @@ function assertCanManageInstanceSettings(req: Request) {
     return;
   }
   throw forbidden("Instance admin access required");
+}
+
+function sendProviderAuthError(res: Response, err: unknown) {
+  if (err instanceof ProviderAuthClientError) {
+    res.status(503).json({ error: "provider_auth_probe_unavailable", reason: err.reason });
+    return;
+  }
+  throw err;
 }
 
 async function logInstanceCliActivity(
@@ -162,6 +176,30 @@ export function instanceSettingsRoutes(db: Db) {
       ok: result.ok,
     });
     res.json(result);
+  });
+
+  router.get("/instance/settings/general/provider-auth", async (req, res) => {
+    assertCanManageInstanceSettings(req);
+    res.setHeader("Cache-Control", "no-store");
+    try {
+      res.json({ providers: await probeAllProviders() });
+    } catch (err) {
+      sendProviderAuthError(res, err);
+    }
+  });
+
+  router.get("/instance/settings/general/provider-auth/:provider/login-plan", async (req, res) => {
+    assertCanManageInstanceSettings(req);
+    res.setHeader("Cache-Control", "no-store");
+    const provider: unknown = req.params.provider;
+    if (!isValidProviderAuthId(provider)) {
+      throw badRequest("provider must be one of: claude, codex, pi, commandcode, devin");
+    }
+    try {
+      res.json({ plan: await planProviderLogin(provider) });
+    } catch (err) {
+      sendProviderAuthError(res, err);
+    }
   });
 
   router.get("/instance/settings/experimental", async (req, res) => {
