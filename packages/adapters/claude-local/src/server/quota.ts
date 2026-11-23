@@ -1,7 +1,9 @@
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { ProviderQuotaResult, QuotaWindow } from "@paperclipai/adapter-utils";
 
@@ -272,17 +274,6 @@ export async function fetchClaudeQuota(token: string): Promise<QuotaWindow[]> {
   return windows;
 }
 
-function usageOutputLooksRelevant(text: string): boolean {
-  const normalized = normalizeForLabelSearch(text);
-  return normalized.includes("currentsession")
-    || normalized.includes("currentweek")
-    || normalized.includes("loadingusage")
-    || normalized.includes("failedtoloadusagedata")
-    || normalized.includes("tokenexpired")
-    || normalized.includes("authenticationerror")
-    || normalized.includes("ratelimited");
-}
-
 function usageOutputLooksComplete(text: string): boolean {
   const normalized = normalizeForLabelSearch(text);
   if (
@@ -422,48 +413,57 @@ export function parseClaudeCliUsageText(text: string): QuotaWindow[] {
   return windows;
 }
 
-function quoteForShell(value: string): string {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
+export function resolveClaudeQuotaPtyBin({
+  repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../.."),
+  env = process.env,
+  existsSync: exists = existsSync,
+}: { repoRoot?: string; env?: NodeJS.ProcessEnv; existsSync?: (p: string) => boolean } = {}): string {
+  if (env.PAPERCLIP_CLAUDE_QUOTA_PTY_BIN !== undefined) {
+    const trimmed = env.PAPERCLIP_CLAUDE_QUOTA_PTY_BIN.trim();
+    if (!trimmed || !path.isAbsolute(trimmed)) throw new Error("PAPERCLIP_CLAUDE_QUOTA_PTY_BIN must be a non-empty absolute path.");
+    if (!exists(trimmed)) throw new Error(`PAPERCLIP_CLAUDE_QUOTA_PTY_BIN does not exist: ${trimmed}`);
+    return trimmed;
+  }
+  if (!path.isAbsolute(repoRoot)) throw new Error("Claude quota PTY repoRoot must be an absolute path.");
+  const bin = "paperclip-claude-quota-pty";
+  const candidates = [
+    path.join(repoRoot, "target", "release", bin),
+    path.join(repoRoot, "crates", "claude-quota-pty", "target", "release", bin),
+    path.join(repoRoot, "target", "debug", bin),
+  ];
+  const found = candidates.find((candidate) => exists(candidate));
+  if (!found) throw new Error(`Claude quota PTY binary not found. Searched: ${candidates.join(", ")}`);
+  return found;
 }
 
-function buildClaudeCliShellProbeCommand(): string {
-  const feed = "(sleep 2; printf '/usage\\r'; sleep 6; printf '\\033'; sleep 1; printf '\\003')";
-  const claudeCommand = "claude --tools \"\"";
-  if (process.platform === "darwin") {
-    return `${feed} | script -q /dev/null ${claudeCommand}`;
+export function parseClaudeQuotaPtyOutput(stdout: string): { output: string; timedOut: boolean; truncated: boolean } {
+  let result: Record<string, unknown> | null;
+  try {
+    result = JSON.parse(stdout);
+  } catch {
+    throw new Error("Claude quota PTY returned invalid JSON.");
   }
-  return `${feed} | script -q -e -f -c ${quoteForShell(claudeCommand)} /dev/null`;
+  if (
+    result === null || typeof result !== "object" || result.schema_version !== 1 ||
+    typeof result.output !== "string" || typeof result.timed_out !== "boolean" || typeof result.truncated !== "boolean"
+  ) {
+    throw new Error("Claude quota PTY output does not match schema version 1.");
+  }
+  return { output: result.output, timedOut: result.timed_out, truncated: result.truncated };
 }
 
 export async function captureClaudeCliUsageText(timeoutMs = 12_000): Promise<string> {
-  const command = buildClaudeCliShellProbeCommand();
-  try {
-    const { stdout, stderr } = await execFileAsync("sh", ["-c", command], {
-      env: createClaudeQuotaEnv(),
-      timeout: timeoutMs,
-      maxBuffer: 8 * 1024 * 1024,
-    });
-    const output = `${stdout}${stderr}`;
-    const cleaned = cleanTerminalText(output);
-    if (usageOutputLooksComplete(cleaned)) return output;
-    throw new Error("Claude CLI usage probe ended before rendering usage.");
-  } catch (error) {
-    const stdout =
-      typeof error === "object" && error !== null && "stdout" in error && typeof error.stdout === "string"
-        ? error.stdout
-        : "";
-    const stderr =
-      typeof error === "object" && error !== null && "stderr" in error && typeof error.stderr === "string"
-        ? error.stderr
-        : "";
-    const output = `${stdout}${stderr}`;
-    const cleaned = cleanTerminalText(output);
-    if (usageOutputLooksComplete(cleaned)) return output;
-    if (usageOutputLooksRelevant(cleaned)) {
-      throw new Error("Claude CLI usage probe ended before rendering usage.");
-    }
-    throw error instanceof Error ? error : new Error(String(error));
-  }
+  const safeMs = Number.isFinite(timeoutMs) ? Math.floor(timeoutMs) : 12_000;
+  const clampedTimeoutMs = Math.min(60_000, Math.max(1_000, safeMs));
+  const bin = resolveClaudeQuotaPtyBin();
+  const { stdout } = await execFileAsync(bin, ["--timeout-ms", String(clampedTimeoutMs)], {
+    env: createClaudeQuotaEnv(),
+    timeout: clampedTimeoutMs + 5_000,
+    maxBuffer: 4 * 1024 * 1024,
+  });
+  const result = parseClaudeQuotaPtyOutput(stdout);
+  if (usageOutputLooksComplete(cleanTerminalText(result.output))) return result.output;
+  throw new Error("Claude CLI usage probe ended before rendering usage.");
 }
 
 export async function fetchClaudeCliQuota(): Promise<QuotaWindow[]> {
