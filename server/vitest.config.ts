@@ -1,6 +1,6 @@
 import { configDefaults, defineConfig } from "vitest/config";
 
-// [ci-serial-split] 중량 통합 스위트 4종(동시 4-fork embedded-PG + Python 락 경합, 그리고
+// [ci-serial-split] 중량 통합 스위트 5종(동시 4-fork embedded-PG + Python 락 경합, 그리고
 //   샤드 구성에 민감한 타이밍 취약 스위트)은 전용 직렬 잡 verify-tests-serial 이
 //   --no-file-parallelism 으로 독점 실행한다. 병렬 샤드 (verify-tests 1~3)에서는
 //   PAPERCLIP_CI_EXCLUDE_SERIAL_SUITES=1 일 때만 이 파일들을 추가 제외해
@@ -15,6 +15,7 @@ const serialOnlySuites = process.env.PAPERCLIP_CI_EXCLUDE_SERIAL_SUITES === "1"
       "src/__tests__/qa-remediation-admission-root.test.ts",
       "src/__tests__/mission-owner-authority-flow.integration.test.ts",
       "src/__tests__/mission-owner-delegate-fix.integration.test.ts",
+      "src/__tests__/plugin-runtime-drain.test.ts",
     ]
   : [];
 

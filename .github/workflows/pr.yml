@@ -62,8 +62,7 @@ jobs:
           fin("true",r.id,att);process.exit(0)}fin("false")}catch(e){fin("false");console.log("::warning::attestation lookup failed closed: "+e.message)}
           EOF
           node "$RUNNER_TEMP/attest.cjs"
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+      - { uses: actions/checkout@v4, with: { fetch-depth: 0 } }
       - name: Resolve change range
         id: range
         run: |
@@ -106,12 +105,8 @@ jobs:
           if grep -qx 'pnpm-lock.yaml' "$RUNNER_TEMP/changed.txt"; then
             echo "Do not commit pnpm-lock.yaml in pull requests. CI owns lockfile updates."; exit 1
           fi
-      - uses: pnpm/action-setup@v4
-        if: steps.finalize.outputs.heavy == 'true'
-        with: { version: 9.15.4, run_install: false }
-      - uses: actions/setup-node@v4
-        if: steps.finalize.outputs.heavy == 'true'
-        with: { node-version-file: .nvmrc, cache: pnpm }
+      - { uses: pnpm/action-setup@v4, if: "steps.finalize.outputs.heavy == 'true'", with: { version: 9.15.4, run_install: false } }
+      - { uses: actions/setup-node@v4, if: "steps.finalize.outputs.heavy == 'true'", with: { node-version-file: .nvmrc, cache: pnpm } }
       # [write-chokepoint] heartbeat_runs/workflow_runs 직접 UPDATE 를 인가 쓰기 계층으로 강제(PR#679/#682 재발 차단).
       - name: Enforce run-status write chokepoint
         if: steps.finalize.outputs.heavy == 'true'
@@ -163,7 +158,7 @@ jobs:
     steps:
       - env: { REASON: "${{ needs.policy.outputs.reason }}" }
         run: 'echo "documentation-only change: full suite intentionally skipped (reason=$REASON)"'
-  # 아래 네 잡+게이트는 전체 스위트 — policy.outputs.full 또는 fork PR 의 full 트리거 이벤트에서만 실행
+  # 아래 다섯 잡+게이트는 전체 스위트 — policy.outputs.full 또는 fork PR 의 full 트리거 이벤트에서만 실행
   # (fork 의 ci-scope.sh 는 신뢰할 수 없어 이벤트 자체로도 켠다).
   verify:
     needs: [policy]
@@ -171,8 +166,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-        with: { ref: "${{ github.sha }}" }
+      - { uses: actions/checkout@v4, with: { ref: "${{ github.sha }}" } }
       - uses: ./.github/actions/ci-install
       - name: Build
         run: pnpm build
@@ -186,49 +180,59 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Verify Rust workspace
         run: cargo clippy --workspace --all-targets --locked -- -D warnings && cargo test --release --workspace --locked
-  verify-tests:
+  rust-build:
     needs: [policy]
+    if: needs.policy.outputs.full == 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - { uses: actions/checkout@v4, with: { ref: "${{ github.sha }}" } }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: bash scripts/build-rust-workspace.sh
+      - { uses: actions/upload-artifact@v4, with: { name: "rust-workspace-bins-${{ github.run_attempt }}", path: "crates/*/target/release/*", if-no-files-found: error, retention-days: 1 } }
+  verify-tests:
+    needs: [policy, rust-build]
     if: needs.policy.outputs.full == 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full')))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy: { fail-fast: false, matrix: { shard: [1, 2, 3] } }
     steps:
-      - uses: actions/checkout@v4
-        with: { ref: "${{ github.sha }}" }
+      - { uses: actions/checkout@v4, with: { ref: "${{ github.sha }}" } }
       - uses: ./.github/actions/ci-install
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Build and stage Rust workspace binaries
-        run: bash scripts/build-rust-workspace.sh
+      - { uses: actions/download-artifact@v4, with: { name: "rust-workspace-bins-${{ github.run_attempt }}", path: crates/ } }
+      - name: Restore staged Rust binaries
+        run: chmod +x crates/*/target/release/* && [ -n "$(find crates -type f -path '*/target/release/*' -print -quit)" ]
       - name: Run tests (shard ${{ matrix.shard }}/3)
         env: { PAPERCLIP_CI_EXCLUDE_SERIAL_SUITES: "1" }
         run: pnpm test:run --shard=${{ matrix.shard }}/3
-  # 중량 통합 4종 전용 직렬 잡 — verify-tests 접두사 유지로 병합 가드가 자동 감시한다.
+  # 중량 통합 5종 전용 직렬 잡 — verify-tests 접두사 유지로 병합 가드가 자동 감시한다.
   verify-tests-serial:
     needs: [policy]
     if: needs.policy.outputs.full == 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full')))
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-        with: { ref: "${{ github.sha }}" }
+      - { uses: actions/checkout@v4, with: { ref: "${{ github.sha }}" } }
       - uses: ./.github/actions/ci-install
       - name: Run heavy integration tests serially
-        run: pnpm test:run --no-file-parallelism server/src/__tests__/heartbeat-c5-public-activation.test.ts server/src/__tests__/qa-remediation-admission-root.test.ts server/src/__tests__/mission-owner-authority-flow.integration.test.ts server/src/__tests__/mission-owner-delegate-fix.integration.test.ts
+        run: pnpm test:run --no-file-parallelism server/src/__tests__/heartbeat-c5-public-activation.test.ts server/src/__tests__/qa-remediation-admission-root.test.ts server/src/__tests__/mission-owner-authority-flow.integration.test.ts server/src/__tests__/mission-owner-delegate-fix.integration.test.ts server/src/__tests__/plugin-runtime-drain.test.ts
   e2e:
     needs: [policy]
     if: needs.policy.outputs.full == 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full')))
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-        with: { ref: "${{ github.sha }}" }
+      - { uses: actions/checkout@v4, with: { ref: "${{ github.sha }}" } }
       - uses: ./.github/actions/ci-install
       - name: Build
         run: pnpm build
+      - { uses: actions/cache@v4, id: pw-cache, with: { path: "~/.cache/ms-playwright", key: "${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}" } }
       - name: Install Playwright
+        env: { PW_CMD: "${{ steps.pw-cache.outputs.cache-hit == 'true' && 'install-deps' || 'install --with-deps' }}" }
         run: |
           for attempt in 1 2 3; do
-            sudo apt-get update -o Acquire::Retries=3 && npx playwright install --with-deps chromium && exit 0
+            sudo apt-get update -o Acquire::Retries=3 && npx playwright $PW_CMD chromium && exit 0
             echo "Playwright install attempt ${attempt} failed; retrying in 10s..." >&2; sleep 10
           done; exit 1
       - name: Generate Paperclip config
@@ -245,7 +249,7 @@ jobs:
         with: { name: playwright-report, path: "tests/e2e/playwright-report/\ntests/e2e/test-results/", retention-days: 14 }
   # 전체 스위트 검문소 — 성공한 이 run 을 head/base 에 묶어 attestation 으로 남긴다(PR 코드 미실행). fork 는 bypass 면제 없이 통과 강제.
   verify-tests-full-gate:
-    needs: [policy, verify, verify-tests, verify-tests-serial, e2e]
+    needs: [policy, rust-build, verify, verify-tests, verify-tests-serial, e2e]
     if: always() && (needs.policy.outputs.full == 'true' || (((github.event_name == 'pull_request' && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full'))) || (github.event_name == 'workflow_dispatch' && inputs.scope == 'full')) && !(needs.policy.result == 'success' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && needs.policy.outputs.full_bypass == '1')))
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -256,9 +260,7 @@ jobs:
         run: |
           [ "$POLICY_FULL" = "true" ] || { echo "::error::policy.full=$POLICY_FULL (expected true)"; exit 1; }
           for r in $RESULTS; do [ "$r" = "success" ] || { echo "::error::sibling job result=$r"; exit 1; }; done
-      - uses: actions/checkout@v4
-        if: github.event_name == 'pull_request'
-        with: { ref: "${{ github.sha }}", fetch-depth: 2 }
+      - { uses: actions/checkout@v4, if: "github.event_name == 'pull_request'", with: { ref: "${{ github.sha }}", fetch-depth: 2 } }
       - name: Verify parents + sibling jobs, write attestation
         if: github.event_name == 'pull_request'
         run: |
@@ -266,7 +268,7 @@ jobs:
           node <<'EOF'
           const{execFileSync:X}=require("child_process"),{GITHUB_REPOSITORY:G,GITHUB_RUN_ID:I,GITHUB_RUN_ATTEMPT:A}=process.env;
           const jobs=JSON.parse(X("gh",["api",`repos/${G}/actions/runs/${I}/attempts/${A}/jobs?per_page=100`],{encoding:"utf8",maxBuffer:1<<26})).jobs||[];
-          const miss=["policy","verify","verify-tests (1)","verify-tests (2)","verify-tests (3)","verify-tests-serial","e2e"].filter(n=>!jobs.some(j=>j.name===n&&j.status==="completed"&&j.conclusion==="success"));
+          const miss=["policy","rust-build","verify","verify-tests (1)","verify-tests (2)","verify-tests (3)","verify-tests-serial","e2e"].filter(n=>!jobs.some(j=>j.name===n&&j.status==="completed"&&j.conclusion==="success"));
           if(miss.length){console.log("::error::missing successful jobs in this attempt: "+miss.join(", "));process.exit(1)}
           EOF
           printf '{"schema_version":1,"run_id":"%s","attempt":"%s","head_sha":"%s","base_sha":"%s"}\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$HEAD_SHA" "$BASE_SHA" > /tmp/ci-full-attest.json
@@ -286,8 +288,7 @@ jobs:
     permissions: { contents: read, actions: read }
     env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}", HEAD_SHA: "${{ github.event.pull_request.head.sha }}", BASE_SHA: "${{ github.event.pull_request.base.sha }}", RUN_ID: "${{ needs.policy.outputs.reused_run_id }}", ATTEMPT: "${{ needs.policy.outputs.reused_run_attempt }}" }
     steps:
-      - uses: actions/checkout@v4
-        with: { ref: "${{ github.sha }}", fetch-depth: 2 }
+      - { uses: actions/checkout@v4, with: { ref: "${{ github.sha }}", fetch-depth: 2 } }
       - name: Re-verify attested run and payload
         run: |
           [ "$(git rev-parse HEAD^1)" = "$BASE_SHA" ] && [ "$(git rev-parse HEAD^2)" = "$HEAD_SHA" ] || { echo "::error::merge parents mismatch"; exit 1; }
