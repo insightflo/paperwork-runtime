@@ -14,6 +14,8 @@ const N_PARENT = "30000000-0000-4000-8000-000000000001";
 const N_CHILD = "30000000-0000-4000-8000-000000000002";
 const N_OTHER_KB = "30000000-0000-4000-8000-000000000003";
 const N_BAD_CO = "30000000-0000-4000-8000-000000000004";
+const N_UPG_CHILD = "30000000-0000-4000-8000-000000000005";
+const N_UPG_OTHER = "30000000-0000-4000-8000-000000000006";
 
 describe("migration 0136 knowledge_nodes composite FK & FTS GIN constraints", () => {
   let database: EmbeddedPostgresTestDatabase;
@@ -82,11 +84,12 @@ describe("migration 0136 knowledge_nodes composite FK & FTS GIN constraints", ()
     await sql`CREATE SCHEMA IF NOT EXISTS other_schema`;
     await sql`CREATE TABLE IF NOT EXISTS other_schema.dummy (id uuid PRIMARY KEY, kb_id uuid, company_id uuid, parent_id uuid, CONSTRAINT knowledge_nodes_company_kb_fk CHECK (id IS NOT NULL), CONSTRAINT knowledge_nodes_parent_same_kb_fk CHECK (id IS NOT NULL))`;
     await sql`DELETE FROM knowledge_nodes WHERE id = ${N_BAD_CO}`;
-    await sql`UPDATE knowledge_nodes SET parent_id = ${N_OTHER_KB} WHERE id = ${N_CHILD}`;
+    await sql`INSERT INTO knowledge_nodes (id, company_id, kb_id, slug, title) VALUES (${N_UPG_OTHER}, ${C1}, ${KB2}, 'upg-other', 'Upg Other') ON CONFLICT DO NOTHING`;
+    await sql`INSERT INTO knowledge_nodes (id, company_id, kb_id, parent_id, slug, title) VALUES (${N_UPG_CHILD}, ${C1}, ${KB1}, ${N_UPG_OTHER}, 'upg-child', 'Upg Child') ON CONFLICT DO NOTHING`;
     await applyPendingMigrations(database.connectionString);
 
     const [sanitized] = await sql<{ parent_id: string | null }[]>`
-      SELECT parent_id::text FROM knowledge_nodes WHERE id = ${N_CHILD}
+      SELECT parent_id::text FROM knowledge_nodes WHERE id = ${N_UPG_CHILD}
     `;
     expect(sanitized?.parent_id).toBeNull();
     const installedFks = await sql<{ conname: string }[]>`
