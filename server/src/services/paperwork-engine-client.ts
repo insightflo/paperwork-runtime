@@ -34,13 +34,14 @@ export class LineByteAccumulator {
   private lineBytes = 0;
   constructor(private readonly maxLineBytes: number) {}
 
-  /** @returns completed payload lines (CR stripped), or null once the open line exceeds maxLineBytes. */
-  push(chunk: Buffer): Buffer[] | null {
-    const lines: Buffer[] = [];
+  /** Delivers each completed payload line (CR stripped) to onLine before scanning the next
+   *  slice, so a valid reply preceding an oversized frame is never discarded.
+   *  @returns false once the open line exceeds maxLineBytes; stops early (true) if onLine returns false. */
+  push(chunk: Buffer, onLine: (line: Buffer) => boolean): boolean {
     for (let off = 0; off < chunk.length;) {
       const nl = chunk.indexOf(LF, off);
       const partLen = (nl < 0 ? chunk.length : nl) - off;
-      if (this.lineBytes + partLen > this.maxLineBytes) return null;
+      if (this.lineBytes + partLen > this.maxLineBytes) return false;
       for (let done = 0; done < partLen;) {
         let block = this.parts[this.parts.length - 1];
         if (!block || this.used === BLOCK) {
@@ -57,11 +58,11 @@ export class LineByteAccumulator {
       if (nl < 0) break;
       let line = Buffer.concat(this.parts.map((p, i) => (i === this.parts.length - 1 ? p.subarray(0, this.used) : p)), this.lineBytes);
       if (line.length && line[line.length - 1] === CR) line = line.subarray(0, line.length - 1);
-      lines.push(line);
       this.parts = []; this.used = 0; this.lineBytes = 0;
       off = nl + 1;
+      if (!onLine(line)) return true;
     }
-    return lines;
+    return true;
   }
 }
 
@@ -144,9 +145,11 @@ export function createPaperworkEngineClient(opts: PaperworkEngineClientOptions =
     proc.stdout?.on("end", () => resetActive(proc, err("process_exited", "stdout EOF")));
     proc.stdout?.on("data", (chunk: Buffer) => {
       if (activeChild !== proc) return;
-      const lines = acc.push(chunk);
-      if (lines === null) return resetActive(proc, err("response_too_large", "response exceeds maxResponseBytes"));
-      for (const line of lines) handleLine(proc, line);
+      const ok = acc.push(chunk, (line) => {
+        handleLine(proc, line);
+        return activeChild === proc;
+      });
+      if (!ok) resetActive(proc, err("response_too_large", "response exceeds maxResponseBytes"));
     });
     activeChild = proc;
     return proc;

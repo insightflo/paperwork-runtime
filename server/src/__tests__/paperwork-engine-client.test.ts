@@ -154,11 +154,11 @@ describe("LineByteAccumulator", () => {
   it("decodes 1-byte fragments with bounded block count and fails closed over the cap", () => {
     const acc = new LineByteAccumulator(1_048_576);
     const input = Buffer.from('{"jsonrpc":"2.0","id":1,"result":"héllo"}\r\n');
-    let lines: Buffer[] = [];
-    for (const b of input) lines = lines.concat(acc.push(Buffer.from([b])) ?? []);
+    const lines: Buffer[] = [];
+    for (const b of input) expect(acc.push(Buffer.from([b]), (l) => (lines.push(l), true))).toBe(true);
     expect(lines.map((l) => l.toString("utf8"))).toEqual(['{"jsonrpc":"2.0","id":1,"result":"héllo"}']);
     expect(acc.allocatedBlocks).toBeLessThanOrEqual(Math.ceil(input.length / 8192));
-    expect(new LineByteAccumulator(8).push(Buffer.alloc(9))).toBeNull();
+    expect(new LineByteAccumulator(8).push(Buffer.alloc(9), () => true)).toBe(false);
   });
 });
 
@@ -224,6 +224,21 @@ describe("deterministic fake-child behavior", () => {
     await expect(client.call("m", closeParams)).rejects.toMatchObject({ code: "closed" });
     expect(children).toHaveLength(0);
     await expect(client.call("m", { toJSON: () => 42 })).rejects.toThrow(RangeError);
+  });
+  it("resolves a completed reply before an oversized frame, coalesced or split", async () => {
+    for (const coalesced of [true, false]) {
+      const { children, client } = harness({ maxResponseBytes: 128 });
+      const p1 = client.call("m", {});
+      const p2 = client.call("m", {});
+      const good = line(1, "result", "ok"), big = line(2, "result", "x".repeat(200));
+      if (coalesced) emit(children[0], good + big);
+      else { emit(children[0], good); emit(children[0], big); }
+      await expect(p1).resolves.toBe("ok");
+      await expect(p2).rejects.toMatchObject({ code: "response_too_large" });
+      expect(children[0].killed).toBe(true);
+      children[0].emit("exit");
+      await client.close();
+    }
   });
   it("keeps distinct ids for a nested toJSON() call and resolves reversed replies", async () => {
     const { children, client } = harness({ maxPending: 2 });
