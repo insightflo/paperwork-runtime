@@ -2,6 +2,9 @@
 //! paperwork-engine: resident fail-closed JSON-RPC 2.0 server over NDJSON stdio.
 //! One request object per line, one response per line, flushed after every
 //! write. Oversized request lines are rejected through a bounded read path.
+mod handlers;
+
+use paperclip_provider_auth_core::ProbeEnv;
 use paperclip_provider_runtime_core::{validate_name, Blocklist, ProviderId};
 use paperclip_redactor_core::{RedactorConfig, StreamingRedactor};
 use serde::Deserialize;
@@ -12,7 +15,8 @@ use std::io::{self, BufRead, Write};
 pub const MAX_REQUEST_BYTES: usize = 65_536;
 /// Maximum `redactor.redact_text` input bytes (32 KiB).
 pub const MAX_TEXT_BYTES: usize = 32 * 1024;
-const CAPABILITIES: &[&str] = &["engine.health", "redactor.redact_text", "provider.check_blocklist"];
+const CAPABILITIES: &[&str] = &["engine.health", "redactor.redact_text", "provider.check_blocklist",
+    "provider.auth_probe_all", "provider.auth_plan_login", "quota.route"];
 
 fn ok(id: Value, result: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "result": result})
@@ -97,12 +101,13 @@ fn health_result() -> Value {
     json!({"ok": true, "engine": "paperwork-engine", "protocol_version": 1, "capabilities": CAPABILITIES})
 }
 
-fn dispatch(id: Value, method: &str, params: Option<&Value>) -> Value {
+fn dispatch_request(id: Value, method: &str, params: Option<&Value>, env: &ProbeEnv) -> Value {
     match method {
         "engine.health" => match params {
             Some(p) if !(p.is_null() || p.as_object().is_some_and(|o| o.is_empty())) => err(id, -32602, "invalid_params"),
             _ => ok(id, health_result()),
         },
+        "provider.auth_probe_all" | "provider.auth_plan_login" | "quota.route" => handlers::dispatch_with(id, method, params, env),
         "redactor.redact_text" | "provider.check_blocklist" => {
             let Some(p) = params else { return err(id, -32602, "invalid_params") };
             let parsed = if method == "redactor.redact_text" {
@@ -116,7 +121,7 @@ fn dispatch(id: Value, method: &str, params: Option<&Value>) -> Value {
     }
 }
 
-fn handle(payload: &[u8]) -> Value {
+pub(crate) fn handle_with(payload: &[u8], env: &ProbeEnv) -> Value {
     let parse = || err(Value::Null, -32700, "parse_error");
     let Ok(text) = std::str::from_utf8(payload) else { return parse() };
     let Ok(req) = serde_json::from_str::<Value>(text) else { return parse() };
@@ -124,7 +129,7 @@ fn handle(payload: &[u8]) -> Value {
     if obj.get("jsonrpc") != Some(&json!("2.0")) { return parse(); }
     let Some(id) = obj.get("id").filter(|v| v.is_string() || v.is_number()).cloned() else { return parse() };
     let Some(method) = obj.get("method").and_then(Value::as_str) else { return err(id, -32700, "parse_error") };
-    dispatch(id, method, obj.get("params"))
+    dispatch_request(id, method, obj.get("params"), env)
 }
 
 /// Serves NDJSON JSON-RPC requests from `reader` to `writer` until EOF.
@@ -135,7 +140,7 @@ pub fn serve_stdio<R: BufRead, W: Write>(mut reader: R, mut writer: W) -> io::Re
         let resp = match line {
             Line::Oversized => err(Value::Null, -32600, "request_too_large"),
             Line::Payload if buf.is_empty() => continue,
-            Line::Payload => handle(&buf),
+            Line::Payload => handle_with(&buf, &ProbeEnv::from_process()),
         };
         write_line(&mut writer, &resp)?;
     }
@@ -178,7 +183,7 @@ mod tests {
         assert_eq!(r["ok"], true);
         assert_eq!(r["engine"], "paperwork-engine");
         assert_eq!(r["protocol_version"], 1);
-        assert_eq!(r["capabilities"].as_array().unwrap().len(), 3);
+        assert_eq!(r["capabilities"].as_array().unwrap().len(), 6);
         assert_eq!(out[0]["id"], 7);
         let out = call(&json!({"jsonrpc": "2.0", "id": "x1", "method": "nope"}));
         assert_eq!((code(&out[0]), out[0]["id"].as_str().unwrap()), (-32601, "x1"));
