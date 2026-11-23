@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/artifact-io",
+  "crates/claude-quota-pty",
   "crates/cli-runtime",
   "crates/db-backup",
   "crates/fs-scan",
