@@ -159,11 +159,17 @@ pub fn write_routine_hold(dir: &Path, hold: &RoutineHold) -> Result<(), OpsContr
     r
 }
 
+fn check_ancestor_dir(st: &libc::stat, euid: libc::uid_t) -> Result<(), OpsControlError> {
+    if st.st_uid != 0 && st.st_uid != euid { return Err(bad("ancestor dir owned by foreign uid")); }
+    if st.st_mode & 0o022 != 0 && st.st_mode & 0o1000 == 0 { return Err(bad("ancestor dir group/world writable without sticky bit")); }
+    Ok(())
+}
 pub fn validate_control_socket_dir(dir: &Path) -> Result<(), OpsControlError> {
     if !dir.is_absolute() { return Err(inv("control socket dir must be an absolute path")); }
     let comps: Vec<&[u8]> = dir.as_os_str().as_bytes().split(|&b| b == b'/').filter(|c| !c.is_empty()).collect();
     if comps.is_empty() { return Err(inv("control socket dir must not be the filesystem root")); }
     let (euid, mut fd) = (unsafe { libc::geteuid() }, open_abs(Path::new("/"), DIRF)?);
+    check_ancestor_dir(&stat_fd(fd.as_raw_fd())?, euid)?; // "/" is the first ancestor and must pass the same check
     for (i, &c) in comps.iter().enumerate() {
         let next = open_dir_at(&fd, c)?; // O_NOFOLLOW: any symlink ancestor or leaf fails closed
         let st = stat_fd(next.as_raw_fd())?;
@@ -171,8 +177,7 @@ pub fn validate_control_socket_dir(dir: &Path) -> Result<(), OpsControlError> {
             if st.st_uid != euid { return Err(bad("control socket dir not owned by euid")); }
             if st.st_mode & 0o7777 != 0o700 { return Err(bad("control socket dir mode must be exactly 0700")); }
         } else {
-            if st.st_uid != 0 && st.st_uid != euid { return Err(bad("ancestor dir owned by foreign uid")); }
-            if st.st_mode & 0o022 != 0 && st.st_mode & 0o1000 == 0 { return Err(bad("ancestor dir group/world writable without sticky bit")); }
+            check_ancestor_dir(&st, euid)?;
         }
         fd = next;
     }
