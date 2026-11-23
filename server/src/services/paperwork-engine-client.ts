@@ -140,7 +140,7 @@ export function createPaperworkEngineClient(opts: PaperworkEngineClientOptions =
       resetActive(proc, err("process_exited", "engine exited"));
     };
     for (const ev of ["exit", "close"] as const) proc.once(ev, gone);
-    proc.on("error", () => resetActive(proc, err("process_exited", "engine process error")));
+    proc.on("error", (e: NodeJS.ErrnoException) => resetActive(proc, err("process_exited", `engine process error: ${e.code ?? e.message}`)));
     proc.stdin?.on("error", () => resetActive(proc, err("process_exited", "stdin error")));
     proc.stdout?.on("end", () => resetActive(proc, err("process_exited", "stdout EOF")));
     proc.stdout?.on("data", (chunk: Buffer) => {
@@ -179,11 +179,15 @@ export function createPaperworkEngineClient(opts: PaperworkEngineClientOptions =
     const perTimeout = intOpt("callOpts.timeoutMs", callOpts?.timeoutMs, timeoutMs, 1, 600_000);
     const id = nextId++; // reserved pre-stringify: a re-entrant toJSON() can never collide on ids
     let paramsJson: string | undefined;
-    if (params !== undefined) {
-      paramsJson = JSON.stringify(params) as string | undefined;
-      if (typeof paramsJson !== "string" || (paramsJson[0] !== "{" && paramsJson[0] !== "[")) {
-        return Promise.reject(new RangeError("params must serialize to a JSON object or array"));
+    try {
+      if (params !== undefined) {
+        paramsJson = JSON.stringify(params) as string | undefined;
+        if (typeof paramsJson !== "string" || (paramsJson[0] !== "{" && paramsJson[0] !== "[")) {
+          return Promise.reject(new RangeError("params must serialize to a JSON object or array"));
+        }
       }
+    } catch (e) {
+      return Promise.reject(e);
     }
     const payload = `{"jsonrpc":"2.0","id":${id},"method":${JSON.stringify(method)}`
       + (paramsJson === undefined ? "" : `,"params":${paramsJson}`) + "}";
