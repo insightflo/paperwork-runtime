@@ -51,8 +51,10 @@ mod unix {
     use std::os::unix::process::CommandExt;
     use std::process::Command;
     use std::ptr::{null, null_mut};
-    use std::thread::sleep;
     use std::time::{Duration, Instant};
+
+    mod child;
+    use child::PtyChildGuard;
 
     fn cvt(ret: c_int) -> io::Result<c_int> {
         if ret < 0 { Err(io::Error::last_os_error()) } else { Ok(ret) }
@@ -65,76 +67,21 @@ mod unix {
     }
     extern "C" fn cancel(_: c_int) { request_cancel(); }
     pub fn install_cancel_signal_handlers() -> Result<(), String> {
+        let mut set: sigset_t = unsafe { std::mem::zeroed() };
+        cvt(unsafe { sigemptyset(&mut set) }).map_err(|e| e.to_string())?;
         for sig in [SIGTERM, SIGINT] {
             set_signal(sig, cancel as *const () as sighandler_t)?;
+            cvt(unsafe { sigaddset(&mut set, sig) }).map_err(|e| e.to_string())?;
+        }
+        // Install both handlers before unblocking any pending cancellation.
+        let ret = unsafe { pthread_sigmask(SIG_UNBLOCK, &set, null_mut()) };
+        if ret != 0 {
+            return Err(format!("pthread_sigmask: {}", io::Error::from_raw_os_error(ret)));
         }
         Ok(())
     }
     pub fn reset_sigchld_default() -> Result<(), String> {
         set_signal(SIGCHLD, SIG_DFL)
-    }
-
-    struct PtyChildGuard {
-        owned_pid: Option<pid_t>,
-        master: Option<OwnedFd>,
-        leader_exited: bool,
-    }
-    impl PtyChildGuard {
-        fn exited(&mut self, pid: pid_t) -> Result<bool, String> {
-            let mut si: siginfo_t = unsafe { std::mem::zeroed() };
-            match cvt(unsafe { waitid(P_PID, pid as id_t, &mut si, WEXITED | WNOHANG | WNOWAIT) }) {
-                Ok(_) => Ok(unsafe { si.si_pid() } != 0
-                    && matches!(si.si_code, CLD_EXITED | CLD_KILLED | CLD_DUMPED)),
-                Err(e) if e.raw_os_error() == Some(ECHILD) => {
-                    self.owned_pid = None;
-                    Err("unexpected_echild".into())
-                }
-                Err(e) if e.kind() == io::ErrorKind::Interrupted => Ok(false),
-                Err(e) => Err(format!("waitid: {e}")),
-            }
-        }
-        fn cleanup(&mut self) -> Result<c_int, String> {
-            let Some(pid) = self.owned_pid.take() else {
-                self.master.take();
-                return Ok(0);
-            };
-            // The unreaped leader reserves its PID/PGID throughout escalation.
-            let mut errors = Vec::new();
-            let mut signal = |name, ret, _is_group: bool| match cvt(ret) {
-                Ok(_) => (),
-                Err(e) if e.raw_os_error() == Some(ESRCH) => (),
-                #[cfg(target_os = "macos")]
-                Err(e) if _is_group && self.leader_exited && e.raw_os_error() == Some(EPERM) => (),
-                Err(e) => errors.push(format!("{name}: {e}")),
-            };
-            signal("killpg SIGTERM", unsafe { killpg(pid, SIGTERM) }, true);
-            sleep(Duration::from_millis(TERM_GRACE_MS));
-            signal("killpg SIGKILL", unsafe { killpg(pid, SIGKILL) }, true);
-            signal("kill SIGKILL", unsafe { kill(pid, SIGKILL) }, false);
-            self.master.take();
-            let deadline = Instant::now() + Duration::from_millis(REAP_TIMEOUT_MS);
-            let mut status = 0;
-            loop {
-                match cvt(unsafe { waitpid(pid, &mut status, WNOHANG) }) {
-                    Ok(n) if n == pid && (WIFEXITED(status) || WIFSIGNALED(status)) => break,
-                    Err(e) if e.kind() != io::ErrorKind::Interrupted => {
-                        errors.push(format!("waitpid: {e}"));
-                        break;
-                    }
-                    _ => {}
-                }
-                let remaining = deadline.saturating_duration_since(Instant::now());
-                if remaining.is_zero() {
-                    errors.push("waitpid: reap timeout".into());
-                    break;
-                }
-                sleep(remaining.min(Duration::from_millis(10)));
-            }
-            if errors.is_empty() { Ok(status) } else { Err(errors.join("; ")) }
-        }
-    }
-    impl Drop for PtyChildGuard {
-        fn drop(&mut self) { let _ = self.cleanup(); }
     }
 
     pub fn run_pty_probe(spec: &PtyProbeSpec) -> Result<PtyProbeResult, String> {

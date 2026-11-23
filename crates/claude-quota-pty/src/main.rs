@@ -8,43 +8,14 @@ fn fail(code: u8, error: &str) -> ExitCode {
 }
 
 #[cfg(unix)]
-fn probe_spec() -> Result<PtyProbeSpec, String> {
-    let mut args = std::env::args_os().skip(1);
-    let timeout_ms = match args.next() {
-        None => 12000,
-        Some(flag) if flag == "--timeout-ms" => args
-            .next()
-            .and_then(|value| value.to_str()?.parse::<u64>().ok())
-            .ok_or("--timeout-ms needs an unsigned integer")?
-            .clamp(1000, 60000),
-        Some(flag) => return Err(format!("unknown flag: {flag:?}")),
-    };
-    if let Some(flag) = args.next() {
-        return Err(format!("unexpected argument: {flag:?}"));
-    }
-    let program = match std::env::var("CLAUDE_CLI_PATH") {
-        Ok(path) if std::path::Path::new(&path).is_absolute() => path,
-        Err(std::env::VarError::NotPresent) => "claude".into(),
-        _ => return Err("CLAUDE_CLI_PATH must be a non-empty absolute UTF-8 path".into()),
-    };
-    Ok(PtyProbeSpec {
-        program,
-        args: vec!["--tools".into(), "".into()],
-        timeout_ms,
-        strip_anthropic_env: true,
-        inputs: [(2000, &b"/usage\r"[..]), (8000, b"\x1b"), (9000, b"\x03")]
-            .into_iter()
-            .map(|(delay_ms, bytes)| ScheduledInput { delay_ms, bytes: bytes.to_vec() })
-            .collect(),
-    })
-}
+mod cli;
 
 #[cfg(unix)]
 fn main() -> ExitCode {
     if let Err(e) = reset_sigchld_default().and_then(|()| install_cancel_signal_handlers()) {
         return fail(1, &e);
     }
-    let spec = match probe_spec() {
+    let spec = match cli::probe_spec() {
         Ok(spec) => spec,
         Err(e) => return fail(2, &e),
     };
@@ -66,6 +37,7 @@ fn main() -> ExitCode {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use std::os::unix::process::CommandExt;
     use std::{fs::File, io::Read, os::fd::{AsRawFd, FromRawFd}, process::Command, sync::Mutex, time::{Duration, Instant}};
 
     // Keep the intentional FD inheritance isolated from other probes.
@@ -117,21 +89,41 @@ mod tests {
         assert_eq!(reader.read(&mut marker).unwrap(), 0, "descendant still owns sentinel");
     }
     #[test]
-    fn outer_cancel() {
+    fn outer_cancel() { check_cancel("tests::outer_cancel", false); }
+    #[test]
+    fn inherited_sigterm_mask() { check_cancel("tests::inherited_sigterm_mask", true); }
+
+    fn check_cancel(test: &str, inherited_mask: bool) {
         const ISOLATE: &str = "PAPERCLIP_PTY_TEST_CANCEL_CHILD";
         if std::env::var_os(ISOLATE).is_none() {
-            let status = Command::new(std::env::current_exe().unwrap())
-                .args(["--exact", "tests::outer_cancel"]).env(ISOLATE, "1").status().unwrap();
-            assert!(status.success());
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            command.args(["--exact", test]).env(ISOLATE, "1");
+            if inherited_mask {
+                unsafe { command.pre_exec(|| {
+                    let mut set = std::mem::zeroed();
+                    if libc::sigemptyset(&mut set) != 0 || libc::sigaddset(&mut set, libc::SIGTERM) != 0
+                        || libc::sigprocmask(libc::SIG_BLOCK, &set, std::ptr::null_mut()) != 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    Ok(())
+                }); }
+            }
+            assert!(command.status().unwrap().success());
             return;
         }
+        if inherited_mask { install_cancel_signal_handlers().unwrap(); }
         let (spec, mut reader, writer) = sentinel(true);
+        let start = Instant::now();
         let trigger = std::thread::spawn(move || {
             pipe_ready(&reader, 2000);
             let mut marker = [0];
             reader.read_exact(&mut marker).unwrap();
             assert_eq!(&marker, b"x");
-            request_cancel();
+            if inherited_mask {
+                assert_eq!(unsafe { libc::kill(libc::getpid(), libc::SIGTERM) }, 0);
+            } else {
+                request_cancel();
+            }
             reader
         });
         let got = run_pty_probe(&spec).unwrap();
@@ -139,6 +131,7 @@ mod tests {
         let mut reader = trigger.join().unwrap();
         assert_eq!(got.signal, Some(libc::SIGKILL));
         assert!(!got.timed_out);
+        assert!(start.elapsed() < Duration::from_secs(2));
         pipe_ready(&reader, 500);
         assert_eq!(reader.read(&mut [0]).unwrap(), 0);
     }
@@ -152,6 +145,14 @@ mod tests {
         assert!(got.timed_out && got.truncated);
         assert_eq!(got.output.len(), MAX_CAPTURE_BYTES);
         assert!(start.elapsed() < Duration::from_secs(2));
+    }
+    #[test]
+    fn leader_exits_during_term_grace() {
+        let _lock = TEST.lock().unwrap();
+        let mut spec = shell("exec /bin/sleep 10");
+        spec.timeout_ms = 500;
+        let got = run_pty_probe(&spec).unwrap();
+        assert_eq!((got.timed_out, got.signal), (true, Some(libc::SIGTERM)));
     }
     #[test]
     fn spawn_error_does_not_leak_fds() {
