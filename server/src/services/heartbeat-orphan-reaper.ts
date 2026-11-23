@@ -1,11 +1,5 @@
-// server/src/services/heartbeat-orphan-reaper.ts
-//
-// [파일 목적] heartbeat.ts 에서 기계적 추출된 고아 런 정리(reaper) 스윕 — 동작 무변경.
-// [추출 계약] 본문은 heartbeat.ts L2103-L2520(추출 시점) 그대로이며, 줄·순서·리터럴을 바꾸지 않는다.
-//   heartbeatService 클로저 값(db/appendRunEvent/nextRunEventSeq/setRunStatus/...)은 deps 로 주입받는다.
-// [주의] terminalContinuationScanCursor 는 heartbeatService 인스턴스 스코프 상태다.
-//   모듈 스코프로 옮기면 테스트가 서비스 인스턴스를 여러 개 만들 때 스캔 커서가 공유되어 동작이 달라진다.
-//   그래서 값이 아니라 get/set 접근자로 주입한다.
+// [파일 목적] heartbeat.ts 에서 추출된 고아 런 정리(reaper) 스윕.
+//   heartbeatService 클로저 값과 인스턴스 스코프 스캔 커서는 deps 로 주입받는다.
 import { and, asc, eq, gt, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { agents, heartbeatRuns, issues, workflowTransitionEvents } from "@paperclipai/db";
@@ -33,6 +27,7 @@ import { withAgentStartLock } from "./heartbeat-start-lock.js";
 import { publishLiveEvent } from "./live-events.js";
 import { operatorApprovalWaitService } from "./operator-approval-wait.js";
 import { SHUTDOWN_INTERRUPTED_ERROR_CODE } from "./shutdown-flush.js";
+import { shouldRetryProcessLostRun, sweepOrphanedLocks } from "./heartbeat-orphan-lock-sweeper.js";
 
 type HeartbeatRunRow = typeof heartbeatRuns.$inferSelect;
 type AgentRow = typeof agents.$inferSelect;
@@ -321,7 +316,7 @@ export async function reapOrphanedRuns(deps: HeartbeatOrphanReaperDeps, opts?: {
       }
     }
 
-    const shouldRetry = tracksLocalChild && !!run.processPid && (run.processLossRetryCount ?? 0) < 1;
+    const shouldRetry = shouldRetryProcessLostRun(tracksLocalChild, run.processLossRetryCount);
     const baseMessage = run.processPid
       ? `Process lost -- child pid ${run.processPid} is no longer running`
       : "Process lost -- server may have restarted";
@@ -530,6 +525,10 @@ export async function reapOrphanedRuns(deps: HeartbeatOrphanReaperDeps, opts?: {
     }
   }
 
+  await sweepOrphanedLocks(deps.db, {
+    now,
+    onIssueReleased: async (r) => { if (r.assigneeAgentId) await deps.startNextQueuedRunForAgent(r.assigneeAgentId); },
+  }).catch((err) => logger.warn({ err }, "orphan lock sweep failed; continuing"));
   if (reaped.length > 0) {
     logger.warn({ reapedCount: reaped.length, runIds: reaped }, "reaped orphaned heartbeat runs");
   }
