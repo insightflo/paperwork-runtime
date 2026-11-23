@@ -862,7 +862,9 @@ dependencies = [
 name = "paperwork-engine"
 version = "0.1.0"
 dependencies = [
+ "paperclip-provider-auth-core",
  "paperclip-provider-runtime-core",
+ "paperclip-quota-router",
  "paperclip-redactor-core",
  "serde",
  "serde_json",
