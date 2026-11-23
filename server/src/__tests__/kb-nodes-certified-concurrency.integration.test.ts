@@ -67,10 +67,11 @@ describe("upsertKbNode real PostgreSQL 2-session concurrency", () => {
       lockTx.catch(reject);
     });
 
+    const upsertPromise = upsertKbNode(db, {
+      companyId: C1, kbId: KB1, slug: "canon-lock-test", title: "Stale Auto Sync", certified: false, preserveCertified: true, actorId: "sys",
+    });
+    upsertPromise.catch(() => {});
     try {
-      const upsertPromise = upsertKbNode(db, {
-        companyId: C1, kbId: KB1, slug: "canon-lock-test", title: "Stale Auto Sync", certified: false, preserveCertified: true, actorId: "sys",
-      });
       const blockedQuery = await waitForBlockedForUpdate(observerDb, blockerPid);
       expect(blockedQuery.toLowerCase()).toContain("for update");
       releaseLock();
@@ -81,7 +82,7 @@ describe("upsertKbNode real PostgreSQL 2-session concurrency", () => {
       expect(out.node.title).toBe("Certified By Board");
     } finally {
       releaseLock();
-      await lockTx.catch(() => {});
+      await Promise.allSettled([lockTx, upsertPromise]);
     }
   });
 
@@ -105,10 +106,11 @@ describe("upsertKbNode real PostgreSQL 2-session concurrency", () => {
       lockTx.catch(reject);
     });
 
+    const upsertPromise = upsertKbNode(db, {
+      companyId: C1, kbId: KB1, slug: "delete-race-test", title: "Recreated After Delete", certified: false, actorId: "sys",
+    });
+    upsertPromise.catch(() => {});
     try {
-      const upsertPromise = upsertKbNode(db, {
-        companyId: C1, kbId: KB1, slug: "delete-race-test", title: "Recreated After Delete", certified: false, actorId: "sys",
-      });
       const blockedQuery = await waitForBlockedForUpdate(observerDb, blockerPid);
       expect(blockedQuery.toLowerCase()).toContain("for update");
       releaseLock();
@@ -120,7 +122,7 @@ describe("upsertKbNode real PostgreSQL 2-session concurrency", () => {
       expect(out.node.id).not.toBe(initial.node.id);
     } finally {
       releaseLock();
-      await lockTx.catch(() => {});
+      await Promise.allSettled([lockTx, upsertPromise]);
     }
   });
 });
