@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { api } from "../api/client";
 import { instanceSettingsApi } from "../api/instanceSettings";
 import { ProviderAuthSection } from "../components/ProviderAuthSection";
 import type { LoginActionPlan, ProviderAuthStatus } from "../components/ProviderAuthPanel";
@@ -10,6 +11,7 @@ import type { LoginActionPlan, ProviderAuthStatus } from "../components/Provider
 vi.mock("../api/instanceSettings", () => ({
   instanceSettingsApi: { getProviderAuth: vi.fn(), getProviderLoginPlan: vi.fn() },
 }));
+vi.mock("../api/client", () => ({ api: { get: vi.fn() } }));
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -127,5 +129,12 @@ describe("ProviderAuthSection", () => {
     expect(host!.textContent).toContain("codex auth login");
     expect(host!.textContent).not.toContain("claude login");
     expect(loginButton("codex").textContent).toContain("Login Command");
+  });
+
+  it("unwraps the { plan } envelope returned by the login-plan endpoint", async () => {
+    const mod = await vi.importActual<typeof import("../api/instanceSettings")>("../api/instanceSettings");
+    vi.mocked(api.get).mockResolvedValue({ plan: plan({}) });
+    await expect(mod.instanceSettingsApi.getProviderLoginPlan("claude")).resolves.toEqual(plan({}));
+    expect(api.get).toHaveBeenCalledWith("/instance/settings/general/provider-auth/claude/login-plan");
   });
 });

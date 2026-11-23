@@ -39,5 +39,9 @@ export const instanceSettingsApi = {
   getProviderAuth: () =>
     api.get<{ providers: ProviderAuthStatus[] }>("/instance/settings/general/provider-auth"),
   getProviderLoginPlan: (provider: ProviderAuthId) =>
-    api.get<LoginActionPlan>(`/instance/settings/general/provider-auth/${encodeURIComponent(provider)}/login-plan`),
+    api
+      .get<{ plan: LoginActionPlan }>(
+        `/instance/settings/general/provider-auth/${encodeURIComponent(provider)}/login-plan`,
+      )
+      .then((res) => res.plan),
 };
