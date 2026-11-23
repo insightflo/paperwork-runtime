@@ -64,10 +64,12 @@ Route registration lives in `server/src/app.ts` via `companyRoutes(db, storage)`
 
 ## 7. UI — Pages
 
+**Removed in PR #902 (Phase 0-4 Wave 2).** The company portability UI pages and their routes were deleted; no UI pages currently implement export/import. The server and CLI portability APIs below remain, and UI restoration/rescoping is pending Wave 3.
+
 | File | Role |
 |---|---|
-| `ui/src/pages/CompanyExport.tsx` | Export UI: preview, manifest display, file tree visualization, ZIP archive creation and download. Filters `.paperclip.yaml` based on selection. Shows manifest and README in editor. |
-| `ui/src/pages/CompanyImport.tsx` | Import UI: source input (upload/folder/GitHub URL/generic URL), ZIP reading, preview pane with dependency tree, entity selection checkboxes, trust/licensing warnings, secrets requirements, collision strategy, adapter config. |
+| ~~`ui/src/pages/CompanyExport.tsx`~~ | Removed in PR #902. Former Export UI: preview, manifest display, file tree visualization, ZIP archive creation and download. |
+| ~~`ui/src/pages/CompanyImport.tsx`~~ | Removed in PR #902. Former Import UI: source input, ZIP reading, preview pane, entity selection, collision strategy, adapter config. |
 
 ## 8. UI — Components
 
@@ -106,9 +108,9 @@ Route registration lives in `server/src/app.ts` via `companyRoutes(db, storage)`
 | `PROJECT.md` frontmatter & body | `company-portability.ts` |
 | `TASK.md` frontmatter & body | `company-portability.ts` |
 | `SKILL.md` packages | `company-portability.ts`, `company-skills.ts` |
-| `.paperclip.yaml` vendor sidecar | `company-portability.ts`, `CompanyExport.tsx`, `company.ts` (CLI) |
+| `.paperclip.yaml` vendor sidecar | `company-portability.ts`, `company.ts` (CLI) — former `CompanyExport.tsx` reference removed in PR #902 |
 | `manifest.json` | `company-portability.ts` (generation), shared types (schema) |
 | ZIP package format | `zip.ts` (UI), `company.ts` (CLI file I/O) |
-| Collision resolution | `company-portability.ts` (server), `CompanyImport.tsx` (UI) |
-| Env/secrets declarations | shared types (`CompanyPortabilityEnvInput`), `CompanyImport.tsx` (UI) |
+| Collision resolution | `company-portability.ts` (server) — former `CompanyImport.tsx` reference removed in PR #902 |
+| Env/secrets declarations | shared types (`CompanyPortabilityEnvInput`) — former `CompanyImport.tsx` reference removed in PR #902 |
 | README + org chart | `company-export-readme.ts` |
