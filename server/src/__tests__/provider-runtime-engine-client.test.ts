@@ -66,10 +66,17 @@ describe("checkProviderRuntimeBlocklist service", () => {
     ["traversal version ../1.0", { ...VALID_BODY, version: "../1.0" }],
     ["slash version a/b", { ...VALID_BODY, version: "a/b" }],
     ["whitespace-only version", { ...VALID_BODY, version: "   " }],
+    ["dot version", { ...VALID_BODY, version: "." }],
+    ["dotdot version", { ...VALID_BODY, version: ".." }],
+    ["tab version", { ...VALID_BODY, version: "1\t2" }],
+    ["newline version", { ...VALID_BODY, version: "1\n2" }],
+    ["DEL version", { ...VALID_BODY, version: "a\x7fb" }],
     ["invalid sha256", { ...VALID_BODY, sha256: "deadbeef" }],
     ["non-object blocklist", { ...VALID_BODY, blocklist: ["x"] }],
     ["empty version entry", { ...VALID_BODY, blocklist: { versions: [""], sha256s: [] } }],
     ["non-array versions", { ...VALID_BODY, blocklist: { versions: "1.0", sha256s: [] } }],
+    ["sparse versions array", { ...VALID_BODY, blocklist: { versions: new Array(1), sha256s: [] } }],
+    ["sparse sha256s array", { ...VALID_BODY, blocklist: { versions: [], sha256s: new Array(1) } }],
     ["bad sha256s entry", { ...VALID_BODY, blocklist: { versions: [], sha256s: ["zz"] } }],
     ["missing body", undefined],
   ];
@@ -104,10 +111,13 @@ describe("POST /instance/settings/provider-runtimes/check-blocklist", () => {
     mocks.engineCall.mockResolvedValue({ blocked: false });
   });
 
-  it("returns 400 on invalid input without touching the engine", async () => {
-    const res = await request(createApp(ADMIN))
-      .post(ROUTE)
-      .send({ provider: "gpt", version: "1", blocklist: { versions: [], sha256s: [] } });
+  it.each<[string, unknown]>([
+    ["unknown provider", { provider: "gpt", version: "1", blocklist: { versions: [], sha256s: [] } }],
+    ["dot version", { ...VALID_BODY, version: "." }],
+    ["tab version", { ...VALID_BODY, version: "1\t2" }],
+    ["null versions entry", { ...VALID_BODY, blocklist: { versions: [null], sha256s: [] } }],
+  ])("returns 400 on %s without touching the engine", async (_label, body) => {
+    const res = await request(createApp(ADMIN)).post(ROUTE).send(body);
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: "Invalid provider runtime blocklist request" });
     expect(mocks.getShared).not.toHaveBeenCalled();

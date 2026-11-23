@@ -31,6 +31,8 @@ export interface ProviderBlocklistResult {
 const SHA256_RE = /^[0-9a-fA-F]{64}$/;
 const MAX_LEN = 128;
 const MAX_LIST = 256;
+// Mirrors Rust bad_name() in provider-runtime-core: bytes <0x20, 0x7f, '/', '\\'.
+const BAD_NAME_RE = /[\x00-\x1f\x7f/\\]/;
 
 const invalid = () => new ProviderRuntimeEngineError("invalid_input");
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -38,6 +40,14 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 const isVersionEntry = (v: unknown): v is string =>
   typeof v === "string" && v.length > 0 && v.length <= MAX_LEN && !v.includes("\0");
 const isSha256 = (v: unknown): v is string => typeof v === "string" && SHA256_RE.test(v);
+const isBadName = (s: string): boolean =>
+  s.length === 0 || s === "." || s === ".." || BAD_NAME_RE.test(s);
+const isDense = (a: readonly unknown[]): boolean => {
+  for (let i = 0; i < a.length; i += 1) {
+    if (!Object.prototype.hasOwnProperty.call(a, i)) return false;
+  }
+  return true;
+};
 
 /** Fail-closed input validation. MUST run before any engine/daemon access. */
 export function validateProviderBlocklistInput(raw: unknown): ProviderBlocklistInput {
@@ -47,19 +57,24 @@ export function validateProviderBlocklistInput(raw: unknown): ProviderBlocklistI
     throw invalid();
   }
   if (
-    typeof version !== "string" || version.length === 0 || version.length > MAX_LEN
-    || version.trim() === "" || version.includes("/") || version.includes("\\")
-    || version.includes("..") || version.includes("\0")
+    typeof version !== "string" || version.length > MAX_LEN
+    || version.trim() === "" || version.includes("..") || isBadName(version)
   ) {
     throw invalid();
   }
   if (sha256 !== undefined && !isSha256(sha256)) throw invalid();
   if (!isRecord(blocklist)) throw invalid();
   const { versions, sha256s } = blocklist;
-  if (!Array.isArray(versions) || versions.length > MAX_LIST || !versions.every(isVersionEntry)) {
+  if (
+    !Array.isArray(versions) || versions.length > MAX_LIST
+    || !isDense(versions) || !versions.every(isVersionEntry)
+  ) {
     throw invalid();
   }
-  if (!Array.isArray(sha256s) || sha256s.length > MAX_LIST || !sha256s.every(isSha256)) {
+  if (
+    !Array.isArray(sha256s) || sha256s.length > MAX_LIST
+    || !isDense(sha256s) || !sha256s.every(isSha256)
+  ) {
     throw invalid();
   }
   return {
