@@ -289,6 +289,6 @@ describe("upsertKbNode certified-preservation & conflict/delete concurrency", ()
     const exhausted = makeUpsertDb({ insertReturns: [[], []], forUpdateReturns: [[], []] });
     await expect(
       upsertKbNode(exhausted.db, { companyId: "c1", kbId: "kb-1", slug: "s2", title: "Lost", actorId: "u1" }),
-    ).rejects.toThrow(/Concurrent knowledge node deletion/);
+    ).rejects.toMatchObject({ status: 409, message: expect.stringMatching(/Concurrent knowledge node deletion/) });
   });
 });
