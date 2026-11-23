@@ -49,8 +49,6 @@ const CompanySkills = lazy(async () => ({ default: (await import("./pages/Compan
 const CompanyInstructions = lazy(async () => ({ default: (await import("./pages/CompanyInstructions")).CompanyInstructions }));
 const HermesChat = lazy(async () => ({ default: (await import("./pages/HermesChat")).HermesChat }));
 const HumanOperator = lazy(async () => ({ default: (await import("./pages/HumanOperator")).HumanOperator }));
-const CompanyExport = lazy(async () => ({ default: (await import("./pages/CompanyExport")).CompanyExport }));
-const CompanyImport = lazy(async () => ({ default: (await import("./pages/CompanyImport")).CompanyImport }));
 const DesignGuide = lazy(async () => ({ default: (await import("./pages/DesignGuide")).DesignGuide }));
 const InstanceGeneralSettings = lazy(async () => ({ default: (await import("./pages/InstanceGeneralSettings")).InstanceGeneralSettings }));
 const InstanceSettings = lazy(async () => ({ default: (await import("./pages/InstanceSettings")).InstanceSettings }));
@@ -158,8 +156,6 @@ function boardRoutes() {
       <Route path="onboarding" element={<OnboardingRoutePage />} />
       <Route path="companies" element={lazyRoute(<Companies />)} />
       <Route path="company/settings" element={lazyRoute(<CompanySettings />)} />
-      <Route path="company/export/*" element={lazyRoute(<CompanyExport />)} />
-      <Route path="company/import" element={lazyRoute(<CompanyImport />)} />
       <Route path="skills/*" element={lazyRoute(<CompanySkills />)} />
       <Route path="instructions" element={lazyRoute(<CompanyInstructions />)} />
       <Route path="hermes" element={lazyRoute(<HermesChat />)} />
