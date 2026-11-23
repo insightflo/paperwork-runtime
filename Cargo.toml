@@ -5,6 +5,7 @@ members = [
   "crates/claude-quota-pty",
   "crates/cli-runtime",
   "crates/db-backup",
+  "crates/engine-heartbeat",
   "crates/fs-scan",
   "crates/heartbeat-core",
   "crates/kb-core",
