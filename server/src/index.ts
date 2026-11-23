@@ -30,6 +30,7 @@ import { logger } from "./middleware/logger.js";
 import { setupLiveEventsWebSocketServer } from "./realtime/live-events-ws.js";
 import { heartbeatService, reconcilePersistedAgentStatusOnStartup, reconcilePersistedRuntimeServicesOnStartup, routineService } from "./services/index.js";
 import { createHeartbeatScheduler } from "./services/heartbeat-scheduler.js";
+import { closeSharedPaperworkEngineClient, runOrderedShutdownSteps } from "./services/paperwork-engine-runtime.js";
 import { createStorageServiceFromConfig } from "./storage/index.js";
 import { printStartupBanner } from "./startup-banner.js";
 import { getBoardClaimWarningUrl, initializeBoardClaimChallenge } from "./board-claim.js";
@@ -64,6 +65,7 @@ type ServerShutdownContext = {
   startupWork: Set<Promise<unknown>>;
   appShutdown: AppRuntimeShutdown | null;
   db: Db | null;
+  databaseCloseAttempted: boolean;
   heartbeat: ReturnType<typeof heartbeatService> | null;
   heartbeatScheduler: ReturnType<typeof createHeartbeatScheduler> | null;
   embeddedPostgres: EmbeddedPostgresInstance | null;
@@ -91,6 +93,7 @@ function createServerShutdownContext(): ServerShutdownContext {
     startupWork: new Set(),
     appShutdown: null,
     db: null,
+    databaseCloseAttempted: false,
     heartbeat: null,
     heartbeatScheduler: null,
     embeddedPostgres: null,
@@ -177,11 +180,7 @@ async function performServerShutdown(
   logger.info({ signal }, "Server shutting down");
   await context.startupReady;
   if (!context.db || !context.appShutdown) throw new Error("Server startup did not provide shutdown owners");
-
-  while (context.startupWork.size > 0) {
-    const startupBatch = [...context.startupWork];
-    await Promise.allSettled(startupBatch);
-  }
+  while (context.startupWork.size > 0) await Promise.allSettled([...context.startupWork]);
   if (context.backupFlight) await context.backupFlight;
   await context.appShutdown.drain();
 
@@ -190,16 +189,20 @@ async function performServerShutdown(
   await context.appShutdown.drainHttpCallbacks();
   await context.appShutdown.drain();
   await terminateDrainedChildren(context, signal);
-  await context.appShutdown.dispose();
-
   const client = (context.db as unknown as { $client?: { end(options: { timeout: number }): Promise<void> } }).$client;
-  if (!client) throw new Error("Database client does not expose the configured close API");
-  await client.end({ timeout: 5 });
+  await runOrderedShutdownSteps([
+    () => context.appShutdown!.dispose(),
+    () => closeSharedPaperworkEngineClient(),
+    () => {
+      if (!client) throw new Error("Database client does not expose the configured close API");
+      context.databaseCloseAttempted = true;
+      return client.end({ timeout: 5 });
+    },
+  ]);
   if (context.embeddedPostgres && context.embeddedPostgresStartedByThisProcess) {
     logger.info({ signal }, "Stopping embedded PostgreSQL");
     await context.embeddedPostgres.stop();
   }
-
   context.removeSignalHandlers();
   logger.info({ signal }, "Server shutdown completed");
 }
@@ -218,18 +221,12 @@ export async function startServer(): Promise<StartedServer> {
     stopAppStarts: () => context.appShutdown?.stopStarts(),
     run: (signal) => performServerShutdown(context, signal),
   });
-  const onSigint = () => {
-    void shutdown("SIGINT").catch((err) => {
-      process.exitCode = 1;
-      logger.error({ err }, "Shutdown held; database remains open");
-    });
+  const reportShutdownFailure = (err: unknown) => {
+    process.exitCode = 1;
+    logger.error({ err }, context.databaseCloseAttempted ? "Server shutdown failed" : "Shutdown held; database remains open");
   };
-  const onSigterm = () => {
-    void shutdown("SIGTERM").catch((err) => {
-      process.exitCode = 1;
-      logger.error({ err }, "Shutdown held; database remains open");
-    });
-  };
+  const onSigint = () => { void shutdown("SIGINT").catch(reportShutdownFailure); };
+  const onSigterm = () => { void shutdown("SIGTERM").catch(reportShutdownFailure); };
   process.on("SIGINT", onSigint);
   process.on("SIGTERM", onSigterm);
   context.removeSignalHandlers = () => {
