@@ -49,11 +49,11 @@ cp .env.example .env
 # DATABASE_URL=postgres://paperclip:paperclip@localhost:5432/paperclip
 ```
 
-Run migrations (once the migration generation issue is fixed) or use `drizzle-kit push`:
+Apply SQL migrations with `pnpm db:migrate` (do **not** use `drizzle-kit push` — the schema relies on PostgreSQL 15+ column-scoped `ON DELETE SET NULL (...)`, custom FTS GIN indexes, and migration preflights that `drizzle-kit push` cannot install):
 
 ```sh
 DATABASE_URL=postgres://paperclip:paperclip@localhost:5432/paperclip \
-  npx drizzle-kit push
+  pnpm db:migrate
 ```
 
 Start the server:
@@ -105,12 +105,14 @@ export function createDb(url: string) {
 }
 ```
 
-### Push the schema
+### Apply migrations
+
+Use `pnpm db:migrate` against the direct connection (port 5432); do **not** use `drizzle-kit push` (it cannot install PostgreSQL 15+ column-scoped `ON DELETE SET NULL (...)` or custom FTS GIN indexes):
 
 ```sh
-# Use the direct connection (port 5432) for schema changes
+# Use the direct connection (port 5432) for schema migrations
 DATABASE_URL=postgres://postgres.[PROJECT-REF]:[PASSWORD]@...5432/postgres \
-  npx drizzle-kit push
+  pnpm db:migrate
 ```
 
 ### Free tier limits
