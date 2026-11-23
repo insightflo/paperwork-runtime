@@ -66,6 +66,11 @@ impl CrashLoopTracker {
 }
 const SLICE: Duration = Duration::from_millis(25);
 const CAP: usize = 256 * 1024;
+/// Spec durations are config input: clamp so absurd values cannot block a worker thread.
+const MAX_TIMEOUT_MS: u64 = 86_400_000;
+const MAX_GRACE_MS: u64 = 60_000;
+const MAX_DRAIN_DEADLINE_MS: u64 = 60_000;
+const MAX_REAP_TIMEOUT_MS: u64 = 60_000;
 static UNREAPED: Mutex<Vec<i32>> = Mutex::new(Vec::new());
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> { m.lock().unwrap_or_else(|e| e.into_inner()) }
 /// Drain unwind handoffs once. Only one designated process-wide recipient may call this;
@@ -257,13 +262,14 @@ fn supervise(mut cmd: Command, spec: &SupervisedSpawnSpec, after_exit: impl FnOn
     let mut child = cmd.spawn()?;
     let (start, pid) = (Instant::now(), child.id() as i32);
     let mut guard = SupervisedChildGuard { owned_pid: Some(pid), pending_handoff_pid: None,
-        leader_exited: false, readers: [None, None], shared: Arc::default(), grace: Duration::from_millis(spec.grace_ms),
-        drain: Duration::from_millis(spec.drain_deadline_ms.unwrap_or(250)), send, reap, peek_exit,
-        reap_timeout: Duration::from_millis(spec.reap_timeout_ms.unwrap_or(1000)) };
+        leader_exited: false, readers: [None, None], shared: Arc::default(),
+        grace: Duration::from_millis(spec.grace_ms.min(MAX_GRACE_MS)),
+        drain: Duration::from_millis(spec.drain_deadline_ms.unwrap_or(250).min(MAX_DRAIN_DEADLINE_MS)), send, reap, peek_exit,
+        reap_timeout: Duration::from_millis(spec.reap_timeout_ms.unwrap_or(1000).min(MAX_REAP_TIMEOUT_MS)) };
     let primary = (|| {
         guard.readers[0] = Some(start_reader(child.stdout.take().unwrap(), guard.shared.clone())?);
         guard.readers[1] = Some(start_reader(child.stderr.take().unwrap(), guard.shared.clone())?);
-        let timeout = Duration::from_millis(spec.timeout_ms);
+        let timeout = Duration::from_millis(spec.timeout_ms.min(MAX_TIMEOUT_MS));
         loop {
             match guard.observe_exit(pid) {
                 Ok(true) => { after_exit(&mut guard); return Ok(false); }
