@@ -5,6 +5,7 @@ import type {
   PatchInstanceExperimentalSettings,
 } from "@paperclipai/shared";
 import type { CliRuntimeId, PiCliActionResult, PiCliStatusSnapshot } from "@paperclipai/shared/types/instance";
+import type { LoginActionPlan, ProviderAuthId, ProviderAuthStatus } from "../components/ProviderAuthPanel";
 import { api } from "./client";
 
 // The shared package defines this response but does not export it from its root.
@@ -35,4 +36,8 @@ export const instanceSettingsApi = {
     api.get<InstanceExperimentalSettings>("/instance/settings/experimental"),
   updateExperimental: (patch: PatchInstanceExperimentalSettings) =>
     api.patch<InstanceExperimentalSettings>("/instance/settings/experimental", patch),
+  getProviderAuth: () =>
+    api.get<{ providers: ProviderAuthStatus[] }>("/instance/settings/general/provider-auth"),
+  getProviderLoginPlan: (provider: ProviderAuthId) =>
+    api.get<LoginActionPlan>(`/instance/settings/general/provider-auth/${encodeURIComponent(provider)}/login-plan`),
 };

@@ -5,6 +5,7 @@ import type { InstanceGeneralSettings, PatchInstanceGeneralSettings } from "@pap
 import type { PiCliActionResult } from "@paperclipai/shared/types/instance";
 import { Input } from "@/components/ui/input";
 import { instanceSettingsApi, type LlmStructuredConnectionTestResult } from "@/api/instanceSettings";
+import { ProviderAuthSection } from "../components/ProviderAuthSection";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
@@ -472,9 +473,7 @@ export function InstanceGeneralSettings() {
       </div>
     );
   }
-
   const censorUsernameInLogs = generalQuery.data?.censorUsernameInLogs === true;
-
   return (
     <div className="max-w-4xl space-y-6">
       <div className="space-y-2">
@@ -596,6 +595,7 @@ export function InstanceGeneralSettings() {
       </section>
 
       <PiCliManagerSection canApplyModel={rows.length > 0} onApplyModel={applyPiCatalogModel} />
+      <ProviderAuthSection />
     </div>
   );
 }
