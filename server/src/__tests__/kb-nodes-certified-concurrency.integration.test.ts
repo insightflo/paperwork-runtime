@@ -52,29 +52,37 @@ describe("upsertKbNode real PostgreSQL 2-session concurrency", () => {
       companyId: C1, kbId: KB1, slug: "canon-lock-test", title: "Initial", certified: false, actorId: "seed",
     });
 
-    let triggerCertifyAndCommit!: () => void;
-    const blockerPid = await new Promise<number>((r) => {
-      void lockDb.transaction(async (tx) => {
+    let releaseLock!: () => void;
+    const gate = new Promise<void>((done) => { releaseLock = done; });
+    let lockTx!: Promise<void>;
+    const blockerPid = await new Promise<number>((r, reject) => {
+      lockTx = lockDb.transaction(async (tx) => {
         const pidRows = await tx.execute(sql`SELECT pg_backend_pid()::int AS pid`);
         const pid = Number(((Array.isArray(pidRows) ? pidRows : (pidRows as { rows?: Array<{ pid: number }> }).rows ?? [])[0] as { pid: number }).pid);
         await tx.execute(sql`SELECT id FROM knowledge_nodes WHERE id = ${initial.node.id} FOR UPDATE`);
         r(pid);
-        await new Promise<void>((done) => { triggerCertifyAndCommit = done; });
+        await gate;
         await tx.execute(sql`UPDATE knowledge_nodes SET certified = true, title = 'Certified By Board' WHERE id = ${initial.node.id}`);
       });
+      lockTx.catch(reject);
     });
 
-    const upsertPromise = upsertKbNode(db, {
-      companyId: C1, kbId: KB1, slug: "canon-lock-test", title: "Stale Auto Sync", certified: false, preserveCertified: true, actorId: "sys",
-    });
-    const blockedQuery = await waitForBlockedForUpdate(observerDb, blockerPid);
-    expect(blockedQuery.toLowerCase()).toContain("for update");
-    triggerCertifyAndCommit();
+    try {
+      const upsertPromise = upsertKbNode(db, {
+        companyId: C1, kbId: KB1, slug: "canon-lock-test", title: "Stale Auto Sync", certified: false, preserveCertified: true, actorId: "sys",
+      });
+      const blockedQuery = await waitForBlockedForUpdate(observerDb, blockerPid);
+      expect(blockedQuery.toLowerCase()).toContain("for update");
+      releaseLock();
 
-    const out = await upsertPromise;
-    expect(out.skippedCertified).toBe(true);
-    expect(out.node.certified).toBe(true);
-    expect(out.node.title).toBe("Certified By Board");
+      const out = await upsertPromise;
+      expect(out.skippedCertified).toBe(true);
+      expect(out.node.certified).toBe(true);
+      expect(out.node.title).toBe("Certified By Board");
+    } finally {
+      releaseLock();
+      await lockTx.catch(() => {});
+    }
   });
 
   it("proves 1st INSERT conflict -> FOR UPDATE lock-wait -> delete -> 2nd-attempt INSERT recovery", async () => {
@@ -82,31 +90,37 @@ describe("upsertKbNode real PostgreSQL 2-session concurrency", () => {
       companyId: C1, kbId: KB1, slug: "delete-race-test", title: "Before Delete", certified: false, actorId: "seed",
     });
 
-    let triggerDeleteAndCommit!: () => void;
-    const blockerPid = await new Promise<number>((r) => {
-      void lockDb.transaction(async (tx) => {
+    let releaseLock!: () => void;
+    const gate = new Promise<void>((done) => { releaseLock = done; });
+    let lockTx!: Promise<void>;
+    const blockerPid = await new Promise<number>((r, reject) => {
+      lockTx = lockDb.transaction(async (tx) => {
         const pidRows = await tx.execute(sql`SELECT pg_backend_pid()::int AS pid`);
         const pid = Number(((Array.isArray(pidRows) ? pidRows : (pidRows as { rows?: Array<{ pid: number }> }).rows ?? [])[0] as { pid: number }).pid);
-        // Hold row lock WITHOUT deleting yet so attempt-1 INSERT conflicts on existing (kb_id, slug)
         await tx.execute(sql`SELECT id FROM knowledge_nodes WHERE id = ${initial.node.id} FOR UPDATE`);
         r(pid);
-        await new Promise<void>((done) => { triggerDeleteAndCommit = done; });
+        await gate;
         await tx.execute(sql`DELETE FROM knowledge_nodes WHERE id = ${initial.node.id}`);
       });
+      lockTx.catch(reject);
     });
 
-    const upsertPromise = upsertKbNode(db, {
-      companyId: C1, kbId: KB1, slug: "delete-race-test", title: "Recreated After Delete", certified: false, actorId: "sys",
-    });
-    // Reaching FOR UPDATE proves attempt-1 INSERT conflicted; now delete + commit so FOR UPDATE sees 0 rows
-    const blockedQuery = await waitForBlockedForUpdate(observerDb, blockerPid);
-    expect(blockedQuery.toLowerCase()).toContain("for update");
-    triggerDeleteAndCommit();
+    try {
+      const upsertPromise = upsertKbNode(db, {
+        companyId: C1, kbId: KB1, slug: "delete-race-test", title: "Recreated After Delete", certified: false, actorId: "sys",
+      });
+      const blockedQuery = await waitForBlockedForUpdate(observerDb, blockerPid);
+      expect(blockedQuery.toLowerCase()).toContain("for update");
+      releaseLock();
 
-    const out = await upsertPromise;
-    expect(out.created).toBe(true);
-    expect(out.skippedCertified).toBe(false);
-    expect(out.node.title).toBe("Recreated After Delete");
-    expect(out.node.id).not.toBe(initial.node.id);
+      const out = await upsertPromise;
+      expect(out.created).toBe(true);
+      expect(out.skippedCertified).toBe(false);
+      expect(out.node.title).toBe("Recreated After Delete");
+      expect(out.node.id).not.toBe(initial.node.id);
+    } finally {
+      releaseLock();
+      await lockTx.catch(() => {});
+    }
   });
 });
