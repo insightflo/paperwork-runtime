@@ -15,7 +15,6 @@ const BOARD_ROUTE_ROOTS = new Set([
   "usage",
   "activity",
   "inbox",
-  "design-guide",
 ]);
 
 const GLOBAL_ROUTE_ROOTS = new Set([
