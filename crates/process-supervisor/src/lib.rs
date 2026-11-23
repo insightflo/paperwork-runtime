@@ -9,7 +9,6 @@ use std::{collections::BTreeMap, io::{self, Read}, os::{fd::AsRawFd, unix::proce
 /// Clears inherited environment variables; does not confine filesystem access.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct IsolatedEnvSpec { pub vars: BTreeMap<String, String> }
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SupervisedSpawnSpec {
     pub command: String,
@@ -23,7 +22,6 @@ pub struct SupervisedSpawnSpec {
     /// Defaults to 1000 ms after escalation.
     pub reap_timeout_ms: Option<u64>,
 }
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SupervisedOutcome {
     pub timed_out: bool,
@@ -136,19 +134,17 @@ fn drain_pipe(mut pipe: impl Read + AsRawFd, shared: &Readers) -> io::Result<Vec
     }
     Ok(out)
 }
-
 fn sys(ret: i32) -> io::Result<i32> { if ret == -1 { Err(io::Error::last_os_error()) } else { Ok(ret) } }
 fn send(pid: i32, sig: i32, group: bool) -> io::Result<i32> {
     sys(unsafe { if group { killpg(pid, sig) } else { kill(pid, sig) } })
 }
 fn reap(pid: i32, status: &mut i32) -> io::Result<i32> { sys(unsafe { waitpid(pid, status, WNOHANG) }) }
-fn terminal(pid: i32, code: i32) -> bool {
-    pid != 0 && matches!(code, CLD_EXITED | CLD_KILLED | CLD_DUMPED)
-}
+fn terminal(pid: i32, code: i32) -> bool { pid != 0 && matches!(code, CLD_EXITED | CLD_KILLED | CLD_DUMPED) }
 
 struct SupervisedChildGuard {
     owned_pid: Option<i32>,
     pending_handoff_pid: Option<i32>,
+    leader_exited: bool,
     readers: [Option<Reader>; 2],
     shared: Arc<Readers>,
     grace: Duration,
@@ -163,7 +159,9 @@ impl SupervisedChildGuard {
         // The unreaped leader pins the PID used for both group and direct signals.
         for (sig, group) in [(SIGTERM, true), (SIGKILL, true), (SIGKILL, false)] {
             if let Err(e) = (self.send)(pid, sig, group) {
-                if e.raw_os_error() != Some(ESRCH) { errors.push(format!("signal {sig} (group={group}): {e}")); }
+                let errno = e.raw_os_error();
+                let benign_eperm = cfg!(target_os = "macos") && group && self.leader_exited && errno == Some(EPERM);
+                if errno != Some(ESRCH) && !benign_eperm { errors.push(format!("signal {sig} (group={group}): {e}")); }
             }
             if sig == SIGTERM { thread::sleep(self.grace); }
         }
@@ -174,7 +172,11 @@ impl SupervisedChildGuard {
                     self.owned_pid = None;
                     return Some(status);
                 }
-                Err(e) if e.kind() != io::ErrorKind::Interrupted => { errors.push(format!("waitpid: {e}")); break; }
+                Err(e) if e.kind() != io::ErrorKind::Interrupted => {
+                    errors.push(format!("waitpid: {e}"));
+                    if e.raw_os_error() == Some(ECHILD) { self.owned_pid = None; return None; }
+                    break;
+                }
                 _ => (),
             }
             let left = self.reap_timeout.saturating_sub(start.elapsed());
@@ -229,7 +231,7 @@ impl Drop for SupervisedChildGuard {
 /// Calling-process exit is an exception: no reaping is guaranteed then.
 /// `timeout_ms` starts after `Command::spawn()` returns. Group signaling is best-effort,
 /// not universal descendant termination: descendants can leave the process group.
-/// On macOS even a zombie-only group may return EPERM; this is reported, not suppressed.
+/// On macOS, group EPERM is tolerated only after observing the leader exit without reaping it.
 pub fn run_supervised(spec: &SupervisedSpawnSpec) -> Result<SupervisedOutcome, SupervisionError> {
     let mut cmd = Command::new(&spec.command);
     cmd.args(&spec.args).env_clear().envs(&spec.env.vars).stdin(Stdio::null());
@@ -248,7 +250,7 @@ fn supervise(mut cmd: Command, spec: &SupervisedSpawnSpec, after_exit: impl FnOn
     let mut child = cmd.spawn()?;
     let start = Instant::now();
     let mut guard = SupervisedChildGuard { owned_pid: Some(child.id() as i32), pending_handoff_pid: None,
-        readers: [None, None], shared: Arc::default(), grace: Duration::from_millis(spec.grace_ms),
+        leader_exited: false, readers: [None, None], shared: Arc::default(), grace: Duration::from_millis(spec.grace_ms),
         drain: Duration::from_millis(spec.drain_deadline_ms.unwrap_or(250)), send, reap,
         reap_timeout: Duration::from_millis(spec.reap_timeout_ms.unwrap_or(1000)) };
     let primary = (|| {
@@ -259,7 +261,8 @@ fn supervise(mut cmd: Command, spec: &SupervisedSpawnSpec, after_exit: impl FnOn
         loop {
             let mut info: siginfo_t = unsafe { std::mem::zeroed() };
             match sys(unsafe { waitid(P_PID, pid as id_t, &mut info, WEXITED | WNOHANG | WNOWAIT) }) {
-                Ok(_) if terminal(unsafe { info.si_pid() }, info.si_code) => { after_exit(&mut guard); return Ok(false); }
+                Ok(_) if terminal(unsafe { info.si_pid() }, info.si_code) => {
+                    guard.leader_exited = true; after_exit(&mut guard); return Ok(false); }
                 Err(e) if e.kind() != io::ErrorKind::Interrupted => {
                     if e.raw_os_error() == Some(ECHILD) { guard.owned_pid = None; }
                     return Err(e);
@@ -273,5 +276,4 @@ fn supervise(mut cmd: Command, spec: &SupervisedSpawnSpec, after_exit: impl FnOn
     })();
     guard.cleanup(primary, |_| {})
 }
-
 #[cfg(test)] mod tests;

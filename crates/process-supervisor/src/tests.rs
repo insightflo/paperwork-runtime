@@ -8,24 +8,11 @@ fn spec(script: &str) -> SupervisedSpawnSpec {
         drain_deadline_ms: None, reap_timeout_ms: None }
 }
 
-// macOS reports EPERM when no live group member remains; preserve and verify it.
-fn observed(result: Result<SupervisedOutcome, SupervisionError>) -> SupervisedOutcome {
-    match result {
-        #[cfg(target_os = "macos")]
-        Err(e) if !e.errors.is_empty() && e.errors.iter().all(|error| {
-            error.ends_with(&format!("(group=true): {}", io::Error::from_raw_os_error(EPERM)))
-        }) => {
-            assert_eq!(e.unreaped_pid, None);
-            e.outcome.expect("cleanup must still reap and capture output")
-        }
-        other => other.unwrap(),
-    }
-}
-
 #[test]
 fn captures_fast_exit_and_discards_after_cap() {
     for len in [128 * 1024, 512 * 1024] {
-        let out = observed(run_supervised(&spec(&format!("/usr/bin/head -c {len} /dev/zero; rc=$?; printf done >&2; exit $rc"))));
+        let out = run_supervised(&spec(&format!("/usr/bin/head -c {len} /dev/zero; rc=$?; printf done >&2; exit $rc")))
+            .expect("expected Ok");
         assert_eq!(out.exit_code, Some(0));
         assert!(!out.timed_out);
         assert_eq!(out.stdout, vec![0; len.min(CAP)]);
@@ -68,8 +55,9 @@ fn fixture_child() {
             let mut ready = [0];
             child.stderr.take().unwrap().read_exact(&mut ready).unwrap();
             assert_eq!(ready, *b"R");
-            // Intentionally leave the grandchild running when the leader exits.
-            if mode == "group-timeout" { wait_for_sentinel(); let _ = child.wait(); }
+            // On timeout, keep the leader live through SIGTERM so the group can receive SIGKILL.
+            if mode == "group-timeout" {
+                assert_ne!(unsafe { signal(SIGTERM, SIG_IGN) }, SIG_ERR); wait_for_sentinel(); let _ = child.wait(); }
         }
         "group" => {
             let mut action: sigaction = unsafe { std::mem::zeroed() };
@@ -109,9 +97,9 @@ fn normal_exit_and_timeout_signal_same_group_grandchild() {
         let mut cfg = spec("");
         cfg.timeout_ms = 750;
         cfg.grace_ms = 100;
-        let out = observed(supervise(cmd, &cfg, |_| {}));
+        let out = supervise(cmd, &cfg, |_| {}).expect("expected Ok");
         assert_eq!(out.timed_out, timed_out);
-        if timed_out { assert_eq!(out.signal, Some(SIGTERM)); } else { assert_eq!(out.exit_code, Some(0)); }
+        if timed_out { assert_eq!(out.signal, Some(SIGKILL)); } else { assert_eq!(out.exit_code, Some(0)); }
         let mut marks = Vec::new();
         observe.read_to_end(&mut marks).unwrap();
         assert_eq!(marks, b"GT");
@@ -137,7 +125,7 @@ fn escaped_writer_drain_is_bounded_and_sentinel_stops_it() {
     let mut cfg = spec("");
     cfg.drain_deadline_ms = Some(75);
     let start = Instant::now();
-    let out = observed(supervise(cmd, &cfg, |_| {}));
+    let out = supervise(cmd, &cfg, |_| {}).expect("expected Ok");
     assert!(start.elapsed() < Duration::from_secs(2));
     assert_eq!(out.exit_code, Some(0));
     assert!(out.stdout.contains(&b'W'));
@@ -155,7 +143,7 @@ fn stopped_leader_waits_for_timeout() {
     let mut cfg = spec("printf stopping; kill -STOP $$; exit 42");
     cfg.timeout_ms = 200;
     let start = Instant::now();
-    let out = observed(run_supervised(&cfg));
+    let out = run_supervised(&cfg).expect("expected Ok");
     assert!(out.timed_out);
     assert_eq!(out.stdout, b"stopping");
     assert!(start.elapsed() >= Duration::from_millis(200));
@@ -166,7 +154,7 @@ static HANDOFF_TEST_LOCK: Mutex<()> = Mutex::new(());
 static SIGNALS: AtomicUsize = AtomicUsize::new(0);
 fn fake_guard(pid: i32, reaps: bool) -> SupervisedChildGuard {
     SupervisedChildGuard { owned_pid: Some(pid), pending_handoff_pid: None, readers: [None, None],
-        shared: Arc::default(), grace: Duration::ZERO, drain: Duration::ZERO, reap_timeout: Duration::ZERO,
+        leader_exited: false, shared: Arc::default(), grace: Duration::ZERO, drain: Duration::ZERO, reap_timeout: Duration::ZERO,
         send: |_, _, _| { SIGNALS.fetch_add(1, Relaxed); Ok(0) },
         reap: if reaps { |pid, _| Ok(pid) } else { |_, _| Ok(0) } }
 }
@@ -249,7 +237,7 @@ fn reader_failure_at_normal_exit_and_pre_wait_notification_are_not_lost() {
         assert!(start.elapsed() < Duration::from_secs(1));
         guard.send = |pid, sig, group| {
             let result = send(pid, sig, group);
-            if sig == SIGTERM { Err(io::Error::from_raw_os_error(EPERM)) } else { result }
+            if !group { Err(io::Error::from_raw_os_error(EPERM)) } else { result }
         };
     }).unwrap_err();
     assert!(err.errors.iter().any(|e| e.starts_with("reader 0:")), "{err}");
@@ -264,6 +252,19 @@ fn bounded_reap_hands_off_in_error_without_publishing_again() {
     let err = guard.cleanup(Err(io::Error::other("primary")), |_| {}).unwrap_err();
     assert_eq!(err.errors, ["primary", "waitpid deadline expired"]);
     assert_eq!(err.unreaped_pid, Some(401));
+    drop(guard);
+    assert!(take_unreaped_pids().is_empty());
+}
+
+#[test]
+fn waitpid_echild_reports_error_without_handoff() {
+    let _serial = lock(&HANDOFF_TEST_LOCK);
+    let mut guard = fake_guard(501, false);
+    guard.reap = |_, _| Err(io::Error::from_raw_os_error(ECHILD));
+    let err = guard.cleanup(Ok(false), |_| {}).unwrap_err();
+    assert_eq!(err.errors, [format!("waitpid: {}", io::Error::from_raw_os_error(ECHILD))]);
+    assert_eq!(err.unreaped_pid, None);
+    assert_eq!(guard.owned_pid, None);
     drop(guard);
     assert!(take_unreaped_pids().is_empty());
 }
