@@ -1,5 +1,5 @@
 const BASE = "/api";
-const DEFAULT_GET_TIMEOUT_MS = 20_000;
+const DEFAULT_GET_TIMEOUT_MS = 45_000;
 const DEFAULT_MUTATION_TIMEOUT_MS = 60_000;
 
 export class ApiError extends Error {
@@ -12,6 +12,19 @@ export class ApiError extends Error {
     this.status = status;
     this.body = body;
   }
+}
+
+export function isRetryableQueryError(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    if (error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429) {
+      return false;
+    }
+    return true;
+  }
+  if (typeof error === "object" && error !== null && (error as { name?: string }).name === "AbortError") {
+    return false;
+  }
+  return true;
 }
 
 export async function request<T>(

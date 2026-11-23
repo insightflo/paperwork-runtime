@@ -5,7 +5,7 @@
 //   - 안전한 소유권 검증 기반 upsert + activityLog 감사 기록
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { activityLog, agentKbGrants, knowledgeBases, knowledgeNodes, type Db, type KnowledgeNodeSourceRef } from "@paperclipai/db";
-import { badRequest, notFound } from "../../errors.js";
+import { badRequest, conflict, notFound } from "../../errors.js";
 
 const MAX_SEARCH_LIMIT = 8;
 const MAX_ONE_HOP_NEIGHBORS = 12;
@@ -233,8 +233,8 @@ export async function upsertKbNode(
   db: Db,
   input: {
     companyId: string; kbId: string; slug: string; title: string; summary?: string; content?: string;
-    parentId?: string | null; nodeType?: string; certified?: boolean; tags?: string[];
-    linkedNodeIds?: string[]; sourceRefs?: KnowledgeNodeSourceRef[]; actorId: string;
+    parentId?: string | null; nodeType?: string; certified?: boolean; preserveCertified?: boolean;
+    tags?: string[]; linkedNodeIds?: string[]; sourceRefs?: KnowledgeNodeSourceRef[]; actorId: string;
   },
 ) {
   const slug = input.slug.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
@@ -251,28 +251,48 @@ export async function upsertKbNode(
       if (!parent) throw badRequest("parentId must belong to the same knowledge base and company");
     }
 
-    const [existing] = await tx.select({ id: knowledgeNodes.id }).from(knowledgeNodes)
-      .where(and(eq(knowledgeNodes.companyId, input.companyId), eq(knowledgeNodes.kbId, input.kbId), eq(knowledgeNodes.slug, slug))).limit(1);
-
-    const now = new Date();
-    const values = {
+    const baseValues = {
       title: input.title.trim(), summary: (input.summary ?? "").trim(), content: input.content ?? "",
       parentId: input.parentId ?? null, nodeType: input.nodeType ?? "concept",
-      certified: input.certified ?? false, tags: input.tags ?? [],
-      linkedNodeIds: input.linkedNodeIds ?? [], sourceRefs: input.sourceRefs ?? [], updatedAt: now,
+      tags: input.tags ?? [], linkedNodeIds: input.linkedNodeIds ?? [],
+      sourceRefs: input.sourceRefs ?? [], updatedAt: new Date(),
     };
+    const logUpsert = (entityId: string, mode: "created" | "updated") =>
+      tx.insert(activityLog).values({
+        companyId: input.companyId, actorType: "user", actorId: input.actorId,
+        action: "knowledge_node.upserted", entityType: "knowledge_node", entityId,
+        details: { kbId: input.kbId, slug, mode },
+      });
 
-    const [saved] = existing
-      ? await tx.update(knowledgeNodes).set(values)
-          .where(and(eq(knowledgeNodes.companyId, input.companyId), eq(knowledgeNodes.kbId, input.kbId), eq(knowledgeNodes.id, existing.id)))
-          .returning()
-      : await tx.insert(knowledgeNodes).values({ companyId: input.companyId, kbId: input.kbId, slug, ...values }).returning();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const [inserted] = await tx.insert(knowledgeNodes)
+        .values({ companyId: input.companyId, kbId: input.kbId, slug, ...baseValues, certified: input.certified ?? false })
+        .onConflictDoNothing({ target: [knowledgeNodes.kbId, knowledgeNodes.slug] })
+        .returning();
+      if (inserted) {
+        await logUpsert(inserted.id, "created");
+        return { node: inserted, created: true, skippedCertified: false };
+      }
 
-    await tx.insert(activityLog).values({
-      companyId: input.companyId, actorType: "user", actorId: input.actorId,
-      action: "knowledge_node.upserted", entityType: "knowledge_node", entityId: saved.id,
-      details: { kbId: input.kbId, slug, mode: existing ? "updated" : "created" },
-    });
-    return { node: saved, created: !existing };
+      const [existing] = await tx.select().from(knowledgeNodes)
+        .where(and(eq(knowledgeNodes.companyId, input.companyId), eq(knowledgeNodes.kbId, input.kbId), eq(knowledgeNodes.slug, slug)))
+        .for("update").limit(1);
+      if (!existing) continue;
+      if (input.preserveCertified && existing.certified) {
+        return { node: existing, created: false, skippedCertified: true };
+      }
+
+      const updateWhere = input.preserveCertified
+        ? and(eq(knowledgeNodes.companyId, input.companyId), eq(knowledgeNodes.kbId, input.kbId), eq(knowledgeNodes.id, existing.id), eq(knowledgeNodes.certified, false))
+        : and(eq(knowledgeNodes.companyId, input.companyId), eq(knowledgeNodes.kbId, input.kbId), eq(knowledgeNodes.id, existing.id));
+      const [updated] = await tx.update(knowledgeNodes)
+        .set({ ...baseValues, certified: input.certified ?? existing.certified })
+        .where(updateWhere).returning();
+      if (!updated) continue;
+
+      await logUpsert(updated.id, "updated");
+      return { node: updated, created: false, skippedCertified: false };
+    }
+    throw conflict("Concurrent knowledge node deletion; retry upsert");
   });
 }
