@@ -48,6 +48,11 @@ describe("engine discovery", () => {
     expect(existsSync).not.toHaveBeenCalled();
   });
 
+  it("rejects a relative root even when the override is an existing absolute path", () => {
+    const env = { PAPERWORK_ENGINE_BIN: process.execPath };
+    expect(resolveDefaultPaperworkEngineBin({ repoRoot: "relative", env })).toBeNull();
+  });
+
   const candidates = [workspaceRelease, stagedRelease, workspaceDebug];
   it.each([0, 1, 2, 3])("discovers the first available candidate at index %i", (first) => {
     const existsSync = vi.fn((p: string) => candidates.slice(first).includes(p));

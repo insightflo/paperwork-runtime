@@ -10,12 +10,12 @@ export function resolveDefaultPaperworkEngineBin(options?: {
   env?: NodeJS.ProcessEnv;
   existsSync?: (p: string) => boolean;
 }): string | null {
+  if (options?.repoRoot !== undefined && !path.isAbsolute(options.repoRoot)) return null;
   const { repoRoot = DEFAULT_REPO_ROOT, env = process.env, existsSync: exists = existsSync } = options ?? {};
   if (env.PAPERWORK_ENGINE_BIN !== undefined) {
     const bin = env.PAPERWORK_ENGINE_BIN.trim();
     return bin && path.isAbsolute(bin) && !bin.includes("\0") && exists(bin) ? bin : null;
   }
-  if (!path.isAbsolute(repoRoot)) return null;
   const candidates = [
     path.join(repoRoot, "target", "release", "paperwork-engine"),
     path.join(repoRoot, "crates", "paperwork-engine", "target", "release", "paperwork-engine"),

@@ -183,7 +183,6 @@ async function performServerShutdown(
   while (context.startupWork.size > 0) await Promise.allSettled([...context.startupWork]);
   if (context.backupFlight) await context.backupFlight;
   await context.appShutdown.drain();
-
   context.appShutdown.sealHttpIngress();
   await closeRemainingIngress(context);
   await context.appShutdown.drainHttpCallbacks();
@@ -192,18 +191,19 @@ async function performServerShutdown(
   const client = (context.db as unknown as { $client?: { end(options: { timeout: number }): Promise<void> } }).$client;
   await runOrderedShutdownSteps([
     () => context.appShutdown!.dispose(),
-    () => closeSharedPaperworkEngineClient(),
+    closeSharedPaperworkEngineClient,
     () => {
       if (!client) throw new Error("Database client does not expose the configured close API");
       context.databaseCloseAttempted = true;
       return client.end({ timeout: 5 });
     },
+    () => {
+      if (!context.embeddedPostgres || !context.embeddedPostgresStartedByThisProcess) return;
+      logger.info({ signal }, "Stopping embedded PostgreSQL");
+      return context.embeddedPostgres.stop();
+    },
+    () => context.removeSignalHandlers(),
   ]);
-  if (context.embeddedPostgres && context.embeddedPostgresStartedByThisProcess) {
-    logger.info({ signal }, "Stopping embedded PostgreSQL");
-    await context.embeddedPostgres.stop();
-  }
-  context.removeSignalHandlers();
   logger.info({ signal }, "Server shutdown completed");
 }
 
