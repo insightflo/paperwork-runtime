@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -80,9 +81,16 @@ describe("provider-auth-core client", () => {
     vi.stubEnv("PAPERCLIP_PROVIDER_AUTH_BIN", "");
     expect(resolveProviderAuthBin(path.join(dir, "no-such"), stub)).toBeNull();
     expect(resolveProviderAuthBin("relative/bin", stub)).toBeNull();
+    // env 자체가 unset 일 때만 configured===undefined → defaultBin 참조.
+    vi.stubEnv("PAPERCLIP_PROVIDER_AUTH_BIN", undefined);
     expect(resolveProviderAuthBin(undefined, stub)).toBe(stub);
     expect(PROVIDER_AUTH_IDS).toContain("claude");
     expect(isValidProviderAuthId("bogus")).toBe(false);
+  });
+
+  it("resolveProviderAuthBin: blank configured(\"\", \"   \")는 runnable defaultBin 도 참조하지 않고 null", () => {
+    expect(resolveProviderAuthBin("", stub)).toBeNull();
+    expect(resolveProviderAuthBin("   ", stub)).toBeNull();
   });
 
   it("probe-all: valid JSON 을 투영하고 unexpected 필드를 제거한다", async () => {
@@ -98,6 +106,16 @@ describe("provider-auth-core client", () => {
       .toEqual({ provider: "claude", command: "c", args: ["login"], interactive: true, notes: ["n1"] });
     vi.stubEnv("STUB_MODE", "mismatch");
     await expect(planProviderLogin("claude", { binPath: stub })).rejects.toMatchObject({ reason: "invalid_json" });
+  });
+
+  it("plan-login: allowlist 밖 provider 는 spawn 없이 fail-closed", async () => {
+    const marker = path.join(dir, "spawned-marker");
+    const sentinel = path.join(dir, "sentinel-stub");
+    await writeFile(sentinel, `#!/usr/bin/env node\nrequire("node:fs").writeFileSync(${JSON.stringify(marker)}, "x")\n`, "utf8");
+    await chmod(sentinel, 0o755);
+    await expect(planProviderLogin("bad" as any, { binPath: sentinel }))
+      .rejects.toMatchObject({ name: "ProviderAuthClientError", reason: "invalid_provider" });
+    expect(existsSync(marker)).toBe(false);
   });
 
   it.each([

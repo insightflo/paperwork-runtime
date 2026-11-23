@@ -36,6 +36,7 @@ export interface ProviderAuthLoginPlan {
 
 export const PROVIDER_AUTH_CLIENT_REASONS = [
   "binary_missing", "spawn_error", "timeout", "stdout_overflow", "stderr_overflow", "non_zero_exit", "invalid_json",
+  "invalid_provider",
 ] as const;
 export type ProviderAuthClientReason = (typeof PROVIDER_AUTH_CLIENT_REASONS)[number];
 export class ProviderAuthClientError extends Error {
@@ -52,10 +53,10 @@ export function resolveProviderAuthBin(
   configured = process.env.PAPERCLIP_PROVIDER_AUTH_BIN,
   defaultBin = DEFAULT_PROVIDER_AUTH_BIN,
 ): string | null {
-  const trimmed = configured?.trim() ?? "";
-  if (trimmed) {
-    // configured 경로가 있으면 그것만 신뢰 — defaultBin 폴백은 절대 참조하지 않는다(fail-closed).
-    if (!path.isAbsolute(trimmed) || trimmed.includes("\0")) return null;
+  if (configured !== undefined) {
+    // configured 가 설정되면(blank 포함) 그 값만 신뢰 — defaultBin 폴백은 절대 참조하지 않는다(fail-closed).
+    const trimmed = configured.trim();
+    if (!trimmed || !path.isAbsolute(trimmed) || trimmed.includes("\0")) return null;
     return existsSync(trimmed) ? trimmed : null;
   }
   return existsSync(defaultBin) ? defaultBin : null;
@@ -156,6 +157,8 @@ export async function planProviderLogin(
   provider: ProviderAuthId,
   opts?: RunOpts,
 ): Promise<ProviderAuthLoginPlan> {
+  // 런타임 방어: allowlist 밖 provider 는 spawn 이전에 fail-closed(타입 우회 호출자 차단).
+  if (!isValidProviderAuthId(provider)) throw new ProviderAuthClientError("invalid_provider");
   const raw = await runProviderAuthBin(["plan-login", provider], opts);
   if (!isRecord(raw) || !isValidProviderAuthId(raw.provider)) throw invalid();
   const plan: ProviderAuthLoginPlan = {
