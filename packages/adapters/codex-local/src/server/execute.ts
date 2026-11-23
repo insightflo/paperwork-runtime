@@ -11,7 +11,6 @@ import {
 import {
   asString,
   asNumber,
-  asBoolean,
   asStringArray,
   parseObject,
   parseJson,
@@ -28,6 +27,7 @@ import {
 import { parseCodexJsonl, isCodexUnknownSessionError } from "./parse.js";
 import { runCodexRetryAttempt } from "./retry-start-result.js";
 import { pathExists, prepareManagedCodexHome, resolveManagedCodexHomeDir } from "./codex-home.js";
+import { codexFlavor } from "./codex-flavor.js";
 import { sanitizeCodexLogLine, sanitizeCodexLogStream } from "../redaction.js";
 import { resolveCodexDesiredSkillNames } from "./skills.js";
 
@@ -240,12 +240,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     config.modelReasoningEffort,
     asString(config.reasoningEffort, ""),
   );
-  const search = asBoolean(config.search, false);
-  const bypass = asBoolean(
-    config.dangerouslyBypassApprovalsAndSandbox,
-    asBoolean(config.dangerouslyBypassSandbox, false),
-  );
-
   const workspaceContext = parseObject(context.paperclipWorkspace);
   const workspaceCwd = asString(workspaceContext.cwd, "");
   const workspaceSource = asString(workspaceContext.source, "");
@@ -406,7 +400,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     return asStringArray(config.args);
   })();
 
-  const runtimeSessionParams = parseObject(runtime.sessionParams);
+  const runtimeSessionParams =
+    codexFlavor.sessionCodec.deserialize(runtime.sessionParams) ?? parseObject(runtime.sessionParams);
   const runtimeSessionId = asString(runtimeSessionParams.sessionId, runtime.sessionId ?? "");
   const runtimeSessionCwd = asString(runtimeSessionParams.cwd, "");
   const canResumeSession =
@@ -501,19 +496,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     heartbeatPromptChars: renderedPrompt.length,
   };
 
-  const buildArgs = (resumeSessionId: string | null) => {
-    const args = ["exec", "--json"];
-    if (search) args.unshift("--search");
-    if (bypass) args.push("--dangerously-bypass-approvals-and-sandbox");
-    if (!extraArgs.includes("--skip-git-repo-check")) args.push("--skip-git-repo-check");
-    if (model) args.push("--model", model);
-    if (modelReasoningEffort) args.push("-c", `model_reasoning_effort=${JSON.stringify(modelReasoningEffort)}`);
-    if (extraArgs.length > 0) args.push(...extraArgs);
-    if (resumeSessionId) args.push("resume", resumeSessionId, "-");
-    else args.push("-");
-    return args;
-  };
-
   const emitSessionUpdate = (() => {
     const seen = new Set<string>();
     return async (sessionId: string | null) => {
@@ -546,7 +528,11 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   };
 
   const runAttempt = async (resumeSessionId: string | null) => {
-    const args = buildArgs(resumeSessionId);
+    const args = codexFlavor.buildArgs({
+      command, prompt, resumeSessionId, model, extraArgs, config,
+      effort: modelReasoningEffort,
+      maxTurns: asNumber(config.maxTurns, 0),
+    });
     const sensitiveValues = [env.PAPERCLIP_API_KEY, authToken].filter(
       (value): value is string => typeof value === "string" && value.trim().length > 0,
     );
