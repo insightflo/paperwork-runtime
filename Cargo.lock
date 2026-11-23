@@ -755,6 +755,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "paperclip-redactor-core"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "paperclip-run-log"
 version = "0.1.0"
 dependencies = [
