@@ -28,6 +28,7 @@ import {
   sanitizeInheritedPaperclipEnv,
 } from "@paperclipai/adapter-utils/server-utils";
 import { isPiUnknownSessionError, parsePiJsonl } from "./parse.js";
+import { piFlavor } from "./pi-flavor.js";
 import { ensurePiModelConfiguredAndAvailable } from "./models.js";
 import { resolvePiSessionsDir, resolvePiSkillsDir } from "./runtime-paths.js";
 import {
@@ -347,7 +348,7 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
 
   // Handle session
   const sessionResolveStart = process.hrtime.bigint();
-  const runtimeSessionParams = parseObject(runtime.sessionParams);
+  const runtimeSessionParams = piFlavor.sessionCodec.deserialize(runtime.sessionParams) ?? {};
   const runtimeSessionId = asString(runtimeSessionParams.sessionId, runtime.sessionId ?? "");
   const runtimeSessionCwd = asString(runtimeSessionParams.cwd, "");
   const canResumeSession =
@@ -472,30 +473,6 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     ];
   })();
 
-  const buildArgs = (sessionFile: string): string[] => {
-    const args: string[] = [];
-    
-    // Use RPC mode for proper lifecycle management (waits for agent completion)
-    args.push("--mode", "rpc");
-    
-    // Use --append-system-prompt to extend Pi's default system prompt
-    args.push("--append-system-prompt", renderedSystemPromptExtension);
-    
-    if (provider) args.push("--provider", provider);
-    if (modelId) args.push("--model", modelId);
-    if (thinking) args.push("--thinking", thinking);
-
-    args.push("--tools", "read,bash,edit,write,grep,find,ls");
-    args.push("--session", sessionFile);
-
-    // Add Paperclip skills directory so Pi can load the paperclip skill
-    args.push("--skill", skillsDir);
-
-    if (extraArgs.length > 0) args.push(...extraArgs);
-
-    return args;
-  };
-
   const buildRpcStdin = (): string => {
     // Send the prompt as an RPC command
     const promptCommand = {
@@ -506,7 +483,22 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   };
 
   const runAttempt = async (sessionFile: string) => {
-    const args = buildArgs(sessionFile);
+    const args = piFlavor.buildArgs({
+      command,
+      prompt: userPrompt,
+      resumeSessionId: canResumeSession ? sessionFile : null,
+      model,
+      effort: thinking,
+      maxTurns: 0,
+      extraArgs,
+      config,
+      provider,
+      modelId,
+      thinking,
+      systemPromptExtension: renderedSystemPromptExtension,
+      skillsDir,
+      sessionFile,
+    });
     if (onMeta) {
       await onMeta({
         adapterType: "pi_local",
