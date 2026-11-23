@@ -99,7 +99,6 @@ export type {
   ProtocolTransport,
   ProviderDescriptor,
 } from "./acp-flavor.js";
-export { createChildProcessStreamRunner, createManagedProviderDriver } from "./managed-driver.js";
 export type {
   ChildProcessStreamRunner,
   DriverStreamRunOptions,

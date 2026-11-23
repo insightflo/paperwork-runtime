@@ -1,5 +1,3 @@
-import path from "node:path";
-import { asString, asStringArray, parseObject } from "./server-utils.js";
 import type { AdapterSessionCodec, UsageSummary } from "./types.js";
 
 /**
@@ -64,6 +62,20 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function parseObject(value: unknown): Record<string, unknown> {
+  return asRecord(value) ?? {};
+}
+
+function asString(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function parseUsage(value: unknown): UsageSummary | null {
@@ -204,6 +216,14 @@ export function stripReservedDriverArgs(
   return out;
 }
 
+function isAbsolutePath(value: string): boolean {
+  return (
+    value.startsWith("/") ||
+    value.startsWith("\\\\") ||
+    /^[a-zA-Z]:[\\/]/.test(value)
+  );
+}
+
 export function resolveDriverCwd(
   config: Record<string, unknown>,
   context: Record<string, unknown>,
@@ -216,5 +236,6 @@ export function resolveDriverCwd(
     asString(parseObject(context.executionWorkspace).cwd as string, ""),
   ];
   const found = candidates.find((value) => value.length > 0);
-  return found ? path.resolve(found) : process.cwd();
+  if (!found) return process.cwd();
+  return isAbsolutePath(found) ? found : `${process.cwd()}/${found}`;
 }
