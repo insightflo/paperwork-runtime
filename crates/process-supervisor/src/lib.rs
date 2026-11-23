@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, io::{self, Read}, os::{fd::AsRawFd, unix::process::CommandExt},
     path::PathBuf, process::{Command, Stdio}, sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock,
     atomic::{AtomicBool, Ordering::{Acquire, Release}}}, thread::{self, JoinHandle}, time::{Duration, Instant}};
-
 /// Clears inherited environment variables; does not confine filesystem access.
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct IsolatedEnvSpec { pub vars: BTreeMap<String, String> }
@@ -30,7 +29,6 @@ pub struct SupervisedOutcome {
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
 }
-
 #[derive(Debug)]
 pub struct SupervisionError {
     pub errors: Vec<String>,
@@ -48,9 +46,7 @@ impl std::fmt::Display for SupervisionError {
 }
 impl std::error::Error for SupervisionError {}
 impl From<io::Error> for SupervisionError {
-    fn from(e: io::Error) -> Self { Self { errors: vec![e.to_string()], unreaped_pid: None, outcome: None } }
-}
-
+    fn from(e: io::Error) -> Self { Self { errors: vec![e.to_string()], unreaped_pid: None, outcome: None } } }
 /// Consecutive crashes trip at `trip_after`; each subsequent delay doubles up to the cap.
 #[derive(Debug, Clone)]
 pub struct CrashLoopTracker { trip_after: u32, crashes: u32, initial_ms: u64, max_ms: u64, next_ms: u64 }
@@ -68,16 +64,13 @@ impl CrashLoopTracker {
     }
     pub fn reset(&mut self) { self.crashes = 0; self.next_ms = self.initial_ms; }
 }
-
 const SLICE: Duration = Duration::from_millis(25);
 const CAP: usize = 256 * 1024;
 static UNREAPED: Mutex<Vec<i32>> = Mutex::new(Vec::new());
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> { m.lock().unwrap_or_else(|e| e.into_inner()) }
-
 /// Drain unwind handoffs once. Only one designated process-wide recipient may call this;
 /// it takes over exclusive waits until each child is reaped (no further signaling).
 pub fn take_unreaped_pids() -> Vec<i32> { std::mem::take(&mut *lock(&UNREAPED)) }
-
 #[derive(Default)]
 struct Readers {
     cancel_now: AtomicBool,
@@ -135,12 +128,14 @@ fn drain_pipe(mut pipe: impl Read + AsRawFd, shared: &Readers) -> io::Result<Vec
     Ok(out)
 }
 fn sys(ret: i32) -> io::Result<i32> { if ret == -1 { Err(io::Error::last_os_error()) } else { Ok(ret) } }
-fn send(pid: i32, sig: i32, group: bool) -> io::Result<i32> {
-    sys(unsafe { if group { killpg(pid, sig) } else { kill(pid, sig) } })
-}
+fn send(pid: i32, sig: i32, group: bool) -> io::Result<i32> { sys(unsafe { if group { killpg(pid, sig) } else { kill(pid, sig) } }) }
 fn reap(pid: i32, status: &mut i32) -> io::Result<i32> { sys(unsafe { waitpid(pid, status, WNOHANG) }) }
 fn terminal(pid: i32, code: i32) -> bool { pid != 0 && matches!(code, CLD_EXITED | CLD_KILLED | CLD_DUMPED) }
-
+fn peek_exit(pid: i32) -> io::Result<bool> {
+    let mut info: siginfo_t = unsafe { std::mem::zeroed() };
+    sys(unsafe { waitid(P_PID, pid as id_t, &mut info, WEXITED | WNOHANG | WNOWAIT) })?;
+    Ok(terminal(unsafe { info.si_pid() }, info.si_code))
+}
 struct SupervisedChildGuard {
     owned_pid: Option<i32>,
     pending_handoff_pid: Option<i32>,
@@ -152,8 +147,14 @@ struct SupervisedChildGuard {
     reap_timeout: Duration,
     send: fn(i32, i32, bool) -> io::Result<i32>,
     reap: fn(i32, &mut i32) -> io::Result<i32>,
+    peek_exit: fn(i32) -> io::Result<bool>,
 }
 impl SupervisedChildGuard {
+    fn observe_exit(&mut self, pid: i32) -> io::Result<bool> {
+        let exited = (self.peek_exit)(pid).inspect_err(|e| { if e.raw_os_error() == Some(ECHILD) { self.owned_pid = None; } })?;
+        self.leader_exited |= exited;
+        Ok(self.leader_exited)
+    }
     fn terminate(&mut self, errors: &mut Vec<String>) -> Option<i32> {
         let pid = self.owned_pid?;
         // The unreaped leader pins the PID used for both group and direct signals.
@@ -163,7 +164,14 @@ impl SupervisedChildGuard {
                 let benign_eperm = cfg!(target_os = "macos") && group && self.leader_exited && errno == Some(EPERM);
                 if errno != Some(ESRCH) && !benign_eperm { errors.push(format!("signal {sig} (group={group}): {e}")); }
             }
-            if sig == SIGTERM { thread::sleep(self.grace); }
+            if sig == SIGTERM {
+                thread::sleep(self.grace);
+                // The leader may have exited during grace; check before group SIGKILL.
+                if let Err(e) = self.observe_exit(pid) {
+                    errors.push(format!("waitid: {e}"));
+                    self.owned_pid?;
+                }
+            }
         }
         let (start, mut status) = (Instant::now(), 0);
         loop {
@@ -225,7 +233,6 @@ impl Drop for SupervisedChildGuard {
         }
     }
 }
-
 /// The caller must exclusively reap the leader: keep SIGCHLD out of SIG_IGN/SA_NOCLDWAIT
 /// and issue no competing waits from before spawn through any handoff until reaped.
 /// Calling-process exit is an exception: no reaping is guaranteed then.
@@ -248,25 +255,19 @@ fn supervise(mut cmd: Command, spec: &SupervisedSpawnSpec, after_exit: impl FnOn
     // Only the async-signal-safe setpgid syscall and errno retrieval run before exec.
     unsafe { cmd.pre_exec(|| sys(setpgid(0, 0)).map(|_| ())); }
     let mut child = cmd.spawn()?;
-    let start = Instant::now();
-    let mut guard = SupervisedChildGuard { owned_pid: Some(child.id() as i32), pending_handoff_pid: None,
+    let (start, pid) = (Instant::now(), child.id() as i32);
+    let mut guard = SupervisedChildGuard { owned_pid: Some(pid), pending_handoff_pid: None,
         leader_exited: false, readers: [None, None], shared: Arc::default(), grace: Duration::from_millis(spec.grace_ms),
-        drain: Duration::from_millis(spec.drain_deadline_ms.unwrap_or(250)), send, reap,
+        drain: Duration::from_millis(spec.drain_deadline_ms.unwrap_or(250)), send, reap, peek_exit,
         reap_timeout: Duration::from_millis(spec.reap_timeout_ms.unwrap_or(1000)) };
     let primary = (|| {
         guard.readers[0] = Some(start_reader(child.stdout.take().unwrap(), guard.shared.clone())?);
         guard.readers[1] = Some(start_reader(child.stderr.take().unwrap(), guard.shared.clone())?);
         let timeout = Duration::from_millis(spec.timeout_ms);
-        let pid = child.id();
         loop {
-            let mut info: siginfo_t = unsafe { std::mem::zeroed() };
-            match sys(unsafe { waitid(P_PID, pid as id_t, &mut info, WEXITED | WNOHANG | WNOWAIT) }) {
-                Ok(_) if terminal(unsafe { info.si_pid() }, info.si_code) => {
-                    guard.leader_exited = true; after_exit(&mut guard); return Ok(false); }
-                Err(e) if e.kind() != io::ErrorKind::Interrupted => {
-                    if e.raw_os_error() == Some(ECHILD) { guard.owned_pid = None; }
-                    return Err(e);
-                }
+            match guard.observe_exit(pid) {
+                Ok(true) => { after_exit(&mut guard); return Ok(false); }
+                Err(e) if e.kind() != io::ErrorKind::Interrupted => return Err(e),
                 _ => (),
             }
             let left = timeout.saturating_sub(start.elapsed());

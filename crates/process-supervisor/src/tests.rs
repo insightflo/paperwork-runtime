@@ -1,13 +1,11 @@
 use super::*;
 use std::{io::Write, net::Shutdown, os::{fd::OwnedFd, unix::net::UnixStream},
     panic::{catch_unwind, panic_any}, sync::{Barrier, atomic::{AtomicUsize, Ordering::Relaxed}}};
-
 fn spec(script: &str) -> SupervisedSpawnSpec {
     SupervisedSpawnSpec { command: "/bin/sh".into(), args: vec!["-c".into(), script.into()], cwd: None,
         env: IsolatedEnvSpec::default(), timeout_ms: 4000, grace_ms: 0,
         drain_deadline_ms: None, reap_timeout_ms: None }
 }
-
 #[test]
 fn captures_fast_exit_and_discards_after_cap() {
     for len in [128 * 1024, 512 * 1024] {
@@ -19,13 +17,11 @@ fn captures_fast_exit_and_discards_after_cap() {
         assert_eq!(out.stderr, b"done");
     }
 }
-
 fn fixture(mode: &str) -> Command {
     let mut cmd = Command::new(std::env::current_exe().unwrap());
     cmd.args(["--exact", "tests::fixture_child", "--nocapture"]).env("SUPERVISOR_FIXTURE", mode);
     cmd
 }
-
 // Shutting down the write half sends EOF even if the observation socket is cloned.
 struct Sentinel(UnixStream);
 impl Drop for Sentinel {
@@ -134,7 +130,14 @@ fn escaped_writer_drain_is_bounded_and_sentinel_stops_it() {
     observe.read_to_end(&mut marks).unwrap();
     assert_eq!(marks, b"SE");
 }
-
+#[test]
+fn leader_exiting_during_term_grace_reports_timeout() {
+    let cfg = SupervisedSpawnSpec { command: "/bin/sleep".into(), args: vec!["5".into()],
+        timeout_ms: 150, grace_ms: 200, ..spec("") };
+    let out = run_supervised(&cfg).expect("SIGTERM exit should be a successful timeout");
+    assert!(out.timed_out);
+    assert_eq!(out.signal, Some(SIGTERM));
+}
 #[test]
 fn stopped_leader_waits_for_timeout() {
     assert!(!terminal(42, CLD_STOPPED));
@@ -149,19 +152,17 @@ fn stopped_leader_waits_for_timeout() {
     assert!(start.elapsed() >= Duration::from_millis(200));
     assert!(matches!(out.signal, Some(SIGKILL | SIGTERM)));
 }
-
 static HANDOFF_TEST_LOCK: Mutex<()> = Mutex::new(());
 static SIGNALS: AtomicUsize = AtomicUsize::new(0);
 fn fake_guard(pid: i32, reaps: bool) -> SupervisedChildGuard {
     SupervisedChildGuard { owned_pid: Some(pid), pending_handoff_pid: None, readers: [None, None],
         leader_exited: false, shared: Arc::default(), grace: Duration::ZERO, drain: Duration::ZERO, reap_timeout: Duration::ZERO,
         send: |_, _, _| { SIGNALS.fetch_add(1, Relaxed); Ok(0) },
-        reap: if reaps { |pid, _| Ok(pid) } else { |_, _| Ok(0) } }
+        peek_exit: |_| Ok(false), reap: if reaps { |pid, _| Ok(pid) } else { |_, _| Ok(0) } }
 }
 fn unwind(action: impl FnOnce() + std::panic::UnwindSafe) {
     assert!(catch_unwind(action).is_err());
 }
-
 #[test]
 fn unwind_before_reap_hands_off_once_including_concurrent_unwinds() {
     let _serial = lock(&HANDOFF_TEST_LOCK);
@@ -268,7 +269,6 @@ fn waitpid_echild_reports_error_without_handoff() {
     drop(guard);
     assert!(take_unreaped_pids().is_empty());
 }
-
 #[test]
 fn crash_loop_trips_saturates_and_resets_deterministically() {
     let mut tracker = CrashLoopTracker::new(2, 10, 25);
