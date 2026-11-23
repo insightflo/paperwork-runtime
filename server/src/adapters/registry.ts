@@ -2,13 +2,6 @@ import type { ServerAdapterModule } from "./types.js";
 import { getAdapterSessionManagement } from "@paperclipai/adapter-utils";
 import { acpxLocalAdapter } from "./acpx-retired.js";
 import {
-  execute as antigravityExecute,
-  listAntigravitySkills,
-  syncAntigravitySkills,
-  testEnvironment as antigravityTestEnvironment,
-} from "@paperclipai/adapter-antigravity-local/server";
-import { agentConfigurationDoc as antigravityAgentConfigurationDoc, models as antigravityModels } from "@paperclipai/adapter-antigravity-local";
-import {
   execute as claudeExecute,
   listClaudeSkills,
   syncClaudeSkills,
@@ -51,15 +44,6 @@ import {
   listOpenCodeModels,
 } from "@paperclipai/adapter-opencode-local/server";
 import { agentConfigurationDoc as openCodeAgentConfigurationDoc } from "@paperclipai/adapter-opencode-local";
-import {
-  execute as openclawGatewayExecute,
-  testEnvironment as openclawGatewayTestEnvironment,
-} from "@paperclipai/adapter-openclaw-gateway/server";
-import {
-  agentConfigurationDoc as openclawGatewayAgentConfigurationDoc,
-  models as openclawGatewayModels,
-} from "@paperclipai/adapter-openclaw-gateway";
-import { listAntigravityModels } from "./antigravity-models.js";
 import { listCodexModels } from "./codex-models.js";
 import { listClaudeModels } from "./claude-models.js";
 import { listCursorModels } from "./cursor-models.js";
@@ -96,19 +80,6 @@ import { executeHermesLocal } from "./hermes-local-execute.js";
 import { listHermesSkills, syncHermesSkills } from "./hermes-skills.js";
 import { processAdapter } from "./process/index.js";
 import { httpAdapter } from "./http/index.js";
-
-const antigravityLocalAdapter: ServerAdapterModule = {
-  type: "antigravity_local",
-  execute: antigravityExecute,
-  testEnvironment: antigravityTestEnvironment,
-  listSkills: listAntigravitySkills,
-  syncSkills: syncAntigravitySkills,
-  sessionManagement: getAdapterSessionManagement("antigravity_local") ?? undefined,
-  models: antigravityModels,
-  listModels: listAntigravityModels,
-  supportsLocalAgentJwt: true,
-  agentConfigurationDoc: antigravityAgentConfigurationDoc,
-};
 
 const claudeLocalAdapter: ServerAdapterModule = {
   type: "claude_local",
@@ -166,15 +137,6 @@ const geminiLocalAdapter: ServerAdapterModule = {
   listModels: listGeminiModels,
   supportsLocalAgentJwt: true,
   agentConfigurationDoc: geminiAgentConfigurationDoc,
-};
-
-const openclawGatewayAdapter: ServerAdapterModule = {
-  type: "openclaw_gateway",
-  execute: openclawGatewayExecute,
-  testEnvironment: openclawGatewayTestEnvironment,
-  models: openclawGatewayModels,
-  supportsLocalAgentJwt: false,
-  agentConfigurationDoc: openclawGatewayAgentConfigurationDoc,
 };
 
 const openCodeLocalAdapter: ServerAdapterModule = {
@@ -239,13 +201,11 @@ const adaptersByType = new Map<string, ServerAdapterModule>(
     acpxLocalAdapter,
     claudeLocalAdapter,
     codexLocalAdapter,
-    antigravityLocalAdapter,
     openCodeLocalAdapter,
     piLocalAdapter,
     commandCodeLocalAdapter,
     cursorLocalAdapter,
     geminiLocalAdapter,
-    openclawGatewayAdapter,
     hermesLocalAdapter,
     processAdapter,
     httpAdapter,
