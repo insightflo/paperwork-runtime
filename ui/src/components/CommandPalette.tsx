@@ -21,7 +21,6 @@ import {
   CircleDot,
   Bot,
   Hexagon,
-  Target,
   Rocket,
   LayoutDashboard,
   Inbox,
@@ -163,10 +162,6 @@ export function CommandPalette() {
           <CommandItem onSelect={() => go("/projects")}>
             <Hexagon className="mr-2 h-4 w-4" />
             Work Contexts
-          </CommandItem>
-          <CommandItem onSelect={() => go("/goals")}>
-            <Target className="mr-2 h-4 w-4" />
-            Goals
           </CommandItem>
           <CommandItem onSelect={() => go("/agents")}>
             <Bot className="mr-2 h-4 w-4" />
