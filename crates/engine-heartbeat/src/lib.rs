@@ -107,19 +107,18 @@ pub struct ClaimedWakeup {
     pub claimed_at: Option<DateTime<Utc>>,
 }
 
+pub const SQL_SELECT_QUEUED_WAKEUP: &str = "SELECT id, company_id, agent_id, source, reason, idempotency_key, payload, requested_at FROM agent_wakeup_requests WHERE company_id = $1 AND agent_id = $2 AND status = 'queued' ORDER BY requested_at ASC, id ASC LIMIT 1 FOR UPDATE SKIP LOCKED";
+pub const SQL_CLAIM_WAKEUP: &str = "UPDATE agent_wakeup_requests SET status = 'claimed', claimed_at = now(), updated_at = now() WHERE id = $1 AND company_id = $2 AND status = 'queued' RETURNING id, company_id, agent_id, source, reason, idempotency_key, payload, requested_at, claimed_at";
+pub const SQL_TRANSITION_RUN_FENCED: &str = "UPDATE heartbeat_runs SET status = $2, updated_at = now(), started_at = CASE WHEN $3 THEN COALESCE(started_at, now()) ELSE started_at END, finished_at = CASE WHEN $4 THEN COALESCE(finished_at, now()) ELSE finished_at END, error = COALESCE($5, error), error_code = COALESCE($6, error_code) WHERE id = $1 AND company_id = $7 AND status = ANY($8) RETURNING id, status, started_at, finished_at";
+pub const SQL_LIST_STALE_RUNS: &str = "SELECT id, company_id, agent_id, process_pid, process_loss_retry_count, updated_at FROM heartbeat_runs WHERE company_id = $1 AND status = 'running' AND updated_at < $2 ORDER BY updated_at ASC, id ASC LIMIT $3 FOR UPDATE SKIP LOCKED";
+
 pub fn claim_next_queued_wakeup(
     tx: &mut Transaction<'_>,
     input: &ClaimWakeupInput,
 ) -> Result<Option<ClaimedWakeup>, HeartbeatDbError> {
-    let selected = tx.query_opt(
-        "SELECT id, company_id, agent_id, source, reason, idempotency_key, payload, requested_at FROM agent_wakeup_requests WHERE company_id = $1 AND agent_id = $2 AND status = 'queued' ORDER BY requested_at ASC, id ASC LIMIT 1 FOR UPDATE SKIP LOCKED",
-        &[&input.company_id, &input.agent_id],
-    )?;
+    let selected = tx.query_opt(SQL_SELECT_QUEUED_WAKEUP, &[&input.company_id, &input.agent_id])?;
     let Some(selected) = selected else { return Ok(None) };
-    let claimed = tx.query_opt(
-        "UPDATE agent_wakeup_requests SET status = 'claimed', claimed_at = now(), updated_at = now() WHERE id = $1 AND company_id = $2 AND status = 'queued' RETURNING id, company_id, agent_id, source, reason, idempotency_key, payload, requested_at, claimed_at",
-        &[&selected.get::<_, Uuid>(0), &input.company_id],
-    )?;
+    let claimed = tx.query_opt(SQL_CLAIM_WAKEUP, &[&selected.get::<_, Uuid>(0), &input.company_id])?;
     Ok(claimed.map(|row| ClaimedWakeup {
         id: row.get(0), company_id: row.get(1), agent_id: row.get(2), source: row.get(3),
         reason: row.get(4), idempotency_key: row.get(5), payload: row.get(6),
@@ -155,7 +154,7 @@ pub fn transition_run_status_fenced(
     let plan = validate_transition(&input.expected_statuses, input.next_status)?;
     let expected: Vec<&str> = input.expected_statuses.iter().map(|s| s.as_str()).collect();
     let updated = tx.query_opt(
-        "UPDATE heartbeat_runs SET status = $2, updated_at = now(), started_at = CASE WHEN $3 THEN COALESCE(started_at, now()) ELSE started_at END, finished_at = CASE WHEN $4 THEN COALESCE(finished_at, now()) ELSE finished_at END, error = COALESCE($5, error), error_code = COALESCE($6, error_code) WHERE id = $1 AND company_id = $7 AND status = ANY($8) RETURNING id, status, started_at, finished_at",
+        SQL_TRANSITION_RUN_FENCED,
         &[
             &input.run_id, &input.next_status.as_str(), &plan.sets_started_at,
             &plan.sets_finished_at, &input.error, &input.error_code, &input.company_id, &expected,
@@ -181,7 +180,7 @@ pub struct StaleRunCandidate {
     pub updated_at: DateTime<Utc>,
 }
 
-fn clamp_stale_limit(limit: i64) -> i64 {
+pub fn clamp_stale_limit(limit: i64) -> i64 {
     limit.clamp(1, 200)
 }
 
@@ -191,10 +190,7 @@ pub fn list_stale_running_runs_skip_locked(
     stale_before: DateTime<Utc>,
     limit: i64,
 ) -> Result<Vec<StaleRunCandidate>, HeartbeatDbError> {
-    let rows = tx.query(
-        "SELECT id, company_id, agent_id, process_pid, process_loss_retry_count, updated_at FROM heartbeat_runs WHERE company_id = $1 AND status = 'running' AND updated_at < $2 ORDER BY updated_at ASC, id ASC LIMIT $3 FOR UPDATE SKIP LOCKED",
-        &[&company_id, &stale_before, &clamp_stale_limit(limit)],
-    )?;
+    let rows = tx.query(SQL_LIST_STALE_RUNS, &[&company_id, &stale_before, &clamp_stale_limit(limit)])?;
     Ok(rows.iter().map(|row| StaleRunCandidate {
         id: row.get(0), company_id: row.get(1), agent_id: row.get(2),
         process_pid: row.get(3), process_loss_retry_count: row.get(4), updated_at: row.get(5),
