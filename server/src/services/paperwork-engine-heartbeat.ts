@@ -34,7 +34,7 @@ export type HeartbeatTransitionRunFencedResult =
   | { applied: true; run_id: string; status: HeartbeatRunStatus; started_at: string | null; finished_at: string | null }
   | { applied: false };
 
-export interface HeartbeatListStaleRunsParams { company_id: string; stale_before: string; limit: number }
+export interface HeartbeatListStaleRunsParams { company_id: string; stale_before: string | Date; limit: number }
 export interface HeartbeatStaleRun {
   id: string; company_id: string; agent_id: string;
   process_pid: number | null; process_loss_retry_count: number; updated_at: string;
@@ -49,11 +49,25 @@ export interface HeartbeatRpcErrorClassification {
 
 const RUN_STATUS_SET: ReadonlySet<string> = new Set(HEARTBEAT_RUN_STATUSES);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RFC3339_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 const isRec = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const isStatus = (v: unknown): v is HeartbeatRunStatus =>
   typeof v === "string" && RUN_STATUS_SET.has(v);
 const isStrOrNull = (v: unknown): v is string | null => v === null || typeof v === "string";
+const isUuid = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v);
+const isTs = (v: unknown): v is string =>
+  typeof v === "string" && RFC3339_RE.test(v) && !Number.isNaN(Date.parse(v));
+const isTsOrNull = (v: unknown): v is string | null => v === null || isTs(v);
+
+// Mirrors engine-heartbeat RunStatus::is_legal_transition (queued ->
+// running|cancelled|failed; running -> any terminal; terminal -> none) so the
+// fence never ships an input the engine would reject with -32602.
+const LEGAL_NEXT: Readonly<Record<HeartbeatRunStatus, ReadonlySet<HeartbeatRunStatus>>> = {
+  queued: new Set(["running", "cancelled", "failed"]),
+  running: new Set(["succeeded", "failed", "cancelled", "timed_out"]),
+  succeeded: new Set(), failed: new Set(), cancelled: new Set(), timed_out: new Set(),
+};
 
 function proto(msg: string): PaperworkEngineError {
   return new PaperworkEngineError("protocol_error", msg);
@@ -69,6 +83,26 @@ function checkUuid(v: unknown, name: string): string {
 function checkStatuses(v: unknown, name: string): HeartbeatRunStatus[] {
   if (!Array.isArray(v) || v.length === 0) throw new RangeError(`${name} must be a non-empty status array`);
   return v.map((s, i) => checkStatus(s, `${name}[${i}]`));
+}
+function checkOptStr(v: unknown, name: string): string | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v !== "string") throw new RangeError(`${name} must be a string`);
+  return v;
+}
+function checkLegalTransition(expected: HeartbeatRunStatus[], next: HeartbeatRunStatus): void {
+  for (const from of expected) {
+    if (!LEGAL_NEXT[from].has(next)) {
+      throw new RangeError(`illegal run status transition: ${from} -> ${next}`);
+    }
+  }
+}
+function checkStaleBefore(v: unknown, name: string): string {
+  if (v instanceof Date) {
+    if (!Number.isNaN(v.getTime())) return v.toISOString();
+  } else if (isTs(v)) {
+    return v;
+  }
+  throw new RangeError(`${name} must be a valid Date or RFC3339 timestamp`);
 }
 
 // --- error classification (Rust Fail tuples: code -> outcome/retryable) -----
@@ -97,10 +131,10 @@ export function classifyHeartbeatRpcError(error: unknown): HeartbeatRpcErrorClas
 
 // --- response validators -----------------------------------------------------
 function toWakeup(v: unknown): HeartbeatClaimedWakeup {
-  if (!isRec(v) || typeof v.id !== "string" || typeof v.company_id !== "string"
-    || typeof v.agent_id !== "string" || typeof v.source !== "string"
+  if (!isRec(v) || !isUuid(v.id) || !isUuid(v.company_id)
+    || !isUuid(v.agent_id) || typeof v.source !== "string"
     || !isStrOrNull(v.reason) || !isStrOrNull(v.idempotency_key)
-    || typeof v.requested_at !== "string" || !isStrOrNull(v.claimed_at)
+    || !isTs(v.requested_at) || !isTsOrNull(v.claimed_at)
     || !("payload" in v) || v.payload === undefined) {
     throw proto("bad heartbeat.claim_wakeup claimed shape");
   }
@@ -126,8 +160,8 @@ function toValidateResult(v: unknown): HeartbeatValidateTransitionResult {
 function toTransitionResult(v: unknown): HeartbeatTransitionRunFencedResult {
   if (!isRec(v) || typeof v.applied !== "boolean") throw proto("bad heartbeat.transition_run_fenced result shape");
   if (!v.applied) return { applied: false };
-  if (typeof v.run_id !== "string" || !isStatus(v.status)
-    || !isStrOrNull(v.started_at) || !isStrOrNull(v.finished_at)) {
+  if (!isUuid(v.run_id) || !isStatus(v.status)
+    || !isTsOrNull(v.started_at) || !isTsOrNull(v.finished_at)) {
     throw proto("bad heartbeat.transition_run_fenced result shape");
   }
   return {
@@ -136,11 +170,11 @@ function toTransitionResult(v: unknown): HeartbeatTransitionRunFencedResult {
   };
 }
 function toStaleRun(v: unknown): HeartbeatStaleRun {
-  if (!isRec(v) || typeof v.id !== "string" || typeof v.company_id !== "string"
-    || typeof v.agent_id !== "string"
+  if (!isRec(v) || !isUuid(v.id) || !isUuid(v.company_id)
+    || !isUuid(v.agent_id)
     || !(v.process_pid === null || Number.isInteger(v.process_pid))
     || !Number.isInteger(v.process_loss_retry_count)
-    || typeof v.updated_at !== "string") throw proto("bad heartbeat.list_stale_runs run shape");
+    || !isTs(v.updated_at)) throw proto("bad heartbeat.list_stale_runs run shape");
   return {
     id: v.id, company_id: v.company_id, agent_id: v.agent_id,
     process_pid: v.process_pid as number | null,
@@ -177,15 +211,19 @@ export async function claimHeartbeatWakeup(
 export async function transitionHeartbeatRunFenced(
   client: PaperworkEngineClient, params: HeartbeatTransitionRunFencedParams, callOpts?: CallOpts,
 ): Promise<HeartbeatTransitionRunFencedResult> {
+  const expected = checkStatuses(params.expected_statuses, "expected_statuses");
+  const next = checkStatus(params.next_status, "next_status");
+  checkLegalTransition(expected, next);
   const wire: Record<string, unknown> = {
     run_id: checkUuid(params.run_id, "run_id"),
     company_id: checkUuid(params.company_id, "company_id"),
-    expected_statuses: checkStatuses(params.expected_statuses, "expected_statuses"),
-    next_status: checkStatus(params.next_status, "next_status"),
+    expected_statuses: expected, next_status: next,
   };
+  const error = checkOptStr(params.error, "error");
+  const errorCode = checkOptStr(params.error_code, "error_code");
   // serde Option<String> accepts null, but omitting keeps the payload minimal.
-  if (params.error !== undefined) wire.error = params.error;
-  if (params.error_code !== undefined) wire.error_code = params.error_code;
+  if (error !== undefined) wire.error = error;
+  if (errorCode !== undefined) wire.error_code = errorCode;
   const result = await client.call<unknown>("heartbeat.transition_run_fenced", wire, callOpts);
   return toTransitionResult(result);
 }
@@ -194,12 +232,10 @@ export async function listStaleHeartbeatRuns(
   client: PaperworkEngineClient, params: HeartbeatListStaleRunsParams, callOpts?: CallOpts,
 ): Promise<HeartbeatStaleRun[]> {
   const { company_id, stale_before, limit } = params;
-  if (typeof stale_before !== "string" || stale_before.length === 0) {
-    throw new RangeError("stale_before must be an RFC3339 timestamp string");
-  }
   if (!Number.isSafeInteger(limit)) throw new RangeError("limit must be a safe integer");
   const result = await client.call<unknown>("heartbeat.list_stale_runs", {
-    company_id: checkUuid(company_id, "company_id"), stale_before, limit,
+    company_id: checkUuid(company_id, "company_id"),
+    stale_before: checkStaleBefore(stale_before, "stale_before"), limit,
   }, callOpts);
   if (!isRec(result) || !Array.isArray(result.runs)) throw proto("bad heartbeat.list_stale_runs result shape");
   return result.runs.map(toStaleRun);
