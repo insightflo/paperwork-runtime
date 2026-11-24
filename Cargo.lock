@@ -885,6 +885,7 @@ dependencies = [
  "paperclip-provider-runtime-core",
  "paperclip-quota-router",
  "paperclip-redactor-core",
+ "paperwork-engine-approval",
  "paperwork-engine-budget",
  "paperwork-engine-heartbeat",
  "paperwork-engine-secret",

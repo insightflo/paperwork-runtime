@@ -8,8 +8,9 @@ paperclip-provider-auth-core = { path = "../provider-auth-core" }
 paperclip-provider-runtime-core = { path = "../provider-runtime-core" }
 paperclip-quota-router = { path = "../quota-router" }
 paperclip-redactor-core = { path = "../redactor-core" }
-paperwork-engine-heartbeat = { path = "../engine-heartbeat" }
+paperwork-engine-approval = { path = "../engine-approval" }
 paperwork-engine-budget = { path = "../engine-budget" }
+paperwork-engine-heartbeat = { path = "../engine-heartbeat" }
 paperwork-engine-secret = { path = "../engine-secret" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 serde = { version = "1", features = ["derive"] }
