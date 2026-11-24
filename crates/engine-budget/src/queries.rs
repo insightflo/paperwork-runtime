@@ -7,7 +7,7 @@ use crate::{
     BudgetDbError, BudgetIncidentStatus, BudgetScopeType, BudgetThresholdType, BudgetWindowKind,
 };
 
-pub const SQL_INSERT_COST_EVENT: &str = "INSERT INTO cost_events (company_id, agent_id, issue_id, project_id, goal_id, heartbeat_run_id, billing_code, provider, biller, billing_type, model, input_tokens, cached_input_tokens, output_tokens, cost_cents, occurred_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id, company_id, agent_id, issue_id, project_id, goal_id, heartbeat_run_id, billing_code, provider, biller, billing_type, model, input_tokens, cached_input_tokens, output_tokens, cost_cents, occurred_at, created_at";
+pub const SQL_INSERT_COST_EVENT: &str = "INSERT INTO cost_events (company_id, agent_id, issue_id, project_id, goal_id, heartbeat_run_id, billing_code, provider, biller, billing_type, model, input_tokens, cached_input_tokens, output_tokens, cost_cents, occurred_at) SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16 WHERE EXISTS (SELECT 1 FROM agents a WHERE a.id = $2 AND a.company_id = $1) AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM issues t WHERE t.id = $3 AND t.company_id = $1)) AND ($4::uuid IS NULL OR EXISTS (SELECT 1 FROM projects t WHERE t.id = $4 AND t.company_id = $1)) AND ($5::uuid IS NULL OR EXISTS (SELECT 1 FROM goals t WHERE t.id = $5 AND t.company_id = $1)) AND ($6::uuid IS NULL OR EXISTS (SELECT 1 FROM heartbeat_runs t WHERE t.id = $6 AND t.company_id = $1)) RETURNING id, company_id, agent_id, issue_id, project_id, goal_id, heartbeat_run_id, billing_code, provider, biller, billing_type, model, input_tokens, cached_input_tokens, output_tokens, cost_cents, occurred_at, created_at";
 
 pub const SQL_SUM_SCOPE_SPEND_COMPANY: &str = "SELECT COALESCE(SUM(cost_cents), 0)::bigint FROM cost_events WHERE company_id = $1 AND occurred_at >= $2 AND occurred_at < $3";
 pub const SQL_SUM_SCOPE_SPEND_AGENT: &str = "SELECT COALESCE(SUM(cost_cents), 0)::bigint FROM cost_events WHERE company_id = $1 AND agent_id = $2 AND occurred_at >= $3 AND occurred_at < $4";
@@ -15,7 +15,7 @@ pub const SQL_SUM_SCOPE_SPEND_PROJECT: &str = "SELECT COALESCE(SUM(cost_cents), 
 
 pub const SQL_LIST_ACTIVE_POLICIES_FOR_SCOPE: &str = "SELECT id, company_id, scope_type, scope_id, metric, window_kind, amount, warn_percent, hard_stop_enabled, notify_enabled, is_active, created_by_user_id, updated_by_user_id, created_at, updated_at FROM budget_policies WHERE company_id = $1 AND scope_type = $2 AND scope_id = $3 AND is_active = true ORDER BY updated_at DESC, id ASC";
 
-pub const SQL_UPSERT_OPEN_INCIDENT: &str = "INSERT INTO budget_incidents (company_id, policy_id, scope_type, scope_id, metric, window_kind, window_start, window_end, threshold_type, amount_limit, amount_observed, status, approval_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'open', $12) ON CONFLICT (policy_id, window_start, threshold_type) WHERE status <> 'dismissed' DO UPDATE SET amount_observed = EXCLUDED.amount_observed, amount_limit = EXCLUDED.amount_limit, updated_at = now() RETURNING id, company_id, policy_id, scope_type, scope_id, metric, window_kind, window_start, window_end, threshold_type, amount_limit, amount_observed, status, approval_id, resolved_at, created_at, updated_at";
+pub const SQL_UPSERT_OPEN_INCIDENT: &str = "INSERT INTO budget_incidents (company_id, policy_id, scope_type, scope_id, metric, window_kind, window_start, window_end, threshold_type, amount_limit, amount_observed, status, approval_id) SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'open', $12 WHERE EXISTS (SELECT 1 FROM budget_policies p WHERE p.id = $2 AND p.company_id = $1) ON CONFLICT (policy_id, window_start, threshold_type) WHERE status <> 'dismissed' DO UPDATE SET amount_limit = EXCLUDED.amount_limit, amount_observed = EXCLUDED.amount_observed, updated_at = now() WHERE budget_incidents.company_id = EXCLUDED.company_id AND budget_incidents.status = 'open' RETURNING id, company_id, policy_id, scope_type, scope_id, metric, window_kind, window_start, window_end, threshold_type, amount_limit, amount_observed, status, approval_id, resolved_at, created_at, updated_at";
 
 pub const SQL_RESOLVE_INCIDENT_FENCED: &str = "UPDATE budget_incidents SET status = $3, resolved_at = now(), updated_at = now() WHERE id = $1 AND company_id = $2 AND status = 'open' RETURNING id, company_id, policy_id, scope_type, scope_id, metric, window_kind, window_start, window_end, threshold_type, amount_limit, amount_observed, status, approval_id, resolved_at, created_at, updated_at";
 
@@ -65,7 +65,7 @@ pub fn record_cost_event(
     let cost_cents = cents_to_db("cost_cents", input.cost_cents)?;
     let biller = input.biller.as_deref().unwrap_or(input.provider.as_str());
     let billing_type = input.billing_type.as_deref().unwrap_or("unknown");
-    let row = tx.query_one(
+    let row = tx.query_opt(
         SQL_INSERT_COST_EVENT,
         &[
             &input.company_id, &input.agent_id, &input.issue_id, &input.project_id,
@@ -74,7 +74,7 @@ pub fn record_cost_event(
             &input.input_tokens, &input.cached_input_tokens, &input.output_tokens,
             &cost_cents, &input.occurred_at,
         ],
-    )?;
+    )?.ok_or(BudgetDbError::CrossCompanyReference)?;
     Ok(cost_event_row(&row))
 }
 
@@ -191,14 +191,14 @@ pub fn upsert_open_incident_fenced(
     }
     let amount_limit = cents_to_db("amount_limit", input.amount_limit)?;
     let amount_observed = cents_to_db("amount_observed", input.amount_observed)?;
-    let row = tx.query_one(
+    let row = tx.query_opt(
         SQL_UPSERT_OPEN_INCIDENT,
         &[
             &input.company_id, &input.policy_id, &input.scope_type.as_str(), &input.scope_id,
             &input.metric, &input.window_kind.as_str(), &input.window_start, &input.window_end,
             &input.threshold_type.as_str(), &amount_limit, &amount_observed, &input.approval_id,
         ],
-    )?;
+    )?.ok_or(BudgetDbError::CrossCompanyOrClosedIncident)?;
     Ok(incident_row(&row))
 }
 
