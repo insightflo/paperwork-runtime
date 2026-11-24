@@ -23,12 +23,16 @@ impl DbOp for Db { fn run<'x>(self, c: &'x mut Client) -> Op<'x> { Box::pin(run_
 
 fn due_json(r: &Row) -> Value { json!({"id": r.get::<_, Uuid>(0), "company_id": r.get::<_, Uuid>(1), "agent_id": r.get::<_, Uuid>(2), "cron_expression": r.get::<_, String>(3), "timezone": r.get::<_, String>(4), "mission_id": r.get::<_, Option<Uuid>>(5), "enabled": r.get::<_, bool>(6), "last_run_at": r.get::<_, Option<DateTime<Utc>>>(7), "next_run_at": r.get::<_, Option<DateTime<Utc>>>(8)}) }
 
-/// PG timestamptz truncates to microseconds, so a window advancing only in
-/// sub-microsecond digits would collapse to equal bound values at the driver;
-/// require strict advancement at the precision PG will actually store.
+/// postgres-types binds DateTime<Utc> as whole microseconds since the PG epoch
+/// (2000-01-01T00:00:00Z), truncating toward zero — so a (secs, subsec-µs)
+/// tuple compare diverges from the stored value just below the epoch. Compare
+/// the exact microsecond values the driver will send.
+fn pg_micros(ts: DateTime<Utc>) -> Option<i64> {
+    ts.signed_duration_since(DateTime::from_timestamp(946_684_800, 0)?).num_microseconds()
+}
 fn valid_advance_window_pg(last: DateTime<Utc>, next: DateTime<Utc>) -> bool {
     validate_advance_window(last, next).is_ok()
-        && (next.timestamp(), next.timestamp_subsec_micros()) > (last.timestamp(), last.timestamp_subsec_micros())
+        && matches!((pg_micros(last), pg_micros(next)), (Some(l), Some(n)) if n > l)
 }
 
 async fn run_op<'x>(c: &'x mut Client, m: Db) -> Result<Step<'x>, Fail> {
@@ -112,6 +116,20 @@ mod tests {
             let e2 = if dsn.is_empty() { ProbeEnv::from_pairs(&[]) } else { env(dsn) };
             assert_eq!(code(&call("schedule.advance_fenced", json!({"schedule_id":u,"company_id":u,"last_run_at":last,"next_run_at":"2026-01-01T00:00:00.000000001Z"}), &e2)), -32602, "{dsn}");
         }
+    }
+
+    #[test]
+    fn pg_epoch_boundary_uses_driver_encoding() {
+        let (e, u) = (&env(""), Uuid::nil());
+        let next = "2000-01-01T00:00:00Z"; // the PG epoch: encodes as 0µs
+        // 1ns before the epoch truncates toward zero -> also 0µs in PG, even
+        // though (timestamp(), timestamp_subsec_micros()) would order them
+        let last = "1999-12-31T23:59:59.999999999Z";
+        assert_eq!(call("schedule.validate_advance_window", json!({"last_run_at":last,"next_run_at":next}), e)["result"], json!({"valid":false,"reason":"invalid_advance_window"}));
+        // advance_fenced rejects pre-I/O: -32602, not the DB gate's -32002
+        assert_eq!(code(&call("schedule.advance_fenced", json!({"schedule_id":u,"company_id":u,"last_run_at":last,"next_run_at":next}), e)), -32602);
+        // 1µs before the epoch: encodes as -1µs < 0 -> strictly advances
+        assert_eq!(call("schedule.validate_advance_window", json!({"last_run_at":"1999-12-31T23:59:59.999999000Z","next_run_at":next}), e)["result"], json!({"valid":true}));
     }
 
     #[test]
