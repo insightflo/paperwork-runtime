@@ -114,7 +114,7 @@ export function ProviderUsageRingItem({ entry }: { entry: QuotaRingEntry }) {
             <div key={win.label} className="flex items-center justify-between gap-3 text-[11px]">
               <span className="text-muted-foreground">{win.label}</span>
               <span className="font-mono">
-                {left !== null ? `${left}% left` : win.valueLabel ?? "n/a"}
+                {left !== null ? `${left}% left · 남음` : win.valueLabel ?? "n/a"}
               </span>
             </div>
           );

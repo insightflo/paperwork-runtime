@@ -2,21 +2,30 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProviderQuotaResult, QuotaWindow } from "@paperclipai/shared";
 import { api } from "../api/client";
+import { costsApi } from "../api/costs";
 import { instanceSettingsApi } from "../api/instanceSettings";
+import { useCompany } from "../context/CompanyContext";
 import { ProviderAuthSection } from "../components/ProviderAuthSection";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { LoginActionPlan, ProviderAuthStatus } from "../components/ProviderAuthPanel";
 
 vi.mock("../api/instanceSettings", () => ({
   instanceSettingsApi: { getProviderAuth: vi.fn(), getProviderLoginPlan: vi.fn() },
 }));
 vi.mock("../api/client", () => ({ api: { get: vi.fn() } }));
+vi.mock("../api/costs", () => ({ costsApi: { quotaWindows: vi.fn() } }));
+vi.mock("../context/CompanyContext", () => ({ useCompany: vi.fn() }));
+vi.mock("../hooks/useAfterInitialPaint", () => ({ useAfterInitialPaint: () => true }));
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const getAuth = vi.mocked(instanceSettingsApi.getProviderAuth);
 const getPlan = vi.mocked(instanceSettingsApi.getProviderLoginPlan);
+const quotaWindows = vi.mocked(costsApi.quotaWindows);
+const useCompanyMock = vi.mocked(useCompany);
 
 let root: ReturnType<typeof createRoot> | undefined;
 let host: HTMLDivElement | undefined;
@@ -27,6 +36,11 @@ afterEach(async () => {
   root = undefined;
   host = undefined;
   vi.resetAllMocks();
+});
+
+beforeEach(() => {
+  useCompanyMock.mockReturnValue({ selectedCompanyId: "company-1" } as ReturnType<typeof useCompany>);
+  quotaWindows.mockResolvedValue([]);
 });
 
 const status = (over: Partial<ProviderAuthStatus>): ProviderAuthStatus => ({
@@ -43,6 +57,9 @@ const deferred = <T,>() => {
   return { promise, resolve };
 };
 const flush = () => act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+const qw = (label: string, usedPercent: number): QuotaWindow => ({
+  label, usedPercent, resetsAt: null, valueLabel: null,
+});
 
 async function mount() {
   host = document.createElement("div");
@@ -51,7 +68,13 @@ async function mount() {
   root = r;
   const client = new QueryClient();
   await act(async () => {
-    r.render(<QueryClientProvider client={client}><ProviderAuthSection /></QueryClientProvider>);
+    r.render(
+      <QueryClientProvider client={client}>
+        <TooltipProvider>
+          <ProviderAuthSection />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
   });
 }
 
@@ -129,6 +152,48 @@ describe("ProviderAuthSection", () => {
     expect(host!.textContent).toContain("codex auth login");
     expect(host!.textContent).not.toContain("claude login");
     expect(loginButton("codex").textContent).toContain("Login Command");
+  });
+
+  it("renders provider usage rings when quota windows are available", async () => {
+    getAuth.mockResolvedValue({ providers: [status({})] });
+    const quotas: ProviderQuotaResult[] = [
+      { provider: "claude", source: "oauth", ok: true, windows: [qw("5h", 42)] },
+    ];
+    quotaWindows.mockResolvedValue(quotas);
+    await mount();
+    await flush();
+    expect(quotaWindows).toHaveBeenCalledWith("company-1");
+    const ring = host!.querySelector('[data-provider="claude"]');
+    expect(ring?.getAttribute("aria-label")).toContain("42% used");
+    expect(host!.textContent).toContain("claude");
+  });
+
+  it("renders providers without rings while quota windows are still loading", async () => {
+    getAuth.mockResolvedValue({ providers: [status({})] });
+    quotaWindows.mockReturnValue(deferred<ProviderQuotaResult[]>().promise);
+    await mount();
+    await flush();
+    expect(host!.textContent).toContain("claude");
+    expect(host!.querySelector("[data-provider]")).toBeNull();
+  });
+
+  it("renders providers cleanly with no rings when quota windows are empty", async () => {
+    getAuth.mockResolvedValue({ providers: [status({})] });
+    quotaWindows.mockResolvedValue([]);
+    await mount();
+    await flush();
+    expect(host!.textContent).toContain("claude");
+    expect(host!.querySelector("[data-provider]")).toBeNull();
+  });
+
+  it("renders providers cleanly and skips the quota fetch when no company is selected", async () => {
+    useCompanyMock.mockReturnValue({ selectedCompanyId: null } as ReturnType<typeof useCompany>);
+    getAuth.mockResolvedValue({ providers: [status({})] });
+    await mount();
+    await flush();
+    expect(host!.textContent).toContain("claude");
+    expect(host!.querySelector("[data-provider]")).toBeNull();
+    expect(quotaWindows).not.toHaveBeenCalled();
   });
 
   it("unwraps the { plan } envelope returned by the login-plan endpoint", async () => {
