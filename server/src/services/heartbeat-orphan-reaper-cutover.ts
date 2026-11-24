@@ -21,6 +21,8 @@ import {
 import { getSharedPaperworkEngineClient } from "./paperwork-engine-runtime.js";
 
 export const STALE_RUNS_CUTOVER_LIMIT = 200;
+// postgres.js bind parameter limit is 65,535; fall back to full TS scan well below it.
+export const STALE_RUNS_MAX_CANDIDATE_IDS = 10_000;
 
 export interface ActiveRunWithAdapter {
   run: typeof heartbeatRuns.$inferSelect;
@@ -82,6 +84,7 @@ export async function discoverActiveRunsForReaper(
   if (companyRows.length === 0 && inMemorySnapshot.length === 0) return [];
 
   const candidateIds = new Set<string>(inMemorySnapshot);
+  if (candidateIds.size > STALE_RUNS_MAX_CANDIDATE_IDS) return tsQuery();
   for (const { companyId } of companyRows) {
     const result = await listStaleRunsWithCutover(
       client,
@@ -95,6 +98,7 @@ export async function discoverActiveRunsForReaper(
     // per-company limit 에 닿으면 절단으로 running 런 유실 가능 — 무제한 TS 스캔으로 폴백.
     if (result.value.length >= STALE_RUNS_CUTOVER_LIMIT) return tsQuery();
     for (const row of result.value) candidateIds.add(row.id);
+    if (candidateIds.size > STALE_RUNS_MAX_CANDIDATE_IDS) return tsQuery();
   }
   if (candidateIds.size === 0) return [];
   return db
