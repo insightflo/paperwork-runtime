@@ -53,7 +53,6 @@ function independentGraph(root: string) {
   }
   return graph;
 }
-
 function mkws(pkgs: Record<string, { scripts?: Record<string, string>; deps?: Record<string, Record<string, string>> }>) {
   const dir = realpathSync(mkdtempSync(join(sandbox, "ws-")));
   writeFileSync(join(dir, "pnpm-workspace.yaml"), 'packages:\n  - "packages/*"\n');
@@ -90,7 +89,6 @@ describe("planTypecheckTasks on the real repo", () => {
     expect(task(plan, "paperclipai").deps).toContain("@paperclipai/server");
   });
 });
-
 describe("planTypecheckTasks fixtures", () => {
   it("falls back to pnpm --filter <name> typecheck for custom scripts and hooks", () => {
     const plan = planTypecheckTasks(mkws({
@@ -169,6 +167,8 @@ describe("planTypecheckTasks fixtures", () => {
       b: { deps: { dependencies: { a: "workspace:*" } } }, "pkg-c": {},
     });
     expect(() => planTypecheckTasks(collision)).toThrow(/cycle/);
+    // 접두 없는 로컬 경로("../b")도 byDir 로 해석해 a->b->a 사이클을 거부한다.
+    expect(() => planTypecheckTasks(mkws({ a: { deps: { dependencies: { "alias-b": "../b" } } }, b: { deps: { dependencies: { "alias-a": "../a" } } } }))).toThrow(/cycle/);
   });
 });
 
