@@ -123,29 +123,41 @@ pub fn resolve_approval_fenced(
     if input.decided_by_user_id.trim().is_empty() {
         return Err(ApprovalDbError::EmptyDecisionActor);
     }
-    let updated = tx.query_opt(
-        SQL_RESOLVE_APPROVAL_FENCED,
-        &[
-            &input.approval_id,
-            &input.company_id,
-            &input.target_status.as_str(),
-            &input.decided_by_user_id,
-            &input.decision_note,
-        ],
-    )?;
-    if let Some(row) = updated {
-        return Ok(ResolutionOutcome::Applied(approval_from_row(&row)?));
-    }
-    let existing = get_approval_by_id(tx, input.approval_id, input.company_id)?;
-    Ok(classify_missed_resolution(existing, input.target_status))
+    let updated = tx
+        .query_opt(
+            SQL_RESOLVE_APPROVAL_FENCED,
+            &[
+                &input.approval_id,
+                &input.company_id,
+                &input.target_status.as_str(),
+                &input.decided_by_user_id,
+                &input.decision_note,
+            ],
+        )?
+        .map(|row| approval_from_row(&row))
+        .transpose()?;
+    let existing = if updated.is_none() {
+        get_approval_by_id(tx, input.approval_id, input.company_id)?
+    } else {
+        None
+    };
+    Ok(classify_resolution_outcome(
+        updated,
+        existing,
+        input.target_status,
+    ))
 }
 
-pub fn classify_missed_resolution(
+pub fn classify_resolution_outcome(
+    updated: Option<ApprovalRow>,
     existing: Option<ApprovalRow>,
     target: ApprovalStatus,
 ) -> ResolutionOutcome {
-    match existing {
-        Some(row) if row.status == target => ResolutionOutcome::AlreadyInTargetState(row),
+    match (updated, existing) {
+        (Some(row), _) => ResolutionOutcome::Applied(row),
+        (None, Some(row)) if row.status == target => {
+            ResolutionOutcome::AlreadyInTargetState(row)
+        }
         _ => ResolutionOutcome::NotFoundOrConflict,
     }
 }
@@ -213,6 +225,25 @@ mod tests {
     }
 
     #[test]
+    fn first_apply_returns_applied_row() {
+        let applied = row(ApprovalStatus::Approved);
+        let expected = (
+            applied.id,
+            applied.decided_by_user_id.clone(),
+            applied.decision_note.clone(),
+        );
+        let ResolutionOutcome::Applied(got) =
+            classify_resolution_outcome(Some(applied), None, ApprovalStatus::Approved)
+        else {
+            panic!("expected Applied");
+        };
+        assert_eq!(
+            (got.id, got.decided_by_user_id, got.decision_note),
+            expected
+        );
+    }
+
+    #[test]
     fn missed_resolution_same_target_preserves_decision() {
         let existing = row(ApprovalStatus::Approved);
         let expected = (
@@ -221,7 +252,7 @@ mod tests {
             existing.decided_at,
         );
         let ResolutionOutcome::AlreadyInTargetState(got) =
-            classify_missed_resolution(Some(existing), ApprovalStatus::Approved)
+            classify_resolution_outcome(None, Some(existing), ApprovalStatus::Approved)
         else {
             panic!("expected AlreadyInTargetState");
         };
@@ -234,7 +265,8 @@ mod tests {
     #[test]
     fn missed_resolution_opposite_terminal_is_conflict() {
         assert!(matches!(
-            classify_missed_resolution(
+            classify_resolution_outcome(
+                None,
                 Some(row(ApprovalStatus::Rejected)),
                 ApprovalStatus::Approved
             ),
@@ -245,7 +277,7 @@ mod tests {
     #[test]
     fn missed_resolution_missing_row_is_conflict() {
         assert!(matches!(
-            classify_missed_resolution(None, ApprovalStatus::Approved),
+            classify_resolution_outcome(None, None, ApprovalStatus::Approved),
             ResolutionOutcome::NotFoundOrConflict
         ));
     }

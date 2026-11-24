@@ -272,16 +272,23 @@ mod tests {
         let mut c = postgres::Client::connect(&url, postgres::NoTls).unwrap();
         let (a, b, ga, gb) = (uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
         let mut tx = c.transaction().unwrap();
-        tx.batch_execute(&format!("INSERT INTO companies (id,name,issue_prefix) VALUES ('{a}','t','P{a}'),('{b}','t','P{b}');INSERT INTO agents (id,company_id,name) VALUES ('{ga}','{a}','x'),('{gb}','{b}','x')")).unwrap();
+        for (cid, prefix) in [(a, format!("P{a}")), (b, format!("P{b}"))] {
+            tx.execute("INSERT INTO companies (id,name,issue_prefix) VALUES ($1,'t',$2)", &[&cid, &prefix]).unwrap();
+        }
+        for (aid, cid) in [(ga, a), (gb, b)] {
+            tx.execute("INSERT INTO agents (id,company_id,name) VALUES ($1,$2,'x')", &[&aid, &cid]).unwrap();
+        }
         let mk = |agent: Option<uuid::Uuid>| CreateApprovalInput { company_id: a, approval_type: "t".to_string(), requested_by_agent_id: agent, requested_by_user_id: None, requested_by_plugin_id: None, payload: serde_json::json!({}) };
         assert!(matches!(create_approval(&mut tx, &mk(Some(gb))), Err(ApprovalDbError::CrossCompanyRequesterAgent)));
         let created = create_approval(&mut tx, &mk(Some(ga))).unwrap();
-        let mut res = |t: ApprovalStatus, co: uuid::Uuid| resolve_approval_fenced(&mut tx, &ResolveApprovalInput { approval_id: created.id, company_id: co, target_status: t, decided_by_user_id: "u1".to_string(), decision_note: Some("n1".to_string()) });
-        let ResolutionOutcome::Applied(first) = res(Approved, a).unwrap() else { panic!("first resolve must apply") };
-        let ResolutionOutcome::AlreadyInTargetState(replay) = res(Approved, a).unwrap() else { panic!("replay must be idempotent") };
-        assert_eq!((replay.decided_by_user_id, replay.decision_note, replay.decided_at), (first.decided_by_user_id, first.decision_note, first.decided_at));
-        assert!(matches!(res(Rejected, a).unwrap(), ResolutionOutcome::NotFoundOrConflict));
-        assert!(matches!(res(Approved, b).unwrap(), ResolutionOutcome::NotFoundOrConflict));
+        let mut res = |t: ApprovalStatus, co: uuid::Uuid, actor: &str, note: Option<String>| resolve_approval_fenced(&mut tx, &ResolveApprovalInput { approval_id: created.id, company_id: co, target_status: t, decided_by_user_id: actor.to_string(), decision_note: note });
+        let ResolutionOutcome::Applied(first) = res(Approved, a, "u1", Some("n1".to_string())).unwrap() else { panic!("first resolve must apply") };
+        let ResolutionOutcome::AlreadyInTargetState(replay) = res(Approved, a, "other-user", Some("overwrite-attempt".to_string())).unwrap() else { panic!("replay must be idempotent") };
+        assert_eq!(replay.decided_by_user_id.as_deref(), Some("u1"));
+        assert_eq!(replay.decision_note.as_deref(), Some("n1"));
+        assert_eq!(replay.decided_at, first.decided_at);
+        assert!(matches!(res(Rejected, a, "u2", None).unwrap(), ResolutionOutcome::NotFoundOrConflict));
+        assert!(matches!(res(Approved, b, "u2", None).unwrap(), ResolutionOutcome::NotFoundOrConflict));
         tx.rollback().unwrap();
     }
 }
