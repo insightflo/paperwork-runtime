@@ -158,7 +158,7 @@ jobs:
       - { name: Restore staged Rust binaries, run: 'chmod +x crates/*/target/release/* && [ -n "$(find crates -type f -path "*/target/release/*" -print -quit)" ]' }
       # [F2] LPT 가중 샤드 + 매니페스트 — scripts/ci-vitest-shard.mjs 가 발견·배정·선택·실행을 전부 증명한다.
       - { name: "Run tests (shard ${{ matrix.shard }}/3)", env: { PAPERCLIP_CI_EXCLUDE_SERIAL_SUITES: "1" }, run: 'node scripts/ci-vitest-shard.mjs --run-shard ${{ matrix.shard }}/3 --manifest-out "$RUNNER_TEMP/shard-${{ matrix.shard }}.json"' }
-      - { uses: actions/upload-artifact@v4, with: { name: "vitest-shard-manifest-${{ matrix.shard }}", path: "${{ runner.temp }}/shard-${{ matrix.shard }}.json", retention-days: 1, if-no-files-found: error } }
+      - { uses: actions/upload-artifact@v4, with: { name: "vitest-shard-manifest-${{ github.run_attempt }}-${{ matrix.shard }}", path: "${{ runner.temp }}/shard-${{ matrix.shard }}.json", retention-days: 1, if-no-files-found: error } }
   # 중량 통합 5종 전용 직렬 잡 — verify-tests 접두사 유지로 병합 가드가 자동 감시한다.
   verify-tests-serial:
     needs: [policy]
@@ -199,17 +199,45 @@ jobs:
     env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}", POLICY_FULL: "${{ needs.policy.outputs.full }}", HEAD_SHA: "${{ github.event.pull_request.head.sha }}", BASE_SHA: "${{ github.event.pull_request.base.sha }}", RESULTS: "${{ join(needs.*.result, ' ') }}" }
     steps:
       - { name: Enforce full-suite results, run: '[ "$POLICY_FULL" = "true" ] || { echo "::error::policy.full=$POLICY_FULL (expected true)"; exit 1; }; for r in $RESULTS; do [ "$r" = "success" ] || { echo "::error::sibling job result=$r"; exit 1; }; done' }
-      - { uses: actions/checkout@v4, with: { ref: "${{ github.sha }}", fetch-depth: 2, sparse-checkout: scripts/ci-vitest-shard.mjs, sparse-checkout-cone-mode: "false" } }
-      # [F2] attestation 전에 샤드 매니페스트 검증 — 이 커밋의 실행 파일이 0 omitted/0 duplicated/0 unexpected 임을 증명한다.
-      - { uses: actions/download-artifact@v4, with: { pattern: "vitest-shard-manifest-*", path: "${{ runner.temp }}/shard-manifests", merge-multiple: true } }
-      - { name: Verify shard manifest coverage, run: 'node scripts/ci-vitest-shard.mjs --verify-manifests "$RUNNER_TEMP/shard-manifests" --expected-sha "${{ github.sha }}" --expected-shards 3' }
+      # [F2] attestation 전에 샤드 매니페스트 검증 — PR 코드 미실행(checkout 없이 인라인 검증기). 이 커밋의 실행 파일이 0 omitted/0 duplicated/0 unexpected 임을 증명한다.
+      - { uses: actions/download-artifact@v4, with: { pattern: "vitest-shard-manifest-${{ github.run_attempt }}-*", path: "${{ runner.temp }}/shard-manifests", merge-multiple: true } }
+      - name: Verify shard manifest coverage
+        run: |
+          cat > "$RUNNER_TEMP/mv.cjs" <<'EOF'
+          const fs=require("fs"),path=require("path"),[,,dir,SHA]=process.argv,EXP=3;
+          const die=m=>{console.log("::error::"+m);process.exit(1)},eq=(a,b)=>a.length===b.length&&a.every((v,i)=>v===b[i]);
+          const ms=fs.readdirSync(dir).filter(f=>f.endsWith(".json")).map(f=>{try{return JSON.parse(fs.readFileSync(path.join(dir,f),"utf8"))}catch(e){die("manifest "+f+" unreadable: "+e.message)}});
+          if(ms.length!==EXP)die(`expected ${EXP} shard manifests, found ${ms.length}`);
+          ms.forEach((m,i)=>{
+            if(!m||m.schemaVersion!==1)die(`manifest[${i}]: schemaVersion !== 1`);
+            if(m.commitSha!==SHA)die(`manifest[${i}]: commitSha ${m.commitSha} != expected ${SHA}`);
+            if(m.totalShards!==EXP||!Number.isInteger(m.shardIndex)||m.shardIndex<1||m.shardIndex>EXP)die(`manifest[${i}]: shardIndex/totalShards invalid`);
+            for(const k of["discoveredFiles","executedFiles"]){
+              if(!Array.isArray(m[k])||m[k].some(f=>typeof f!=="string"||!f))die(`manifest[${i}]: ${k} invalid`);
+              if(new Set(m[k]).size!==m[k].length)die(`manifest[${i}]: ${k} has duplicate entries`);
+            }
+          });
+          if(!ms[0].discoveredFiles.length)die("discoveredFiles is empty");
+          const cov=ms.map(m=>m.shardIndex).sort((a,b)=>a-b);
+          if(!cov.every((v,i)=>v===i+1))die(`shard coverage ${cov} != 1..${EXP}`);
+          const want=[...ms[0].discoveredFiles].sort();
+          if(!ms.every(m=>eq([...m.discoveredFiles].sort(),want)))die("discoveredFiles mismatch across shards");
+          const wantSet=new Set(want),seen=new Set(),dups=new Set(),unexp=new Set();
+          for(const m of ms)for(const f of m.executedFiles){if(!wantSet.has(f))unexp.add(f);(seen.has(f)?dups:seen).add(f)}
+          const omitted=want.filter(f=>!seen.has(f));
+          if(omitted.length||dups.size||unexp.size)die(`executed coverage — omitted: [${omitted.join(", ")}] duplicated: [${[...dups].join(", ")}] unexpected: [${[...unexp].join(", ")}]`);
+          console.log(`verified ${ms.length} shard manifests in ${dir}`);
+          EOF
+          node "$RUNNER_TEMP/mv.cjs" "$RUNNER_TEMP/shard-manifests" "${{ github.sha }}"
       - name: Verify parents + sibling jobs, write attestation
         if: github.event_name == 'pull_request'
         run: |
-          [ "$(git rev-parse HEAD^1)" = "$BASE_SHA" ] && [ "$(git rev-parse HEAD^2)" = "$HEAD_SHA" ] || { echo "::error::merge parents mismatch"; exit 1; }
           node <<'EOF'
-          const{execFileSync:X}=require("child_process"),{GITHUB_REPOSITORY:G,GITHUB_RUN_ID:I,GITHUB_RUN_ATTEMPT:A}=process.env;
-          const jobs=JSON.parse(X("gh",["api",`repos/${G}/actions/runs/${I}/attempts/${A}/jobs?per_page=100`],{encoding:"utf8",maxBuffer:1<<26})).jobs||[];
+          const{execFileSync:X}=require("child_process"),{GITHUB_REPOSITORY:G,GITHUB_SHA:S,GITHUB_RUN_ID:I,GITHUB_RUN_ATTEMPT:A,HEAD_SHA:H,BASE_SHA:B}=process.env;
+          const api=p=>JSON.parse(X("gh",["api",p],{encoding:"utf8",maxBuffer:1<<26}));
+          const par=(api(`repos/${G}/commits/${S}`).parents||[]).map(p=>p.sha);
+          if(par.length!==2||par[0]!==B||par[1]!==H){console.log("::error::merge parents mismatch");process.exit(1)}
+          const jobs=api(`repos/${G}/actions/runs/${I}/attempts/${A}/jobs?per_page=100`).jobs||[];
           const miss=["policy","rust-build","verify","verify-tests (1)","verify-tests (2)","verify-tests (3)","verify-tests-serial","e2e"].filter(n=>!jobs.some(j=>j.name===n&&j.status==="completed"&&j.conclusion==="success"));
           if(miss.length){console.log("::error::missing successful jobs in this attempt: "+miss.join(", "));process.exit(1)}
           EOF

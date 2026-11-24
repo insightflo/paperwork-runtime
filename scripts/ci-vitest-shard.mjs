@@ -43,6 +43,8 @@ export function partitionTestFiles(files, totalShards, weights = {}) {
 }
 
 export function assertExactSelection(expectedFiles, selectedFiles) {
+  for (const [label, xs] of [["expected", expectedFiles], ["selected", selectedFiles]])
+    if (new Set(xs).size !== xs.length) throw new Error(`${label} file list contains duplicate entries`);
   const want = new Set(expectedFiles), got = new Set(selectedFiles);
   const extra = [...got].filter((f) => !want.has(f)).sort(), missing = [...want].filter((f) => !got.has(f)).sort();
   if (extra.length || missing.length) throw new Error(`selection mismatch — extra: [${extra.join(", ")}] missing: [${missing.join(", ")}]`);
@@ -56,11 +58,17 @@ export function resolveSpawnExitCode(result, label) {
 }
 
 export function discoverTestFiles(repoRoot, filterArgs = [], spawn = spawnSync) {
-  const res = spawn("pnpm", ["exec", "vitest", "list", "--filesOnly", ...filterArgs], { cwd: repoRoot, env: process.env, encoding: "utf8" });
+  // --json MUST be the last arg: cac reads a positional after --json as an output FILE path, which
+  // would eat a filter argument and overwrite a repo file instead of printing to stdout.
+  const res = spawn("pnpm", ["exec", "vitest", "list", "--filesOnly", ...filterArgs, "--json"], { cwd: repoRoot, env: process.env, encoding: "utf8" });
   const code = resolveSpawnExitCode(res, "vitest list");
   if (code !== 0) throw new Error(`vitest list failed (exit ${code})`);
-  return uniqSorted(String(res.stdout).split("\n").map((l) => l.replace(/^\[[^\]]+\] /, "").trim()) // vitest 3 projects: "[@scope/pkg] <path>"
-    .filter((l) => /\.(test|spec)\.[cm]?[jt]sx?$/.test(l)).map((p) => toRel(repoRoot, p)));
+  let list;
+  try { list = JSON.parse(String(res.stdout)); }
+  catch (e) { throw new Error(`vitest list --json output unparsable: ${e.message}`); }
+  if (!Array.isArray(list) || list.some((e) => !e || typeof e.file !== "string" || !e.file))
+    throw new Error("vitest list --json output is not a [{file, projectName}] array");
+  return uniqSorted(list.map((e) => toRel(repoRoot, e.file))); // vitest 3 --json: [{file: "<abs>", projectName}]
 }
 
 export function extractExecutedFilesFromJsonReport(reportPath, repoRoot) {
@@ -68,10 +76,12 @@ export function extractExecutedFilesFromJsonReport(reportPath, repoRoot) {
   try { report = JSON.parse(readFileSync(reportPath, "utf8")); }
   catch (e) { throw new Error(`unreadable vitest JSON report ${reportPath}: ${e.message}`); }
   if (!report || !Array.isArray(report.testResults)) throw new Error(`invalid vitest JSON report ${reportPath}: missing testResults[]`);
-  return uniqSorted(report.testResults.map((t) => {
+  const files = report.testResults.map((t) => {
     if (!t || typeof t.name !== "string" || !t.name) throw new Error(`invalid testResults entry in ${reportPath}`);
     return toRel(repoRoot, t.name);
-  }));
+  });
+  if (new Set(files).size !== files.length) throw new Error(`duplicate file entries in vitest JSON report ${reportPath}`);
+  return uniqSorted(files);
 }
 
 export function verifyShardManifests(manifests, { expectedSha, expectedShards } = {}) {
@@ -80,7 +90,10 @@ export function verifyShardManifests(manifests, { expectedSha, expectedShards } 
     if (m?.schemaVersion !== 1) bad("schemaVersion !== 1");
     if (typeof m.commitSha !== "string" || !m.commitSha) bad("commitSha missing");
     if (!Number.isInteger(m.shardIndex) || !Number.isInteger(m.totalShards) || m.shardIndex < 1 || m.shardIndex > m.totalShards) bad("shardIndex/totalShards invalid");
-    for (const k of ["discoveredFiles", "executedFiles"]) if (!Array.isArray(m[k]) || m[k].some((f) => typeof f !== "string" || !f)) bad(`${k} invalid`);
+    for (const k of ["discoveredFiles", "executedFiles"]) {
+      if (!Array.isArray(m[k]) || m[k].some((f) => typeof f !== "string" || !f)) bad(`${k} invalid`);
+      if (new Set(m[k]).size !== m[k].length) bad(`${k} has duplicate entries`);
+    }
   });
   if (!manifests.length) throw new Error("no shard manifests");
   const total = manifests[0].totalShards;
@@ -93,7 +106,8 @@ export function verifyShardManifests(manifests, { expectedSha, expectedShards } 
   if (expectedSha !== undefined && sha !== expectedSha) throw new Error(`commitSha ${sha} != expected ${expectedSha}`);
   const want = uniqSorted(manifests[0].discoveredFiles);
   if (!want.length) throw new Error("discoveredFiles is empty");
-  if (!manifests.every((m) => uniqSorted(m.discoveredFiles).join("\n") === want.join("\n"))) throw new Error("discoveredFiles mismatch across shards");
+  const sameFiles = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]); // element-wise; join() conflates "\n" in names
+  if (!manifests.every((m) => sameFiles(uniqSorted(m.discoveredFiles), want))) throw new Error("discoveredFiles mismatch across shards");
   const wantSet = new Set(want), seen = new Set(), dups = new Set(), unexpected = new Set();
   for (const m of manifests) for (const f of m.executedFiles) {
     if (!wantSet.has(f)) unexpected.add(f);
@@ -116,6 +130,14 @@ const defaultExecute = ({ repoRoot, files }, spawn = spawnSync) => {
     return extractExecutedFilesFromJsonReport(out, repoRoot);
   } finally { rmSync(out, { force: true }); }
 };
+
+export function listShard({ repoRoot, shardIndex, totalShards, discover = discoverTestFiles, weights = DEFAULT_SLOW_WEIGHTS }) {
+  if (!Number.isInteger(shardIndex) || !Number.isInteger(totalShards) || shardIndex < 1 || shardIndex > totalShards)
+    throw new Error(`invalid shard ${shardIndex}/${totalShards} (need 1..${totalShards})`);
+  const allFiles = discover(repoRoot);
+  if (!allFiles.length) throw new Error("unfiltered discovery returned 0 test files — refusing to silently pass");
+  return partitionTestFiles(allFiles, totalShards, weights)[shardIndex - 1];
+}
 
 export function runShard({ repoRoot, shardIndex, totalShards, manifestOut, commitSha, discover = discoverTestFiles, execute, spawn, weights = DEFAULT_SLOW_WEIGHTS }) {
   if (!Number.isInteger(shardIndex) || !Number.isInteger(totalShards) || shardIndex < 1 || shardIndex > totalShards)
@@ -151,7 +173,7 @@ function cli(argv) {
     console.log(`verified ${manifests.length} shard manifests in ${argv[1]}`);
     return 0;
   }
-  if (argv[0] === "--list-shard") for (const f of partitionTestFiles(discoverTestFiles(repoRoot), shard().totalShards, DEFAULT_SLOW_WEIGHTS)[shard().shardIndex - 1]) console.log(f);
+  if (argv[0] === "--list-shard") for (const f of listShard({ repoRoot, ...shard() })) console.log(f);
   else if (argv[0] === "--run-shard") return runShard({ repoRoot, ...shard(), manifestOut: flag("--manifest-out") });
   else throw new Error("usage: ci-vitest-shard.mjs --list-shard k/n | --run-shard k/n [--manifest-out p] | --verify-manifests dir [--expected-sha sha] [--expected-shards n]");
   return 0;

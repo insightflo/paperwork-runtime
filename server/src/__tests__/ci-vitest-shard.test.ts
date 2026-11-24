@@ -14,7 +14,7 @@ import { realpathSync } from "node:fs";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   assertExactSelection, DEFAULT_SLOW_WEIGHTS, discoverTestFiles, extractExecutedFilesFromJsonReport,
-  partitionTestFiles, resolveSpawnExitCode, runShard, verifyShardManifests,
+  listShard, partitionTestFiles, resolveSpawnExitCode, runShard, verifyShardManifests,
 } from "../../../scripts/ci-vitest-shard.mjs";
 
 const repoRoot = realpathSync(join(import.meta.dirname, "../../.."));
@@ -96,6 +96,12 @@ describe("assertExactSelection + extractExecutedFilesFromJsonReport", () => {
     expect(() => extractExecutedFilesFromJsonReport(p, repoRoot)).toThrow(/invalid/);
     expect(() => extractExecutedFilesFromJsonReport(join(sandbox, "nope.json"), repoRoot)).toThrow(/unreadable/);
   });
+  it("rejects duplicate executed files instead of silently collapsing them", () => {
+    const p = join(sandbox, "dup-report.json");
+    writeFileSync(p, JSON.stringify({ testResults: [{ name: "a.test.ts" }, { name: "a.test.ts" }] }));
+    expect(() => extractExecutedFilesFromJsonReport(p, repoRoot)).toThrow(/duplicate/);
+    expect(() => assertExactSelection(["a.test.ts"], ["a.test.ts", "a.test.ts"])).toThrow(/duplicate/);
+  });
 });
 
 describe("spawn failure paths", () => {
@@ -120,6 +126,22 @@ describe("spawn failure paths", () => {
       expect(() => runShard({ repoRoot, shardIndex: 1, totalShards: 1, commitSha: "s", discover, spawn: (() => res) as never }))
         .toThrow(/vitest run failed/);
     }
+  });
+});
+
+describe("vitest list --json discovery", () => {
+  it("parses the [{file, projectName}] JSON directly and keeps custom test filenames", () => {
+    const spawn = (() => ({ status: 0, stdout: JSON.stringify([
+      { file: join(repoRoot, "server/x/custom-suite.ts"), projectName: "@paperclipai/server" },
+      { file: join(repoRoot, "server/y/spaced name.spec.tsx"), projectName: "@paperclipai/server" },
+    ]) })) as never;
+    expect(discoverTestFiles(repoRoot, [], spawn)).toEqual(["server/x/custom-suite.ts", "server/y/spaced name.spec.tsx"]);
+  });
+  it("passes --json as the final arg so file filters are never eaten as output paths", () => {
+    let args: string[] = [];
+    const spawn = ((_c: string, a: string[]) => ((args = a), { status: 0, stdout: "[]" })) as never;
+    expect(discoverTestFiles(repoRoot, ["f.test.ts"], spawn)).toEqual([]);
+    expect(args.at(-1)).toBe("--json");
   });
 });
 
@@ -166,6 +188,16 @@ describe("runShard guards and manifest", () => {
   });
 });
 
+describe("listShard", () => {
+  it("fails non-zero on empty unfiltered discovery (same contract as runShard)", () => {
+    expect(() => listShard({ repoRoot, shardIndex: 1, totalShards: 3, discover: () => [] })).toThrow(/0 test files/);
+    expect(() => runShard({ repoRoot, shardIndex: 1, totalShards: 3, commitSha: "s", discover: () => [] })).toThrow(/0 test files/);
+  });
+  it("returns the assigned shard slice deterministically", () => {
+    expect(listShard({ repoRoot, shardIndex: 1, totalShards: 3, discover: () => files2 })).toEqual(["x/a.test.ts"]);
+  });
+});
+
 describe("verifyShardManifests gate contract", () => {
   const mf = (over: Record<string, unknown> = {}) => ({
     schemaVersion: 1, commitSha: "sha", shardIndex: 1, totalShards: 3,
@@ -192,6 +224,9 @@ describe("verifyShardManifests gate contract", () => {
     ["lone 1/1 set when 3 expected", [mf({ shardIndex: 1, totalShards: 1, executedFiles: ["a.test.ts", "b.test.ts"] })]],
     ["empty discoveredFiles", [mf({ discoveredFiles: [] }), mf({ shardIndex: 2, discoveredFiles: [] }), mf({ shardIndex: 3, discoveredFiles: [] })]],
     ["cross-shard duplicate", [mf({ shardIndex: 1, executedFiles: ["a.test.ts", "b.test.ts"] }), valid()[1], valid()[2]]],
+    ["duplicate inside discoveredFiles", [mf({ shardIndex: 1, discoveredFiles: ["a.test.ts", "a.test.ts"] }), valid()[1], valid()[2]]],
+    ["duplicate inside executedFiles", [mf({ shardIndex: 1, executedFiles: ["a.test.ts", "a.test.ts"] }), valid()[1], valid()[2]]],
+    ["newline-injected discoveredFiles", [mf({ shardIndex: 1, executedFiles: ["a.test.ts"] }), mf({ shardIndex: 2, discoveredFiles: ["a.test.ts\nb.test.ts"], executedFiles: ["b.test.ts"] }), mf({ shardIndex: 3 })]],
     ["omitted file", [valid()[0], mf({ shardIndex: 2 }), valid()[2]]],
     ["unexpected executed file", [valid()[0], mf({ shardIndex: 2, executedFiles: ["b.test.ts", "z.test.ts"] }), valid()[2]]],
     ["commitSha mismatch", [valid()[0], { ...valid()[1], commitSha: "other" }, valid()[2]]],
