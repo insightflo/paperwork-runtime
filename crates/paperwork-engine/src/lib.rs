@@ -5,6 +5,7 @@
 mod handlers;
 mod heartbeat;
 mod heartbeat_run;
+mod tool;
 
 use paperclip_provider_auth_core::ProbeEnv;
 use paperclip_provider_runtime_core::{validate_name, Blocklist, ProviderId};
@@ -18,8 +19,8 @@ pub const MAX_REQUEST_BYTES: usize = 65_536;
 /// Maximum `redactor.redact_text` input bytes (32 KiB).
 pub const MAX_TEXT_BYTES: usize = 32 * 1024;
 const CAPABILITIES: &[&str] = &["engine.health", "redactor.redact_text", "provider.check_blocklist",
-    "provider.auth_probe_all", "provider.auth_plan_login", "quota.route", "heartbeat.validate_transition", "heartbeat.claim_wakeup", "heartbeat.transition_run_fenced", "heartbeat.list_stale_runs", "heartbeat.run_agent"];
-
+    "provider.auth_probe_all", "provider.auth_plan_login", "quota.route", "heartbeat.validate_transition", "heartbeat.claim_wakeup", "heartbeat.transition_run_fenced", "heartbeat.list_stale_runs", "heartbeat.run_agent",
+    "tool.list_definitions", "tool.get_definition", "tool.list_skills", "tool.list_execution_receipts", "tool.claim_execution_receipt_idempotent"];
 fn ok(id: Value, result: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "result": result})
 }
@@ -106,6 +107,7 @@ fn dispatch_request(id: Value, method: &str, params: Option<&Value>, env: &Probe
         "provider.auth_probe_all" | "provider.auth_plan_login" | "quota.route" => handlers::dispatch_with(id, method, params, env),
         "heartbeat.run_agent" => heartbeat_run::dispatch_with(id, params),
         m if m.starts_with("heartbeat.") => heartbeat::dispatch_with(id, m, params, env),
+        m if m.starts_with("tool.") => tool::dispatch_with(id, m, params, env),
         "redactor.redact_text" | "provider.check_blocklist" => {
             let Some(p) = params else { return err(id, -32602, "invalid_params") };
             let parsed = if method == "redactor.redact_text" {
@@ -181,7 +183,7 @@ mod tests {
         assert_eq!(r["ok"], true);
         assert_eq!(r["engine"], "paperwork-engine");
         assert_eq!(r["protocol_version"], 1);
-        assert_eq!(r["capabilities"].as_array().unwrap().len(), 11);
+        assert_eq!(r["capabilities"].as_array().unwrap().len(), 16);
         assert_eq!(out[0]["id"], 7);
         let out = call(&json!({"jsonrpc": "2.0", "id": "x1", "method": "nope"}));
         assert_eq!((code(&out[0]), out[0]["id"].as_str().unwrap()), (-32601, "x1"));
