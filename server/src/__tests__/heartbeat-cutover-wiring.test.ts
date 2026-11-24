@@ -196,6 +196,23 @@ describe("heartbeat-cutover-wiring", () => {
     expect(getHeartbeatCutoverMetrics().claim_wakeup.totalCalls).toBe(0);
   });
 
+  it("isolates async onEvent rejections without unhandledRejection", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const res = await wireClaimWakeupCutover(CLAIM, async () => WAKE, {
+        env: OFF,
+        onEvent: (async () => { throw new Error("async observer boom"); }) as unknown as (e: HeartbeatCutoverTelemetryEvent) => void,
+      });
+      expect(res).toEqual({ source: "ts", value: WAKE });
+      await new Promise((r) => setTimeout(r, 20));
+      expect(unhandled).toHaveLength(0);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("getHeartbeatCutoverMetrics returns a deep copy that cannot corrupt internal state", async () => {
     await wireClaimWakeupCutover(CLAIM, async () => WAKE, { env: OFF });
     const snap = getHeartbeatCutoverMetrics();

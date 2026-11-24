@@ -105,7 +105,14 @@ async function executeCutover<T>(job: CutoverJob<T>): Promise<HeartbeatCutoverRe
     metrics.totalDurationMs += durationMs;
     if (opts.onEvent === undefined) return;
     try {
-      opts.onEvent({ operation, outcome, source, durationMs, fenceMismatch, error });
+      const maybePromise: unknown = opts.onEvent({ operation, outcome, source, durationMs, fenceMismatch, error });
+      if (maybePromise !== null && (typeof maybePromise === "object" || typeof maybePromise === "function")
+        && typeof (maybePromise as PromiseLike<unknown>).then === "function") {
+        Promise.resolve(maybePromise).catch((observerError) => {
+          logger.warn({ operation, err: observerError },
+            "heartbeat cutover onEvent observer rejected; ignoring");
+        });
+      }
     } catch (observerError) {
       logger.warn({ operation, err: observerError },
         "heartbeat cutover onEvent observer threw; ignoring");
