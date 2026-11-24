@@ -80,9 +80,11 @@ describe("schedule.* typed RPC methods", () => {
     expect(d.calls[0].params).toEqual({
       company_id: NIL, due_before: "2030-06-15T12:00:00.000Z", limit: 5,
     });
-    for (const bad of [null, {}, { schedules: "x" }, { schedules: [{ ...DUE, id: "z" }] },
-      { schedules: [{ ...DUE, mission_id: "z" }] }, { schedules: [{ ...DUE, enabled: "y" }] },
-      { schedules: [{ ...DUE, last_run_at: "2026-02-30T00:00:00Z" }] }, { schedules: [{ ...DUE, next_run_at: 0 }] }]) {
+    for (const bad of [null, {}, { schedules: "x" }, { schedules: [DUE], extra: 1 },
+      { schedules: [{ ...DUE, id: "z" }] }, { schedules: [{ ...DUE, mission_id: "z" }] },
+      { schedules: [{ ...DUE, enabled: "y" }] }, { schedules: [{ ...DUE, extra: 1 }] },
+      { schedules: [{ ...DUE, last_run_at: "2026-02-30T00:00:00Z" }] },
+      { schedules: [{ ...DUE, last_run_at: "2026-01-01T24:00:00Z" }] }, { schedules: [{ ...DUE, next_run_at: 0 }] }]) {
       const c = stub({ "schedule.list_due": bad });
       await expect(listDueSchedules(c.client, { company_id: NIL, due_before: "2030-01-01T00:00:00Z", limit: 5 }))
         .rejects.toMatchObject({ code: "protocol_error" });
@@ -132,7 +134,8 @@ describe("schedule.* typed RPC methods", () => {
   });
   it("advanceScheduleFenced rejects malformed results", async () => {
     for (const bad of [null, {}, { applied: "yes" }, { applied: false, extra: 1 },
-      { ...APPLIED, id: "z" }, { ...APPLIED, company_id: 1 }, { ...APPLIED, next_run_at: 3 },
+      { ...APPLIED, extra: 1 }, { ...APPLIED, id: "z" }, { ...APPLIED, company_id: 1 },
+      { ...APPLIED, next_run_at: 3 }, { ...APPLIED, updated_at: "2026-01-01T24:00:00Z" },
       { ...APPLIED, updated_at: "2026-13-01T00:00:00Z" }, { applied: true, id: NIL }]) {
       const c = stub({ "schedule.advance_fenced": bad });
       await expect(advanceScheduleFenced(c.client, ADVANCE)).rejects.toMatchObject({ code: "protocol_error" });
@@ -151,7 +154,8 @@ describe("schedule.* typed RPC methods", () => {
     await expect(setScheduleEnabled(off.client, { schedule_id: NIL, company_id: NIL, enabled: false }))
       .resolves.toEqual({ updated: false });
     for (const bad of [null, {}, { updated: "y" }, { updated: false, x: 1 },
-      { ...on, id: "z" }, { ...on, enabled: "y" }, { ...on, updated_at: "when" }]) {
+      { ...on, extra: 1 }, { ...on, id: "z" }, { ...on, enabled: "y" },
+      { ...on, updated_at: "when" }, { ...on, updated_at: "2026-01-01T24:00:00Z" }]) {
       const c = stub({ "schedule.set_enabled": bad });
       await expect(setScheduleEnabled(c.client, { schedule_id: NIL, company_id: NIL, enabled: true }))
         .rejects.toMatchObject({ code: "protocol_error" });
@@ -161,6 +165,49 @@ describe("schedule.* typed RPC methods", () => {
       .rejects.toThrow(RangeError);
     await expect(setScheduleEnabled(s.client, { schedule_id: "z", company_id: NIL, enabled: true }))
       .rejects.toThrow(RangeError);
+    expect(s.calls).toHaveLength(0);
+  });
+  it("setScheduleEnabled reads params.enabled once — a getter cannot flip or drop it", async () => {
+    const { client, calls } = stub({ "schedule.set_enabled": { updated: false } });
+    let reads = 0;
+    const flipping = {
+      schedule_id: NIL, company_id: NIL,
+      get enabled() { return ++reads === 1; }, // true on 1st read, false afterwards
+    };
+    await setScheduleEnabled(client, flipping as never);
+    expect(reads).toBe(1);
+    expect(calls[0].params).toMatchObject({ enabled: true });
+    let drops = 0;
+    const dropping = {
+      schedule_id: NIL, company_id: NIL,
+      get enabled() { return ++drops === 1 ? false : undefined; },
+    };
+    await setScheduleEnabled(client, dropping as never);
+    expect(drops).toBe(1);
+    expect(calls[1].params).toMatchObject({ enabled: false });
+  });
+  it("rejects RFC3339 fields that Date.parse normalizes but Chrono rejects", async () => {
+    const s = stub({});
+    for (const ts of [
+      "2026-01-01T24:00:00Z",      // hour 24 normalizes to the next day
+      "2026-01-01T00:60:00Z",      // minute 60
+      "2026-01-01T00:00:60Z",      // second 60
+      "2026-01-01T00:00:00+24:00", // offset hour 24
+      "2026-01-01T00:00:00+05:60", // offset minute 60
+    ]) {
+      await expect(validateScheduleAdvanceWindow(s.client, { last_run_at: ts, next_run_at: T1 }))
+        .rejects.toThrow(RangeError);
+    }
+    expect(s.calls).toHaveLength(0);
+  });
+  it("rejects Date inputs outside the 4-digit-year RFC3339 range pre-RPC", async () => {
+    const s = stub({});
+    for (const d of [new Date("+275760-09-13T00:00:00.000Z"), new Date("-000001-01-01T00:00:00.000Z")]) {
+      await expect(validateScheduleAdvanceWindow(s.client, { last_run_at: d, next_run_at: T1 }))
+        .rejects.toThrow(RangeError);
+      await expect(advanceScheduleFenced(s.client, { ...ADVANCE, next_run_at: d }))
+        .rejects.toThrow(RangeError);
+    }
     expect(s.calls).toHaveLength(0);
   });
 });

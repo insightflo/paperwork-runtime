@@ -52,8 +52,17 @@ const I64_MIN = -(1n << 63n), I64_MAX = (1n << 63n) - 1n;
 const isRec = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 const isUuid = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v);
+// Date.parse silently normalizes hour 24 and other out-of-range fields that
+// Rust Chrono rejects; the regex pins each field to unsigned 2-digit values,
+// so only the upper bounds need checking before the calendar roundtrip.
 const isTs = (v: unknown): v is string => {
   if (typeof v !== "string" || !RFC3339_RE.test(v) || Number.isNaN(Date.parse(v))) return false;
+  const [hh, mm, ss] = v.slice(11, 19).split(":").map(Number);
+  if (hh > 23 || mm > 59 || ss > 59) return false;
+  if (!v.endsWith("Z")) {
+    const [oh, om] = v.slice(-5).split(":").map(Number);
+    if (oh > 23 || om > 59) return false;
+  }
   const [y, mo, d] = v.slice(0, 10).split("-").map(Number);
   const dt = new Date(0); dt.setUTCFullYear(y, mo - 1, d);
   return dt.toISOString().slice(0, 10) === v.slice(0, 10);
@@ -81,8 +90,14 @@ function checkUuid(v: unknown, name: string): string {
   return v;
 }
 function checkTs(v: unknown, name: string): string {
+  // Dates re-validate through isTs so out-of-4-digit-year instants (±YYYYYY
+  // ISO strings Chrono cannot parse as RFC3339) fail exactly like malformed
+  // string inputs instead of reaching the wire.
   if (v instanceof Date) {
-    if (!Number.isNaN(v.getTime())) return v.toISOString();
+    if (!Number.isNaN(v.getTime())) {
+      const iso = v.toISOString();
+      if (isTs(iso)) return iso;
+    }
   } else if (isTs(v)) {
     return v;
   }
@@ -106,8 +121,8 @@ export function classifyScheduleRpcError(error: unknown): ScheduleRpcErrorClassi
 
 // --- response validators -----------------------------------------------------
 function toDueSchedule(v: unknown): DueSchedule {
-  if (!isRec(v) || !isUuid(v.id) || !isUuid(v.company_id) || !isUuid(v.agent_id)
-    || typeof v.cron_expression !== "string" || typeof v.timezone !== "string"
+  if (!isRec(v) || Object.keys(v).length !== 9 || !isUuid(v.id) || !isUuid(v.company_id)
+    || !isUuid(v.agent_id) || typeof v.cron_expression !== "string" || typeof v.timezone !== "string"
     || !(v.mission_id === null || isUuid(v.mission_id)) || typeof v.enabled !== "boolean"
     || !isTsOrNull(v.last_run_at) || !isTsOrNull(v.next_run_at)) {
     throw proto("bad schedule.list_due schedule shape");
@@ -135,7 +150,7 @@ function toAdvanceResult(v: unknown): ScheduleAdvanceFencedResult {
     if (Object.keys(v).length !== 1) throw proto("bad schedule.advance_fenced result shape");
     return { applied: false };
   }
-  if (!isUuid(v.id) || !isUuid(v.company_id) || !isUuid(v.agent_id)
+  if (Object.keys(v).length !== 7 || !isUuid(v.id) || !isUuid(v.company_id) || !isUuid(v.agent_id)
     || !isTsOrNull(v.last_run_at) || !isTsOrNull(v.next_run_at) || !isTs(v.updated_at)) {
     throw proto("bad schedule.advance_fenced result shape");
   }
@@ -150,7 +165,7 @@ function toEnabledResult(v: unknown): ScheduleSetEnabledResult {
     if (Object.keys(v).length !== 1) throw proto("bad schedule.set_enabled result shape");
     return { updated: false };
   }
-  if (!isUuid(v.id) || typeof v.enabled !== "boolean" || !isTs(v.updated_at)) {
+  if (Object.keys(v).length !== 4 || !isUuid(v.id) || typeof v.enabled !== "boolean" || !isTs(v.updated_at)) {
     throw proto("bad schedule.set_enabled result shape");
   }
   return { updated: true, id: v.id, enabled: v.enabled, updated_at: v.updated_at };
@@ -179,7 +194,9 @@ export async function listDueSchedules(
     company_id: checkUuid(company_id, "company_id"),
     due_before: checkTs(due_before, "due_before"), limit,
   }, callOpts);
-  if (!isRec(result) || !Array.isArray(result.schedules)) throw proto("bad schedule.list_due result shape");
+  if (!isRec(result) || Object.keys(result).length !== 1 || !Array.isArray(result.schedules)) {
+    throw proto("bad schedule.list_due result shape");
+  }
   return result.schedules.map(toDueSchedule);
 }
 
@@ -205,11 +222,14 @@ export async function advanceScheduleFenced(
 export async function setScheduleEnabled(
   client: PaperworkEngineClient, params: ScheduleSetEnabledParams, callOpts?: CallOpts,
 ): Promise<ScheduleSetEnabledResult> {
-  if (typeof params.enabled !== "boolean") throw new RangeError("enabled must be a boolean");
+  // Single-read snapshot: a getter-backed params.enabled must not be able to
+  // flip or drop the value between the boolean check and the wire object.
+  const enabled = params.enabled;
+  if (typeof enabled !== "boolean") throw new RangeError("enabled must be a boolean");
   const result = await client.call<unknown>("schedule.set_enabled", {
     schedule_id: checkUuid(params.schedule_id, "schedule_id"),
     company_id: checkUuid(params.company_id, "company_id"),
-    enabled: params.enabled,
+    enabled,
   }, callOpts);
   return toEnabledResult(result);
 }
