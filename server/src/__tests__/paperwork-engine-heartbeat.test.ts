@@ -108,7 +108,7 @@ describe("heartbeat.* typed RPC methods", () => {
     await expect(listStaleHeartbeatRuns(client, {
       company_id: NIL, stale_before: "2030-01-01T00:00:00Z", limit: 10,
     })).resolves.toEqual([STALE]);
-    await expect(listStaleHeartbeatRuns(client, { company_id: NIL, stale_before: "2024-02-29T00:00:00Z", limit: 10 })).resolves.toEqual([STALE]);
+    await expect(listStaleHeartbeatRuns(client, { company_id: NIL, stale_before: "0000-02-29T00:00:00Z", limit: 10 })).resolves.toEqual([STALE]);
     expect(calls[0]).toEqual({
       method: "heartbeat.list_stale_runs",
       params: { company_id: NIL, stale_before: "2030-01-01T00:00:00Z", limit: 10 },

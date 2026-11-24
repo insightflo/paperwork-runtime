@@ -59,7 +59,8 @@ const isUuid = (v: unknown): v is string => typeof v === "string" && UUID_RE.tes
 const isTs = (v: unknown): v is string => {
   if (typeof v !== "string" || !RFC3339_RE.test(v) || Number.isNaN(Date.parse(v))) return false;
   const [y, mo, d] = v.slice(0, 10).split("-").map(Number);
-  return new Date(Date.UTC(y, mo - 1, d)).toISOString().slice(0, 10) === v.slice(0, 10);
+  const dt = new Date(0); dt.setUTCFullYear(y, mo - 1, d);
+  return dt.toISOString().slice(0, 10) === v.slice(0, 10);
 };
 const isTsOrNull = (v: unknown): v is string | null => v === null || isTs(v);
 
