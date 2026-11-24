@@ -156,7 +156,9 @@ jobs:
       - uses: ./.github/actions/ci-install
       - { uses: actions/download-artifact@v4, with: { name: "rust-workspace-bins-${{ github.run_attempt }}", path: crates/ } }
       - { name: Restore staged Rust binaries, run: 'chmod +x crates/*/target/release/* && [ -n "$(find crates -type f -path "*/target/release/*" -print -quit)" ]' }
-      - { name: "Run tests (shard ${{ matrix.shard }}/3)", env: { PAPERCLIP_CI_EXCLUDE_SERIAL_SUITES: "1" }, run: "pnpm test:run --shard=${{ matrix.shard }}/3" }
+      # [F2] LPT 가중 샤드 + 매니페스트 — scripts/ci-vitest-shard.mjs 가 발견·배정·선택·실행을 전부 증명한다.
+      - { name: "Run tests (shard ${{ matrix.shard }}/3)", env: { PAPERCLIP_CI_EXCLUDE_SERIAL_SUITES: "1" }, run: 'node scripts/ci-vitest-shard.mjs --run-shard ${{ matrix.shard }}/3 --manifest-out "$RUNNER_TEMP/shard-${{ matrix.shard }}.json"' }
+      - { uses: actions/upload-artifact@v4, with: { name: "vitest-shard-manifest-${{ matrix.shard }}", path: "${{ runner.temp }}/shard-${{ matrix.shard }}.json", retention-days: 1, if-no-files-found: error } }
   # 중량 통합 5종 전용 직렬 잡 — verify-tests 접두사 유지로 병합 가드가 자동 감시한다.
   verify-tests-serial:
     needs: [policy]
@@ -197,7 +199,10 @@ jobs:
     env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}", POLICY_FULL: "${{ needs.policy.outputs.full }}", HEAD_SHA: "${{ github.event.pull_request.head.sha }}", BASE_SHA: "${{ github.event.pull_request.base.sha }}", RESULTS: "${{ join(needs.*.result, ' ') }}" }
     steps:
       - { name: Enforce full-suite results, run: '[ "$POLICY_FULL" = "true" ] || { echo "::error::policy.full=$POLICY_FULL (expected true)"; exit 1; }; for r in $RESULTS; do [ "$r" = "success" ] || { echo "::error::sibling job result=$r"; exit 1; }; done' }
-      - { uses: actions/checkout@v4, if: "github.event_name == 'pull_request'", with: { ref: "${{ github.sha }}", fetch-depth: 2 } }
+      - { uses: actions/checkout@v4, with: { ref: "${{ github.sha }}", fetch-depth: 2, sparse-checkout: scripts/ci-vitest-shard.mjs, sparse-checkout-cone-mode: "false" } }
+      # [F2] attestation 전에 샤드 매니페스트 검증 — 이 커밋의 실행 파일이 0 omitted/0 duplicated/0 unexpected 임을 증명한다.
+      - { uses: actions/download-artifact@v4, with: { pattern: "vitest-shard-manifest-*", path: "${{ runner.temp }}/shard-manifests", merge-multiple: true } }
+      - { name: Verify shard manifest coverage, run: 'node scripts/ci-vitest-shard.mjs --verify-manifests "$RUNNER_TEMP/shard-manifests" --expected-sha "${{ github.sha }}" --expected-shards 3' }
       - name: Verify parents + sibling jobs, write attestation
         if: github.event_name == 'pull_request'
         run: |
