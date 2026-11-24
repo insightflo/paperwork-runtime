@@ -79,6 +79,14 @@ const snapshotMeter = (meter: Meter): HeartbeatCutoverMetricsSnapshot => ({
   transition_run_fenced: { ...meter.transition_run_fenced },
 });
 
+function safeWarn(context: Record<string, unknown>, message: string): void {
+  try {
+    logger.warn(context, message);
+  } catch {
+    // Best-effort logging: Pino serialization of hostile Error getters must never mask cutover outcomes.
+  }
+}
+
 interface CutoverJob<T> {
   operation: HeartbeatCutoverOperation;
   call: (
@@ -95,26 +103,17 @@ async function executeCutover<T>(job: CutoverJob<T>): Promise<HeartbeatCutoverRe
   const metrics = meter[operation];
   metrics.totalCalls += 1;
   const startedAt = Date.now();
-  const emit = (
-    outcome: HeartbeatCutoverOutcome,
-    source: "rust" | "ts" | null,
-    fenceMismatch: boolean,
-    error?: unknown,
-  ): void => {
+  const emit = (outcome: HeartbeatCutoverOutcome, source: "rust" | "ts" | null,
+    fenceMismatch: boolean, error?: unknown): void => {
     const durationMs = Date.now() - startedAt;
     metrics.totalDurationMs += durationMs;
     if (opts.onEvent === undefined) return;
     try {
-      const maybePromise: unknown = opts.onEvent({ operation, outcome, source, durationMs, fenceMismatch, error });
-      if (maybePromise !== null && (typeof maybePromise === "object" || typeof maybePromise === "function")
-        && typeof (maybePromise as PromiseLike<unknown>).then === "function") {
-        Promise.resolve(maybePromise).catch((observerError) => {
-          logger.warn({ operation, err: observerError },
-            "heartbeat cutover onEvent observer rejected; ignoring");
-        });
-      }
+      Promise.resolve(opts.onEvent({ operation, outcome, source, durationMs, fenceMismatch, error }))
+        .catch((observerError) => safeWarn({ operation, err: observerError },
+          "heartbeat cutover onEvent observer rejected; ignoring"));
     } catch (observerError) {
-      logger.warn({ operation, err: observerError },
+      safeWarn({ operation, err: observerError },
         "heartbeat cutover onEvent observer threw; ignoring");
     }
   };
@@ -143,11 +142,15 @@ async function executeCutover<T>(job: CutoverJob<T>): Promise<HeartbeatCutoverRe
   try {
     client = (opts.getClient ?? getSharedPaperworkEngineClient)();
   } catch (error) {
-    logger.warn({ operation, err: error },
+    safeWarn({ operation, err: error },
       "paperwork-engine client resolution failed; bypassing to TS");
-    client = null;
+    return runTsBypass();
   }
-  if (client === null) return runTsBypass();
+  if (client === null) {
+    safeWarn({ operation },
+      "paperwork-engine client unavailable; bypassing to TS writer");
+    return runTsBypass();
+  }
 
   try {
     const result = await call(client, { timeoutMs: opts.timeoutMs, env });

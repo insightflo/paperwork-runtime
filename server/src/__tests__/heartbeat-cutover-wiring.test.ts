@@ -57,6 +57,7 @@ function stubClient(script: (method: string) => unknown) {
   return { client, calls };
 }
 const rpc = (code: number) => new PaperworkEngineError("rpc_error", `rpc_${code}`, code);
+const hostileError = () => Object.defineProperty(new Error("boom"), "stack", { get() { throw new Error("stack-getter-boom"); } });
 
 beforeEach(() => resetHeartbeatCutoverMetricsForTests());
 
@@ -226,5 +227,24 @@ describe("heartbeat-cutover-wiring", () => {
     const zeroed = getHeartbeatCutoverMetrics();
     expect(zeroed.claim_wakeup.totalCalls).toBe(0);
     expect(zeroed.transition_run_fenced.totalCalls).toBe(0);
+  });
+
+  it("hostile onEvent error cannot mask the indeterminate error or reach tsFallback", async () => {
+    const { client } = stubClient(() => { throw rpc(-32005); });
+    const tsFallback = vi.fn(async () => WAKE);
+    const onEvent = vi.fn(() => { throw hostileError(); });
+    await expect(wireClaimWakeupCutover(CLAIM, tsFallback, { env: ON, getClient: () => client, onEvent }))
+      .rejects.toBeInstanceOf(HeartbeatCutoverIndeterminateError);
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(tsFallback).not.toHaveBeenCalled();
+    expect(getHeartbeatCutoverMetrics().claim_wakeup).toMatchObject({ indeterminateError: 1, tsFallback: 0 });
+  });
+
+  it("hostile getClient error still reaches tsFallback once and counts tsBypass", async () => {
+    const tsFallback = vi.fn(async () => WAKE);
+    const opts = { env: ON, getClient: () => { throw hostileError(); } };
+    await expect(wireClaimWakeupCutover(CLAIM, tsFallback, opts)).resolves.toEqual({ source: "ts", value: WAKE });
+    expect(tsFallback).toHaveBeenCalledTimes(1);
+    expect(getHeartbeatCutoverMetrics().claim_wakeup).toMatchObject({ tsBypass: 1 });
   });
 });
