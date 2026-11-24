@@ -78,6 +78,8 @@ function checkArgs(v: readonly string[] | undefined): string[] | undefined {
   if (!Array.isArray(v)) throw new RangeError("args must be an array of strings");
   const out: string[] = new Array(v.length);
   for (let i = 0; i < v.length; i++) {
+    // Own-key gate: a hole backed by an inherited string index must not pass.
+    if (!Object.hasOwn(v, i)) throw new RangeError(`args[${i}] is a hole: args must be a dense array`);
     const a = v[i];
     if (typeof a !== "string" || a.includes("\0")) {
       throw new RangeError(`args[${i}] must be a string with no NUL bytes`);
@@ -89,7 +91,14 @@ function checkArgs(v: readonly string[] | undefined): string[] | undefined {
 function checkEnv(v: Readonly<Record<string, string>> | undefined): Record<string, string> | undefined {
   if (v === undefined) return undefined;
   if (!isRec(v)) throw new RangeError("env must be a record of string values");
-  const out: Record<string, string> = {};
+  const envProto = Object.getPrototypeOf(v);
+  if (envProto !== Object.prototype && envProto !== null) {
+    throw new RangeError("env must be a plain object");
+  }
+  // Null-prototype map: an own "__proto__" env key stays an own enumerable data
+  // property (assignment on {} would hit the inherited __proto__ setter and drop
+  // the value), so it reaches the engine verbatim through JSON.stringify.
+  const out: Record<string, string> = Object.create(null);
   for (const key of Object.keys(v)) {
     if (key === "" || key.includes("=") || key.includes("\0")) {
       throw new RangeError(`env key ${JSON.stringify(key)} must be non-empty with no '=' or NUL bytes`);
@@ -111,9 +120,9 @@ function checkIntRange(v: unknown, name: string, lo: number, hi: number): number
 
 // Bounds the RPC transport slightly past the run's own deadline: the engine's
 // timeout_ms + grace_ms already terminates the child, so +5s is transport slack.
-function deriveTransportTimeoutMs(params: HeartbeatRunAgentParams): number {
+function deriveTransportTimeoutMs(timeoutMs: number, graceMs: number | undefined): number {
   return Math.min(MAX_CLIENT_TIMEOUT_MS,
-    params.timeout_ms + (params.grace_ms ?? HEARTBEAT_RUN_AGENT_DEFAULT_GRACE_MS) + 5_000);
+    timeoutMs + (graceMs ?? HEARTBEAT_RUN_AGENT_DEFAULT_GRACE_MS) + 5_000);
 }
 
 function toRunAgentResult(v: unknown): HeartbeatRunAgentResult {
@@ -138,23 +147,27 @@ type CallOpts = { timeoutMs?: number };
 export async function runHeartbeatAgent(
   client: PaperworkEngineClient, params: HeartbeatRunAgentParams, callOpts?: CallOpts,
 ): Promise<HeartbeatRunAgentResult> {
+  // Single-read snapshot: a getter-backed params object must not present a
+  // second, unvalidated value when the transport deadline is derived below.
+  const timeoutMs = checkIntRange(params.timeout_ms, "timeout_ms", 1, HEARTBEAT_RUN_AGENT_MAX_TIMEOUT_MS);
+  const graceRaw = params.grace_ms;
+  const graceMs = graceRaw === undefined ? undefined
+    : checkIntRange(graceRaw, "grace_ms", 0, HEARTBEAT_RUN_AGENT_MAX_GRACE_MS);
   const wire: Record<string, unknown> = {
     adapter: checkAdapter(params.adapter),
     executable: checkAbsPath(params.executable, "executable"),
     cwd: checkAbsPath(params.cwd, "cwd"),
-    timeout_ms: checkIntRange(params.timeout_ms, "timeout_ms", 1, HEARTBEAT_RUN_AGENT_MAX_TIMEOUT_MS),
+    timeout_ms: timeoutMs,
   };
   const args = checkArgs(params.args);
   if (args !== undefined) wire.args = args;
   const env = checkEnv(params.env);
   if (env !== undefined) wire.env = env;
-  if (params.grace_ms !== undefined) {
-    wire.grace_ms = checkIntRange(params.grace_ms, "grace_ms", 0, HEARTBEAT_RUN_AGENT_MAX_GRACE_MS);
-  }
-  const timeoutMs = callOpts?.timeoutMs === undefined
-    ? deriveTransportTimeoutMs(params)
+  if (graceMs !== undefined) wire.grace_ms = graceMs;
+  const transportTimeoutMs = callOpts?.timeoutMs === undefined
+    ? deriveTransportTimeoutMs(timeoutMs, graceMs)
     : checkIntRange(callOpts.timeoutMs, "callOpts.timeoutMs", 1, MAX_CLIENT_TIMEOUT_MS);
-  const result = await client.call<unknown>("heartbeat.run_agent", wire, { timeoutMs });
+  const result = await client.call<unknown>("heartbeat.run_agent", wire, { timeoutMs: transportTimeoutMs });
   return toRunAgentResult(result);
 }
 

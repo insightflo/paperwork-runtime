@@ -43,6 +43,27 @@ describe("runHeartbeatAgent pre-send validation (fail-closed)", () => {
     for (const p of bad) await expect(run(s.client, p)).rejects.toThrow(RangeError);
     expect(s.calls).toHaveLength(0);
   });
+  it("rejects a sparse args array even when a hole inherits a string index", async () => {
+    const s = stub(OK);
+    const sparse: string[] = new Array(1);
+    // Prototype chain supplies "inherited" at index 0 without an own property:
+    // the element must come from an own key, not the prototype.
+    Object.setPrototypeOf(sparse, Object.assign(Object.create(Array.prototype), { 0: "inherited" }));
+    await expect(run(s.client, { args: sparse })).rejects.toThrow(RangeError);
+    expect(s.calls).toHaveLength(0);
+  });
+  it("rejects non-plain env objects (Date, Map, class instance)", async () => {
+    const s = stub(OK);
+    class Bag {}
+    for (const env of [new Date(), new Map([["K", "V"]]), new Bag()]) {
+      await expect(run(s.client, { env: env as unknown as Record<string, string> }))
+        .rejects.toThrow(RangeError);
+    }
+    // A null-prototype map is still a plain record and stays accepted.
+    await run(s.client, { env: Object.assign(Object.create(null), { K: "v" }) });
+    expect(s.calls).toHaveLength(1);
+    expect(s.calls[0].params).toMatchObject({ env: { K: "v" } });
+  });
   it("rejects out-of-range timeout_ms and grace_ms", async () => {
     const s = stub(OK);
     for (const timeout_ms of [0, -1, 3_600_001, Number.NaN, 1.5, "5" as never]) {
@@ -76,6 +97,15 @@ describe("runHeartbeatAgent wire contract", () => {
     expect(s.calls[0].params).toEqual({
       adapter: "commandcode_local", executable: "/bin/sh", cwd: "/tmp", timeout_ms: 5_000,
     });
+  });
+  it("preserves an own __proto__ env key on the wire (survives JSON.stringify)", async () => {
+    const s = stub(OK);
+    const env = JSON.parse('{"__proto__":"v"}') as Record<string, string>;
+    await run(s.client, { env });
+    const wireEnv = (s.calls[0].params as { env: Record<string, string> }).env;
+    expect(Object.hasOwn(wireEnv, "__proto__")).toBe(true);
+    expect(wireEnv["__proto__"]).toBe("v");
+    expect(JSON.stringify(wireEnv)).toContain('"__proto__":"v"');
   });
   it("maps non-zero exit, timed_out, and reap handoff results", async () => {
     const failed = { ...OK, status: "failed", exit_code: 9, error: "exited with code 9", error_code: "non_zero_exit" };
@@ -117,6 +147,24 @@ describe("runHeartbeatAgent transport timeout", () => {
     expect(s.calls[2].callOpts).toEqual({ timeoutMs: 600_000 });
     await run(s.client, { timeout_ms: 1, grace_ms: 0 }); // 1 + 0 + 5000
     expect(s.calls[3].callOpts).toEqual({ timeoutMs: 5_001 });
+  });
+  it("reads timeout_ms and grace_ms once (getter cannot swap in a second value)", async () => {
+    const s = stub(OK);
+    let tReads = 0, gReads = 0;
+    const params = {
+      ...BASE,
+      get timeout_ms() { return ++tReads === 1 ? 5_000 : 1.5; },
+      get grace_ms() { return ++gReads === 1 ? 100 : 0.5; },
+    } as HeartbeatRunAgentParams;
+    await runHeartbeatAgent(s.client, params);
+    expect(tReads).toBe(1);
+    expect(gReads).toBe(1);
+    expect(s.calls).toHaveLength(1);
+    expect(s.calls[0].params).toEqual({
+      adapter: "pi_local", executable: "/bin/sh", cwd: "/tmp", timeout_ms: 5_000, grace_ms: 100,
+    });
+    // 5000 (run timeout) + 100 (grace) + 5000 (slack), from the same snapshot.
+    expect(s.calls[0].callOpts).toEqual({ timeoutMs: 10_100 });
   });
   it("forwards an explicit callOpts.timeoutMs and validates it", async () => {
     const s = stub(OK);
