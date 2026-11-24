@@ -158,11 +158,11 @@ async fn db_run<O: DbOp>(c: Config, host: String, port: u16, h: &Hooks, o: O, dl
 
 /// Shared direct-PG entry point for DB-backed RPC method families: `o` is the
 /// op; this owns the DSN contract, dial gates, driver abort, and commit gate.
-pub(crate) fn exec_db<O: DbOp>(id: Value, o: O, env: &ProbeEnv, op_timeout: Duration) -> Value {
+pub(crate) fn exec_db(id: Value, env: &ProbeEnv, op_timeout: Duration, op: impl DbOp) -> Value {
     let (c, host, port) = match checked_config(env) { Ok(v) => v, Err(e) => return fail(id, e) };
     let rt = RUNTIME.get_or_init(|| tokio::runtime::Builder::new_current_thread().enable_all().max_blocking_threads(MAX_INFLIGHT_DNS).build().unwrap());
     let _g = CALL_LOCK.lock().unwrap();
-    match rt.block_on(db_run(c, host, port, hooks(), o, Instant::now() + op_timeout)) { Ok(v) => ok(id, v), Err(e) => fail(id, e) }
+    match rt.block_on(db_run(c, host, port, hooks(), op, Instant::now() + op_timeout)) { Ok(v) => ok(id, v), Err(e) => fail(id, e) }
 }
 
 fn validate_result(p: &ValidateP) -> Value {
@@ -185,13 +185,13 @@ pub(crate) fn dispatch_with_timeout(id: Value, method: &str, params: Option<&Val
             if p.expected_statuses.is_empty() { return err(id, -32602, "invalid_params") }
             ok(id, validate_result(&p))
         }
-        "heartbeat.claim_wakeup" => { let p = need!(ClaimP); exec_db(id, Db::Claim(p), env, op_timeout) }
+        "heartbeat.claim_wakeup" => { let p = need!(ClaimP); exec_db(id, env, op_timeout, Db::Claim(p)) }
         "heartbeat.transition_run_fenced" => {
             let p = need!(TransitionP);
             if validate_transition(&p.expected_statuses, p.next_status).is_err() { return err(id, -32602, "invalid_params") }
-            exec_db(id, Db::Transition(p), env, op_timeout)
+            exec_db(id, env, op_timeout, Db::Transition(p))
         }
-        "heartbeat.list_stale_runs" => { let p = need!(StaleP); exec_db(id, Db::Stale(p), env, op_timeout) }
+        "heartbeat.list_stale_runs" => { let p = need!(StaleP); exec_db(id, env, op_timeout, Db::Stale(p)) }
         _ => err(id, -32601, "method_not_found"),
     }
 }

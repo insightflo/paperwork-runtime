@@ -70,13 +70,13 @@ fn dispatch_with_timeout(id: Value, method: &str, params: Option<&Value>, env: &
             let p = need!(WindowP);
             ok(id, if valid_advance_window_pg(p.last_run_at, p.next_run_at) { json!({"valid": true}) } else { json!({"valid": false, "reason": "invalid_advance_window"}) })
         }
-        "schedule.list_due" => { let p = need!(ListDueP); exec_db(id, Db::ListDue(p), env, op_timeout) }
+        "schedule.list_due" => { let p = need!(ListDueP); exec_db(id, env, op_timeout, Db::ListDue(p)) }
         "schedule.advance_fenced" => {
             let p = need!(AdvanceP);
             if !valid_advance_window_pg(p.last_run_at, p.next_run_at) { return err(id, -32602, "invalid_params") }
-            exec_db(id, Db::AdvanceFenced(p), env, op_timeout)
+            exec_db(id, env, op_timeout, Db::AdvanceFenced(p))
         }
-        "schedule.set_enabled" => { let p = need!(EnabledP); exec_db(id, Db::SetEnabled(p), env, op_timeout) }
+        "schedule.set_enabled" => { let p = need!(EnabledP); exec_db(id, env, op_timeout, Db::SetEnabled(p)) }
         _ => err(id, -32601, "method_not_found"),
     }
 }
