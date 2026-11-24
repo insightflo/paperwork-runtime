@@ -124,6 +124,7 @@ fn status_and_code(o: &SupervisedOutcome) -> (RunStatus, Option<&'static str>, O
 /// exclusively reap that pid and MUST NOT signal it or re-dispatch the run
 /// until it is reaped — and `"supervision_error"` otherwise.
 pub fn map_supervision_result(result: Result<SupervisedOutcome, SupervisionError>) -> AgentRunResult {
+    let is_err = result.is_err();
     let (outcome, error, error_code, unreaped_pid) = match result {
         Ok(outcome) => (Some(outcome), None, None, None),
         Err(err) => {
@@ -131,8 +132,13 @@ pub fn map_supervision_result(result: Result<SupervisedOutcome, SupervisionError
             (err.outcome, Some(err.errors.join("; ")), Some(code), err.unreaped_pid)
         }
     };
-    let (status, outcome_code, outcome_error) = outcome.as_ref()
+    let (raw_status, outcome_code, outcome_error) = outcome.as_ref()
         .map_or((RunStatus::Failed, None, None), status_and_code);
+    let status = if is_err && raw_status == RunStatus::Succeeded {
+        RunStatus::Failed
+    } else {
+        raw_status
+    };
     AgentRunResult {
         status,
         exit_code: outcome.as_ref().and_then(|o| o.exit_code),
@@ -152,6 +158,12 @@ pub fn map_supervision_result(result: Result<SupervisedOutcome, SupervisionError
 /// Validates `spec`, then runs it supervised with isolated env and bounded
 /// timeout/grace. Spec violations are the only `Err` path; supervision
 /// failures map into `AgentRunResult`.
+///
+/// # Caller preconditions
+/// From before spawn through completion or reap handoff, the host process
+/// MUST NOT run competing `wait`/`waitpid` loops or enable `SIGCHLD`
+/// auto-reaping (`SIG_IGN` / `SA_NOCLDWAIT`), or supervision may lose exit
+/// status or misattribute reap ownership.
 pub fn execute_agent_run(spec: &AgentRunSpec) -> Result<AgentRunResult, RunnerSpecError> {
     validate_run_spec(spec)?;
     let spawn = SupervisedSpawnSpec {
@@ -211,6 +223,32 @@ mod tests {
         assert!(result.error.as_deref().unwrap_or_default().contains("waitpid"));
         assert!(result.stdout_excerpt.len() <= MAX_EXCERPT_BYTES);
         assert_eq!(result.stdout_captured_bytes, 5002);
+    }
+
+    #[test]
+    fn map_supervision_err_with_exit_zero_never_succeeds() {
+        let mk_ok = || SupervisedOutcome {
+            timed_out: false, exit_code: Some(0), signal: None,
+            stdout: b"done".to_vec(), stderr: Vec::new(),
+        };
+        let cleanup_err = SupervisionError {
+            errors: vec!["stdout reader failed".into()],
+            outcome: Some(mk_ok()), unreaped_pid: None,
+        };
+        let r1 = map_supervision_result(Err(cleanup_err));
+        assert_eq!((r1.status, r1.exit_code), (RunStatus::Failed, Some(0)));
+        assert_eq!(r1.error_code.as_deref(), Some("supervision_error"));
+        assert!(r1.unreaped_pid.is_none());
+        assert_eq!(r1.stdout_excerpt, "done");
+
+        let handoff_err = SupervisionError {
+            errors: vec!["waitpid deadline expired".into()],
+            outcome: Some(mk_ok()), unreaped_pid: Some(9001),
+        };
+        let r2 = map_supervision_result(Err(handoff_err));
+        assert_eq!((r2.status, r2.exit_code), (RunStatus::Failed, Some(0)));
+        assert_eq!(r2.error_code.as_deref(), Some("reap_handoff_pending"));
+        assert_eq!(r2.unreaped_pid, Some(9001));
     }
 
     #[test]
