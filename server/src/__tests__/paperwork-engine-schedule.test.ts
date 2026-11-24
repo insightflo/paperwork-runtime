@@ -210,6 +210,29 @@ describe("schedule.* typed RPC methods", () => {
     }
     expect(s.calls).toHaveLength(0);
   });
+  it("rejects shapes whose required keys are inherited, not own", async () => {
+    // An inherited required key plus an unrelated own key preserves the own-key
+    // count; exact own-key-set matching must reject every response shape.
+    const inh = (p: object, o: object) => Object.assign(Object.create(p), o);
+    const { id: _i, ...dueRest } = DUE;
+    const { applied: _a, ...apRest } = APPLIED;
+    const P = { last_run_at: T0, next_run_at: T1 };
+    const L = { company_id: NIL, due_before: T1, limit: 1 };
+    const E = { schedule_id: NIL, company_id: NIL, enabled: true };
+    const bad: [string, unknown, (c: PaperworkEngineClient) => Promise<unknown>][] = [
+      ["schedule.validate_advance_window", inh({ valid: true }, { extra: 1 }), (c) => validateScheduleAdvanceWindow(c, P)],
+      ["schedule.validate_advance_window", inh({ valid: false }, { reason: "invalid_advance_window", x: 1 }), (c) => validateScheduleAdvanceWindow(c, P)],
+      ["schedule.list_due", inh({ schedules: [DUE] }, { extra: 1 }), (c) => listDueSchedules(c, L)],
+      ["schedule.list_due", { schedules: [inh({ id: NIL }, { ...dueRest, extra: 1 })] }, (c) => listDueSchedules(c, L)],
+      ["schedule.advance_fenced", inh({ applied: false }, { extra: 1 }), (c) => advanceScheduleFenced(c, ADVANCE)],
+      ["schedule.advance_fenced", inh({ applied: true }, { ...apRest, extra: 1 }), (c) => advanceScheduleFenced(c, ADVANCE)],
+      ["schedule.set_enabled", inh({ updated: false }, { extra: 1 }), (c) => setScheduleEnabled(c, E)],
+      ["schedule.set_enabled", inh({ updated: true }, { id: NIL, enabled: true, updated_at: T1, extra: 1 }), (c) => setScheduleEnabled(c, E)],
+    ];
+    for (const [method, result, invoke] of bad) {
+      await expect(invoke(stub({ [method]: result }).client)).rejects.toMatchObject({ code: "protocol_error" });
+    }
+  });
 });
 
 describe("classifyScheduleRpcError", () => {

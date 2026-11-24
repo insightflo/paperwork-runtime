@@ -51,6 +51,11 @@ const PG_EPOCH_NS = 946_684_800_000_000_000n; // 2000-01-01T00:00:00Z in Unix ns
 const I64_MIN = -(1n << 63n), I64_MAX = (1n << 63n) - 1n;
 const isRec = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
+// Engine results arrive from JSON.parse, so required keys must be own
+// properties: a bare key count lets a prototype-inherited field stand in
+// for a missing own key.
+const hasExactKeys = (v: Record<string, unknown>, keys: readonly string[]): boolean =>
+  Object.keys(v).length === keys.length && keys.every((k) => Object.hasOwn(v, k));
 const isUuid = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v);
 // Date.parse silently normalizes hour 24 and other out-of-range fields that
 // Rust Chrono rejects; the regex pins each field to unsigned 2-digit values,
@@ -120,8 +125,17 @@ export function classifyScheduleRpcError(error: unknown): ScheduleRpcErrorClassi
 }
 
 // --- response validators -----------------------------------------------------
+const DUE_SCHEDULE_KEYS = [
+  "id", "company_id", "agent_id", "cron_expression", "timezone",
+  "mission_id", "enabled", "last_run_at", "next_run_at",
+] as const;
+const APPLIED_KEYS = [
+  "applied", "id", "company_id", "agent_id", "last_run_at", "next_run_at", "updated_at",
+] as const;
+const UPDATED_KEYS = ["updated", "id", "enabled", "updated_at"] as const;
+
 function toDueSchedule(v: unknown): DueSchedule {
-  if (!isRec(v) || Object.keys(v).length !== 9 || !isUuid(v.id) || !isUuid(v.company_id)
+  if (!isRec(v) || !hasExactKeys(v, DUE_SCHEDULE_KEYS) || !isUuid(v.id) || !isUuid(v.company_id)
     || !isUuid(v.agent_id) || typeof v.cron_expression !== "string" || typeof v.timezone !== "string"
     || !(v.mission_id === null || isUuid(v.mission_id)) || typeof v.enabled !== "boolean"
     || !isTsOrNull(v.last_run_at) || !isTsOrNull(v.next_run_at)) {
@@ -136,10 +150,10 @@ function toDueSchedule(v: unknown): DueSchedule {
 function toValidateResult(v: unknown): ScheduleValidateAdvanceWindowResult {
   if (!isRec(v) || typeof v.valid !== "boolean") throw proto("bad schedule.validate_advance_window result shape");
   if (v.valid) {
-    if (Object.keys(v).length !== 1) throw proto("bad schedule.validate_advance_window result shape");
+    if (!hasExactKeys(v, ["valid"])) throw proto("bad schedule.validate_advance_window result shape");
     return { valid: true };
   }
-  if (v.reason !== "invalid_advance_window" || Object.keys(v).length !== 2) {
+  if (v.reason !== "invalid_advance_window" || !hasExactKeys(v, ["valid", "reason"])) {
     throw proto("bad schedule.validate_advance_window result shape");
   }
   return { valid: false, reason: "invalid_advance_window" };
@@ -147,10 +161,10 @@ function toValidateResult(v: unknown): ScheduleValidateAdvanceWindowResult {
 function toAdvanceResult(v: unknown): ScheduleAdvanceFencedResult {
   if (!isRec(v) || typeof v.applied !== "boolean") throw proto("bad schedule.advance_fenced result shape");
   if (!v.applied) {
-    if (Object.keys(v).length !== 1) throw proto("bad schedule.advance_fenced result shape");
+    if (!hasExactKeys(v, ["applied"])) throw proto("bad schedule.advance_fenced result shape");
     return { applied: false };
   }
-  if (Object.keys(v).length !== 7 || !isUuid(v.id) || !isUuid(v.company_id) || !isUuid(v.agent_id)
+  if (!hasExactKeys(v, APPLIED_KEYS) || !isUuid(v.id) || !isUuid(v.company_id) || !isUuid(v.agent_id)
     || !isTsOrNull(v.last_run_at) || !isTsOrNull(v.next_run_at) || !isTs(v.updated_at)) {
     throw proto("bad schedule.advance_fenced result shape");
   }
@@ -162,10 +176,10 @@ function toAdvanceResult(v: unknown): ScheduleAdvanceFencedResult {
 function toEnabledResult(v: unknown): ScheduleSetEnabledResult {
   if (!isRec(v) || typeof v.updated !== "boolean") throw proto("bad schedule.set_enabled result shape");
   if (!v.updated) {
-    if (Object.keys(v).length !== 1) throw proto("bad schedule.set_enabled result shape");
+    if (!hasExactKeys(v, ["updated"])) throw proto("bad schedule.set_enabled result shape");
     return { updated: false };
   }
-  if (Object.keys(v).length !== 4 || !isUuid(v.id) || typeof v.enabled !== "boolean" || !isTs(v.updated_at)) {
+  if (!hasExactKeys(v, UPDATED_KEYS) || !isUuid(v.id) || typeof v.enabled !== "boolean" || !isTs(v.updated_at)) {
     throw proto("bad schedule.set_enabled result shape");
   }
   return { updated: true, id: v.id, enabled: v.enabled, updated_at: v.updated_at };
@@ -194,7 +208,7 @@ export async function listDueSchedules(
     company_id: checkUuid(company_id, "company_id"),
     due_before: checkTs(due_before, "due_before"), limit,
   }, callOpts);
-  if (!isRec(result) || Object.keys(result).length !== 1 || !Array.isArray(result.schedules)) {
+  if (!isRec(result) || !hasExactKeys(result, ["schedules"]) || !Array.isArray(result.schedules)) {
     throw proto("bad schedule.list_due result shape");
   }
   return result.schedules.map(toDueSchedule);
