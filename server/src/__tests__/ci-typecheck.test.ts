@@ -147,6 +147,13 @@ describe("planTypecheckTasks fixtures", () => {
     });
     expect(() => planTypecheckTasks(dir)).toThrow(/cycle/);
   });
+  it("rejects cycles through file:../ aliases during planning, before any prebuild", () => {
+    const dir = mkws({
+      a: { scripts: { typecheck: "tsc --noEmit" }, deps: { dependencies: { "alias-b": "file:../b" } } },
+      b: { scripts: { typecheck: "tsc --noEmit" }, deps: { dependencies: { "alias-a": "file:../a" } } },
+    });
+    expect(() => planTypecheckTasks(dir)).toThrow(/cycle/);
+  });
 });
 
 it("never starts downstream tasks when an upstream task fails", async () => {

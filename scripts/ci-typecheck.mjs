@@ -39,7 +39,7 @@ function depEdges(manifest, pkgDir, byName, byDir) {
   for (const key of DEP_KEYS) {
     for (const [dep, spec] of Object.entries(manifest[key] || {})) {
       if (byName.has(dep)) { edges.add(dep); continue; }
-      if (typeof spec !== "string" || !/^(npm|workspace):/.test(spec)) continue;
+      if (typeof spec !== "string" || !/^(npm|workspace|file|link):/.test(spec)) continue;
       const rest = spec.slice(spec.indexOf(":") + 1);
       if (rest.startsWith(".") || path.isAbsolute(rest)) {
         const target = byDir.get(path.resolve(pkgDir, rest));
