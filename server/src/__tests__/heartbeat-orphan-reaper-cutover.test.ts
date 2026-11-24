@@ -75,46 +75,53 @@ describe("discoverActiveRunsForReaper", () => {
   beforeEach(() => vi.clearAllMocks());
   it("flag OFF takes the TS scan with zero RPCs and no shared-client resolve", async () => {
     const ROW = active(rid());
-    const { client, calls } = engineStub(() => ({ runs: [] }));
-    const out = await discover(mockDb(() => [ROW]), { engineClient: client, env: {} });
+    const out = await discover(mockDb(() => [ROW]), { staleThresholdMs: 60_000, env: {} });
     expect(out).toEqual([ROW]);
-    expect(calls).toHaveLength(0);
     expect(getSharedPaperworkEngineClient).not.toHaveBeenCalled();
   });
-  it("flag ON calls heartbeat.list_stale_runs per company and hydrates the union with in-memory ids", async () => {
-    const [A, B, M, X] = [rid(), rid(), rid(), rid()];
-    const rows = [active(A), active(B), active(M), active(X)];
-    const db = mockDb((q) => (q.distinct ? [{ companyId: CO }] : byIds(rows, q.params)));
+  it("flag ON uses conservative +1ms cutoff, snapshots inMemoryRunIds early, and hydrates union", async () => {
+    const [A, B, M, LATE, X] = [rid(), rid(), rid(), rid(), rid()];
+    const inMem = new Set([M]);
+    const rows = [active(A), active(B), active(M), active(LATE), active(X)];
+    const db = mockDb((q) => (q.distinct ? (inMem.add(LATE), [{ companyId: CO }]) : byIds(rows, q.params)));
     const { client, calls } = engineStub(() => ({ runs: [stale(A), stale(B)] }));
     const out = await discover(db, { staleThresholdMs: 60_000, activeExecutionTimeoutMs: 30_000,
-      inMemoryRunIds: [M], engineClient: client, env: ON });
+      inMemoryRunIds: inMem, engineClient: client, env: ON });
     expect(calls).toEqual([{ method: "heartbeat.list_stale_runs",
-      params: { company_id: CO, stale_before: "2026-01-01T00:09:30.000Z", limit: STALE_RUNS_CUTOVER_LIMIT } }]);
+      params: { company_id: CO, stale_before: "2026-01-01T00:09:30.001Z", limit: STALE_RUNS_CUTOVER_LIMIT } }]);
     expect(out.map((r) => r.run.id).sort()).toEqual([A, B, M].sort());
   });
-  it("flag ON falls back to the unbounded TS scan when a company result reaches the limit", async () => {
+  it("flag ON uses full TS scan with zero RPCs when staleThresholdMs <= 0", async () => {
     const ROW = active(rid());
-    const db = mockDb((q) => (q.distinct ? [{ companyId: CO }] : [ROW]));
+    const { client, calls } = engineStub(() => ({ runs: [] }));
+    const out = await discover(mockDb(() => [ROW]), { staleThresholdMs: 0, engineClient: client, env: ON });
+    expect(calls).toHaveLength(0);
+    expect(out).toEqual([ROW]);
+  });
+  it("flag ON falls back to the unbounded TS scan when a company result reaches the limit", async () => {
+    const FULL_ONLY = active(rid());
+    const db = mockDb((q) => (q.distinct ? [{ companyId: CO }] : q.params.length === 1 ? [FULL_ONLY] : []));
     const { client, calls } = engineStub(() => ({
       runs: Array.from({ length: STALE_RUNS_CUTOVER_LIMIT }, () => stale(rid())),
     }));
-    const out = await discover(db, { engineClient: client, env: ON });
+    const out = await discover(db, { staleThresholdMs: 60_000, engineClient: client, env: ON });
     expect(calls).toHaveLength(1);
-    expect(out).toEqual([ROW]);
+    expect(out).toEqual([FULL_ONLY]);
   });
   it("flag ON short-circuits to the full TS scan on the first Rust error", async () => {
     const ROW = active(rid());
-    const db = mockDb((q) => (q.distinct ? [{ companyId: CO }, { companyId: AG }] : [ROW]));
+    const db = mockDb((q) => (q.distinct ? [{ companyId: CO }, { companyId: AG }] : q.params.length === 1 ? [ROW] : []));
     const { client, calls } = engineStub(() => { throw new PaperworkEngineError("timeout", "t"); });
-    const out = await discover(db, { engineClient: client, env: ON });
-    expect(calls).toHaveLength(1); // second company never reaches the engine
+    const out = await discover(db, { staleThresholdMs: 60_000, engineClient: client, env: ON });
+    expect(calls).toHaveLength(1);
     expect(out).toEqual([ROW]);
   });
-  it("flag ON with engineClient: null stays on the TS path without touching the shared getter", async () => {
+  it("flag ON falls back to TS when engineClient is null or shared getter throws", async () => {
     const ROW = active(rid());
-    const out = await discover(mockDb(() => [ROW]), { engineClient: null, env: ON });
-    expect(out).toEqual([ROW]);
+    expect(await discover(mockDb(() => [ROW]), { staleThresholdMs: 60_000, engineClient: null, env: ON })).toEqual([ROW]);
     expect(getSharedPaperworkEngineClient).not.toHaveBeenCalled();
+    vi.mocked(getSharedPaperworkEngineClient).mockImplementationOnce(() => { throw new Error("init boom"); });
+    expect(await discover(mockDb(() => [ROW]), { staleThresholdMs: 60_000, env: ON })).toEqual([ROW]);
   });
 });
 
@@ -129,6 +136,7 @@ describe("reapOrphanedRuns with cutover flag ON", () => {
         startedAt: new Date(now), updatedAt: new Date(now - 120_000) });
       const queRun = run(QUE, { issueId: ISS2, status: "queued", updatedAt: new Date(now - 120_000) });
       const deadQue = { ...queRun, status: "failed" };
+      let approvalChecked = false;
       const db = mockDb((q) => {
         if (q.table === heartbeatRuns) {
           if (q.distinct) return [{ companyId: CO }];
@@ -140,7 +148,8 @@ describe("reapOrphanedRuns with cutover flag ON", () => {
           return q.params.includes("queued") ? [queRun] : [];
         }
         if (q.table === operatorDecisions) {
-          return q.params.includes(ISS1) ? [{ id: DEC, issueId: ISS1 }] : [];
+          if (q.params.includes(ISS1)) { approvalChecked = true; return [{ id: DEC, issueId: ISS1 }]; }
+          return [];
         }
         return q.table === agents && q.keys === null ? [AGENT_ROW] : [];
       });
@@ -170,6 +179,7 @@ describe("reapOrphanedRuns with cutover flag ON", () => {
       expect(calls.map((c) => c.method)).toEqual(["heartbeat.list_stale_runs"]);
       expect(calls[0]?.params).toMatchObject({ company_id: CO, limit: STALE_RUNS_CUTOVER_LIMIT });
       expect(demote).toHaveBeenCalledWith(detRun, expect.any(Date));
+      expect(approvalChecked).toBe(true);
       expect(setRunStatus.mock.calls.every((c) => c[0] !== WAIT)).toBe(true);
       expect(setHb).toHaveBeenCalledWith(expect.anything(), QUE, "failed",
         expect.objectContaining({ errorCode: "stale_queued" }), expect.anything());

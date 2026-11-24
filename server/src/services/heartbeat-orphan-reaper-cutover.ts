@@ -70,9 +70,10 @@ export async function discoverActiveRunsForReaper(
   const minThresholdMs = staleThresholdMs > 0 && activeExecutionTimeoutMs > 0
     ? Math.min(staleThresholdMs, activeExecutionTimeoutMs)
     : staleThresholdMs > 0 ? staleThresholdMs : 0;
-  const staleBefore = minThresholdMs > 0
-    ? new Date(now.getTime() - minThresholdMs)
-    : new Date(now.getTime() + 60_000);
+  // TS 스캔은 양수 stale 임계가 없으면 updated_at 필터를 적용하지 않는다 — 전체 TS 스캔으로 폴백.
+  if (minThresholdMs <= 0) return tsQuery();
+  // Rust 는 엄격 부등호(updated_at < stale_before), TS 는 경계 포함(>= threshold)이라 +1ms 보수 보정.
+  const staleBefore = new Date(now.getTime() - minThresholdMs + 1);
 
   const companyRows = await db
     .selectDistinct({ companyId: heartbeatRuns.companyId })
