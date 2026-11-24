@@ -114,6 +114,19 @@ describe("paperwork-engine heartbeat transition shadow", () => {
     });
   });
 
+  it("trigger defers via setImmediate: 0 synchronous getClient calls, runs on next tick", async () => {
+    let gets = 0;
+    const { client, calls } = stubCall(() => Promise.resolve(VALID));
+    const { log } = makeLog();
+    const deps = { env: ON, getClient: () => (gets += 1, client), log };
+    triggerShadowValidateHeartbeatTransition(INPUT, deps);
+    expect(gets).toBe(0); // no existsSync/spawn inside the caller's sync path
+    expect(calls).toHaveLength(0);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(gets).toBe(1);
+    expect(calls).toHaveLength(1);
+  });
+
   it("trigger is fire-and-forget: a never-resolving RPC cannot block the caller", async () => {
     const calls: unknown[] = [];
     const client: CallOnly = { call: () => (calls.push(1), new Promise<never>(() => {})) };
@@ -122,10 +135,28 @@ describe("paperwork-engine heartbeat transition shadow", () => {
     triggerShadowValidateHeartbeatTransition(INPUT, { env: ON, getClient: () => client, log });
     reached = true; // unreachable if the trigger awaited the engine promise
     expect(reached).toBe(true);
+    expect(calls).toHaveLength(0);
+    await new Promise((resolve) => setImmediate(resolve));
     expect(calls).toHaveLength(1);
     await Promise.resolve();
     await Promise.resolve();
     expect(warns).toHaveLength(0);
     expect(debugs).toHaveLength(0);
+  });
+
+  it("flag ON + getClient throws synchronously: fail-open — classified and debug-logged, 0 warns", async () => {
+    const { log, warns, debugs } = makeLog();
+    const deps = {
+      env: ON,
+      getClient: (): CallOnly | null => { throw new Error("existsSync boom"); },
+      log,
+    };
+    await expect(maybeShadowValidateHeartbeatTransition(INPUT, deps)).resolves.toBeUndefined();
+    expect(warns).toHaveLength(0);
+    expect(debugs).toHaveLength(1);
+    expect(debugs[0].o).toMatchObject({
+      runId: RUN_ID, nextStatus: "running",
+      classification: { kind: "unknown", outcome: "indeterminate", retryable: false },
+    });
   });
 });

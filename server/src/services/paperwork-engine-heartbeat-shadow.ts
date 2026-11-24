@@ -53,9 +53,9 @@ export async function maybeShadowValidateHeartbeatTransition(
     );
     return;
   }
-  const client = (deps.getClient ?? getSharedPaperworkEngineClient)();
-  if (client === null) return;
   try {
+    const client = (deps.getClient ?? getSharedPaperworkEngineClient)();
+    if (client === null) return;
     const result = await validateHeartbeatTransition(client as PaperworkEngineClient, {
       expected_statuses: [...input.expectedStatuses] as HeartbeatRunStatus[],
       next_status: input.nextStatus as HeartbeatRunStatus,
@@ -77,11 +77,15 @@ export async function maybeShadowValidateHeartbeatTransition(
   }
 }
 
-/** 동기 fire-and-forget 트리거 — flag OFF 이면 어떤 async 작업도 없이 즉시 반환한다. */
+/** setImmediate 지연 fire-and-forget 트리거 — flag OFF 이면 타이머·마이크로태스크
+ *  없이 즉시 반환하고, ON 이면 엔진 접근(existsSync/spawn)이 호출자
+ *  setHeartbeatRunStatus 의 동기 경로에서 0 회 실행되도록 다음 틱으로 미룬다. */
 export function triggerShadowValidateHeartbeatTransition(
   input: ShadowHeartbeatTransitionInput,
   deps: ShadowHeartbeatTransitionDeps = {},
 ): void {
   if (!isHeartbeatEngineShadowEnabled(deps.env ?? process.env)) return;
-  void maybeShadowValidateHeartbeatTransition(input, deps).catch(() => {});
+  setImmediate(() => {
+    void maybeShadowValidateHeartbeatTransition(input, deps).catch(() => {});
+  });
 }
