@@ -3,6 +3,7 @@
 //! One request object per line, one response per line, flushed after every
 //! write. Oversized request lines are rejected through a bounded read path.
 mod handlers;
+mod heartbeat;
 
 use paperclip_provider_auth_core::ProbeEnv;
 use paperclip_provider_runtime_core::{validate_name, Blocklist, ProviderId};
@@ -16,7 +17,7 @@ pub const MAX_REQUEST_BYTES: usize = 65_536;
 /// Maximum `redactor.redact_text` input bytes (32 KiB).
 pub const MAX_TEXT_BYTES: usize = 32 * 1024;
 const CAPABILITIES: &[&str] = &["engine.health", "redactor.redact_text", "provider.check_blocklist",
-    "provider.auth_probe_all", "provider.auth_plan_login", "quota.route"];
+    "provider.auth_probe_all", "provider.auth_plan_login", "quota.route", "heartbeat.validate_transition", "heartbeat.claim_wakeup", "heartbeat.transition_run_fenced", "heartbeat.list_stale_runs"];
 
 fn ok(id: Value, result: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "result": result})
@@ -71,13 +72,7 @@ struct RedactParams {
     text: String,
 }
 #[derive(Deserialize)]
-struct CheckParams {
-    provider: String,
-    version: String,
-    #[serde(default)]
-    sha256: Option<String>,
-    blocklist: Blocklist,
-}
+struct CheckParams { provider: String, version: String, #[serde(default)] sha256: Option<String>, blocklist: Blocklist }
 
 fn redact_text(id: Value, p: RedactParams) -> Value {
     if p.text.len() > MAX_TEXT_BYTES { return err(id, -32602, "invalid_params"); }
@@ -108,6 +103,7 @@ fn dispatch_request(id: Value, method: &str, params: Option<&Value>, env: &Probe
             _ => ok(id, health_result()),
         },
         "provider.auth_probe_all" | "provider.auth_plan_login" | "quota.route" => handlers::dispatch_with(id, method, params, env),
+        m if m.starts_with("heartbeat.") => heartbeat::dispatch_with(id, m, params, env),
         "redactor.redact_text" | "provider.check_blocklist" => {
             let Some(p) = params else { return err(id, -32602, "invalid_params") };
             let parsed = if method == "redactor.redact_text" {
@@ -183,7 +179,7 @@ mod tests {
         assert_eq!(r["ok"], true);
         assert_eq!(r["engine"], "paperwork-engine");
         assert_eq!(r["protocol_version"], 1);
-        assert_eq!(r["capabilities"].as_array().unwrap().len(), 6);
+        assert_eq!(r["capabilities"].as_array().unwrap().len(), 10);
         assert_eq!(out[0]["id"], 7);
         let out = call(&json!({"jsonrpc": "2.0", "id": "x1", "method": "nope"}));
         assert_eq!((code(&out[0]), out[0]["id"].as_str().unwrap()), (-32601, "x1"));

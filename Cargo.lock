@@ -880,12 +880,18 @@ dependencies = [
 name = "paperwork-engine"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "paperclip-provider-auth-core",
  "paperclip-provider-runtime-core",
  "paperclip-quota-router",
  "paperclip-redactor-core",
+ "paperwork-engine-heartbeat",
  "serde",
  "serde_json",
+ "socket2",
+ "tokio",
+ "tokio-postgres",
+ "uuid",
 ]
 
 [[package]]
