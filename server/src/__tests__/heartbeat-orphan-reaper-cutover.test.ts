@@ -7,7 +7,7 @@ import { reapOrphanedRuns, type HeartbeatOrphanReaperDeps } from "../services/he
 import {
   discoverActiveRunsForReaper,
   STALE_RUNS_CUTOVER_LIMIT,
-  STALE_RUNS_MAX_CANDIDATE_IDS,
+  MAX_HYDRATE_CANDIDATE_IDS,
 } from "../services/heartbeat-orphan-reaper-cutover.js";
 import { getSharedPaperworkEngineClient } from "../services/paperwork-engine-runtime.js";
 import { logger } from "../middleware/logger.js";
@@ -115,16 +115,36 @@ describe("discoverActiveRunsForReaper", () => {
     expect(calls).toHaveLength(1);
     expect(out).toEqual([FULL_ONLY]);
   });
-  it("flag ON falls back to TS when aggregate candidate IDs across companies exceed bind budget", async () => {
+  it("flag ON short-circuits remaining companies and skips hydration once aggregate candidates exceed cap", async () => {
     const FULL_ONLY = active(rid());
     const companies = Array.from({ length: 55 }, () => ({ companyId: rid() }));
-    const db = mockDb((q) => (q.distinct ? companies : q.params.length === 1 ? [FULL_ONLY] : []));
+    const inMem = Array.from({ length: 1_000 }, () => rid());
+    let hydrateCalls = 0;
+    const db = mockDb((q) => (q.distinct ? companies
+      : q.params.length === 1 ? [FULL_ONLY] : (hydrateCalls++, [])));
     const { client, calls } = engineStub(() => ({
       runs: Array.from({ length: STALE_RUNS_CUTOVER_LIMIT - 1 }, () => stale(rid())),
     }));
-    const out = await discover(db, { staleThresholdMs: 60_000, engineClient: client, env: ON });
+    const out = await discover(db, { staleThresholdMs: 60_000, inMemoryRunIds: inMem,
+      engineClient: client, env: ON });
+    // 1,000 in-memory + 199/company crosses the cap at company 46 — later companies get no RPC.
     expect(calls.length).toBeLessThan(companies.length);
-    expect(calls.length * (STALE_RUNS_CUTOVER_LIMIT - 1)).toBeGreaterThan(STALE_RUNS_MAX_CANDIDATE_IDS);
+    expect(inMem.length + calls.length * (STALE_RUNS_CUTOVER_LIMIT - 1))
+      .toBeGreaterThan(MAX_HYDRATE_CANDIDATE_IDS);
+    expect(hydrateCalls).toBe(0);
+    expect(out).toEqual([FULL_ONLY]);
+  });
+  it("flag ON issues zero engine RPCs when the in-memory snapshot alone exceeds the cap", async () => {
+    const FULL_ONLY = active(rid());
+    const inMem = Array.from({ length: MAX_HYDRATE_CANDIDATE_IDS + 1 }, () => rid());
+    let hydrateCalls = 0;
+    const db = mockDb((q) => (q.distinct ? [{ companyId: CO }]
+      : q.params.length === 1 ? [FULL_ONLY] : (hydrateCalls++, [])));
+    const { client, calls } = engineStub(() => ({ runs: [] }));
+    const out = await discover(db, { staleThresholdMs: 60_000, inMemoryRunIds: inMem,
+      engineClient: client, env: ON });
+    expect(calls).toHaveLength(0);
+    expect(hydrateCalls).toBe(0);
     expect(out).toEqual([FULL_ONLY]);
   });
   it("flag ON short-circuits to the full TS scan on the first Rust error", async () => {

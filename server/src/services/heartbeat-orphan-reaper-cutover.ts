@@ -2,8 +2,8 @@
 //   PAPERWORK_ENGINE_HEARTBEAT_CUTOVER=1 이면 Rust heartbeat.list_stale_runs 로
 //   company 별 stale 후보 run id 를 읽고 in-memory handle 집합과 합집합한 뒤 Drizzle 로
 //   전체 행(run + agents.adapterType)을 수화한다. 읽기 전용 RPC 라 쓰기 부작용이 없고,
-//   엔진 미설정·오류·타임아웃·per-company limit 절단이면 즉시 기존 TS 전체 스캔으로
-//   폴백한다(실행 권한은 TS 측 단일 소스의 재확인 쿼리가 보유).
+//   엔진 미설정·오류·타임아웃·per-company limit 절단·합산 후보 id 상한 초과면 즉시
+//   기존 TS 전체 스캔으로 폴백한다(실행 권한은 TS 측 단일 소스의 재확인 쿼리가 보유).
 // [외부 연결] crates/engine-heartbeat/src/lib.rs 의 SQL_LIST_STALE_RUNS 는
 //   `FOR UPDATE SKIP LOCKED` — 잠긴 행은 이번 스윕에서 건너뛰고 다음 스윕이 회수한다.
 //   listStaleRunsWithCutover(읽기 폴백 계약·10s timeout),
@@ -22,7 +22,7 @@ import { getSharedPaperworkEngineClient } from "./paperwork-engine-runtime.js";
 
 export const STALE_RUNS_CUTOVER_LIMIT = 200;
 // postgres.js bind parameter limit is 65,535; fall back to full TS scan well below it.
-export const STALE_RUNS_MAX_CANDIDATE_IDS = 10_000;
+export const MAX_HYDRATE_CANDIDATE_IDS = 10_000;
 
 export interface ActiveRunWithAdapter {
   run: typeof heartbeatRuns.$inferSelect;
@@ -84,7 +84,7 @@ export async function discoverActiveRunsForReaper(
   if (companyRows.length === 0 && inMemorySnapshot.length === 0) return [];
 
   const candidateIds = new Set<string>(inMemorySnapshot);
-  if (candidateIds.size > STALE_RUNS_MAX_CANDIDATE_IDS) return tsQuery();
+  if (candidateIds.size > MAX_HYDRATE_CANDIDATE_IDS) return tsQuery();
   for (const { companyId } of companyRows) {
     const result = await listStaleRunsWithCutover(
       client,
@@ -98,7 +98,7 @@ export async function discoverActiveRunsForReaper(
     // per-company limit 에 닿으면 절단으로 running 런 유실 가능 — 무제한 TS 스캔으로 폴백.
     if (result.value.length >= STALE_RUNS_CUTOVER_LIMIT) return tsQuery();
     for (const row of result.value) candidateIds.add(row.id);
-    if (candidateIds.size > STALE_RUNS_MAX_CANDIDATE_IDS) return tsQuery();
+    if (candidateIds.size > MAX_HYDRATE_CANDIDATE_IDS) return tsQuery();
   }
   if (candidateIds.size === 0) return [];
   return db
