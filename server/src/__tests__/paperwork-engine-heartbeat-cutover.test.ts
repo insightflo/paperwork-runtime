@@ -183,14 +183,13 @@ describe("transitionRunFencedWithCutover", () => {
     expect(err).toMatchObject({ operation: "transition_run_fenced", cause: error });
     expect(tsFallback).not.toHaveBeenCalled();
   });
-  it("write RPCs clamp a sub-floor timeoutMs up to the 17s minimum", async () => {
-    const a = stub(() => ({ claimed: WAKE }));
-    const b = stub(() => APPLIED);
-    await claimWakeupWithCutover(a.client, CLAIM, vi.fn(), { env: ON, timeoutMs: 1 });
-    await transitionRunFencedWithCutover(b.client, TRANS, vi.fn(), { env: ON, timeoutMs: 1 });
-    expect(timeoutOf(a.calls[0])).toBeGreaterThanOrEqual(17_000);
-    expect(timeoutOf(b.calls[0])).toBeGreaterThanOrEqual(17_000);
-  });
+  it.each([[1, 17_000], [17_000.5, 17_000], [600_001, 600_000]])(
+    "write RPCs clamp timeoutMs %s to %s, a valid engine integer", async (ms, want) => {
+      const a = stub(() => ({ claimed: WAKE })), b = stub(() => APPLIED);
+      await claimWakeupWithCutover(a.client, CLAIM, vi.fn(), { env: ON, timeoutMs: ms });
+      await transitionRunFencedWithCutover(b.client, TRANS, vi.fn(), { env: ON, timeoutMs: ms });
+      expect([timeoutOf(a.calls[0]), timeoutOf(b.calls[0])]).toEqual([want, want]);
+    });
 });
 
 describe("listStaleRunsWithCutover", () => {

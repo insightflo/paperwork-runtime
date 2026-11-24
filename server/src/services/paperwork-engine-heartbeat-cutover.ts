@@ -22,10 +22,18 @@ import {
 export const HEARTBEAT_CUTOVER_WRITE_TIMEOUT_MS = 17_000;
 export const HEARTBEAT_CUTOVER_READ_TIMEOUT_MS = 10_000;
 
-/** 쓰기 RPC 타임아웃 바닥 — 호출자가 17s 미만·NaN·±Infinity 를 줘도 바닥값을 강제한다. */
+/** 쓰기 RPC 타임아웃 — 유한 입력은 정수로 잘라 [17s, 600s] 로 클램프한다. 엔진
+ *  callOpts.timeoutMs 는 정수 1..600_000 필수 — 비유한 입력은 17s 기본값을 쓴다. */
 function cutoverWriteTimeoutMs(requested: number | undefined): number {
-  return Math.max(HEARTBEAT_CUTOVER_WRITE_TIMEOUT_MS,
-    typeof requested === "number" && Number.isFinite(requested) ? requested : 0);
+  return Math.min(600_000, Math.max(HEARTBEAT_CUTOVER_WRITE_TIMEOUT_MS,
+    Math.trunc(typeof requested === "number" && Number.isFinite(requested) ? requested : 0)));
+}
+
+/** 읽기 RPC 타임아웃 — 유한 입력은 정수로 잘라 [1, 600s] 로 클램프하고, 비유한 입력은 10s 를 쓴다. */
+function cutoverReadTimeoutMs(requested: number | undefined): number {
+  return typeof requested === "number" && Number.isFinite(requested)
+    ? Math.min(600_000, Math.max(1, Math.trunc(requested)))
+    : HEARTBEAT_CUTOVER_READ_TIMEOUT_MS;
 }
 
 export type HeartbeatCutoverSource = "rust" | "ts";
@@ -166,7 +174,7 @@ export async function listStaleRunsWithCutover(
   try {
     return {
       source: "rust",
-      value: await listStaleHeartbeatRuns(client, params, { timeoutMs: opts.timeoutMs ?? HEARTBEAT_CUTOVER_READ_TIMEOUT_MS }),
+      value: await listStaleHeartbeatRuns(client, params, { timeoutMs: cutoverReadTimeoutMs(opts.timeoutMs) }),
     };
   } catch (error) {
     logger.warn({ operation: "list_stale_runs", err: error },
