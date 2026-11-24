@@ -7,7 +7,7 @@ import type { ProviderQuotaResult, QuotaWindow } from "@paperclipai/shared";
 import { api } from "../api/client";
 import { costsApi } from "../api/costs";
 import { instanceSettingsApi } from "../api/instanceSettings";
-import { useCompany } from "../context/CompanyContext";
+import { CompanyContext } from "../context/CompanyContext";
 import { ProviderAuthSection } from "../components/ProviderAuthSection";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { LoginActionPlan, ProviderAuthStatus } from "../components/ProviderAuthPanel";
@@ -17,7 +17,6 @@ vi.mock("../api/instanceSettings", () => ({
 }));
 vi.mock("../api/client", () => ({ api: { get: vi.fn() } }));
 vi.mock("../api/costs", () => ({ costsApi: { quotaWindows: vi.fn() } }));
-vi.mock("../context/CompanyContext", () => ({ useCompany: vi.fn() }));
 vi.mock("../hooks/useAfterInitialPaint", () => ({ useAfterInitialPaint: () => true }));
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -25,7 +24,6 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const getAuth = vi.mocked(instanceSettingsApi.getProviderAuth);
 const getPlan = vi.mocked(instanceSettingsApi.getProviderLoginPlan);
 const quotaWindows = vi.mocked(costsApi.quotaWindows);
-const useCompanyMock = vi.mocked(useCompany);
 
 let root: ReturnType<typeof createRoot> | undefined;
 let host: HTMLDivElement | undefined;
@@ -39,7 +37,6 @@ afterEach(async () => {
 });
 
 beforeEach(() => {
-  useCompanyMock.mockReturnValue({ selectedCompanyId: "company-1" } as ReturnType<typeof useCompany>);
   quotaWindows.mockResolvedValue([]);
 });
 
@@ -61,19 +58,29 @@ const qw = (label: string, usedPercent: number): QuotaWindow => ({
   label, usedPercent, resetsAt: null, valueLabel: null,
 });
 
-async function mount() {
+async function mount(options: { withCompanyProvider?: boolean; companyId?: string | null } = {}) {
+  const { withCompanyProvider = true, companyId = "company-1" } = options;
   host = document.createElement("div");
   document.body.append(host);
   const r = createRoot(host);
   root = r;
   const client = new QueryClient();
+  const tree = (
+    <QueryClientProvider client={client}>
+      <TooltipProvider>
+        <ProviderAuthSection />
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
   await act(async () => {
     r.render(
-      <QueryClientProvider client={client}>
-        <TooltipProvider>
-          <ProviderAuthSection />
-        </TooltipProvider>
-      </QueryClientProvider>,
+      withCompanyProvider ? (
+        <CompanyContext.Provider value={{ selectedCompanyId: companyId } as never}>
+          {tree}
+        </CompanyContext.Provider>
+      ) : (
+        tree
+      ),
     );
   });
 }
@@ -187,9 +194,17 @@ describe("ProviderAuthSection", () => {
   });
 
   it("renders providers cleanly and skips the quota fetch when no company is selected", async () => {
-    useCompanyMock.mockReturnValue({ selectedCompanyId: null } as ReturnType<typeof useCompany>);
     getAuth.mockResolvedValue({ providers: [status({})] });
-    await mount();
+    await mount({ companyId: null });
+    await flush();
+    expect(host!.textContent).toContain("claude");
+    expect(host!.querySelector("[data-provider]")).toBeNull();
+    expect(quotaWindows).not.toHaveBeenCalled();
+  });
+
+  it("renders cleanly with no CompanyProvider (regression: optional context read)", async () => {
+    getAuth.mockResolvedValue({ providers: [status({})] });
+    await mount({ withCompanyProvider: false });
     await flush();
     expect(host!.textContent).toContain("claude");
     expect(host!.querySelector("[data-provider]")).toBeNull();

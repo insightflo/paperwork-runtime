@@ -114,7 +114,7 @@ export function ProviderUsageRingItem({ entry }: { entry: QuotaRingEntry }) {
             <div key={win.label} className="flex items-center justify-between gap-3 text-[11px]">
               <span className="text-muted-foreground">{win.label}</span>
               <span className="font-mono">
-                {left !== null ? `${left}% left · 남음` : win.valueLabel ?? "n/a"}
+                {left !== null ? `${left}% left · 남음 ${left}%` : win.valueLabel ?? "n/a"}
               </span>
             </div>
           );
@@ -134,7 +134,7 @@ export function ProviderUsageRings({ companyId }: { companyId: string | null }) 
     staleTime: 30_000,
   });
 
-  const sorted = useMemo(() => sortQuotaProvidersByDepletion(data ?? []), [data]);
+  const sorted = useMemo(() => sortQuotaProvidersByDepletion(Array.isArray(data) ? data : []), [data]);
   if (sorted.length === 0) return null;
 
   const visible = sorted.slice(0, 3);
