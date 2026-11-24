@@ -229,9 +229,11 @@ mod tests {
         ));
         assert!(SQL_UPSERT_OPEN_INCIDENT.contains("amount_observed = EXCLUDED.amount_observed"));
         assert!(SQL_UPSERT_OPEN_INCIDENT.contains("updated_at = now()"));
-        assert!(SQL_UPSERT_OPEN_INCIDENT.contains(
-            "WHERE EXISTS (SELECT 1 FROM budget_policies p WHERE p.id = $2 AND p.company_id = $1)"
-        ));
+        for frag in ["FROM budget_policies p", "p.id = $2", "p.company_id = $1", "p.scope_type = $3",
+            "p.scope_id = $4", "p.metric = $5", "p.window_kind = $6",
+            "FROM approvals a WHERE a.id = $12 AND a.company_id = $1"] {
+            assert!(SQL_UPSERT_OPEN_INCIDENT.contains(frag), "{frag}");
+        }
         assert!(SQL_UPSERT_OPEN_INCIDENT.contains(
             "WHERE budget_incidents.company_id = EXCLUDED.company_id AND budget_incidents.status = 'open'"
         ));
@@ -249,15 +251,16 @@ mod tests {
         let url = std::env::var("PAPERWORK_TEST_DATABASE_URL").unwrap();
         let mut client = postgres::Client::connect(&url, postgres::NoTls).unwrap();
         let mut tx = client.transaction().unwrap();
-        let (c1, c2) = (Uuid::new_v4(), Uuid::new_v4());
-        let (a1, a2, i2, p1, p2) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
-        tx.batch_execute(&format!(
-            "INSERT INTO companies (id, name, issue_prefix) VALUES ('{c1}','c1','T1'),('{c2}','c2','T2');\
-             INSERT INTO agents (id, company_id, name) VALUES ('{a1}','{c1}','a1'),('{a2}','{c2}','a2');\
-             INSERT INTO issues (id, company_id, title) VALUES ('{i2}','{c2}','i2');\
-             INSERT INTO budget_policies (id, company_id, scope_type, scope_id, window_kind) VALUES \
-                 ('{p1}','{c1}','company','{c1}','lifetime'),('{p2}','{c2}','company','{c2}','lifetime')"
-        )).unwrap();
+        let (c1, c2, a1, a2, i2, p1, p2, ap2) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        tx.execute("INSERT INTO companies (id, name, issue_prefix) VALUES ($1,$2,$3)", &[&c1, &"c1", &"T1"]).unwrap();
+        tx.execute("INSERT INTO companies (id, name, issue_prefix) VALUES ($1,$2,$3)", &[&c2, &"c2", &"T2"]).unwrap();
+        tx.execute("INSERT INTO agents (id, company_id, name) VALUES ($1,$2,$3)", &[&a1, &c1, &"a1"]).unwrap();
+        tx.execute("INSERT INTO agents (id, company_id, name) VALUES ($1,$2,$3)", &[&a2, &c2, &"a2"]).unwrap();
+        tx.execute("INSERT INTO issues (id, company_id, title) VALUES ($1,$2,$3)", &[&i2, &c2, &"i2"]).unwrap();
+        tx.execute("INSERT INTO approvals (id, company_id, type, payload) VALUES ($1,$2,$3,$4)", &[&ap2, &c2, &"budget_override", &serde_json::json!({})]).unwrap();
+        let pol = "INSERT INTO budget_policies (id, company_id, scope_type, scope_id, metric, window_kind) VALUES ($1,$2,$3,$4,$5,$6)";
+        tx.execute(pol, &[&p1, &c1, &"company", &c1, &"billed_cents", &"lifetime"]).unwrap();
+        tx.execute(pol, &[&p2, &c2, &"company", &c2, &"billed_cents", &"lifetime"]).unwrap();
         let now = Utc::now();
         let event = |agent: Uuid, issue: Option<Uuid>| RecordCostEventInput {
             company_id: c1, agent_id: agent, issue_id: issue, project_id: None, goal_id: None,
@@ -278,11 +281,18 @@ mod tests {
         }
         assert!(record_cost_event(&mut tx, &event(a1, None)).is_ok());
         assert!(matches!(upsert_open_incident_fenced(&mut tx, &incident(p2)), Err(CrossCompanyOrClosedIncident)));
+        for bad in [
+            UpsertIncidentInput { scope_id: c2, ..incident(p1) },
+            UpsertIncidentInput { metric: "other".into(), ..incident(p1) },
+            UpsertIncidentInput { approval_id: Some(ap2), ..incident(p1) },
+        ] {
+            assert!(matches!(upsert_open_incident_fenced(&mut tx, &bad), Err(CrossCompanyOrClosedIncident)));
+        }
         let row = upsert_open_incident_fenced(&mut tx, &incident(p1)).unwrap();
         assert!(upsert_open_incident_fenced(&mut tx, &incident(p1)).is_ok());
         assert!(resolve_incident_fenced(&mut tx, row.id, c1, Resolved).unwrap().is_some());
         assert!(matches!(upsert_open_incident_fenced(&mut tx, &incident(p1)), Err(CrossCompanyOrClosedIncident)));
-        let kept = tx.query_one("SELECT status, amount_observed FROM budget_incidents WHERE id = $1", &[&row.id]).unwrap();
+        let kept = tx.query_one("SELECT status, amount_observed FROM budget_incidents WHERE id = $1 AND company_id = $2", &[&row.id, &c1]).unwrap();
         assert_eq!((kept.get::<_, String>(0).as_str(), kept.get::<_, i32>(1)), ("resolved", 150));
     }
 }
