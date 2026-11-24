@@ -247,3 +247,4 @@ describe("ci-scope.sh trigger matrix", () => {
     expect(written).toContain("reason=ci-full-label");
   });
 });
+// rollout test 1
