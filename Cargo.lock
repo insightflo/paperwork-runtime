@@ -931,6 +931,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "paperwork-engine-issue"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "paperwork-engine-secret"
 version = "0.1.0"
 dependencies = [

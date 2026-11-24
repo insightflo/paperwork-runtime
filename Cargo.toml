@@ -8,6 +8,7 @@ members = [
   "crates/engine-approval",
   "crates/engine-budget",
   "crates/engine-heartbeat",
+  "crates/engine-issue",
   "crates/engine-secret",
   "crates/engine-workflow",
   "crates/fs-scan",
