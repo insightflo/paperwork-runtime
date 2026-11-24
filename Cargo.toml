@@ -9,6 +9,7 @@ members = [
   "crates/engine-budget",
   "crates/engine-heartbeat",
   "crates/engine-secret",
+  "crates/engine-tool",
   "crates/engine-workflow",
   "crates/fs-scan",
   "crates/heartbeat-core",
