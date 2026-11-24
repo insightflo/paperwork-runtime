@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type SpawnOptionsWithoutStdio } from "node:child_process";
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -28,15 +28,11 @@ const STALE = {
 function stub(results: Record<string, unknown>) {
   const calls: { method: string; params: unknown }[] = [];
   const client = {
-    call: async (method: string, params?: unknown) => {
-      calls.push({ method, params });
-      return results[method];
-    },
+    call: async (method: string, params?: unknown) => (calls.push({ method, params }), results[method]),
   } as unknown as PaperworkEngineClient;
   return { client, calls };
 }
-const errCall = (code: number, message = "m") =>
-  Promise.reject(new PaperworkEngineError("rpc_error", message, code));
+const errCall = (code: number, message = "m") => Promise.reject(new PaperworkEngineError("rpc_error", message, code));
 
 describe("heartbeat.* typed RPC methods", () => {
   it("validateHeartbeatTransition: legal/illegal results and snake_case params", async () => {
@@ -89,18 +85,18 @@ describe("heartbeat.* typed RPC methods", () => {
     await expect(transitionHeartbeatRunFenced(client, {
       run_id: NIL, company_id: NIL, expected_statuses: ["running"], next_status: "succeeded",
     })).resolves.toEqual(applied);
-    const params = calls[0].params as Record<string, unknown>;
-    expect(calls[0].method).toBe("heartbeat.transition_run_fenced");
-    expect(params).toEqual({ run_id: NIL, company_id: NIL, expected_statuses: ["running"], next_status: "succeeded" });
-    expect("error" in params).toBe(false);
-    expect("error_code" in params).toBe(false);
+    expect(calls[0]).toEqual({
+      method: "heartbeat.transition_run_fenced",
+      params: { run_id: NIL, company_id: NIL, expected_statuses: ["running"], next_status: "succeeded" },
+    });
     const withErr = stub({ "heartbeat.transition_run_fenced": { applied: false } });
     await expect(transitionHeartbeatRunFenced(withErr.client, {
       run_id: NIL, company_id: NIL, expected_statuses: ["running"], next_status: "failed",
       error: "boom", error_code: "E1",
     })).resolves.toEqual({ applied: false });
     expect(withErr.calls[0].params).toMatchObject({ error: "boom", error_code: "E1", next_status: "failed" });
-    for (const bad of [null, {}, { applied: "yes" }, { applied: true, run_id: NIL, status: "bogus" }]) {
+    for (const bad of [null, {}, { applied: "yes" }, { applied: true, run_id: NIL, status: "bogus" },
+      { applied: false, run_id: NIL, status: "failed" }, { applied: false, extra: 1 }]) {
       const c = stub({ "heartbeat.transition_run_fenced": bad });
       await expect(transitionHeartbeatRunFenced(c.client, {
         run_id: NIL, company_id: NIL, expected_statuses: ["running"], next_status: "failed",
@@ -112,6 +108,7 @@ describe("heartbeat.* typed RPC methods", () => {
     await expect(listStaleHeartbeatRuns(client, {
       company_id: NIL, stale_before: "2030-01-01T00:00:00Z", limit: 10,
     })).resolves.toEqual([STALE]);
+    await expect(listStaleHeartbeatRuns(client, { company_id: NIL, stale_before: "2024-02-29T00:00:00Z", limit: 10 })).resolves.toEqual([STALE]);
     expect(calls[0]).toEqual({
       method: "heartbeat.list_stale_runs",
       params: { company_id: NIL, stale_before: "2030-01-01T00:00:00Z", limit: 10 },
@@ -130,14 +127,15 @@ describe("heartbeat.* typed RPC methods", () => {
     for (const claimed of [
       { ...WAKE, id: "nope" }, { ...WAKE, agent_id: 7 },
       { ...WAKE, requested_at: "2026-01-01" }, { ...WAKE, requested_at: "not-a-date" },
-      { ...WAKE, claimed_at: "yesterday" },
+      { ...WAKE, claimed_at: "yesterday" }, { ...WAKE, requested_at: "2026-02-30T00:00:00Z" },
     ]) {
       const c = stub({ "heartbeat.claim_wakeup": { claimed } });
       await expect(claimHeartbeatWakeup(c.client, { company_id: NIL, agent_id: NIL }))
         .rejects.toMatchObject({ code: "protocol_error" });
     }
     const applied = { applied: true, run_id: NIL, status: "succeeded", started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:00:01Z" };
-    for (const bad of [{ ...applied, run_id: "zzz" }, { ...applied, finished_at: "2026-13-01T00:00:00Z" }, { ...applied, started_at: 0 }]) {
+    for (const bad of [{ ...applied, run_id: "zzz" }, { ...applied, finished_at: "2026-13-01T00:00:00Z" }, { ...applied, started_at: 0 },
+      { ...applied, finished_at: "2026-02-30T00:00:00Z" }, { ...applied, started_at: "2025-02-29T00:00:00Z" }]) {
       const c = stub({ "heartbeat.transition_run_fenced": bad });
       await expect(transitionHeartbeatRunFenced(c.client, {
         run_id: NIL, company_id: NIL, expected_statuses: ["running"], next_status: "succeeded",
@@ -158,6 +156,7 @@ describe("heartbeat.* typed RPC methods", () => {
     await expect(fenced({ ...base, expected_statuses: ["succeeded"], next_status: "failed" })).rejects.toThrow(RangeError);
     await expect(fenced({ ...base, expected_statuses: ["queued"], next_status: "timed_out" })).rejects.toThrow(RangeError);
     await expect(fenced({ ...base, next_status: "queued" })).rejects.toThrow(RangeError);
+    await expect(fenced({ ...base, expected_statuses: Array(1) })).rejects.toThrow(RangeError); // sparse hole -> undefined
     expect(s.calls).toHaveLength(0);
     const ls = stub({ "heartbeat.list_stale_runs": { runs: [] } });
     for (const stale_before of [new Date(NaN), "not-a-date", "2030-01-01", "2030-01-01T00:00:00", 42]) {
@@ -174,12 +173,9 @@ describe("heartbeat.* typed RPC methods", () => {
 
 describe("classifyHeartbeatRpcError", () => {
   const cases: [number, string, string, boolean][] = [
-    [-32001, "timeout", "not_committed", true],
-    [-32002, "unconfigured", "not_committed", false],
-    [-32003, "busy", "not_committed", true],
-    [-32004, "db_error", "not_committed", false],
-    [-32005, "commit_indeterminate", "indeterminate", false],
-    [-32602, "invalid_params", "not_committed", false],
+    [-32001, "timeout", "not_committed", true], [-32002, "unconfigured", "not_committed", false],
+    [-32003, "busy", "not_committed", true], [-32004, "db_error", "not_committed", false],
+    [-32005, "commit_indeterminate", "indeterminate", false], [-32602, "invalid_params", "not_committed", false],
   ];
   it("maps every heartbeat RPC code to its commit contract", async () => {
     for (const [rpcCode, kind, outcome, retryable] of cases) {
@@ -198,16 +194,19 @@ describe("classifyHeartbeatRpcError", () => {
     for (const e of [new Error("x"), "x", null, undefined, 42, { rpcCode: -32001 }]) {
       expect(classifyHeartbeatRpcError(e)).toEqual(unknown);
     }
+    Object.assign(classifyHeartbeatRpcError(new PaperworkEngineError("rpc_error", "m", -32001)), { kind: "bogus" });
+    expect(classifyHeartbeatRpcError(new PaperworkEngineError("rpc_error", "m", -32001))).toEqual({ kind: "timeout", outcome: "not_committed", retryable: true });
   });
 });
+
+// A directory can carry the +x bit: require a regular file AND executable access.
+const usable = (b: string | null): b is string => {
+  try { return b !== null && statSync(b).isFile() && (accessSync(b, constants.X_OK), true); } catch { return false; }
+};
 
 describe("real paperwork-engine binary (smoke)", () => {
   let bin: string | null = null;
   beforeAll(() => {
-    const usable = (b: string | null): b is string => {
-      if (b === null) return false;
-      try { accessSync(b, constants.X_OK); return true; } catch { return false; }
-    };
     bin = resolveDefaultPaperworkEngineBin();
     if (!usable(bin)) bin = null;
     // An explicit PAPERWORK_ENGINE_BIN is authoritative: when it resolves to a
@@ -217,6 +216,9 @@ describe("real paperwork-engine binary (smoke)", () => {
       const rebuilt = resolveDefaultPaperworkEngineBin();
       bin = usable(rebuilt) ? rebuilt : null;
     }
+  });
+  it("usable() requires a regular +x file (dirs can carry +x)", () => {
+    expect(usable(REPO_ROOT)).toBe(false); expect(usable(process.execPath)).toBe(true);
   });
   it("validate_transition legal/illegal + claim_wakeup unconfigured -32002", async (ctx) => {
     if (!bin) return ctx.skip();

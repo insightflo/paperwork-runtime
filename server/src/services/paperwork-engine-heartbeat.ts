@@ -56,8 +56,11 @@ const isStatus = (v: unknown): v is HeartbeatRunStatus =>
   typeof v === "string" && RUN_STATUS_SET.has(v);
 const isStrOrNull = (v: unknown): v is string | null => v === null || typeof v === "string";
 const isUuid = (v: unknown): v is string => typeof v === "string" && UUID_RE.test(v);
-const isTs = (v: unknown): v is string =>
-  typeof v === "string" && RFC3339_RE.test(v) && !Number.isNaN(Date.parse(v));
+const isTs = (v: unknown): v is string => {
+  if (typeof v !== "string" || !RFC3339_RE.test(v) || Number.isNaN(Date.parse(v))) return false;
+  const [y, mo, d] = v.slice(0, 10).split("-").map(Number);
+  return new Date(Date.UTC(y, mo - 1, d)).toISOString().slice(0, 10) === v.slice(0, 10);
+};
 const isTsOrNull = (v: unknown): v is string | null => v === null || isTs(v);
 
 // Mirrors engine-heartbeat RunStatus::is_legal_transition (queued ->
@@ -82,7 +85,9 @@ function checkUuid(v: unknown, name: string): string {
 }
 function checkStatuses(v: unknown, name: string): HeartbeatRunStatus[] {
   if (!Array.isArray(v) || v.length === 0) throw new RangeError(`${name} must be a non-empty status array`);
-  return v.map((s, i) => checkStatus(s, `${name}[${i}]`));
+  const out: HeartbeatRunStatus[] = [];
+  for (let i = 0; i < v.length; i++) out.push(checkStatus(v[i], `${name}[${i}]`));
+  return out;
 }
 function checkOptStr(v: unknown, name: string): string | undefined {
   if (v === undefined) return undefined;
@@ -124,9 +129,9 @@ const UNKNOWN_CLASSIFICATION: HeartbeatRpcErrorClassification = {
 export function classifyHeartbeatRpcError(error: unknown): HeartbeatRpcErrorClassification {
   if (error instanceof PaperworkEngineError && error.code === "rpc_error"
     && typeof error.rpcCode === "number" && Number.isInteger(error.rpcCode)) {
-    return RPC_ERROR_TABLE[error.rpcCode] ?? UNKNOWN_CLASSIFICATION;
+    return { ...(RPC_ERROR_TABLE[error.rpcCode] ?? UNKNOWN_CLASSIFICATION) };
   }
-  return UNKNOWN_CLASSIFICATION;
+  return { ...UNKNOWN_CLASSIFICATION };
 }
 
 // --- response validators -----------------------------------------------------
@@ -159,6 +164,7 @@ function toValidateResult(v: unknown): HeartbeatValidateTransitionResult {
 }
 function toTransitionResult(v: unknown): HeartbeatTransitionRunFencedResult {
   if (!isRec(v) || typeof v.applied !== "boolean") throw proto("bad heartbeat.transition_run_fenced result shape");
+  if (!v.applied && Object.keys(v).length !== 1) throw proto("bad heartbeat.transition_run_fenced result shape");
   if (!v.applied) return { applied: false };
   if (!isUuid(v.run_id) || !isStatus(v.status)
     || !isTsOrNull(v.started_at) || !isTsOrNull(v.finished_at)) {
