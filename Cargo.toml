@@ -6,6 +6,7 @@ members = [
   "crates/cli-runtime",
   "crates/db-backup",
   "crates/engine-heartbeat",
+  "crates/engine-workflow",
   "crates/fs-scan",
   "crates/heartbeat-core",
   "crates/kb-core",
