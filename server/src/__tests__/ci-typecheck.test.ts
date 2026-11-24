@@ -146,6 +146,7 @@ describe("planTypecheckTasks fixtures", () => {
       b: { scripts: { typecheck: "tsc --noEmit" }, deps: { dependencies: { a: "workspace:*" } } },
     });
     expect(() => planTypecheckTasks(dir)).toThrow(/cycle/);
+    expect(() => planTypecheckTasks(mkws({ a: { deps: { dependencies: { c: "link:." } } }, c: {} }))).toThrow(/cycle/);
   });
   it("rejects cycles through file:../ aliases during planning, before any prebuild", () => {
     const dir = mkws({

@@ -38,9 +38,9 @@ function depEdges(manifest, pkgDir, byName, byDir) {
   const edges = new Set();
   for (const key of DEP_KEYS) {
     for (const [dep, spec] of Object.entries(manifest[key] || {})) {
-      // 명시 specifier(file:/link:/경로 workspace:/별칭 npm:|workspace:)를 먼저 해석하고
-      // 못 찾을 때만 dep 키 이름으로 폴백한다 — 키가 다른 워크스페이스 이름과 충돌해도
-      // (예: "pkg-c": "file:../b") 명시 대상(b)이 이긴다.
+      // 명시 specifier(file:/link:/경로 workspace:/별칭 npm:|workspace:)는 명시 대상만 쓰고
+      // dep 키로 폴백하지 않는다 — 자기 참조("c": "link:.")도 self-edge 로 남아 사이클로 거부된다.
+      // 비명시 spec 과 `workspace:*` 같은 범위-only workspace: 만 키 이름이 패키지 이름이다.
       let target;
       if (typeof spec === "string" && /^(npm|workspace|file|link):/.test(spec)) {
         const rest = spec.slice(spec.indexOf(":") + 1);
@@ -49,10 +49,11 @@ function depEdges(manifest, pkgDir, byName, byDir) {
         } else {
           const name = aliasName(rest);
           if (byName.has(name)) target = name;
+          else if (spec.startsWith("workspace:") && !rest.includes("@") && byName.has(dep)) target = dep;
         }
-        if (target === manifest.name) target = undefined;
+      } else if (byName.has(dep)) {
+        target = dep;
       }
-      target ??= byName.has(dep) ? dep : undefined;
       if (target !== undefined) edges.add(target);
     }
   }
