@@ -38,16 +38,22 @@ function depEdges(manifest, pkgDir, byName, byDir) {
   const edges = new Set();
   for (const key of DEP_KEYS) {
     for (const [dep, spec] of Object.entries(manifest[key] || {})) {
-      if (byName.has(dep)) { edges.add(dep); continue; }
-      if (typeof spec !== "string" || !/^(npm|workspace|file|link):/.test(spec)) continue;
-      const rest = spec.slice(spec.indexOf(":") + 1);
-      if (/^(file|link):/.test(spec) || rest.startsWith(".") || path.isAbsolute(rest)) {
-        const target = byDir.get(path.resolve(pkgDir, rest));
-        if (target && target !== manifest.name) edges.add(target);
-      } else {
-        const name = aliasName(rest);
-        if (byName.has(name) && name !== manifest.name) edges.add(name);
+      // 명시 specifier(file:/link:/경로 workspace:/별칭 npm:|workspace:)를 먼저 해석하고
+      // 못 찾을 때만 dep 키 이름으로 폴백한다 — 키가 다른 워크스페이스 이름과 충돌해도
+      // (예: "pkg-c": "file:../b") 명시 대상(b)이 이긴다.
+      let target;
+      if (typeof spec === "string" && /^(npm|workspace|file|link):/.test(spec)) {
+        const rest = spec.slice(spec.indexOf(":") + 1);
+        if (/^(file|link):/.test(spec) || rest.startsWith(".") || path.isAbsolute(rest)) {
+          target = byDir.get(path.resolve(pkgDir, rest));
+        } else {
+          const name = aliasName(rest);
+          if (byName.has(name)) target = name;
+        }
+        if (target === manifest.name) target = undefined;
       }
+      target ??= byName.has(dep) ? dep : undefined;
+      if (target !== undefined) edges.add(target);
     }
   }
   return edges;

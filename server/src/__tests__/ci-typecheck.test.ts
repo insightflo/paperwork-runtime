@@ -162,6 +162,12 @@ describe("planTypecheckTasks fixtures", () => {
     mkdirSync(bd, { recursive: true });
     writeFileSync(join(bd, "package.json"), JSON.stringify({ name: "b", version: "0.0.0", dependencies: { "alias-a": "file:../.." } }));
     expect(() => planTypecheckTasks(bare)).toThrow(/cycle/);
+    // dep 키가 다른 워크스페이스 이름(pkg-c)과 충돌해도 명시 file: 대상(b)이 우선 -> a->b->a 사이클.
+    const collision = mkws({
+      a: { scripts: { typecheck: "tsc --noEmit" }, deps: { dependencies: { "pkg-c": "file:../b" } } },
+      b: { deps: { dependencies: { a: "workspace:*" } } }, "pkg-c": {},
+    });
+    expect(() => planTypecheckTasks(collision)).toThrow(/cycle/);
   });
 });
 
