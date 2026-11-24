@@ -2,12 +2,13 @@
 //   heartbeatService 클로저 값과 인스턴스 스코프 스캔 커서는 deps 로 주입받는다.
 import { and, asc, eq, gt, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, heartbeatRuns, issues, workflowTransitionEvents } from "@paperclipai/db";
+import { type agents, heartbeatRuns, issues, workflowTransitionEvents } from "@paperclipai/db";
 import type { agentWakeupRequests } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
 import { runningProcesses } from "../adapters/index.js";
 import type { HeartbeatRetryEnqueueDeps } from "./heartbeat-retry-enqueue.js";
 import type { agentWikiService } from "./agent-wiki.js";
+import type { PaperworkEngineClient } from "./paperwork-engine-client.js";
 import { resolveAdapterFallbackConfig, resolveAdapterFallbackThinking } from "./heartbeat-adapter-fallback.js";
 import { parseHeartbeatPolicy } from "./heartbeat-concurrency-limit.js";
 import { trackHeartbeatExecution } from "./heartbeat-execution-tracker.js";
@@ -28,9 +29,9 @@ import { publishLiveEvent } from "./live-events.js";
 import { operatorApprovalWaitService } from "./operator-approval-wait.js";
 import { SHUTDOWN_INTERRUPTED_ERROR_CODE } from "./shutdown-flush.js";
 import { shouldRetryProcessLostRun, sweepOrphanedLocks } from "./heartbeat-orphan-lock-sweeper.js";
+import { discoverActiveRunsForReaper } from "./heartbeat-orphan-reaper-cutover.js";
 
 type HeartbeatRunRow = typeof heartbeatRuns.$inferSelect;
-type AgentRow = typeof agents.$inferSelect;
 type TerminalContinuationCursor = { createdAt: string; id: string };
 
 /**
@@ -85,7 +86,7 @@ export type HeartbeatOrphanReaperDeps = {
     outcome: "succeeded" | "failed" | "cancelled" | "timed_out",
   ) => Promise<void>;
   readonly countRunningRunsForAgent: (agentId: string) => Promise<number>;
-  readonly getAgent: (agentId: string) => Promise<AgentRow | null>;
+  readonly getAgent: (agentId: string) => Promise<typeof agents.$inferSelect | null>;
   readonly getRun: (runId: string) => Promise<HeartbeatRunRow | null>;
   readonly demoteAgentStuckDetached: (run: HeartbeatRunRow, now: Date) => Promise<void>;
   readonly startNextQueuedRunForAgent: (agentId: string) => Promise<unknown>;
@@ -103,6 +104,8 @@ export type HeartbeatOrphanReaperDeps = {
   readonly terminalContinuationInflight: ReadonlySet<string>;
   readonly getTerminalContinuationScanCursor: () => TerminalContinuationCursor | null;
   readonly setTerminalContinuationScanCursor: (cursor: TerminalContinuationCursor | null) => void;
+  readonly engineClient?: PaperworkEngineClient | null;
+  readonly cutoverEnv?: { PAPERWORK_ENGINE_HEARTBEAT_CUTOVER?: string };
   readonly publishHeartbeatRunStatus: typeof import("./heartbeat-agent-cancellation.js").publishHeartbeatRunStatus;
   readonly setHeartbeatRunStatus: typeof import("./heartbeat-queue-lifecycle.js").setHeartbeatRunStatus;
   readonly enqueueProcessLossRetry: typeof import("./heartbeat-retry-enqueue.js").enqueueProcessLossRetry;
@@ -122,16 +125,13 @@ export async function reapOrphanedRuns(deps: HeartbeatOrphanReaperDeps, opts?: {
   const queuedStaleThresholdMs = opts?.queuedStaleThresholdMs ?? 0;
   const now = new Date();
 
-  // Find all runs stuck in "running" state. Queued runs are handled below only
-  // when they have exceeded an explicit queued staleness threshold.
-  const activeRuns = await deps.db
-    .select({
-      run: heartbeatRuns,
-      adapterType: agents.adapterType,
-    })
-    .from(heartbeatRuns)
-    .innerJoin(agents, eq(heartbeatRuns.agentId, agents.id))
-    .where(eq(heartbeatRuns.status, "running"));
+  // Find all runs stuck in "running" state (cutover helper: flag OFF면 기존 TS 스캔 동일).
+  // Queued runs are handled below only when they exceed an explicit queued staleness threshold.
+  const activeRuns = await discoverActiveRunsForReaper({
+    db: deps.db, now, staleThresholdMs, activeExecutionTimeoutMs,
+    inMemoryRunIds: [...runningProcesses.keys(), ...deps.activeRunExecutions],
+    engineClient: deps.engineClient, env: deps.cutoverEnv,
+  });
 
   const reaped: string[] = [];
 
