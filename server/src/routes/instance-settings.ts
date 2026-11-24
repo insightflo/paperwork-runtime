@@ -22,6 +22,7 @@ import {
   checkProviderRuntimeBlocklist,
   ProviderRuntimeEngineError,
 } from "../services/provider-runtime-engine-client.js";
+import { routeQuotaWithEngine } from "../services/quota-router-engine-client.js";
 import { getActorInfo } from "./authz.js";
 
 function assertCanManageInstanceSettings(req: Request) {
@@ -223,6 +224,21 @@ export function instanceSettingsRoutes(db: Db) {
       }
       res.status(503).json({ error: "Provider runtime blocklist check unavailable" });
     }
+  });
+
+  router.post("/instance/settings/quota-router/route", async (req, res) => {
+    assertCanManageInstanceSettings(req);
+    res.setHeader("Cache-Control", "no-store");
+    const outcome = await routeQuotaWithEngine(req.body);
+    if (outcome.ok) {
+      res.json({ advisory: true, ...outcome.result });
+      return;
+    }
+    if (outcome.kind === "invalid_input") {
+      res.status(400).json({ error: "Invalid quota route request" });
+      return;
+    }
+    res.status(503).json({ error: "Quota router unavailable" });
   });
 
   router.get("/instance/settings/experimental", async (req, res) => {
