@@ -910,6 +910,7 @@ name = "paperwork-engine-heartbeat"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "paperclip-process-supervisor",
  "postgres",
  "serde",
  "serde_json",
