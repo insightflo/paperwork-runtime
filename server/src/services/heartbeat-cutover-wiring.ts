@@ -1,243 +1,238 @@
-// [파일 목적] Wave 5c — paperwork-engine heartbeat 쓰기(claim_wakeup / transition_run_fenced)
-//   실트래픽 컷오버 배선 모듈. PAPERWORK_ENGINE_HEARTBEAT_CUTOVER=1(기본 OFF)일 때만
-//   Rust 엔진을 시도하고, 구조화 텔레메트리(성공·폴백·사유별 카운터), 엄격한 입력 검증,
-//   트랜잭션 경계 보존, indeterminate 무폴백(fail-closed) 전파, 그리고 heartbeat.ts /
-//   heartbeat-queue-lifecycle.ts 에 2줄로 꽂을 수 있는 타입 안전 훅 어댑터를 제공한다.
-// [외부 연결] paperwork-engine-heartbeat-cutover.ts, paperwork-engine-runtime.ts, logger.
+// [파일 목적] Wave 5c — heartbeat 쓰기(claim_wakeup / transition_run_fenced) 컷오버
+//   배선 + 구조화 텔레메트리 계층. PAPERWORK_ENGINE_HEARTBEAT_CUTOVER=1(기본 OFF)일 때만
+//   엔진 클라이언트를 해석해 컷오버 어댑터(paperwork-engine-heartbeat-cutover)에 위임하고,
+//   그 외에는 TS 작성자를 그대로 호출한다. indeterminate 는 절대 TS 폴백 없이 전파하고,
+//   fence mismatch(applied:false)는 폴백 없이 그대로 반환한다.
+// [외부 연결] paperwork-engine-heartbeat-cutover(어댑터), paperwork-engine-runtime(공유
+//   클라이언트), logger. 호출부(heartbeat.ts/heartbeat-queue-lifecycle.ts 후속 PR)는
+//   createHeartbeatCutoverHooks 로 env/getClient/timeoutMs/onEvent 를 한 번만 바인드한다.
 import { logger } from "../middleware/logger.js";
 import type { PaperworkEngineClient } from "./paperwork-engine-client.js";
 import {
-  HEARTBEAT_RUN_STATUSES, type HeartbeatClaimWakeupParams, type HeartbeatClaimedWakeup,
-  type HeartbeatRunStatus, type HeartbeatTransitionRunFencedResult,
-} from "./paperwork-engine-heartbeat.js";
-import {
-  HEARTBEAT_CUTOVER_WRITE_TIMEOUT_MS, HeartbeatCutoverIndeterminateError,
-  claimWakeupWithCutover, hasExpectedRunIdentityFence, hasExtraPatchFields,
-  isHeartbeatEngineCutoverEnabled, transitionRunFencedWithCutover,
-  type HeartbeatCutoverCallOpts, type HeartbeatCutoverOperation,
-  type HeartbeatCutoverResult, type HeartbeatTransitionRunFencedCutoverParams,
+  claimWakeupWithCutover,
+  HeartbeatCutoverIndeterminateError,
+  isHeartbeatEngineCutoverEnabled,
+  transitionRunFencedWithCutover,
+  type HeartbeatCutoverCallOpts,
+  type HeartbeatCutoverOperation,
+  type HeartbeatCutoverResult,
+  type HeartbeatTransitionRunFencedCutoverParams,
 } from "./paperwork-engine-heartbeat-cutover.js";
+import type {
+  HeartbeatClaimWakeupParams,
+  HeartbeatClaimedWakeup,
+  HeartbeatTransitionRunFencedResult,
+} from "./paperwork-engine-heartbeat.js";
 import { getSharedPaperworkEngineClient } from "./paperwork-engine-runtime.js";
 
-export const HEARTBEAT_CUTOVER_MAX_WRITE_TIMEOUT_MS = 600_000;
-
-export type HeartbeatCutoverFallbackReason =
-  | "flag_off" | "in_transaction" | "client_unavailable"
-  | "client_init_error" | "ineligible_input" | "rpc_not_committed";
-
-export type HeartbeatCutoverOutcomeReason =
-  | "rust_ok" | HeartbeatCutoverFallbackReason | "indeterminate";
-
-export interface HeartbeatCutoverOperationMetrics {
-  rustHits: number; tsFallbacks: number; indeterminateErrors: number;
-}
-
-export interface HeartbeatCutoverTelemetrySnapshot {
-  rustHits: number; tsFallbacks: number; indeterminateErrors: number;
-  byOperation: Record<HeartbeatCutoverOperation, HeartbeatCutoverOperationMetrics>;
-  byReason: Record<HeartbeatCutoverOutcomeReason, number>;
-}
-export interface HeartbeatCutoverWiringOpts extends HeartbeatCutoverCallOpts {
-  /** True when caller already holds a PG transaction; routes to TS to preserve atomicity. */
-  inTransaction?: boolean;
-}
-export interface HeartbeatCutoverWiringDeps {
-  getClient?: () => PaperworkEngineClient | null;
-  defaultEnv?: { PAPERWORK_ENGINE_HEARTBEAT_CUTOVER?: string };
-}
-
-const STATUS_SET: ReadonlySet<string> = new Set(HEARTBEAT_RUN_STATUSES);
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const LEGAL_NEXT: Readonly<Record<HeartbeatRunStatus, ReadonlySet<HeartbeatRunStatus>>> = {
-  queued: new Set(["running", "cancelled", "failed"]),
-  running: new Set(["succeeded", "failed", "cancelled", "timed_out"]),
-  succeeded: new Set(), failed: new Set(), cancelled: new Set(), timed_out: new Set(),
+export { HeartbeatCutoverIndeterminateError };
+export type {
+  HeartbeatCutoverOperation,
+  HeartbeatCutoverResult,
+  HeartbeatTransitionRunFencedCutoverParams,
 };
 
-const isUuid = (v: string): boolean => UUID_RE.test(v);
-const isStatus = (v: unknown): v is HeartbeatRunStatus => typeof v === "string" && STATUS_SET.has(v);
+export type HeartbeatCutoverOutcome =
+  | "rust_success" | "ts_bypass" | "ts_fallback" | "indeterminate_error" | "ts_error";
 
-function assertNonEmptyId(value: unknown, field: string): void {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new RangeError(`${field} must be a non-empty string`);
-  }
+/** 한 번의 컷오버 호출이 끝날 때 발행되는 구조화 이벤트 — outcome별 카운터와 1:1 대응. */
+export interface HeartbeatCutoverTelemetryEvent {
+  operation: HeartbeatCutoverOperation;
+  outcome: HeartbeatCutoverOutcome;
+  source: "rust" | "ts" | null;
+  durationMs: number;
+  fenceMismatch: boolean;
+  error?: unknown;
 }
 
-function assertBoundedTimeout(timeoutMs: number | undefined): void {
-  if (timeoutMs === undefined) return;
-  if (typeof timeoutMs !== "number" || !Number.isInteger(timeoutMs)
-    || timeoutMs < HEARTBEAT_CUTOVER_WRITE_TIMEOUT_MS
-    || timeoutMs > HEARTBEAT_CUTOVER_MAX_WRITE_TIMEOUT_MS) {
-    throw new RangeError(
-      `timeoutMs must be an integer in [${HEARTBEAT_CUTOVER_WRITE_TIMEOUT_MS}, ${HEARTBEAT_CUTOVER_MAX_WRITE_TIMEOUT_MS}]`,
-    );
-  }
+export interface HeartbeatCutoverOperationMetrics {
+  rustSuccess: number;
+  tsBypass: number;
+  tsFallback: number;
+  indeterminateError: number;
+  tsError: number;
+  fenceMismatch: number;
+  totalCalls: number;
+  totalDurationMs: number;
 }
 
-function validateClaimParams(params: HeartbeatClaimWakeupParams, opts: HeartbeatCutoverWiringOpts): void {
-  assertNonEmptyId(params.company_id, "company_id");
-  assertNonEmptyId(params.agent_id, "agent_id");
-  assertBoundedTimeout(opts.timeoutMs);
+export type HeartbeatCutoverMetricsSnapshot = Readonly<
+  Record<HeartbeatCutoverOperation, Readonly<HeartbeatCutoverOperationMetrics>>>;
+
+export interface HeartbeatCutoverWiringOpts extends HeartbeatCutoverCallOpts {
+  getClient?: () => PaperworkEngineClient | null;
+  onEvent?: (event: HeartbeatCutoverTelemetryEvent) => void;
 }
 
-function validateTransitionParams(
-  params: HeartbeatTransitionRunFencedCutoverParams,
-  opts: HeartbeatCutoverWiringOpts,
-): void {
-  assertNonEmptyId(params.run_id, "run_id");
-  assertNonEmptyId(params.company_id, "company_id");
-  if (!isStatus(params.next_status)) throw new RangeError("next_status must be a valid heartbeat run status");
-  if (!Array.isArray(params.expected_statuses)) {
-    throw new RangeError("expected_statuses must be an array of heartbeat run statuses");
-  }
-  for (let i = 0; i < params.expected_statuses.length; i++) {
-    if (!isStatus(params.expected_statuses[i])) {
-      throw new RangeError(`expected_statuses[${i}] must be a valid heartbeat run status`);
-    }
-  }
-  if (params.error !== undefined && typeof params.error !== "string") throw new RangeError("error must be a string");
-  if (params.error_code !== undefined && typeof params.error_code !== "string") throw new RangeError("error_code must be a string");
-  assertBoundedTimeout(opts.timeoutMs);
+type Meter = Record<HeartbeatCutoverOperation, HeartbeatCutoverOperationMetrics>;
+
+const emptyOperationMetrics = (): HeartbeatCutoverOperationMetrics => ({
+  rustSuccess: 0, tsBypass: 0, tsFallback: 0, indeterminateError: 0,
+  tsError: 0, fenceMismatch: 0, totalCalls: 0, totalDurationMs: 0,
+});
+const emptyMeter = (): Meter => ({
+  claim_wakeup: emptyOperationMetrics(),
+  transition_run_fenced: emptyOperationMetrics(),
+});
+const snapshotMeter = (meter: Meter): HeartbeatCutoverMetricsSnapshot => ({
+  claim_wakeup: { ...meter.claim_wakeup },
+  transition_run_fenced: { ...meter.transition_run_fenced },
+});
+
+interface CutoverJob<T> {
+  operation: HeartbeatCutoverOperation;
+  call: (
+    client: PaperworkEngineClient, callOpts: HeartbeatCutoverCallOpts,
+  ) => Promise<HeartbeatCutoverResult<T>>;
+  isFenceMismatch: (value: T) => boolean;
+  tsFallback: () => Promise<T>;
+  opts: HeartbeatCutoverWiringOpts;
+  meter: Meter;
 }
 
-function isTransitionEngineEligible(params: HeartbeatTransitionRunFencedCutoverParams): boolean {
-  if (hasExpectedRunIdentityFence(params) || hasExtraPatchFields(params)) return false;
-  if (!isUuid(params.run_id) || !isUuid(params.company_id) || params.expected_statuses.length === 0) return false;
-  for (let i = 0; i < params.expected_statuses.length; i++) {
-    if (!LEGAL_NEXT[params.expected_statuses[i]].has(params.next_status)) return false;
-  }
-  return true;
-}
-
-function emptyTelemetry(): HeartbeatCutoverTelemetrySnapshot {
-  return {
-    rustHits: 0, tsFallbacks: 0, indeterminateErrors: 0,
-    byOperation: {
-      claim_wakeup: { rustHits: 0, tsFallbacks: 0, indeterminateErrors: 0 },
-      transition_run_fenced: { rustHits: 0, tsFallbacks: 0, indeterminateErrors: 0 },
-    },
-    byReason: {
-      rust_ok: 0, flag_off: 0, in_transaction: 0, client_unavailable: 0,
-      client_init_error: 0, ineligible_input: 0, rpc_not_committed: 0, indeterminate: 0,
-    },
-  };
-}
-
-export function createHeartbeatCutoverWiring(deps: HeartbeatCutoverWiringDeps = {}) {
-  const resolveClient = deps.getClient ?? (() => getSharedPaperworkEngineClient());
-  let telemetry = emptyTelemetry();
-
-  const recordRust = (op: HeartbeatCutoverOperation): void => {
-    telemetry.rustHits += 1; telemetry.byOperation[op].rustHits += 1; telemetry.byReason.rust_ok += 1;
-  };
-  const recordFallback = (op: HeartbeatCutoverOperation, reason: HeartbeatCutoverFallbackReason): void => {
-    telemetry.tsFallbacks += 1; telemetry.byOperation[op].tsFallbacks += 1; telemetry.byReason[reason] += 1;
-  };
-  const recordIndeterminate = (op: HeartbeatCutoverOperation): void => {
-    telemetry.indeterminateErrors += 1; telemetry.byOperation[op].indeterminateErrors += 1;
-    telemetry.byReason.indeterminate += 1;
-  };
-
-  function acquireClient(
-    op: HeartbeatCutoverOperation,
-    opts: HeartbeatCutoverWiringOpts,
-    eligible: boolean,
-  ): { client: PaperworkEngineClient } | { fallbackReason: HeartbeatCutoverFallbackReason } {
-    const env = opts.env ?? deps.defaultEnv ?? process.env;
-    if (!isHeartbeatEngineCutoverEnabled(env)) return { fallbackReason: "flag_off" };
-    if (opts.inTransaction) return { fallbackReason: "in_transaction" };
-    if (!eligible) return { fallbackReason: "ineligible_input" };
+async function executeCutover<T>(job: CutoverJob<T>): Promise<HeartbeatCutoverResult<T>> {
+  const { operation, call, isFenceMismatch, tsFallback, opts, meter } = job;
+  const metrics = meter[operation];
+  metrics.totalCalls += 1;
+  const startedAt = Date.now();
+  const emit = (
+    outcome: HeartbeatCutoverOutcome,
+    source: "rust" | "ts" | null,
+    fenceMismatch: boolean,
+    error?: unknown,
+  ): void => {
+    const durationMs = Date.now() - startedAt;
+    metrics.totalDurationMs += durationMs;
+    if (opts.onEvent === undefined) return;
     try {
-      const client = resolveClient();
-      return client ? { client } : { fallbackReason: "client_unavailable" };
-    } catch (error) {
-      logger.warn({ operation: op, err: error }, "failed to acquire paperwork-engine client; falling back to TS");
-      return { fallbackReason: "client_init_error" };
+      opts.onEvent({ operation, outcome, source, durationMs, fenceMismatch, error });
+    } catch (observerError) {
+      logger.warn({ operation, err: observerError },
+        "heartbeat cutover onEvent observer threw; ignoring");
     }
-  }
+  };
 
-  async function executeCutover<T>(
-    op: HeartbeatCutoverOperation,
-    opts: HeartbeatCutoverWiringOpts,
-    eligible: boolean,
-    runWithClient: (client: PaperworkEngineClient, callOpts: HeartbeatCutoverCallOpts) => Promise<HeartbeatCutoverResult<T>>,
-    tsFallback: () => Promise<T>,
-  ): Promise<HeartbeatCutoverResult<T>> {
-    const acquired = acquireClient(op, opts, eligible);
-    if ("fallbackReason" in acquired) {
-      recordFallback(op, acquired.fallbackReason);
-      return { source: "ts", value: await tsFallback() };
-    }
-    const callOpts: HeartbeatCutoverCallOpts = {
-      timeoutMs: opts.timeoutMs, env: opts.env ?? deps.defaultEnv ?? process.env,
-    };
+  // 플래그 OFF·클라이언트 부재 경로: 어댑터에 가지 않고 곧바로 TS 작성자를 호출한다.
+  // tsFallback 이 던지면 tsError 로 집계 후 그대로 rethrow.
+  const runTsBypass = async (): Promise<HeartbeatCutoverResult<T>> => {
+    metrics.tsBypass += 1;
     try {
-      const result = await runWithClient(acquired.client, callOpts);
-      if (result.source === "rust") recordRust(op);
-      else recordFallback(op, "rpc_not_committed");
-      return result;
+      const value = await tsFallback();
+      const fenceMismatch = isFenceMismatch(value);
+      if (fenceMismatch) metrics.fenceMismatch += 1;
+      emit("ts_bypass", "ts", fenceMismatch);
+      return { source: "ts", value };
     } catch (error) {
-      if (error instanceof HeartbeatCutoverIndeterminateError) recordIndeterminate(op);
+      metrics.tsError += 1;
+      emit("ts_error", "ts", false, error);
       throw error;
     }
-  }
-
-  async function claimWakeup(
-    params: HeartbeatClaimWakeupParams,
-    tsFallback: () => Promise<HeartbeatClaimedWakeup | null>,
-    opts: HeartbeatCutoverWiringOpts = {},
-  ): Promise<HeartbeatCutoverResult<HeartbeatClaimedWakeup | null>> {
-    validateClaimParams(params, opts);
-    return executeCutover(
-      "claim_wakeup", opts, isUuid(params.company_id) && isUuid(params.agent_id),
-      (client, callOpts) => claimWakeupWithCutover(client, params, tsFallback, callOpts), tsFallback,
-    );
-  }
-
-  async function transitionRunFenced(
-    params: HeartbeatTransitionRunFencedCutoverParams,
-    tsFallback: () => Promise<HeartbeatTransitionRunFencedResult>,
-    opts: HeartbeatCutoverWiringOpts = {},
-  ): Promise<HeartbeatCutoverResult<HeartbeatTransitionRunFencedResult>> {
-    validateTransitionParams(params, opts);
-    return executeCutover(
-      "transition_run_fenced", opts, isTransitionEngineEligible(params),
-      (client, callOpts) => transitionRunFencedWithCutover(client, params, tsFallback, callOpts), tsFallback,
-    );
-  }
-
-  const createClaimWakeupHook = (
-    tsClaim: (params: HeartbeatClaimWakeupParams) => Promise<HeartbeatClaimedWakeup | null>,
-    defaultOpts?: HeartbeatCutoverWiringOpts,
-  ) => async (params: HeartbeatClaimWakeupParams, opts?: HeartbeatCutoverWiringOpts) =>
-    (await claimWakeup(params, () => tsClaim(params), { ...defaultOpts, ...opts })).value;
-
-  const createTransitionRunFencedHook = (
-    tsTransition: (params: HeartbeatTransitionRunFencedCutoverParams) => Promise<HeartbeatTransitionRunFencedResult>,
-    defaultOpts?: HeartbeatCutoverWiringOpts,
-  ) => async (params: HeartbeatTransitionRunFencedCutoverParams, opts?: HeartbeatCutoverWiringOpts) =>
-    (await transitionRunFenced(params, () => tsTransition(params), { ...defaultOpts, ...opts })).value;
-
-  const getTelemetry = (): HeartbeatCutoverTelemetrySnapshot => ({
-    rustHits: telemetry.rustHits, tsFallbacks: telemetry.tsFallbacks,
-    indeterminateErrors: telemetry.indeterminateErrors,
-    byOperation: {
-      claim_wakeup: { ...telemetry.byOperation.claim_wakeup },
-      transition_run_fenced: { ...telemetry.byOperation.transition_run_fenced },
-    },
-    byReason: { ...telemetry.byReason },
-  });
-
-  const resetTelemetry = (): void => { telemetry = emptyTelemetry(); };
-
-  return {
-    claimWakeup, transitionRunFenced, createClaimWakeupHook,
-    createTransitionRunFencedHook, getTelemetry, resetTelemetry,
   };
+
+  const env = opts.env ?? process.env;
+  if (!isHeartbeatEngineCutoverEnabled(env)) return runTsBypass();
+
+  let client: PaperworkEngineClient | null;
+  try {
+    client = (opts.getClient ?? getSharedPaperworkEngineClient)();
+  } catch (error) {
+    logger.warn({ operation, err: error },
+      "paperwork-engine client resolution failed; bypassing to TS");
+    client = null;
+  }
+  if (client === null) return runTsBypass();
+
+  try {
+    const result = await call(client, { timeoutMs: opts.timeoutMs, env });
+    const fenceMismatch = isFenceMismatch(result.value);
+    if (fenceMismatch) metrics.fenceMismatch += 1;
+    if (result.source === "rust") {
+      metrics.rustSuccess += 1;
+      emit("rust_success", "rust", fenceMismatch);
+    } else {
+      metrics.tsFallback += 1;
+      emit("ts_fallback", "ts", fenceMismatch);
+    }
+    return result;
+  } catch (error) {
+    if (error instanceof HeartbeatCutoverIndeterminateError) {
+      metrics.indeterminateError += 1;
+      emit("indeterminate_error", null, false, error);
+    } else {
+      // 어댑터가 던지는 비-indeterminate 오류는 tsFallback 자체의 실패다.
+      metrics.tsError += 1;
+      emit("ts_error", null, false, error);
+    }
+    throw error;
+  }
 }
 
-const defaultWiring = createHeartbeatCutoverWiring();
-export const wireClaimWakeupWithCutover = defaultWiring.claimWakeup;
-export const wireTransitionRunFencedWithCutover = defaultWiring.transitionRunFenced;
-export const getHeartbeatCutoverTelemetry = defaultWiring.getTelemetry;
-export const resetHeartbeatCutoverTelemetry = defaultWiring.resetTelemetry;
+const moduleMeter = emptyMeter();
+
+/** 모듈 수준 텔레메트리의 깊은 복사본 — 반환 객체를 바꿔도 내부 카운터는 보존된다. */
+export function getHeartbeatCutoverMetrics(): HeartbeatCutoverMetricsSnapshot {
+  return snapshotMeter(moduleMeter);
+}
+
+export function resetHeartbeatCutoverMetricsForTests(): void {
+  moduleMeter.claim_wakeup = emptyOperationMetrics();
+  moduleMeter.transition_run_fenced = emptyOperationMetrics();
+}
+
+export function wireClaimWakeupCutover(
+  params: HeartbeatClaimWakeupParams,
+  tsFallback: () => Promise<HeartbeatClaimedWakeup | null>,
+  opts: HeartbeatCutoverWiringOpts = {},
+): Promise<HeartbeatCutoverResult<HeartbeatClaimedWakeup | null>> {
+  return executeCutover({
+    operation: "claim_wakeup",
+    call: (client, callOpts) => claimWakeupWithCutover(client, params, tsFallback, callOpts),
+    isFenceMismatch: () => false,
+    tsFallback, opts, meter: moduleMeter,
+  });
+}
+
+export function wireTransitionRunFencedCutover(
+  params: HeartbeatTransitionRunFencedCutoverParams,
+  tsFallback: () => Promise<HeartbeatTransitionRunFencedResult>,
+  opts: HeartbeatCutoverWiringOpts = {},
+): Promise<HeartbeatCutoverResult<HeartbeatTransitionRunFencedResult>> {
+  return executeCutover({
+    operation: "transition_run_fenced",
+    call: (client, callOpts) => transitionRunFencedWithCutover(client, params, tsFallback, callOpts),
+    isFenceMismatch: (value) => value.applied === false,
+    tsFallback, opts, meter: moduleMeter,
+  });
+}
+
+export interface HeartbeatCutoverHooks {
+  claimWakeup: typeof wireClaimWakeupCutover;
+  transitionRunFenced: typeof wireTransitionRunFencedCutover;
+  getMetrics: () => HeartbeatCutoverMetricsSnapshot;
+}
+
+/** env/getClient/timeoutMs/onEvent 를 한 번 바인드해 재사용하는 훅 묶음.
+ *  훅별 독립 미터를 가지며, 호출당 opts 는 바인드된 기본값 위에 병합된다. */
+export function createHeartbeatCutoverHooks(
+  defaultOpts: HeartbeatCutoverWiringOpts = {},
+): HeartbeatCutoverHooks {
+  const meter = emptyMeter();
+  const merged = (opts: HeartbeatCutoverWiringOpts): HeartbeatCutoverWiringOpts => ({
+    ...defaultOpts, ...opts,
+  });
+  return {
+    claimWakeup: (params, tsFallback, opts = {}) => executeCutover({
+      operation: "claim_wakeup",
+      call: (client, callOpts) => claimWakeupWithCutover(client, params, tsFallback, callOpts),
+      isFenceMismatch: () => false,
+      tsFallback, opts: merged(opts), meter,
+    }),
+    transitionRunFenced: (params, tsFallback, opts = {}) => executeCutover({
+      operation: "transition_run_fenced",
+      call: (client, callOpts) => transitionRunFencedWithCutover(client, params, tsFallback, callOpts),
+      isFenceMismatch: (value) => value.applied === false,
+      tsFallback, opts: merged(opts), meter,
+    }),
+    getMetrics: () => snapshotMeter(meter),
+  };
+}

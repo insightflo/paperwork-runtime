@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PaperworkEngineError, type PaperworkEngineClient } from "../services/paperwork-engine-client.js";
 import type {
   HeartbeatClaimedWakeup,
@@ -9,10 +9,12 @@ import {
   type HeartbeatTransitionRunFencedCutoverParams,
 } from "../services/paperwork-engine-heartbeat-cutover.js";
 import {
-  createHeartbeatCutoverWiring,
-  getHeartbeatCutoverTelemetry,
-  resetHeartbeatCutoverTelemetry,
-  wireClaimWakeupWithCutover,
+  createHeartbeatCutoverHooks,
+  getHeartbeatCutoverMetrics,
+  resetHeartbeatCutoverMetricsForTests,
+  wireClaimWakeupCutover,
+  wireTransitionRunFencedCutover,
+  type HeartbeatCutoverTelemetryEvent,
 } from "../services/heartbeat-cutover-wiring.js";
 
 const NIL = "00000000-0000-0000-0000-000000000000";
@@ -44,176 +46,168 @@ const APPLIED: HeartbeatTransitionRunFencedResult = {
   finished_at: "2026-01-01T00:00:01Z",
 };
 
-function stubClient(script: (method: string, params?: unknown) => unknown) {
+function stubClient(script: (method: string) => unknown) {
   const calls: { method: string; params: unknown; callOpts: unknown }[] = [];
   const client = {
     call: async (method: string, params?: unknown, callOpts?: unknown) => {
       calls.push({ method, params, callOpts });
-      return script(method, params);
+      return script(method);
     },
   } as unknown as PaperworkEngineClient;
   return { client, calls };
 }
-
 const rpc = (code: number) => new PaperworkEngineError("rpc_error", `rpc_${code}`, code);
 
-describe("heartbeat-cutover-wiring", () => {
-  it("flag OFF routes directly to TS without resolving client and records flag_off telemetry", async () => {
-    const getClient = vi.fn(() => stubClient(() => ({ claimed: WAKE })).client);
-    const wiring = createHeartbeatCutoverWiring({ getClient, defaultEnv: OFF });
-    const tsFallback = vi.fn(async () => WAKE);
+beforeEach(() => resetHeartbeatCutoverMetricsForTests());
 
-    const res = await wiring.claimWakeup(CLAIM, tsFallback);
-    expect(res).toEqual({ source: "ts", value: WAKE });
+describe("heartbeat-cutover-wiring", () => {
+  it("flag OFF (unset/'0'/non-'1') routes both ops to tsFallback without resolving the client", async () => {
+    const getClient = vi.fn(() => stubClient(() => ({})).client);
+    for (const env of [OFF, { PAPERWORK_ENGINE_HEARTBEAT_CUTOVER: "0" }, { PAPERWORK_ENGINE_HEARTBEAT_CUTOVER: "true" }]) {
+      const claim = await wireClaimWakeupCutover(CLAIM, async () => WAKE, { env, getClient });
+      const trans = await wireTransitionRunFencedCutover(TRANS, async () => APPLIED, { env, getClient });
+      expect(claim).toEqual({ source: "ts", value: WAKE });
+      expect(trans).toEqual({ source: "ts", value: APPLIED });
+    }
     expect(getClient).not.toHaveBeenCalled();
-    expect(tsFallback).toHaveBeenCalledTimes(1);
-    expect(wiring.getTelemetry()).toMatchObject({
-      rustHits: 0,
-      tsFallbacks: 1,
-      indeterminateErrors: 0,
-      byOperation: { claim_wakeup: { rustHits: 0, tsFallbacks: 1, indeterminateErrors: 0 } },
-      byReason: { flag_off: 1 },
-    });
+    const m = getHeartbeatCutoverMetrics();
+    expect(m.claim_wakeup).toMatchObject({ totalCalls: 3, tsBypass: 3, rustSuccess: 0, tsFallback: 0 });
+    expect(m.transition_run_fenced).toMatchObject({ totalCalls: 3, tsBypass: 3 });
+    expect(m.claim_wakeup.totalDurationMs).toBeGreaterThanOrEqual(0);
   });
 
-  it("flag ON succeeds via Rust for claim and transition and increments rustHits", async () => {
+  it("flag ON + null or throwing getClient fails safe to tsFallback counted as tsBypass", async () => {
+    const tsFallback = vi.fn(async () => WAKE);
+    await expect(wireClaimWakeupCutover(CLAIM, tsFallback, { env: ON, getClient: () => null }))
+      .resolves.toEqual({ source: "ts", value: WAKE });
+    await expect(wireClaimWakeupCutover(CLAIM, tsFallback, {
+      env: ON,
+      getClient: () => { throw new Error("engine spawn failed"); },
+    })).resolves.toEqual({ source: "ts", value: WAKE });
+    expect(tsFallback).toHaveBeenCalledTimes(2);
+    expect(getHeartbeatCutoverMetrics().claim_wakeup)
+      .toMatchObject({ totalCalls: 2, tsBypass: 2, rustSuccess: 0, tsFallback: 0 });
+  });
+
+  it("flag ON + Rust success returns source rust and increments rustSuccess (no fenceMismatch)", async () => {
     const { client, calls } = stubClient((method) =>
-      method === "heartbeat.claim_wakeup" ? { claimed: WAKE } : APPLIED,
-    );
-    const wiring = createHeartbeatCutoverWiring({ getClient: () => client, defaultEnv: ON });
+      method === "heartbeat.claim_wakeup" ? { claimed: WAKE } : APPLIED);
+    const opts = { env: ON, getClient: () => client };
     const tsClaim = vi.fn(async () => null);
     const tsTrans = vi.fn(async () => ({ applied: false as const }));
 
-    await expect(wiring.claimWakeup(CLAIM, tsClaim)).resolves.toEqual({ source: "rust", value: WAKE });
-    await expect(wiring.transitionRunFenced(TRANS, tsTrans, { timeoutMs: 25_000 }))
-      .resolves.toEqual({ source: "rust", value: APPLIED });
-
+    await expect(wireClaimWakeupCutover(CLAIM, tsClaim, opts)).resolves.toEqual({ source: "rust", value: WAKE });
+    await expect(wireTransitionRunFencedCutover(TRANS, tsTrans, opts)).resolves.toEqual({ source: "rust", value: APPLIED });
     expect(tsClaim).not.toHaveBeenCalled();
     expect(tsTrans).not.toHaveBeenCalled();
-    expect(calls).toHaveLength(2);
-    expect(calls[1].callOpts).toEqual({ timeoutMs: 25_000 });
-    expect(wiring.getTelemetry()).toMatchObject({
-      rustHits: 2,
-      tsFallbacks: 0,
-      byOperation: {
-        claim_wakeup: { rustHits: 1, tsFallbacks: 0 },
-        transition_run_fenced: { rustHits: 1, tsFallbacks: 0 },
-      },
-      byReason: { rust_ok: 2 },
-    });
+    expect(calls.map((c) => c.method)).toEqual(["heartbeat.claim_wakeup", "heartbeat.transition_run_fenced"]);
+    const m = getHeartbeatCutoverMetrics();
+    expect(m.claim_wakeup).toMatchObject({ rustSuccess: 1, tsBypass: 0, tsFallback: 0, fenceMismatch: 0 });
+    expect(m.transition_run_fenced).toMatchObject({ rustSuccess: 1, fenceMismatch: 0 });
   });
 
-  it("propagates fence mismatch ({ applied: false }) from Rust without calling TS fallback", async () => {
-    const { client } = stubClient(() => ({ applied: false }));
-    const wiring = createHeartbeatCutoverWiring({ getClient: () => client, defaultEnv: ON });
-    const tsFallback = vi.fn(async () => APPLIED);
-
-    const res = await wiring.transitionRunFenced(TRANS, tsFallback);
-    expect(res).toEqual({ source: "rust", value: { applied: false } });
-    expect(tsFallback).not.toHaveBeenCalled();
-    expect(wiring.getTelemetry().rustHits).toBe(1);
-  });
-
-  it("falls back to TS on not_committed RPC error (-32001/-32003) and records rpc_not_committed", async () => {
-    const { client } = stubClient(() => { throw rpc(-32001); });
-    const wiring = createHeartbeatCutoverWiring({ getClient: () => client, defaultEnv: ON });
+  it.each([-32001, -32003])("flag ON + not_committed rpc %i falls back to tsFallback (tsFallback counter)", async (code) => {
+    const { client } = stubClient(() => { throw rpc(code); });
     const tsFallback = vi.fn(async () => WAKE);
-
-    const res = await wiring.claimWakeup(CLAIM, tsFallback);
-    expect(res).toEqual({ source: "ts", value: WAKE });
+    await expect(wireClaimWakeupCutover(CLAIM, tsFallback, { env: ON, getClient: () => client }))
+      .resolves.toEqual({ source: "ts", value: WAKE });
     expect(tsFallback).toHaveBeenCalledTimes(1);
-    expect(wiring.getTelemetry()).toMatchObject({
-      rustHits: 0,
-      tsFallbacks: 1,
-      byReason: { rpc_not_committed: 1 },
-    });
+    expect(getHeartbeatCutoverMetrics().claim_wakeup)
+      .toMatchObject({ tsFallback: 1, tsBypass: 0, rustSuccess: 0, indeterminateError: 0 });
   });
 
-  it("propagates HeartbeatCutoverIndeterminateError on client timeout or -32005 without TS fallback", async () => {
-    const { client } = stubClient((method) => {
-      throw method === "heartbeat.claim_wakeup"
-        ? new PaperworkEngineError("timeout", "client deadline exceeded")
-        : rpc(-32005);
-    });
-    const wiring = createHeartbeatCutoverWiring({ getClient: () => client, defaultEnv: ON });
+  it.each([
+    ["rpc -32005 commit_indeterminate", rpc(-32005)],
+    ["local transport timeout", new PaperworkEngineError("timeout", "deadline")],
+  ])("flag ON + indeterminate error (%s) fails closed without tsFallback", async (_label, error) => {
+    const { client } = stubClient(() => { throw error; });
     const tsClaim = vi.fn(async () => WAKE);
     const tsTrans = vi.fn(async () => APPLIED);
-
-    await expect(wiring.claimWakeup(CLAIM, tsClaim)).rejects.toBeInstanceOf(HeartbeatCutoverIndeterminateError);
-    await expect(wiring.transitionRunFenced(TRANS, tsTrans)).rejects.toBeInstanceOf(HeartbeatCutoverIndeterminateError);
+    const opts = { env: ON, getClient: () => client };
+    await expect(wireClaimWakeupCutover(CLAIM, tsClaim, opts))
+      .rejects.toBeInstanceOf(HeartbeatCutoverIndeterminateError);
+    await expect(wireTransitionRunFencedCutover(TRANS, tsTrans, opts))
+      .rejects.toBeInstanceOf(HeartbeatCutoverIndeterminateError);
     expect(tsClaim).not.toHaveBeenCalled();
     expect(tsTrans).not.toHaveBeenCalled();
-    expect(wiring.getTelemetry()).toMatchObject({
-      rustHits: 0,
-      tsFallbacks: 0,
-      indeterminateErrors: 2,
-      byOperation: {
-        claim_wakeup: { indeterminateErrors: 1 },
-        transition_run_fenced: { indeterminateErrors: 1 },
-      },
-      byReason: { indeterminate: 2 },
-    });
+    const m = getHeartbeatCutoverMetrics();
+    expect(m.claim_wakeup).toMatchObject({ indeterminateError: 1, tsBypass: 0, tsFallback: 0 });
+    expect(m.transition_run_fenced).toMatchObject({ indeterminateError: 1 });
   });
 
-  it("routes inTransaction, null client, client init error, and ineligible inputs to TS with exact reasons", async () => {
-    const { client, calls } = stubClient(() => APPLIED);
-    const wiringOk = createHeartbeatCutoverWiring({ getClient: () => client, defaultEnv: ON });
-    const wiringNull = createHeartbeatCutoverWiring({ getClient: () => null, defaultEnv: ON });
-    const wiringThrow = createHeartbeatCutoverWiring({
-      getClient: () => { throw new Error("spawn init fail"); },
-      defaultEnv: ON,
-    });
-
-    await wiringOk.transitionRunFenced(TRANS, async () => APPLIED, { inTransaction: true });
-    await wiringOk.transitionRunFenced({ ...TRANS, extra_patch: { process_pid: 9 } }, async () => APPLIED);
-    await wiringOk.transitionRunFenced({ ...TRANS, next_status: "running" }, async () => ({ applied: false }));
-    await wiringOk.claimWakeup({ company_id: "non-uuid-co", agent_id: NIL }, async () => null);
-    await wiringNull.claimWakeup(CLAIM, async () => null);
-    await wiringThrow.claimWakeup(CLAIM, async () => null);
-
-    expect(calls).toHaveLength(0);
-    expect(wiringOk.getTelemetry().byReason).toMatchObject({ in_transaction: 1, ineligible_input: 3 });
-    expect(wiringNull.getTelemetry().byReason.client_unavailable).toBe(1);
-    expect(wiringThrow.getTelemetry().byReason.client_init_error).toBe(1);
+  it("propagates Rust fence mismatch { applied: false } untouched; counts rustSuccess + fenceMismatch", async () => {
+    const { client } = stubClient(() => ({ applied: false }));
+    const tsFallback = vi.fn(async () => APPLIED);
+    await expect(wireTransitionRunFencedCutover(TRANS, tsFallback, { env: ON, getClient: () => client }))
+      .resolves.toEqual({ source: "rust", value: { applied: false } });
+    expect(tsFallback).not.toHaveBeenCalled();
+    expect(getHeartbeatCutoverMetrics().transition_run_fenced)
+      .toMatchObject({ rustSuccess: 1, fenceMismatch: 1, tsFallback: 0 });
   });
 
-  it("enforces strict input validation for empty IDs, invalid statuses, and out-of-range timeouts", async () => {
-    const wiring = createHeartbeatCutoverWiring({ getClient: () => null, defaultEnv: ON });
-    const noop = async () => null;
-    const noopTrans = async () => ({ applied: false as const });
-
-    await expect(wiring.claimWakeup({ company_id: "  ", agent_id: NIL }, noop)).rejects.toThrow(RangeError);
-    await expect(wiring.claimWakeup({ company_id: NIL, agent_id: "" }, noop)).rejects.toThrow(RangeError);
-    await expect(wiring.claimWakeup(CLAIM, noop, { timeoutMs: 1_000 })).rejects.toThrow(RangeError);
-    await expect(wiring.claimWakeup(CLAIM, noop, { timeoutMs: 600_001 })).rejects.toThrow(RangeError);
-    await expect(wiring.claimWakeup(CLAIM, noop, { timeoutMs: 17_000.5 })).rejects.toThrow(RangeError);
-    await expect(wiring.transitionRunFenced({ ...TRANS, run_id: "" }, noopTrans)).rejects.toThrow(RangeError);
-    await expect(wiring.transitionRunFenced({ ...TRANS, next_status: "bogus" as never }, noopTrans)).rejects.toThrow(RangeError);
-    await expect(wiring.transitionRunFenced({ ...TRANS, expected_statuses: Array(1) }, noopTrans)).rejects.toThrow(RangeError);
-    expect(wiring.getTelemetry()).toMatchObject({ rustHits: 0, tsFallbacks: 0, indeterminateErrors: 0 });
+  it("counts fenceMismatch for TS-originated { applied: false } as well", async () => {
+    await expect(wireTransitionRunFencedCutover(TRANS, async () => ({ applied: false }), { env: OFF }))
+      .resolves.toEqual({ source: "ts", value: { applied: false } });
+    expect(getHeartbeatCutoverMetrics().transition_run_fenced)
+      .toMatchObject({ tsBypass: 1, fenceMismatch: 1, rustSuccess: 0 });
   });
 
-  it("exposes clean typed hook adapters preserving exact TS return shapes and supports telemetry reset", async () => {
+  it("counts tsError and rethrows when tsFallback itself throws", async () => {
+    const failure = new Error("db gone");
+    const tsFallback = vi.fn(async () => { throw failure; });
+    await expect(wireClaimWakeupCutover(CLAIM, tsFallback, { env: OFF })).rejects.toBe(failure);
+    expect(getHeartbeatCutoverMetrics().claim_wakeup)
+      .toMatchObject({ totalCalls: 1, tsBypass: 1, tsError: 1 });
+  });
+
+  it("does not mutate caller params", async () => {
+    const params = Object.freeze({ company_id: "not-a-uuid", agent_id: NIL });
+    await expect(wireClaimWakeupCutover(params, async () => null, { env: OFF }))
+      .resolves.toEqual({ source: "ts", value: null });
+    expect(params).toEqual({ company_id: "not-a-uuid", agent_id: NIL });
+  });
+
+  it("createHeartbeatCutoverHooks binds defaults, merges per-call opts, isolates onEvent throws", async () => {
     const { client } = stubClient((method) =>
-      method === "heartbeat.claim_wakeup" ? { claimed: WAKE } : APPLIED,
-    );
-    const wiring = createHeartbeatCutoverWiring({ getClient: () => client, defaultEnv: ON });
-    const claimHook = wiring.createClaimWakeupHook(async () => null);
-    const transHook = wiring.createTransitionRunFencedHook(async () => ({ applied: false }));
+      method === "heartbeat.claim_wakeup" ? { claimed: WAKE } : APPLIED);
+    const events: HeartbeatCutoverTelemetryEvent[] = [];
+    const hooks = createHeartbeatCutoverHooks({
+      env: ON,
+      getClient: () => client,
+      onEvent: (event) => { events.push(event); throw new Error("observer boom"); },
+    });
 
-    expect(await claimHook(CLAIM)).toEqual(WAKE);
-    expect(await transHook(TRANS)).toEqual(APPLIED);
-    expect(wiring.getTelemetry().rustHits).toBe(2);
+    await expect(hooks.claimWakeup(CLAIM, vi.fn(async () => null)))
+      .resolves.toEqual({ source: "rust", value: WAKE });
+    await expect(hooks.transitionRunFenced(TRANS, vi.fn(async () => ({ applied: false }))))
+      .resolves.toEqual({ source: "rust", value: APPLIED });
+    expect(events.map((e) => e.outcome)).toEqual(["rust_success", "rust_success"]);
+    expect(events.every((e) => e.source === "rust" && !e.fenceMismatch)).toBe(true);
 
-    const snap = wiring.getTelemetry();
-    snap.rustHits = 999;
-    expect(wiring.getTelemetry().rustHits).toBe(2);
-    wiring.resetTelemetry();
-    expect(wiring.getTelemetry().rustHits).toBe(0);
+    // per-call opts merge over bound defaults
+    await expect(hooks.claimWakeup(CLAIM, async () => WAKE, { env: OFF }))
+      .resolves.toEqual({ source: "ts", value: WAKE });
+    expect(events).toHaveLength(3);
 
-    resetHeartbeatCutoverTelemetry();
-    await wireClaimWakeupWithCutover(CLAIM, async () => null, { env: OFF });
-    expect(getHeartbeatCutoverTelemetry().byReason.flag_off).toBe(1);
-    resetHeartbeatCutoverTelemetry();
+    const m = hooks.getMetrics();
+    expect(m.claim_wakeup).toMatchObject({ rustSuccess: 1, tsBypass: 1, totalCalls: 2 });
+    expect(m.transition_run_fenced).toMatchObject({ rustSuccess: 1, totalCalls: 1 });
+    // hooks meter is independent of the module-level meter
+    expect(getHeartbeatCutoverMetrics().claim_wakeup.totalCalls).toBe(0);
+  });
+
+  it("getHeartbeatCutoverMetrics returns a deep copy that cannot corrupt internal state", async () => {
+    await wireClaimWakeupCutover(CLAIM, async () => WAKE, { env: OFF });
+    const snap = getHeartbeatCutoverMetrics();
+    Object.assign(snap.claim_wakeup, { tsBypass: 999, rustSuccess: 999 });
+    Object.assign(snap.transition_run_fenced, { totalCalls: 999 });
+    const fresh = getHeartbeatCutoverMetrics();
+    expect(fresh.claim_wakeup).toMatchObject({ tsBypass: 1, rustSuccess: 0, totalCalls: 1 });
+    expect(fresh.transition_run_fenced.totalCalls).toBe(0);
+
+    resetHeartbeatCutoverMetricsForTests();
+    const zeroed = getHeartbeatCutoverMetrics();
+    expect(zeroed.claim_wakeup.totalCalls).toBe(0);
+    expect(zeroed.transition_run_fenced.totalCalls).toBe(0);
   });
 });
