@@ -15,13 +15,11 @@ pub enum ActorType {
     User,
     Agent,
     Plugin,
+    Board,
 }
 
-const ALL_ACTOR_TYPES: [ActorType; 4] = [
-    ActorType::System,
-    ActorType::User,
-    ActorType::Agent,
-    ActorType::Plugin,
+const ALL_ACTOR_TYPES: [ActorType; 5] = [
+    ActorType::System, ActorType::User, ActorType::Agent, ActorType::Plugin, ActorType::Board,
 ];
 
 impl ActorType {
@@ -31,6 +29,7 @@ impl ActorType {
             ActorType::User => "user",
             ActorType::Agent => "agent",
             ActorType::Plugin => "plugin",
+            ActorType::Board => "board",
         }
     }
 
@@ -155,13 +154,13 @@ mod tests {
             assert_eq!(serde_json::from_value::<ActorType>(json).unwrap(), actor);
             assert_eq!(ActorType::parse(actor.as_str()).unwrap(), actor);
         }
-        for bad in ["", "board", "SYSTEM", "mission_owner", "ghost"] {
+        for bad in ["", "operator", "SYSTEM", "mission_owner", "ghost"] {
             assert!(matches!(
                 ActorType::parse(bad),
                 Err(ActivityDbError::InvalidActorType(raw)) if raw == bad
             ));
         }
-        assert!(serde_json::from_value::<ActorType>(serde_json::json!("board")).is_err());
+        assert!(serde_json::from_value::<ActorType>(serde_json::json!("operator")).is_err());
     }
 
     #[test]

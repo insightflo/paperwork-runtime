@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use chrono::{DateTime, Utc};
 use postgres::{Row, Transaction};
 use uuid::Uuid;
