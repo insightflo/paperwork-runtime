@@ -53,7 +53,7 @@ fn checked_config(env: &ProbeEnv) -> Result<(Config, String, u16), Fail> {
 
 struct Permit; // RAII guard held inside the spawn_blocking task until DNS returns
 impl Drop for Permit { fn drop(&mut self) { INFLIGHT_DNS.fetch_sub(1, Ordering::SeqCst); } }
-fn dns_permit() -> Option<Permit> { INFLIGHT_DNS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| (n < MAX_INFLIGHT_DNS).then_some(n + 1)).ok().map(|_| Permit) }
+fn dns_permit() -> Option<Permit> { let mut n = INFLIGHT_DNS.load(Ordering::SeqCst); while n < MAX_INFLIGHT_DNS { match INFLIGHT_DNS.compare_exchange_weak(n, n + 1, Ordering::SeqCst, Ordering::SeqCst) { Ok(_) => return Some(Permit), Err(x) => n = x } } None }
 
 type IoFut = Pin<Box<dyn Future<Output = io::Result<TcpStream>> + Send>>;
 type ResolveFn = Arc<dyn Fn(&str, u16) -> io::Result<Vec<SocketAddr>> + Send + Sync>;
