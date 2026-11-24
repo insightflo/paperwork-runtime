@@ -44,9 +44,8 @@ fn checked_config(env: &ProbeEnv) -> Result<(Config, String, u16), Fail> {
         && c.get_hostaddrs().is_empty() && c.get_ssl_mode() == SslMode::Disable && c.get_ssl_negotiation() == SslNegotiation::Postgres
         && c.get_tcp_user_timeout().is_none() && c.get_target_session_attrs() == TargetSessionAttrs::Any && c.get_channel_binding() != ChannelBinding::Require
         && c.get_load_balance_hosts() == LoadBalanceHosts::Disable && c.get_keepalives() && c.get_keepalives_idle() == Config::new().get_keepalives_idle()
-        && c.get_keepalives_interval().is_none() && c.get_keepalives_retries().is_none();
+        && c.get_keepalives_interval().is_none() && c.get_keepalives_retries().is_none() && c.get_options().is_none();
     if !good { return Err(UNCONF) }
-    c.connect_timeout(Duration::from_secs(3));
     c.options("-c statement_timeout=5000 -c lock_timeout=3000");
     let port = c.get_ports().first().copied().unwrap_or(5432);
     Ok((c, host, port))
@@ -96,7 +95,7 @@ async fn connect_checked(c: &Config, host: &str, port: u16, h: &Hooks, dl: Insta
     for a in addrs {
         let s = if a.is_ipv4() { TcpSocket::new_v4() } else { TcpSocket::new_v6() }.map_err(|_| DBERR)?;
         (h.apply)(&s, c).map_err(|_| UNCONF)?;
-        let t = c.get_connect_timeout().copied().unwrap_or_else(|| rem(dl)).min(rem(dl));
+        let t = c.get_connect_timeout().copied().unwrap_or(Duration::from_secs(3)).min(rem(dl));
         match (h.dial)(s, a, t).await {
             Ok(s) => return Ok(s),
             Err(e) if e.kind() == io::ErrorKind::TimedOut => return Err(T_OUT),
@@ -148,7 +147,7 @@ async fn db_work(c: &mut Client, m: Db, dl: Instant) -> Result<Value, Fail> {
 async fn db_run(c: Config, host: String, port: u16, h: &Hooks, m: Db, dl: Instant) -> Result<Value, Fail> {
     let stream = connect_checked(&c, &host, port, h, dl).await?;
     let (mut client, conn) = match tokio::time::timeout(rem(dl), c.connect_raw(stream, NoTls)).await {
-        Ok(Ok(v)) => v, Err(_) => return Err(T_OUT), Ok(Err(_)) => return Err(DBERR) };
+        Ok(Ok(v)) => v, Err(_) => return Err(T_OUT), Ok(Err(e)) => return Err(pre(e)) };
     let conn_handle = tokio::spawn(conn);
     let r = db_work(&mut client, m, dl).await;
     drop(client); conn_handle.abort(); let _ = conn_handle.await;
@@ -219,7 +218,7 @@ mod tests {
         assert_eq!(code(&call("heartbeat.claim_wakeup", p.clone(), &ProbeEnv::from_pairs(&[]), 30)), -32002); // no DATABASE_URL
         for d in ["", "host=127.0.0.1 port=1 user=u", "host=127.0.0.1 sslmode=disable", "host=/tmp user=u sslmode=disable", "host=127.0.0.1,127.0.0.2 user=u sslmode=disable", "host=192.0.2.1 port=1 user=u sslmode=disable"] {
             assert_eq!(code(&call("heartbeat.claim_wakeup", p.clone(), &env(d), 30)), -32002, "{d}"); }
-        for x in ["sslmode=prefer", "sslmode=require", "hostaddr=1.1.1.1", "target_session_attrs=read-write", "tcp_user_timeout=1000", "keepalives=0", "keepalives_idle=10", "keepalives_interval=5", "keepalives_retries=3", "channel_binding=require", "load_balance_hosts=random"] {
+        for x in ["sslmode=prefer", "sslmode=require", "hostaddr=1.1.1.1", "target_session_attrs=read-write", "tcp_user_timeout=1000", "keepalives=0", "keepalives_idle=10", "keepalives_interval=5", "keepalives_retries=3", "channel_binding=require", "load_balance_hosts=random", "options=-csearch_path=custom_schema"] {
             assert_eq!(code(&call("heartbeat.claim_wakeup", p.clone(), &env(&format!("host=127.0.0.1 port=1 user=u sslmode=disable {x}")), 30)), -32002, "{x}"); }
         let s = TcpSocket::new_v4().unwrap(); // keepalive() check: applied for =1, =0 rejected above
         (hooks().apply)(&s, &cfg("host=127.0.0.1 user=u sslmode=disable keepalives=1")).unwrap();
