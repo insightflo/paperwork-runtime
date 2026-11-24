@@ -252,21 +252,27 @@ mod tests {
         let res = AgentRunResult {
             status: RunStatus::Failed,
             exit_code: Some(0),
-            signal: None,
+            signal: Some(9),
             error: Some("waitpid deadline expired".into()),
             error_code: Some("reap_handoff_pending".into()),
             unreaped_pid: Some(4242),
             stdout_excerpt: "tail".into(),
-            stderr_excerpt: String::new(),
+            stderr_excerpt: "err tail".into(),
             stdout_captured_bytes: 5000,
-            stderr_captured_bytes: 0,
+            stderr_captured_bytes: 300,
         };
-        let v = result_to_json(&res);
-        assert_eq!(v["status"], json!("failed"));
-        assert_eq!(v["exit_code"], json!(0));
-        assert_eq!(v["error_code"], json!("reap_handoff_pending"));
-        assert_eq!(v["unreaped_pid"], json!(4242));
-        assert_eq!(v["stdout_excerpt"], json!("tail"));
-        assert_eq!(v["stdout_captured_bytes"], json!(5000));
+        let json_val = result_to_json(&res);
+        assert_eq!(json_val, json!({
+            "status": "failed",
+            "exit_code": 0,
+            "signal": 9,
+            "error": "waitpid deadline expired",
+            "error_code": "reap_handoff_pending",
+            "unreaped_pid": 4242,
+            "stdout_excerpt": "tail",
+            "stderr_excerpt": "err tail",
+            "stdout_captured_bytes": 5000,
+            "stderr_captured_bytes": 300,
+        }));
     }
 }
