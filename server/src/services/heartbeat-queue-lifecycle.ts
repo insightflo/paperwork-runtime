@@ -7,6 +7,7 @@ import { recordHeartbeatTerminalOutcomeShadow } from "./heartbeat-finalization/s
 import { maybeRecordTerminalFinalization } from "./heartbeat-finalization/shadow-terminal-hook.js";
 import { isTerminalHeartbeatRunStatus } from "./heartbeat-run-status.js";
 import { OPERATOR_DECISION_WAKE_PREFIX } from "./operator-decision-continuation-store.js";
+import { triggerShadowValidateHeartbeatTransition } from "./paperwork-engine-heartbeat-shadow.js";
 
 export async function recordHeartbeatQueueTransitionEvent(db: Db, input: {
   companyId: string;
@@ -182,6 +183,7 @@ export async function setHeartbeatRunStatus(
   if (updated) await recordHeartbeatRunTerminalTransitionEvent(db, updated);
   if (updated) await maybeRecordTerminalFinalization(db, updated, new Date());
 
+  if (expectedStatuses) triggerShadowValidateHeartbeatTransition({ runId, expectedStatuses, nextStatus: status, tsApplied: Boolean(updated) });
   return updated;
 }
 
