@@ -1,8 +1,6 @@
 name: PR
 
-# [CI-REDUCE 2026-11-13] 경량 잡(policy)+조건부 전체 스위트(ready_for_review/ci-full 라벨/dispatch scope=full).
-# 판정은 scripts/ci-scope.sh 소유(행렬 시험: ci-scope-script.test.ts) — `if:` 에 규칙을 복제하지 않는다.
-# ci-full 은 one-shot: labeled 이벤트만 full 을 켜고 consume_label 로 라벨을 떼낸다.
+# [CI-REDUCE 2026-11-13] 경량 잡(policy)+조건부 전체 스위트. 판정은 scripts/ci-scope.sh 소유 — `if:` 에 규칙을 복제하지 않는다. ci-full 은 one-shot(consume_label 로 회수).
 on:
   pull_request:
     branches: [main]
@@ -16,7 +14,6 @@ on:
         options: [policy, full]
         default: policy
 
-# 최소 권한 기본값 — 잡별 permissions 를 명시하지 않은 잡은 읽기 전용 토큰만 받는다.
 permissions: { contents: read }
 
 concurrency:
@@ -92,63 +89,28 @@ jobs:
         if: steps.scope.outputs.consume_label == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}", PR_NUMBER: "${{ github.event.pull_request.number }}", HEAD_SHA: "${{ github.event.pull_request.head.sha }}", EVENT_LABEL: "${{ github.event.label.name }}" }
         run: |
-          if [ "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)" = "$HEAD_SHA" ]; then
-            gh pr edit "$PR_NUMBER" --remove-label "$EVENT_LABEL" || echo "::warning::could not remove label $EVENT_LABEL"
-          else echo "::warning::PR head moved since event; keeping label $EVENT_LABEL"; fi
-      - name: Skip heavy checks
-        if: steps.finalize.outputs.heavy != 'true'
-        env: { REASON: "${{ steps.scope.outputs.reason }}" }
-        run: echo "경량 검사 생략 — reason=$REASON"
-      - name: Block manual lockfile edits
-        if: steps.finalize.outputs.heavy == 'true' && github.event_name == 'pull_request' && github.head_ref != 'chore/refresh-lockfile'
-        run: |
-          if grep -qx 'pnpm-lock.yaml' "$RUNNER_TEMP/changed.txt"; then
-            echo "Do not commit pnpm-lock.yaml in pull requests. CI owns lockfile updates."; exit 1
-          fi
+          if [ "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .head.sha)" = "$HEAD_SHA" ]; then gh pr edit "$PR_NUMBER" --remove-label "$EVENT_LABEL" || echo "::warning::could not remove label $EVENT_LABEL"; else echo "::warning::PR head moved since event; keeping label $EVENT_LABEL"; fi
+      - { name: Skip heavy checks, if: "steps.finalize.outputs.heavy != 'true'", env: { REASON: "${{ steps.scope.outputs.reason }}" }, run: 'echo "경량 검사 생략 — reason=$REASON"' }
+      - { name: Block manual lockfile edits, if: "steps.finalize.outputs.heavy == 'true' && github.event_name == 'pull_request' && github.head_ref != 'chore/refresh-lockfile'", run: 'grep -qx "pnpm-lock.yaml" "$RUNNER_TEMP/changed.txt" && { echo "Do not commit pnpm-lock.yaml in pull requests. CI owns lockfile updates."; exit 1; } || :' }
       - { uses: pnpm/action-setup@v4, if: "steps.finalize.outputs.heavy == 'true'", with: { version: 9.15.4, run_install: false } }
       - { uses: actions/setup-node@v4, if: "steps.finalize.outputs.heavy == 'true'", with: { node-version-file: .nvmrc, cache: pnpm } }
       # [write-chokepoint] heartbeat_runs/workflow_runs 직접 UPDATE 를 인가 쓰기 계층으로 강제(PR#679/#682 재발 차단).
-      - name: Enforce run-status write chokepoint
-        if: steps.finalize.outputs.heavy == 'true'
-        run: node scripts/check-run-status-write-chokepoint.mjs --self-test && node scripts/check-run-status-write-chokepoint.mjs
+      - { name: Enforce run-status write chokepoint, if: "steps.finalize.outputs.heavy == 'true'", run: node scripts/check-run-status-write-chokepoint.mjs --self-test && node scripts/check-run-status-write-chokepoint.mjs }
       # 무조건 실행 — heavy 게이트를 두면 문서 전용/드래프트 판정으로 frozen 마이그레이션 편집이 우회된다.
-      - name: Enforce frozen DB migrations
-        env: { BASE_REF: "${{ github.base_ref || 'main' }}" }
-        run: |
-          git rev-parse --verify --quiet "refs/remotes/origin/${BASE_REF}" >/dev/null || git fetch --no-tags origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"
-          node scripts/check-frozen-migrations.mjs --base "origin/${BASE_REF}"
-      - name: Validate Dockerfile deps stage
-        if: steps.finalize.outputs.heavy == 'true'
-        run: bash scripts/check-dockerfile-deps-stage.sh
-      - name: Validate dependency resolution when manifests change
-        id: depval
-        if: steps.finalize.outputs.heavy == 'true'
-        run: |
-          if grep -Eq '(^|/)package\.json$|^pnpm-workspace\.yaml$|^\.npmrc$|^pnpmfile\.(cjs|js|mjs)$' "$RUNNER_TEMP/changed.txt"; then
-            pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile && echo "ran=1" >> "$GITHUB_OUTPUT"
-          fi
-      - name: Install dependencies
-        if: steps.finalize.outputs.heavy == 'true' && steps.depval.outputs.ran != '1'
-        run: pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile
-      - name: Install dependencies from the CI-refreshed lockfile
-        if: steps.finalize.outputs.heavy == 'true'
-        run: pnpm install --frozen-lockfile
-      - name: Typecheck
-        if: steps.finalize.outputs.heavy == 'true'
-        run: pnpm -r typecheck
-      - name: Gate Rust on rust_changed
-        id: rust_gate
-        env: { RUST_CHANGED: "${{ steps.scope.outputs.rust_changed }}" }
-        run: |
-          [ "$RUST_CHANGED" = "false" ] && echo "skip=1" >> "$GITHUB_OUTPUT" || echo "skip=0" >> "$GITHUB_OUTPUT"
+      - { name: Enforce frozen DB migrations, env: { BASE_REF: "${{ github.base_ref || 'main' }}" }, run: 'git rev-parse --verify --quiet "refs/remotes/origin/${BASE_REF}" >/dev/null || git fetch --no-tags origin "${BASE_REF}:refs/remotes/origin/${BASE_REF}"; node scripts/check-frozen-migrations.mjs --base "origin/${BASE_REF}"' }
+      - { name: Validate Dockerfile deps stage, if: "steps.finalize.outputs.heavy == 'true'", run: bash scripts/check-dockerfile-deps-stage.sh }
+      - { name: Validate dependency resolution when manifests change, id: depval, if: "steps.finalize.outputs.heavy == 'true'", run: 'if grep -Eq ''(^|/)package\.json$|^pnpm-workspace\.yaml$|^\.npmrc$|^pnpmfile\.(cjs|js|mjs)$'' "$RUNNER_TEMP/changed.txt"; then pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile && echo "ran=1" >> "$GITHUB_OUTPUT"; fi' }
+      - { name: Install dependencies, if: "steps.finalize.outputs.heavy == 'true' && steps.depval.outputs.ran != '1'", run: pnpm install --lockfile-only --ignore-scripts --no-frozen-lockfile }
+      - { name: Install dependencies from the CI-refreshed lockfile, if: "steps.finalize.outputs.heavy == 'true'", run: pnpm install --frozen-lockfile }
+      - { uses: actions/cache@v4, if: "steps.finalize.outputs.heavy == 'true'", with: { path: .cache/tsbuildinfo, key: "${{ runner.os }}-tsbuildinfo-${{ hashFiles('pnpm-lock.yaml', 'tsconfig*.json', '**/tsconfig*.json') }}-${{ github.sha }}", restore-keys: "${{ runner.os }}-tsbuildinfo-${{ hashFiles('pnpm-lock.yaml', 'tsconfig*.json', '**/tsconfig*.json') }}-" } }
+      - { name: Typecheck, if: "steps.finalize.outputs.heavy == 'true'", run: node scripts/ci-typecheck.mjs }
+      - { name: Gate Rust on rust_changed, id: rust_gate, env: { RUST_CHANGED: "${{ steps.scope.outputs.rust_changed }}" }, run: '[ "$RUST_CHANGED" = "false" ] && echo "skip=1" >> "$GITHUB_OUTPUT" || echo "skip=0" >> "$GITHUB_OUTPUT"' }
       - uses: dtolnay/rust-toolchain@stable
         if: steps.scope.outputs.heavy == 'true' && steps.rust_gate.outputs.skip != '1'
         with: { components: clippy }
       - uses: Swatinem/rust-cache@v2
         if: steps.scope.outputs.heavy == 'true' && steps.rust_gate.outputs.skip != '1'
-      - name: Verify Rust workspace
-        if: steps.scope.outputs.heavy == 'true' && steps.rust_gate.outputs.skip != '1'
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings && cargo test --workspace --locked
+      - { name: Verify Rust workspace, if: "steps.scope.outputs.heavy == 'true' && steps.rust_gate.outputs.skip != '1'", run: cargo clippy --workspace --all-targets --locked -- -D warnings && cargo test --workspace --locked }
   # 문서 전용 생략 신호 — 성공한 verify-tests* 잡이 없으면 병합 가드가 미병합 처리(PR#701). fork 는 docs_only 위조 가능해 같은 repo 만 허용.
   verify-tests-docs-only:
     needs: [policy]
@@ -156,10 +118,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - env: { REASON: "${{ needs.policy.outputs.reason }}" }
-        run: 'echo "documentation-only change: full suite intentionally skipped (reason=$REASON)"'
-  # 아래 다섯 잡+게이트는 전체 스위트 — policy.outputs.full 또는 fork PR 의 full 트리거 이벤트에서만 실행
-  # (fork 의 ci-scope.sh 는 신뢰할 수 없어 이벤트 자체로도 켠다).
+      - { env: { REASON: "${{ needs.policy.outputs.reason }}" }, run: 'echo "documentation-only change: full suite intentionally skipped (reason=$REASON)"' }
+  # 아래 다섯 잡+게이트는 전체 스위트 — policy.outputs.full 또는 fork PR 의 full 트리거 이벤트에서만 실행(fork 의 ci-scope.sh 는 신뢰할 수 없어 이벤트 자체로도 켠다).
   verify:
     needs: [policy]
     if: needs.policy.outputs.full == 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full')))
@@ -168,18 +128,12 @@ jobs:
     steps:
       - { uses: actions/checkout@v4, with: { ref: "${{ github.sha }}" } }
       - uses: ./.github/actions/ci-install
-      - name: Build
-        run: pnpm build
-      - name: Release canary dry run
-        run: |
-          git checkout -B master HEAD
-          git checkout -- pnpm-lock.yaml
-          ./scripts/release.sh canary --skip-verify --dry-run
+      - { name: Build, run: pnpm build }
+      - { name: Release canary dry run, run: 'git checkout -B master HEAD && git checkout -- pnpm-lock.yaml && ./scripts/release.sh canary --skip-verify --dry-run' }
       - uses: dtolnay/rust-toolchain@stable
         with: { components: clippy }
       - uses: Swatinem/rust-cache@v2
-      - name: Verify Rust workspace
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings && cargo test --release --workspace --locked
+      - { name: Verify Rust workspace, run: 'cargo clippy --workspace --all-targets --locked -- -D warnings && cargo test --release --workspace --locked' }
   rust-build:
     needs: [policy]
     if: needs.policy.outputs.full == 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full')))
@@ -201,11 +155,8 @@ jobs:
       - { uses: actions/checkout@v4, with: { ref: "${{ github.sha }}" } }
       - uses: ./.github/actions/ci-install
       - { uses: actions/download-artifact@v4, with: { name: "rust-workspace-bins-${{ github.run_attempt }}", path: crates/ } }
-      - name: Restore staged Rust binaries
-        run: chmod +x crates/*/target/release/* && [ -n "$(find crates -type f -path '*/target/release/*' -print -quit)" ]
-      - name: Run tests (shard ${{ matrix.shard }}/3)
-        env: { PAPERCLIP_CI_EXCLUDE_SERIAL_SUITES: "1" }
-        run: pnpm test:run --shard=${{ matrix.shard }}/3
+      - { name: Restore staged Rust binaries, run: 'chmod +x crates/*/target/release/* && [ -n "$(find crates -type f -path "*/target/release/*" -print -quit)" ]' }
+      - { name: "Run tests (shard ${{ matrix.shard }}/3)", env: { PAPERCLIP_CI_EXCLUDE_SERIAL_SUITES: "1" }, run: "pnpm test:run --shard=${{ matrix.shard }}/3" }
   # 중량 통합 5종 전용 직렬 잡 — verify-tests 접두사 유지로 병합 가드가 자동 감시한다.
   verify-tests-serial:
     needs: [policy]
@@ -215,8 +166,7 @@ jobs:
     steps:
       - { uses: actions/checkout@v4, with: { ref: "${{ github.sha }}" } }
       - uses: ./.github/actions/ci-install
-      - name: Run heavy integration tests serially
-        run: pnpm test:run --no-file-parallelism server/src/__tests__/heartbeat-c5-public-activation.test.ts server/src/__tests__/qa-remediation-admission-root.test.ts server/src/__tests__/mission-owner-authority-flow.integration.test.ts server/src/__tests__/mission-owner-delegate-fix.integration.test.ts server/src/__tests__/plugin-runtime-drain.test.ts
+      - { name: Run heavy integration tests serially, run: 'pnpm test:run --no-file-parallelism server/src/__tests__/heartbeat-c5-public-activation.test.ts server/src/__tests__/qa-remediation-admission-root.test.ts server/src/__tests__/mission-owner-authority-flow.integration.test.ts server/src/__tests__/mission-owner-delegate-fix.integration.test.ts server/src/__tests__/plugin-runtime-drain.test.ts' }
   e2e:
     needs: [policy]
     if: needs.policy.outputs.full == 'true' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && (github.event.action == 'ready_for_review' || (github.event.action == 'labeled' && github.event.label.name == 'ci-full')))
@@ -228,25 +178,15 @@ jobs:
       - name: Build
         run: pnpm build
       - { uses: actions/cache@v4, id: pw-cache, with: { path: "~/.cache/ms-playwright", key: "${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}" } }
-      - name: Install Playwright
-        env: { PW_CMD: "${{ steps.pw-cache.outputs.cache-hit == 'true' && 'install-deps' || 'install --with-deps' }}" }
-        run: |
-          for attempt in 1 2 3; do
-            sudo apt-get update -o Acquire::Retries=3 && npx playwright $PW_CMD chromium && exit 0
-            echo "Playwright install attempt ${attempt} failed; retrying in 10s..." >&2; sleep 10
-          done; exit 1
+      - { name: Install Playwright, env: { PW_CMD: "${{ steps.pw-cache.outputs.cache-hit == 'true' && 'install-deps' || 'install --with-deps' }}" }, run: 'for attempt in 1 2 3; do sudo apt-get update -o Acquire::Retries=3 && npx playwright $PW_CMD chromium && exit 0; echo "Playwright install attempt ${attempt} failed; retrying in 10s..." >&2; sleep 10; done; exit 1' }
       - name: Generate Paperclip config
         run: |
           mkdir -p ~/.paperclip/instances/default
           cat > ~/.paperclip/instances/default/config.json << 'CONF'
           {"$meta":{"version":1,"updatedAt":"2026-01-01T00:00:00.000Z","source":"onboard"},"database":{"mode":"embedded-postgres"},"logging":{"mode":"file"},"server":{"deploymentMode":"local_trusted","host":"127.0.0.1","port":3100},"auth":{"baseUrlMode":"auto"},"storage":{"provider":"local_disk"},"secrets":{"provider":"local_encrypted","strictMode":false}}
           CONF
-      - name: Run e2e tests
-        env: { PAPERCLIP_E2E_PORT: "3100", PAPERCLIP_E2E_SKIP_LLM: "true" }
-        run: pnpm run test:e2e
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: playwright-report, path: "tests/e2e/playwright-report/\ntests/e2e/test-results/", retention-days: 14 }
+      - { name: Run e2e tests, env: { PAPERCLIP_E2E_PORT: "3100", PAPERCLIP_E2E_SKIP_LLM: "true" }, run: 'pnpm run test:e2e' }
+      - { uses: actions/upload-artifact@v4, if: "always()", with: { name: playwright-report, path: "tests/e2e/playwright-report/\ntests/e2e/test-results/", retention-days: 14 } }
   # 전체 스위트 검문소 — 성공한 이 run 을 head/base 에 묶어 attestation 으로 남긴다(PR 코드 미실행). fork 는 bypass 면제 없이 통과 강제.
   verify-tests-full-gate:
     needs: [policy, rust-build, verify, verify-tests, verify-tests-serial, e2e]
@@ -256,10 +196,7 @@ jobs:
     permissions: { contents: read, actions: read }
     env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}", POLICY_FULL: "${{ needs.policy.outputs.full }}", HEAD_SHA: "${{ github.event.pull_request.head.sha }}", BASE_SHA: "${{ github.event.pull_request.base.sha }}", RESULTS: "${{ join(needs.*.result, ' ') }}" }
     steps:
-      - name: Enforce full-suite results
-        run: |
-          [ "$POLICY_FULL" = "true" ] || { echo "::error::policy.full=$POLICY_FULL (expected true)"; exit 1; }
-          for r in $RESULTS; do [ "$r" = "success" ] || { echo "::error::sibling job result=$r"; exit 1; }; done
+      - { name: Enforce full-suite results, run: '[ "$POLICY_FULL" = "true" ] || { echo "::error::policy.full=$POLICY_FULL (expected true)"; exit 1; }; for r in $RESULTS; do [ "$r" = "success" ] || { echo "::error::sibling job result=$r"; exit 1; }; done' }
       - { uses: actions/checkout@v4, if: "github.event_name == 'pull_request'", with: { ref: "${{ github.sha }}", fetch-depth: 2 } }
       - name: Verify parents + sibling jobs, write attestation
         if: github.event_name == 'pull_request'
@@ -307,3 +244,25 @@ jobs:
           if(again.status!=="completed"||again.conclusion!=="success"||String(again.run_attempt)!==String(A))die("run changed after attestation check");
           EOF
           node "$RUNNER_TEMP/rv.cjs"
+  # 병합 게이트 — PR 은 policy 성공 + 스위트 경로{full-gate,reused,docs-only} 중 정확히 하나만 성공을 요구한다(0개=미실행, 2개+=판정 모순, 둘 다 차단). if:always()+이벤트 필터 없음 → dispatch 에서도 절대 skipped 되지 않는다.
+  ci-merge-gate:
+    needs: [policy, verify-tests-full-gate, verify-tests-reused, verify-tests-docs-only]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env: { EVENT_NAME: "${{ github.event_name }}", P_RES: "${{ needs.policy.result }}", FULL_RES: "${{ needs.verify-tests-full-gate.result }}", REUSE_RES: "${{ needs.verify-tests-reused.result }}", DOCS_RES: "${{ needs.verify-tests-docs-only.result }}" }
+    steps:
+      - name: Enforce merge gate
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            [ "$P_RES" = "success" ] || { echo "::error::merge gate: policy result=$P_RES (expected success)"; exit 1; }
+            n=0; bad=0
+            for r in "$FULL_RES" "$REUSE_RES" "$DOCS_RES"; do case "$r" in success) n=$((n+1));; skipped) ;; *) bad=1;; esac; done
+            [ "$bad" = 0 ] && [ "$n" = 1 ] && { echo "merge gate: exactly one suite path succeeded"; exit 0; }
+            echo "::error::merge gate: need exactly one success among full-gate=$FULL_RES reused=$REUSE_RES docs-only=$DOCS_RES"; exit 1
+          fi
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            [ "$P_RES" = "success" ] && [ "$FULL_RES" = "success" ] && { echo "merge gate: dispatch full suite succeeded"; exit 0; }
+            echo "::error::merge gate: dispatch requires policy+verify-tests-full-gate success (policy=$P_RES full=$FULL_RES)"; exit 1
+          fi
+          echo "::error::merge gate: unsupported event $EVENT_NAME"; exit 1
