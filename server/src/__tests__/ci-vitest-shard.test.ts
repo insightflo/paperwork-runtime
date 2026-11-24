@@ -143,6 +143,12 @@ describe("vitest list --json discovery", () => {
     expect(discoverTestFiles(repoRoot, ["f.test.ts"], spawn)).toEqual([]);
     expect(args.at(-1)).toBe("--json");
   });
+  it("duplicate discovery rows throw (unfiltered + filtered) and never reach execute", () => {
+    const dupSpawn = (() => ({ status: 0, stdout: JSON.stringify([{ file: "a.test.ts" }, { file: "a.test.ts" }]) })) as never;
+    for (const sel of [[], ["a.test.ts"]]) expect(() => discoverTestFiles(repoRoot, sel, dupSpawn)).toThrow(/Duplicate test file/);
+    let ran = false; const discover = (r: string, s?: string[]) => discoverTestFiles(r, s, dupSpawn);
+    expect(() => runShard({ repoRoot, shardIndex: 1, totalShards: 1, commitSha: "s", discover, execute: () => ((ran = true), []) })).toThrow(/Duplicate test file/);
+    expect(ran).toBe(false); });
 });
 
 describe("runShard guards and manifest", () => {

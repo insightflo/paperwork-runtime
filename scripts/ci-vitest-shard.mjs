@@ -68,7 +68,10 @@ export function discoverTestFiles(repoRoot, filterArgs = [], spawn = spawnSync) 
   catch (e) { throw new Error(`vitest list --json output unparsable: ${e.message}`); }
   if (!Array.isArray(list) || list.some((e) => !e || typeof e.file !== "string" || !e.file))
     throw new Error("vitest list --json output is not a [{file, projectName}] array");
-  return uniqSorted(list.map((e) => toRel(repoRoot, e.file))); // vitest 3 --json: [{file: "<abs>", projectName}]
+  const files = list.map((e) => toRel(repoRoot, e.file)); // vitest 3 --json: [{file: "<abs>", projectName}]
+  const seen = new Set();
+  for (const f of files) if (seen.size === seen.add(f).size) throw new Error(`Duplicate test file in discovery: ${f}`);
+  return files.sort();
 }
 
 export function extractExecutedFilesFromJsonReport(reportPath, repoRoot) {
