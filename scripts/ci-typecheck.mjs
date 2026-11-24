@@ -41,7 +41,7 @@ function depEdges(manifest, pkgDir, byName, byDir) {
       if (byName.has(dep)) { edges.add(dep); continue; }
       if (typeof spec !== "string" || !/^(npm|workspace|file|link):/.test(spec)) continue;
       const rest = spec.slice(spec.indexOf(":") + 1);
-      if (rest.startsWith(".") || path.isAbsolute(rest)) {
+      if (/^(file|link):/.test(spec) || rest.startsWith(".") || path.isAbsolute(rest)) {
         const target = byDir.get(path.resolve(pkgDir, rest));
         if (target && target !== manifest.name) edges.add(target);
       } else {

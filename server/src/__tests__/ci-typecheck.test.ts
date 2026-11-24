@@ -153,6 +153,15 @@ describe("planTypecheckTasks fixtures", () => {
       b: { scripts: { typecheck: "tsc --noEmit" }, deps: { dependencies: { "alias-a": "file:../a" } } },
     });
     expect(() => planTypecheckTasks(dir)).toThrow(/cycle/);
+    // file:/link: 는 pnpm 이 맨 앞 점 없는 상대 경로(file:sub/b)도 허용한다.
+    const bare = mkws({
+      a: { scripts: { typecheck: "tsc --noEmit" }, deps: { dependencies: { "alias-b": "file:sub/b" } } },
+    });
+    writeFileSync(join(bare, "pnpm-workspace.yaml"), 'packages:\n  - "packages/**"\n');
+    const bd = join(bare, "packages", "a", "sub", "b");
+    mkdirSync(bd, { recursive: true });
+    writeFileSync(join(bd, "package.json"), JSON.stringify({ name: "b", version: "0.0.0", dependencies: { "alias-a": "file:../.." } }));
+    expect(() => planTypecheckTasks(bare)).toThrow(/cycle/);
   });
 });
 
