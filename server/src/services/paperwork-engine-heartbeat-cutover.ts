@@ -22,6 +22,12 @@ import {
 export const HEARTBEAT_CUTOVER_WRITE_TIMEOUT_MS = 17_000;
 export const HEARTBEAT_CUTOVER_READ_TIMEOUT_MS = 10_000;
 
+/** 쓰기 RPC 타임아웃 바닥 — 호출자가 17s 미만·NaN·±Infinity 를 줘도 바닥값을 강제한다. */
+function cutoverWriteTimeoutMs(requested: number | undefined): number {
+  return Math.max(HEARTBEAT_CUTOVER_WRITE_TIMEOUT_MS,
+    typeof requested === "number" && Number.isFinite(requested) ? requested : 0);
+}
+
 export type HeartbeatCutoverSource = "rust" | "ts";
 export interface HeartbeatCutoverResult<T> { source: HeartbeatCutoverSource; value: T }
 export type HeartbeatCutoverOperation = "claim_wakeup" | "transition_run_fenced";
@@ -91,7 +97,13 @@ function isTransitionEngineEligible(params: HeartbeatTransitionRunFencedCutoverP
   }
   if ((params.error !== undefined && typeof params.error !== "string")
     || (params.error_code !== undefined && typeof params.error_code !== "string")) return false;
-  return expected_statuses.every((from) => isStatus(from) && LEGAL_NEXT[from].has(next_status));
+  // Index loop, not .every(): sparse arrays (Array(1)) skip holes in .every and
+  // would read eligible, then throw a RangeError the engine never saw.
+  for (let i = 0; i < expected_statuses.length; i++) {
+    const from = expected_statuses[i];
+    if (!isStatus(from) || !LEGAL_NEXT[from].has(next_status)) return false;
+  }
+  return true;
 }
 
 async function writeWithCutover<T>(
@@ -123,7 +135,7 @@ export async function claimWakeupWithCutover(
     return { source: "ts", value: await tsFallback() };
   }
   return writeWithCutover("claim_wakeup",
-    () => claimHeartbeatWakeup(client, params, { timeoutMs: opts.timeoutMs ?? HEARTBEAT_CUTOVER_WRITE_TIMEOUT_MS }),
+    () => claimHeartbeatWakeup(client, params, { timeoutMs: cutoverWriteTimeoutMs(opts.timeoutMs) }),
     tsFallback);
 }
 
@@ -138,7 +150,7 @@ export async function transitionRunFencedWithCutover(
     return { source: "ts", value: await tsFallback() };
   }
   return writeWithCutover("transition_run_fenced",
-    () => transitionHeartbeatRunFenced(client, params, { timeoutMs: opts.timeoutMs ?? HEARTBEAT_CUTOVER_WRITE_TIMEOUT_MS }),
+    () => transitionHeartbeatRunFenced(client, params, { timeoutMs: cutoverWriteTimeoutMs(opts.timeoutMs) }),
     tsFallback);
 }
 

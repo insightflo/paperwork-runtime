@@ -149,6 +149,7 @@ describe("transitionRunFencedWithCutover", () => {
     ["empty expected_statuses", { ...TRANS, expected_statuses: [] }],
     ["non-canonical status", { ...TRANS, next_status: "bogus" as never }],
     ["engine-illegal transition", { ...TRANS, next_status: "running" }],
+    ["sparse expected_statuses", { ...TRANS, expected_statuses: Array(1) }],
   ];
   it.each(ineligible)("ineligible input (%s) uses TS directly with no RPC", async (_l, params) => {
     const { client, calls } = stub(() => APPLIED);
@@ -181,6 +182,14 @@ describe("transitionRunFencedWithCutover", () => {
     expect(err).toBeInstanceOf(HeartbeatCutoverIndeterminateError);
     expect(err).toMatchObject({ operation: "transition_run_fenced", cause: error });
     expect(tsFallback).not.toHaveBeenCalled();
+  });
+  it("write RPCs clamp a sub-floor timeoutMs up to the 17s minimum", async () => {
+    const a = stub(() => ({ claimed: WAKE }));
+    const b = stub(() => APPLIED);
+    await claimWakeupWithCutover(a.client, CLAIM, vi.fn(), { env: ON, timeoutMs: 1 });
+    await transitionRunFencedWithCutover(b.client, TRANS, vi.fn(), { env: ON, timeoutMs: 1 });
+    expect(timeoutOf(a.calls[0])).toBeGreaterThanOrEqual(17_000);
+    expect(timeoutOf(b.calls[0])).toBeGreaterThanOrEqual(17_000);
   });
 });
 
