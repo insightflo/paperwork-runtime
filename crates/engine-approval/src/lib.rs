@@ -65,6 +65,7 @@ pub enum ApprovalDbError {
         to: ApprovalStatus,
     },
     EmptyDecisionActor,
+    CrossCompanyRequesterAgent,
     Db(postgres::Error),
 }
 
@@ -79,6 +80,9 @@ impl fmt::Display for ApprovalDbError {
                 to.as_str()
             ),
             ApprovalDbError::EmptyDecisionActor => write!(f, "empty decided_by_user_id"),
+            ApprovalDbError::CrossCompanyRequesterAgent => {
+                write!(f, "requested_by_agent_id belongs to a different company")
+            }
             ApprovalDbError::Db(err) => write!(f, "postgres error: {err}"),
         }
     }
@@ -243,10 +247,41 @@ mod tests {
     }
 
     #[test]
+    fn create_sql_guards_requester_agent_company() {
+        assert!(SQL_CREATE_APPROVAL.contains("$3::uuid IS NULL"));
+        assert!(SQL_CREATE_APPROVAL.contains(
+            "EXISTS (SELECT 1 FROM agents a WHERE a.id = $3 AND a.company_id = $1)"
+        ));
+    }
+
+    #[test]
     fn list_limit_is_clamped() {
         assert_eq!(clamp_list_limit(0), 1);
         assert_eq!(clamp_list_limit(-9), 1);
         assert_eq!(clamp_list_limit(200), 200);
         assert_eq!(clamp_list_limit(10_000), 200);
+    }
+
+    #[test]
+    #[ignore = "requires PAPERWORK_TEST_DATABASE_URL"]
+    fn live_pg_fencing_and_resolution_outcomes() {
+        let url = std::env::var("PAPERWORK_TEST_DATABASE_URL").unwrap_or_default();
+        if url.is_empty() {
+            return;
+        }
+        let mut c = postgres::Client::connect(&url, postgres::NoTls).unwrap();
+        let (a, b, ga, gb) = (uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4(), uuid::Uuid::new_v4());
+        let mut tx = c.transaction().unwrap();
+        tx.batch_execute(&format!("INSERT INTO companies (id,name,issue_prefix) VALUES ('{a}','t','P{a}'),('{b}','t','P{b}');INSERT INTO agents (id,company_id,name) VALUES ('{ga}','{a}','x'),('{gb}','{b}','x')")).unwrap();
+        let mk = |agent: Option<uuid::Uuid>| CreateApprovalInput { company_id: a, approval_type: "t".to_string(), requested_by_agent_id: agent, requested_by_user_id: None, requested_by_plugin_id: None, payload: serde_json::json!({}) };
+        assert!(matches!(create_approval(&mut tx, &mk(Some(gb))), Err(ApprovalDbError::CrossCompanyRequesterAgent)));
+        let created = create_approval(&mut tx, &mk(Some(ga))).unwrap();
+        let mut res = |t: ApprovalStatus, co: uuid::Uuid| resolve_approval_fenced(&mut tx, &ResolveApprovalInput { approval_id: created.id, company_id: co, target_status: t, decided_by_user_id: "u1".to_string(), decision_note: Some("n1".to_string()) });
+        let ResolutionOutcome::Applied(first) = res(Approved, a).unwrap() else { panic!("first resolve must apply") };
+        let ResolutionOutcome::AlreadyInTargetState(replay) = res(Approved, a).unwrap() else { panic!("replay must be idempotent") };
+        assert_eq!((replay.decided_by_user_id, replay.decision_note, replay.decided_at), (first.decided_by_user_id, first.decision_note, first.decided_at));
+        assert!(matches!(res(Rejected, a).unwrap(), ResolutionOutcome::NotFoundOrConflict));
+        assert!(matches!(res(Approved, b).unwrap(), ResolutionOutcome::NotFoundOrConflict));
+        tx.rollback().unwrap();
     }
 }

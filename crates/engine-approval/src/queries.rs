@@ -42,7 +42,7 @@ pub struct ResolveApprovalInput {
 
 pub const SQL_GET_APPROVAL_BY_ID: &str = "SELECT id, company_id, type, requested_by_agent_id, requested_by_user_id, requested_by_plugin_id, status, payload, decision_note, decided_by_user_id, decided_at, created_at, updated_at FROM approvals WHERE id = $1 AND company_id = $2";
 pub const SQL_LIST_APPROVALS_BY_COMPANY: &str = "SELECT id, company_id, type, requested_by_agent_id, requested_by_user_id, requested_by_plugin_id, status, payload, decision_note, decided_by_user_id, decided_at, created_at, updated_at FROM approvals WHERE company_id = $1 AND ($2::text IS NULL OR status = $2) ORDER BY created_at ASC, id ASC LIMIT $3";
-pub const SQL_CREATE_APPROVAL: &str = "INSERT INTO approvals (company_id, type, requested_by_agent_id, requested_by_user_id, requested_by_plugin_id, status, payload) VALUES ($1, $2, $3, $4, $5, 'pending', $6) RETURNING id, company_id, type, requested_by_agent_id, requested_by_user_id, requested_by_plugin_id, status, payload, decision_note, decided_by_user_id, decided_at, created_at, updated_at";
+pub const SQL_CREATE_APPROVAL: &str = "INSERT INTO approvals (company_id, type, requested_by_agent_id, requested_by_user_id, requested_by_plugin_id, status, payload) SELECT $1, $2, $3, $4, $5, 'pending', $6 WHERE $3::uuid IS NULL OR EXISTS (SELECT 1 FROM agents a WHERE a.id = $3 AND a.company_id = $1) RETURNING id, company_id, type, requested_by_agent_id, requested_by_user_id, requested_by_plugin_id, status, payload, decision_note, decided_by_user_id, decided_at, created_at, updated_at";
 pub const SQL_RESOLVE_APPROVAL_FENCED: &str = "UPDATE approvals SET status = $3, decided_by_user_id = $4, decision_note = $5, decided_at = now(), updated_at = now() WHERE id = $1 AND company_id = $2 AND status IN ('pending', 'revision_requested') RETURNING id, company_id, type, requested_by_agent_id, requested_by_user_id, requested_by_plugin_id, status, payload, decision_note, decided_by_user_id, decided_at, created_at, updated_at";
 pub const SQL_REQUEST_REVISION_FENCED: &str = "UPDATE approvals SET status = 'revision_requested', decided_by_user_id = $3, decision_note = $4, decided_at = now(), updated_at = now() WHERE id = $1 AND company_id = $2 AND status = 'pending' RETURNING id, company_id, type, requested_by_agent_id, requested_by_user_id, requested_by_plugin_id, status, payload, decision_note, decided_by_user_id, decided_at, created_at, updated_at";
 pub const SQL_RESUBMIT_APPROVAL_FENCED: &str = "UPDATE approvals SET status = 'pending', payload = COALESCE($3, payload), decision_note = NULL, decided_by_user_id = NULL, decided_at = NULL, updated_at = now() WHERE id = $1 AND company_id = $2 AND status = 'revision_requested' RETURNING id, company_id, type, requested_by_agent_id, requested_by_user_id, requested_by_plugin_id, status, payload, decision_note, decided_by_user_id, decided_at, created_at, updated_at";
@@ -98,7 +98,7 @@ pub fn create_approval(
     tx: &mut Transaction<'_>,
     input: &CreateApprovalInput,
 ) -> Result<ApprovalRow, ApprovalDbError> {
-    let row = tx.query_one(
+    let row = tx.query_opt(
         SQL_CREATE_APPROVAL,
         &[
             &input.company_id,
@@ -109,7 +109,7 @@ pub fn create_approval(
             &input.payload,
         ],
     )?;
-    approval_from_row(&row)
+    approval_from_row(&row.ok_or(ApprovalDbError::CrossCompanyRequesterAgent)?)
 }
 
 pub fn resolve_approval_fenced(
@@ -136,11 +136,17 @@ pub fn resolve_approval_fenced(
     if let Some(row) = updated {
         return Ok(ResolutionOutcome::Applied(approval_from_row(&row)?));
     }
-    match get_approval_by_id(tx, input.approval_id, input.company_id)? {
-        Some(current) if current.status == input.target_status => {
-            Ok(ResolutionOutcome::AlreadyInTargetState(current))
-        }
-        _ => Ok(ResolutionOutcome::NotFoundOrConflict),
+    let existing = get_approval_by_id(tx, input.approval_id, input.company_id)?;
+    Ok(classify_missed_resolution(existing, input.target_status))
+}
+
+pub fn classify_missed_resolution(
+    existing: Option<ApprovalRow>,
+    target: ApprovalStatus,
+) -> ResolutionOutcome {
+    match existing {
+        Some(row) if row.status == target => ResolutionOutcome::AlreadyInTargetState(row),
+        _ => ResolutionOutcome::NotFoundOrConflict,
     }
 }
 
@@ -181,4 +187,66 @@ pub fn cancel_approval_fenced(
 ) -> Result<Option<ApprovalRow>, ApprovalDbError> {
     let updated = tx.query_opt(SQL_CANCEL_APPROVAL_FENCED, &[&approval_id, &company_id])?;
     updated.map(|row| approval_from_row(&row)).transpose()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(status: ApprovalStatus) -> ApprovalRow {
+        let ts = Utc::now();
+        ApprovalRow {
+            id: Uuid::new_v4(),
+            company_id: Uuid::new_v4(),
+            approval_type: "t".to_string(),
+            requested_by_agent_id: None,
+            requested_by_user_id: None,
+            requested_by_plugin_id: None,
+            status,
+            payload: serde_json::json!({}),
+            decision_note: Some("note".to_string()),
+            decided_by_user_id: Some("u".to_string()),
+            decided_at: Some(ts),
+            created_at: ts,
+            updated_at: ts,
+        }
+    }
+
+    #[test]
+    fn missed_resolution_same_target_preserves_decision() {
+        let existing = row(ApprovalStatus::Approved);
+        let expected = (
+            existing.decided_by_user_id.clone(),
+            existing.decision_note.clone(),
+            existing.decided_at,
+        );
+        let ResolutionOutcome::AlreadyInTargetState(got) =
+            classify_missed_resolution(Some(existing), ApprovalStatus::Approved)
+        else {
+            panic!("expected AlreadyInTargetState");
+        };
+        assert_eq!(
+            (got.decided_by_user_id, got.decision_note, got.decided_at),
+            expected
+        );
+    }
+
+    #[test]
+    fn missed_resolution_opposite_terminal_is_conflict() {
+        assert!(matches!(
+            classify_missed_resolution(
+                Some(row(ApprovalStatus::Rejected)),
+                ApprovalStatus::Approved
+            ),
+            ResolutionOutcome::NotFoundOrConflict
+        ));
+    }
+
+    #[test]
+    fn missed_resolution_missing_row_is_conflict() {
+        assert!(matches!(
+            classify_missed_resolution(None, ApprovalStatus::Approved),
+            ResolutionOutcome::NotFoundOrConflict
+        ));
+    }
 }
