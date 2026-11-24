@@ -3,7 +3,7 @@ name: PR
 # [CI-REDUCE 2026-11-13] 경량 잡(policy)+조건부 전체 스위트. 판정은 scripts/ci-scope.sh 소유 — `if:` 에 규칙을 복제하지 않는다. ci-full 은 one-shot(consume_label 로 회수).
 on:
   pull_request:
-    branches: [main]
+    branches: [main, chore/ci-merge-gate-rollout-base]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
   # GITHUB_TOKEN 봇 PR은 pull_request 이벤트가 없어 refresh-lockfile.yml 이 이 ref로 직접 dispatch한다.
   workflow_dispatch:
