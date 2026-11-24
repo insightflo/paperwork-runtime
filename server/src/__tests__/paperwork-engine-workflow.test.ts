@@ -58,13 +58,18 @@ describe("workflow.* typed RPC methods", () => {
   it("validate_* reject malformed results and bad params pre-call", async () => {
     for (const bad of [null, 1, { valid: true }, { valid: "y" },
       { valid: false, reason: "bogus", from: "pending", to: "running" },
-      { valid: false, reason: "illegal_run_transition", from: "bogus", to: "running" }]) {
+      { valid: false, reason: "illegal_run_transition", from: "bogus", to: "running" },
+      { valid: true, sets_started_at: true, sets_completed_at: false, reason: "illegal_run_transition" },
+      { valid: true, sets_started_at: true, sets_completed_at: false, extra: 1 },
+      { valid: false, reason: "illegal_run_transition", from: "pending", to: "running", extra: 1 }]) {
       const { client } = stub({ "workflow.validate_run_transition": bad });
       await expect(validateWorkflowRunTransition(client, { expected_statuses: ["pending"], next_status: "running" }))
         .rejects.toMatchObject({ code: "protocol_error" });
     }
     for (const bad of [{ valid: false, reason: "illegal_step_transition", from: "queued", to: "running" },
-      { valid: true, sets_started_at: true }]) {
+      { valid: true, sets_started_at: true },
+      { valid: true, sets_started_at: true, sets_completed_at: false, extra: 1 },
+      { valid: false, reason: "illegal_step_transition", from: "pending", to: "running", extra: 1 }]) {
       const { client } = stub({ "workflow.validate_step_transition": bad });
       await expect(validateWorkflowStepTransition(client, { expected_statuses: ["pending"], next_status: "running" }))
         .rejects.toMatchObject({ code: "protocol_error" });
@@ -83,9 +88,15 @@ describe("workflow.* typed RPC methods", () => {
     expect(calls[0]).toEqual({
       method: "workflow.list_pending_runs", params: { company_id: NIL, limit: 10 }, callOpts: undefined,
     });
-    for (const bad of [null, {}, { runs: "x" }, { runs: [{ ...PENDING, id: 1 }] },
+    for (const bad of [null, {}, { runs: "x" }, { runs: [], extra: 1 }, { runs: [PENDING], extra: 1 },
+      { runs: [{ ...PENDING, id: 1 }] },
       { runs: [{ ...PENDING, mission_id: "zzz" }] }, { runs: [{ ...PENDING, workflow_id: "x" }] },
-      { runs: [{ ...PENDING, created_at: "2026-02-30T00:00:00Z" }] }]) {
+      { runs: [{ ...PENDING, extra: 1 }] },
+      { runs: [{ ...PENDING, created_at: "2026-02-30T00:00:00Z" }] },
+      { runs: [{ ...PENDING, created_at: "2026-01-01T24:00:00Z" }] },
+      { runs: [{ ...PENDING, created_at: "2026-01-01T00:60:00Z" }] },
+      { runs: [{ ...PENDING, created_at: "2026-01-01T00:00:00+24:00" }] },
+      { runs: [{ ...PENDING, created_at: "2026-01-01T00:00:00+01:60" }] }]) {
       const c = stub({ "workflow.list_pending_runs": bad });
       await expect(listPendingWorkflowRuns(c.client, { company_id: NIL, limit: 5 }))
         .rejects.toMatchObject({ code: "protocol_error" });
@@ -113,7 +124,8 @@ describe("workflow.* typed RPC methods", () => {
     })).resolves.toEqual({ applied: false });
     for (const bad of [null, {}, { applied: "y" }, { applied: true, run_id: RUN, status: "bogus" },
       { applied: false, run_id: RUN }, { applied: false, extra: 1 },
-      { ...applied, run_id: "x" }, { ...applied, completed_at: "2025-02-29T00:00:00Z" }]) {
+      { ...applied, run_id: "x" }, { ...applied, completed_at: "2025-02-29T00:00:00Z" },
+      { ...applied, extra: 1 }, { ...applied, started_at: "2026-01-01T24:00:00Z" }]) {
       const c = stub({ "workflow.transition_run_fenced": bad });
       await expect(transitionWorkflowRunFenced(c.client, {
         run_id: RUN, company_id: NIL, expected_statuses: ["pending"], next_status: "running",
@@ -135,7 +147,7 @@ describe("workflow.* typed RPC methods", () => {
     expect(calls[0]).toEqual({ method: "workflow.transition_step_fenced", params: STEP_PARAMS, callOpts: undefined });
     for (const bad of [null, { applied: false, x: 1 }, { ...applied, status_transition_version: 1.5 },
       { ...applied, status_transition_version: 2147483648 }, { ...applied, status: "bogus" },
-      { ...applied, started_at: "2026-02-30T00:00:00Z" }]) {
+      { ...applied, started_at: "2026-02-30T00:00:00Z" }, { ...applied, extra: 1 }]) {
       const c = stub({ "workflow.transition_step_fenced": bad });
       await expect(transitionWorkflowStepFenced(c.client, STEP_PARAMS)).rejects.toMatchObject({ code: "protocol_error" });
     }
@@ -160,9 +172,10 @@ describe("workflow.* typed RPC methods", () => {
     expect(calls[0]).toEqual({
       method: "workflow.list_step_runs", params: { company_id: NIL, workflow_run_id: RUN }, callOpts: undefined,
     });
-    for (const bad of [null, {}, { steps: {} }, { steps: [{ ...STEP_ROW, status: "bogus" }] },
+    for (const bad of [null, {}, { steps: {} }, { steps: [STEP_ROW], extra: 1 }, { steps: [{ ...STEP_ROW, status: "bogus" }] },
       { steps: [{ ...STEP_ROW, retry_count: 2147483648 }] }, { steps: [{ ...STEP_ROW, execution_generation: 0.5 }] },
       { steps: [{ ...STEP_ROW, status_transition_version: -2147483649 }] }, { steps: [{ ...STEP_ROW, step_id: 7 }] },
+      { steps: [{ ...STEP_ROW, extra: 1 }] }, { steps: [{ ...STEP_ROW, started_at: "2026-01-01T24:00:00Z" }] },
       { steps: [{ ...STEP_ROW, completed_at: "2026-13-01T00:00:00Z" }] }, { steps: [{ ...STEP_ROW, id: "x" }] }]) {
       const c = stub({ "workflow.list_step_runs": bad });
       await expect(listWorkflowStepRuns(c.client, { company_id: NIL, workflow_run_id: RUN }))
