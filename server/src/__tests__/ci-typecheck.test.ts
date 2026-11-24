@@ -159,6 +159,23 @@ it("never starts downstream tasks when an upstream task fails", async () => {
   expect(res.results.find((r) => r.name === "b")!.status).toBe("blocked");
 });
 
+it("waits for in-flight tasks so a slow independent failure reaches the final result", async () => {
+  let slowDone = false;
+  const res = await runTopologicalTasks(
+    [{ name: "fast", dir: "", cmd: "true", deps: [] }, { name: "slow", dir: "", cmd: "true", deps: [] }],
+    async (t) => {
+      if (t.name === "slow") {
+        await new Promise((r) => setTimeout(r, 50));
+        slowDone = true;
+        throw new Error("slow failed");
+      }
+      await new Promise((r) => setTimeout(r, 5));
+    }, 4);
+  expect(slowDone).toBe(true);
+  expect(res.ok).toBe(false);
+  expect(res.results.find((r) => r.name === "slow")!.status).toBe("failed");
+});
+
 describe("incremental .tsbuildinfo", () => {
   const TSCONFIG = JSON.stringify({ compilerOptions: { strict: true, module: "commonjs", moduleResolution: "node", skipLibCheck: true } });
   const tsc = (cwd: string, args: string[]) => spawnSync(process.execPath, [TSC, ...args], { cwd, encoding: "utf8" });

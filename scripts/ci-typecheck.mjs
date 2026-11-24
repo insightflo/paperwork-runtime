@@ -116,7 +116,9 @@ export async function runTopologicalTasks(tasks, executor, concurrency = 4) {
     status.set(t.name, st);
     results.push({ name: t.name, status: st, ms, ...(error ? { error: String(error && error.message ? error.message : error) } : {}) });
   };
-  while ([...status.values()].includes("pending")) {
+  // pending 이 없어도 실행 중(running)인 작업이 남아 있으면 끝까지 기다린다.
+  // 그렇지 않으면 늦게 실패하는 독립 작업이 results/exit code 에 반영되지 않는다.
+  while (running.size > 0 || [...status.values()].includes("pending")) {
     for (const t of tasks) {
       if (status.get(t.name) !== "pending") continue;
       if (t.deps.some((d) => status.get(d) === "failed" || status.get(d) === "blocked")) { finish(t, "blocked", 0); continue; }
