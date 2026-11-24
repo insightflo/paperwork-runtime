@@ -23,6 +23,14 @@ impl DbOp for Db { fn run<'x>(self, c: &'x mut Client) -> Op<'x> { Box::pin(run_
 
 fn due_json(r: &Row) -> Value { json!({"id": r.get::<_, Uuid>(0), "company_id": r.get::<_, Uuid>(1), "agent_id": r.get::<_, Uuid>(2), "cron_expression": r.get::<_, String>(3), "timezone": r.get::<_, String>(4), "mission_id": r.get::<_, Option<Uuid>>(5), "enabled": r.get::<_, bool>(6), "last_run_at": r.get::<_, Option<DateTime<Utc>>>(7), "next_run_at": r.get::<_, Option<DateTime<Utc>>>(8)}) }
 
+/// PG timestamptz truncates to microseconds, so a window advancing only in
+/// sub-microsecond digits would collapse to equal bound values at the driver;
+/// require strict advancement at the precision PG will actually store.
+fn valid_advance_window_pg(last: DateTime<Utc>, next: DateTime<Utc>) -> bool {
+    validate_advance_window(last, next).is_ok()
+        && (next.timestamp(), next.timestamp_subsec_micros()) > (last.timestamp(), last.timestamp_subsec_micros())
+}
+
 async fn run_op<'x>(c: &'x mut Client, m: Db) -> Result<Step<'x>, Fail> {
     let tx = c.transaction().await.map_err(pre)?;
     Ok(match m {
@@ -56,15 +64,12 @@ fn dispatch_with_timeout(id: Value, method: &str, params: Option<&Value>, env: &
     match method {
         "schedule.validate_advance_window" => {
             let p = need!(WindowP);
-            ok(id, match validate_advance_window(p.last_run_at, p.next_run_at) {
-                Ok(()) => json!({"valid": true}),
-                Err(_) => json!({"valid": false, "reason": "invalid_advance_window"}),
-            })
+            ok(id, if valid_advance_window_pg(p.last_run_at, p.next_run_at) { json!({"valid": true}) } else { json!({"valid": false, "reason": "invalid_advance_window"}) })
         }
         "schedule.list_due" => { let p = need!(ListDueP); exec_db(id, Db::ListDue(p), env, op_timeout) }
         "schedule.advance_fenced" => {
             let p = need!(AdvanceP);
-            if validate_advance_window(p.last_run_at, p.next_run_at).is_err() { return err(id, -32602, "invalid_params") }
+            if !valid_advance_window_pg(p.last_run_at, p.next_run_at) { return err(id, -32602, "invalid_params") }
             exec_db(id, Db::AdvanceFenced(p), env, op_timeout)
         }
         "schedule.set_enabled" => { let p = need!(EnabledP); exec_db(id, Db::SetEnabled(p), env, op_timeout) }
@@ -89,6 +94,24 @@ mod tests {
         for bad in [json!(null), json!([]), json!("x"), json!({}), json!({"last_run_at":last}), json!({"last_run_at":1,"next_run_at":2}), json!({"last_run_at":last,"next_run_at":"2026-01-01T00:00:01Z","z":0})] {
             assert_eq!(code(&v(bad.clone())), -32602, "{bad}"); }
         assert_eq!(code(&dispatch_with(json!(1), "schedule.validate_advance_window", None, e)), -32602); // missing params
+    }
+
+    #[test]
+    fn sub_microsecond_window_rejected_at_pg_precision() {
+        let (e, u, last) = (&env(""), Uuid::nil(), "2026-01-01T00:00:00.000000000Z");
+        let v = |next: &str| call("schedule.validate_advance_window", json!({"last_run_at":last,"next_run_at":next}), e);
+        // 1ns apart: Rust nanosecond compare passes but PG timestamptz stores equal µs values
+        assert_eq!(v("2026-01-01T00:00:00.000000001Z")["result"], json!({"valid":false,"reason":"invalid_advance_window"}));
+        // 1µs apart: strictly advances at the precision PG stores
+        assert_eq!(v("2026-01-01T00:00:00.000001000Z")["result"], json!({"valid":true}));
+        // sub-µs digits on `last` count too: both truncate to the same PG µs value
+        let v2 = |next: &str| call("schedule.validate_advance_window", json!({"last_run_at":"2026-01-01T00:00:00.000000500Z","next_run_at":next}), e);
+        assert_eq!(v2("2026-01-01T00:00:00.000000999Z")["result"], json!({"valid":false,"reason":"invalid_advance_window"}));
+        // advance_fenced rejects the 1ns window pre-I/O: -32602 even with no DSN or a parseable one
+        for dsn in ["", "postgres://u@127.0.0.1:1/db?sslmode=disable"] {
+            let e2 = if dsn.is_empty() { ProbeEnv::from_pairs(&[]) } else { env(dsn) };
+            assert_eq!(code(&call("schedule.advance_fenced", json!({"schedule_id":u,"company_id":u,"last_run_at":last,"next_run_at":"2026-01-01T00:00:00.000000001Z"}), &e2)), -32602, "{dsn}");
+        }
     }
 
     #[test]
