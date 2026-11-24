@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
+#[cfg(unix)]
+pub mod runner;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RunStatus { Queued, Running, Succeeded, Failed, Cancelled, TimedOut }
