@@ -3,18 +3,22 @@
  * [F1 2026-11-24] 워크스페이스 typecheck 를 토폴로지 순서 + 증분 tsbuildinfo 로 실행한다.
  *
  * 왜: `pnpm -r typecheck` 는 각 패키지 스크립트 안의 `pnpm --filter @paperclipai/(shared|plugin-sdk) build`
- *   선행 빌드를 패키지마다 반복 실행한다(중복 빌드). 공통 두 패키지를 한 번만 빌드하고,
+ *   선행 빌드를 패키지마다 반복 실행한다(중복 빌드). plugin-sdk 의 build 스크립트가 shared 빌드를
+ *   포함하므로 plugin-sdk 하나만 프리빌드하면 둘 다 정확히 한 번 빌드되고,
  *   안전한 `tsc --noEmit` 계열은 `.cache/tsbuildinfo` 아래 증분 검사로 바꾼다.
+ *   executor 는 비동기 spawn 이라 준비된 작업이 concurrency(4)까지 실제 병렬 실행된다.
  * fail-closed: 스크립트 패턴 불일치, pretypecheck/posttypecheck 훅, 임의 커스텀 스크립트는
  *   원래 `pnpm --filter <name> typecheck` 실행으로 되돌리고, 워크스페이스 의존 사이클은
  *   프리빌드 전에 즉시 실패시킨다.
  */
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const PREBUILD = ["@paperclipai/shared", "@paperclipai/plugin-sdk"];
+// plugin-sdk 의 build 가 `pnpm --filter @paperclipai/shared build` 를 내장하므로 shared 를 따로
+// 프리빌드하면 두 번 빌드된다. plugin-sdk 만 프리빌드해 shared 를 정확히 한 번 빌드한다.
+const PREBUILD = ["@paperclipai/plugin-sdk"];
 const DEP_KEYS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"];
 const INCREMENTAL = /^tsc --noEmit$|^pnpm --filter @paperclipai\/(shared|plugin-sdk) build && tsc --noEmit$/;
 
@@ -144,16 +148,20 @@ async function main() {
     execFileSync("pnpm", ["--filter", name, "build"], { cwd: root, stdio: "inherit" });
     console.log(`prebuild ${name} ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   }
-  const executor = (t) => {
+  // execSync 는 이벤트 루프를 막아 병렬 슬롯이 직렬로 굳는다. 비동기 spawn 으로 실제 병렬 실행한다.
+  const executor = (t) => new Promise((resolve, reject) => {
     const t0 = Date.now();
-    try {
-      execSync(t.cmd, { cwd: root, stdio: "inherit" });
-      console.log(`${t.name} ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-    } catch (e) {
-      console.log(`${t.name} FAILED ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-      throw e;
-    }
-  };
+    let settled = false;
+    const done = (ok, err) => {
+      if (settled) return;
+      settled = true;
+      console.log(`${t.name}${ok ? "" : " FAILED"} ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+      ok ? resolve() : reject(err);
+    };
+    const child = spawn(t.cmd, { cwd: root, stdio: "inherit", shell: true });
+    child.on("error", (e) => done(false, e));
+    child.on("exit", (code, signal) => done(code === 0, new Error(`exit ${code ?? signal}`)));
+  });
   const { ok, results } = await runTopologicalTasks(plan.tasks, executor, 4);
   for (const r of results) if (r.status === "blocked") console.log(`${r.name} blocked (upstream failure)`);
   if (!ok) { console.error("ci-typecheck: failed"); process.exit(1); }
