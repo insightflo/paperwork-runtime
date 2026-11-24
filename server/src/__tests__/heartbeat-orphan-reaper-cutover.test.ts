@@ -9,6 +9,7 @@ import {
   STALE_RUNS_CUTOVER_LIMIT,
 } from "../services/heartbeat-orphan-reaper-cutover.js";
 import { getSharedPaperworkEngineClient } from "../services/paperwork-engine-runtime.js";
+import { logger } from "../middleware/logger.js";
 
 vi.mock("../services/paperwork-engine-runtime.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../services/paperwork-engine-runtime.js")>()),
@@ -91,12 +92,17 @@ describe("discoverActiveRunsForReaper", () => {
       params: { company_id: CO, stale_before: "2026-01-01T00:09:30.001Z", limit: STALE_RUNS_CUTOVER_LIMIT } }]);
     expect(out.map((r) => r.run.id).sort()).toEqual([A, B, M].sort());
   });
-  it("flag ON uses full TS scan with zero RPCs when staleThresholdMs <= 0", async () => {
+  it("flag ON uses full TS scan with zero engine work when staleThresholdMs <= 0", async () => {
     const ROW = active(rid());
+    let distinctQueries = 0;
+    const db = mockDb((q) => (q.distinct && distinctQueries++, [ROW]));
     const { client, calls } = engineStub(() => ({ runs: [] }));
-    const out = await discover(mockDb(() => [ROW]), { staleThresholdMs: 0, engineClient: client, env: ON });
+    expect(await discover(db, { staleThresholdMs: 0, engineClient: client, env: ON })).toEqual([ROW]);
+    // engineClient 미주입 경로도 임계 게이트가 공유 getter·회사 쿼리보다 먼저라 엔진 작업 0.
+    expect(await discover(db, { staleThresholdMs: 0, env: ON })).toEqual([ROW]);
     expect(calls).toHaveLength(0);
-    expect(out).toEqual([ROW]);
+    expect(getSharedPaperworkEngineClient).not.toHaveBeenCalled();
+    expect(distinctQueries).toBe(0);
   });
   it("flag ON falls back to the unbounded TS scan when a company result reaches the limit", async () => {
     const FULL_ONLY = active(rid());
@@ -120,8 +126,11 @@ describe("discoverActiveRunsForReaper", () => {
     const ROW = active(rid());
     expect(await discover(mockDb(() => [ROW]), { staleThresholdMs: 60_000, engineClient: null, env: ON })).toEqual([ROW]);
     expect(getSharedPaperworkEngineClient).not.toHaveBeenCalled();
+    const warnSpy = vi.spyOn(logger, "warn");
     vi.mocked(getSharedPaperworkEngineClient).mockImplementationOnce(() => { throw new Error("init boom"); });
     expect(await discover(mockDb(() => [ROW]), { staleThresholdMs: 60_000, env: ON })).toEqual([ROW]);
+    expect(warnSpy).toHaveBeenCalledWith({ err: expect.any(Error) },
+      expect.stringContaining("shared client resolution failed"));
   });
 });
 
