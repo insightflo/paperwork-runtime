@@ -50,9 +50,6 @@ const HumanOperator = lazy(async () => ({ default: (await import("./pages/HumanO
 const InstanceGeneralSettings = lazy(async () => ({ default: (await import("./pages/InstanceGeneralSettings")).InstanceGeneralSettings }));
 const InstanceSettings = lazy(async () => ({ default: (await import("./pages/InstanceSettings")).InstanceSettings }));
 const InstanceExperimentalSettings = lazy(async () => ({ default: (await import("./pages/InstanceExperimentalSettings")).InstanceExperimentalSettings }));
-const PluginManager = lazy(async () => ({ default: (await import("./pages/PluginManager")).PluginManager }));
-const PluginSettings = lazy(async () => ({ default: (await import("./pages/PluginSettings")).PluginSettings }));
-const PluginPage = lazy(async () => ({ default: (await import("./pages/PluginPage")).PluginPage }));
 function lazyRoute(element: ReactNode) {
   return (
     <Suspense fallback={<div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>}>
@@ -157,7 +154,6 @@ function boardRoutes() {
       <Route path="human-operator" element={lazyRoute(<HumanOperator />)} />
       <Route path="settings" element={<LegacySettingsRedirect />} />
       <Route path="settings/*" element={<LegacySettingsRedirect />} />
-      <Route path="plugins/:pluginId" element={lazyRoute(<PluginPage />)} />
       <Route path="org" element={lazyRoute(<OrgChart />)} />
       <Route path="agents" element={<Navigate to="/agents/all" replace />} />
       <Route path="agents/all" element={lazyRoute(<Agents />)} />
@@ -202,7 +198,6 @@ function boardRoutes() {
       <Route path="inbox/unread" element={lazyRoute(<Inbox />)} />
       <Route path="inbox/all" element={lazyRoute(<Inbox />)} />
       <Route path="inbox/new" element={<Navigate to="/inbox/recent" replace />} />
-      <Route path=":pluginRoutePath" element={lazyRoute(<PluginPage />)} />
       <Route path="*" element={<NotFoundPage scope="board" />} />
     </>
   );
@@ -346,8 +341,6 @@ export function App() {
             <Route path="general" element={lazyRoute(<InstanceGeneralSettings />)} />
             <Route path="heartbeats" element={lazyRoute(<InstanceSettings />)} />
             <Route path="experimental" element={lazyRoute(<InstanceExperimentalSettings />)} />
-            <Route path="plugins" element={lazyRoute(<PluginManager />)} />
-            <Route path="plugins/:pluginId" element={lazyRoute(<PluginSettings />)} />
           </Route>
           <Route path="channels" element={<Layout />}>
             <Route index element={lazyRoute(<ChannelConfig />)} />
