@@ -39,7 +39,7 @@ function cutoverReadTimeoutMs(requested: number | undefined): number {
 export type HeartbeatCutoverSource = "rust" | "ts";
 export interface HeartbeatCutoverResult<T> { source: HeartbeatCutoverSource; value: T }
 export type HeartbeatCutoverOperation = "claim_wakeup" | "transition_run_fenced";
-type CutoverEnv = { PAPERWORK_ENGINE_HEARTBEAT_CUTOVER?: string };
+type CutoverEnv = Readonly<Record<string, string | undefined>>;
 export interface HeartbeatCutoverCallOpts { timeoutMs?: number; env?: CutoverEnv }
 
 /** outcome 이 indeterminate 인 쓰기는 엔진이 커밋했을 수 있어 TS 재적용이

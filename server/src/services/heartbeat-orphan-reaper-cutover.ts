@@ -29,7 +29,7 @@ export interface ActiveRunWithAdapter {
   adapterType: typeof agents.$inferSelect.adapterType;
 }
 
-type CutoverEnv = { PAPERWORK_ENGINE_HEARTBEAT_CUTOVER?: string };
+type CutoverEnv = Readonly<Record<string, string | undefined>>;
 
 export interface DiscoverActiveRunsInput {
   db: Db;
