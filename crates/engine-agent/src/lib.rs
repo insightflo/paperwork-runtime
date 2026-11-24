@@ -224,25 +224,37 @@ mod tests {
             tx.execute("INSERT INTO agents (id,company_id,name) VALUES ($1,$2,'x')", &[&aid, &cid])
                 .unwrap();
         }
-        let input = |from: AgentStatus, to: AgentStatus, company| TransitionAgentStatusInput {
-            company_id: company,
-            agent_id: ga,
-            from_status: from,
-            to_status: to,
-            pause_reason: None,
+        let input = |from: AgentStatus, to: AgentStatus, company, reason: Option<&str>| {
+            TransitionAgentStatusInput {
+                company_id: company,
+                agent_id: ga,
+                from_status: from,
+                to_status: to,
+                pause_reason: reason.map(String::from),
+            }
         };
         assert!(get_agent(&mut tx, ca, ga).unwrap().is_some());
         assert!(get_agent(&mut tx, ca, gb).unwrap().is_none());
         assert_eq!(list_agents_by_company(&mut tx, ca).unwrap().len(), 1);
-        let paused = transition_agent_status_fenced(&mut tx, &input(Idle, Paused, ca)).unwrap();
+        let paused =
+            transition_agent_status_fenced(&mut tx, &input(Idle, Paused, ca, None)).unwrap();
         assert_eq!(paused.status, Paused);
         assert_eq!(paused.pause_reason.as_deref(), Some("manual"));
         assert!(paused.paused_at.is_some());
-        let running = transition_agent_status_fenced(&mut tx, &input(Paused, Running, ca)).unwrap();
+        let idle =
+            transition_agent_status_fenced(&mut tx, &input(Paused, Idle, ca, None)).unwrap();
+        assert_eq!(idle.status, Idle);
+        assert!(idle.pause_reason.is_none());
+        assert!(idle.paused_at.is_none());
+        let held =
+            transition_agent_status_fenced(&mut tx, &input(Idle, Paused, ca, Some("hold"))).unwrap();
+        assert_eq!(held.pause_reason.as_deref(), Some("hold"));
+        let running =
+            transition_agent_status_fenced(&mut tx, &input(Paused, Running, ca, None)).unwrap();
         assert_eq!(running.status, Running);
         assert!(running.pause_reason.is_none());
         assert!(running.paused_at.is_none());
-        for bad_fence in [input(Idle, Paused, ca), input(Running, Paused, cb)] {
+        for bad_fence in [input(Idle, Paused, ca, None), input(Running, Paused, cb, None)] {
             assert!(matches!(
                 transition_agent_status_fenced(&mut tx, &bad_fence),
                 Err(AgentDbError::Fenced)
@@ -250,11 +262,12 @@ mod tests {
         }
         for (from, to) in [(Running, PendingApproval), (Paused, PendingApproval)] {
             assert!(matches!(
-                transition_agent_status_fenced(&mut tx, &input(from, to, ca)),
+                transition_agent_status_fenced(&mut tx, &input(from, to, ca, None)),
                 Err(AgentDbError::InvalidTransition { .. })
             ));
         }
-        let term = transition_agent_status_fenced(&mut tx, &input(Running, Terminated, ca)).unwrap();
+        let term =
+            transition_agent_status_fenced(&mut tx, &input(Running, Terminated, ca, None)).unwrap();
         assert_eq!(term.status, Terminated);
         let tool = uuid::Uuid::new_v4();
         tx.execute("INSERT INTO tool_definitions (id,company_id,name,adapter_type) VALUES ($1,$2,'t','x')", &[&tool, &ca])

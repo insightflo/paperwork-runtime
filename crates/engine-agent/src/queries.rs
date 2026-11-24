@@ -1,5 +1,8 @@
+#![forbid(unsafe_code)]
+
 use chrono::{DateTime, Utc};
-use postgres::{types::FromSql, Row, Transaction};
+use postgres::types::{FromSql, ToSql};
+use postgres::{Row, Transaction};
 use uuid::Uuid;
 
 use crate::{validate_agent_transition, AgentDbError, AgentStatus};
@@ -13,14 +16,17 @@ pub const SQL_LIST_AGENT_TOOL_GRANTS: &str = "SELECT id, company_id, agent_id, t
 
 // Side columns mirror server/src/services/agents.ts: targeting paused stamps
 // pause_reason (COALESCE provided, 'manual') and paused_at = now(); every other
-// target clears both (resume and terminate semantics).
-fn transition_sql(target: AgentStatus) -> String {
-    let side_columns = if target == AgentStatus::Paused {
-        "pause_reason = COALESCE($5, 'manual'), paused_at = now()"
+// target clears both (resume and terminate semantics). `$5` exists only for the
+// paused target, so the text and its bound-parameter count are built together
+// and the caller must push exactly that many parameters, in order.
+fn transition_statement(target: AgentStatus) -> (String, usize) {
+    let (side_columns, params) = if target == AgentStatus::Paused {
+        ("pause_reason = COALESCE($5, 'manual'), paused_at = now()", 5)
     } else {
-        "pause_reason = NULL, paused_at = NULL"
+        ("pause_reason = NULL, paused_at = NULL", 4)
     };
-    format!("UPDATE agents SET status = $4, updated_at = now(), {side_columns} WHERE company_id = $1 AND id = $2 AND status = $3 RETURNING {AGENT_COLUMNS}")
+    let sql = format!("UPDATE agents SET status = $4, updated_at = now(), {side_columns} WHERE company_id = $1 AND id = $2 AND status = $3 RETURNING {AGENT_COLUMNS}");
+    (sql, params)
 }
 
 #[derive(Debug, Clone)]
@@ -167,16 +173,20 @@ pub fn transition_agent_status_fenced(
     input: &TransitionAgentStatusInput,
 ) -> Result<AgentRow, AgentDbError> {
     validate_agent_transition(input.from_status, input.to_status)?;
-    let row = tx.query_opt(
-        &transition_sql(input.to_status),
-        &[
-            &input.company_id,
-            &input.agent_id,
-            &input.from_status.as_str(),
-            &input.to_status.as_str(),
-            &input.pause_reason,
-        ],
-    )?;
+    let (sql, param_count) = transition_statement(input.to_status);
+    let from = input.from_status.as_str();
+    let to = input.to_status.as_str();
+    let mut params: Vec<&(dyn ToSql + Sync)> = Vec::with_capacity(param_count);
+    params.push(&input.company_id);
+    params.push(&input.agent_id);
+    params.push(&from);
+    params.push(&to);
+    // $5 is pause_reason and is declared only when the target is paused.
+    if param_count == 5 {
+        params.push(&input.pause_reason);
+    }
+    debug_assert_eq!(params.len(), param_count);
+    let row = tx.query_opt(&sql, &params)?;
     agent_from_row(&row.ok_or(AgentDbError::Fenced)?)
 }
 
@@ -225,24 +235,50 @@ mod tests {
         assert!(SQL_LIST_AGENT_TOOL_GRANTS.contains("FROM agent_tool_grants"));
     }
 
+    // Every `$` in the generated statement introduces a placeholder, so
+    // counting `$` occurrences is the declared-parameter count.
+    fn placeholder_count(sql: &str) -> usize {
+        sql.matches('$').count()
+    }
+
     #[test]
     fn transition_set_list_mirrors_ts_side_columns() {
-        let paused = transition_sql(AgentStatus::Paused);
+        let paused = transition_statement(AgentStatus::Paused).0;
         assert!(paused.contains("pause_reason = COALESCE($5, 'manual')"), "{paused}");
         assert!(paused.contains("paused_at = now()"), "{paused}");
         for target in ALL_STATUSES {
             if target == AgentStatus::Paused {
                 continue;
             }
-            let sql = transition_sql(target);
+            let sql = transition_statement(target).0;
             assert!(sql.contains("pause_reason = NULL, paused_at = NULL"), "{sql}");
             assert!(!sql.contains("COALESCE"), "{sql}");
         }
         for target in ALL_STATUSES {
-            let sql = transition_sql(target);
+            let sql = transition_statement(target).0;
             assert!(sql.contains("UPDATE agents SET status = $4, updated_at = now(),"), "{sql}");
             assert!(sql.contains("WHERE company_id = $1 AND id = $2 AND status = $3"), "{sql}");
             assert!(sql.contains("RETURNING id, company_id"), "{sql}");
+        }
+    }
+
+    #[test]
+    fn transition_binds_match_placeholders_for_every_target() {
+        let body = |side: &str| {
+            format!("UPDATE agents SET status = $4, updated_at = now(), {side} WHERE company_id = $1 AND id = $2 AND status = $3 RETURNING {AGENT_COLUMNS}")
+        };
+        for target in ALL_STATUSES {
+            let (sql, param_count) = transition_statement(target);
+            let side = if target == AgentStatus::Paused {
+                "pause_reason = COALESCE($5, 'manual'), paused_at = now()"
+            } else {
+                "pause_reason = NULL, paused_at = NULL"
+            };
+            assert_eq!(sql, body(side), "{target:?}");
+            assert_eq!(placeholder_count(&sql), param_count, "{target:?}: {sql}");
+            for i in 1..=param_count {
+                assert!(sql.contains(&format!("${i}")), "{target:?}: {sql}");
+            }
         }
     }
 
