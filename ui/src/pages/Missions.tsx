@@ -166,7 +166,7 @@ export function Missions() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 tabular-nums">
       {error && (
         <p className="text-sm text-destructive">
           {error instanceof Error ? error.message : String(error)}
@@ -175,14 +175,7 @@ export function Missions() {
 
       <DashboardCommandHeader companyId={selectedCompanyId} />
 
-      <div
-        className="flex flex-col gap-3 rounded-xl border p-3.5 xl:flex-row xl:items-start xl:justify-between"
-        style={{
-          backgroundColor: "var(--openbot-surface-25d-bg)",
-          borderColor: "var(--openbot-surface-25d-border)",
-          boxShadow: "var(--openbot-surface-25d-shadow)",
-        }}
-      >
+      <div className="flex flex-col gap-3 rounded-md border border-border/80 bg-card/60 p-3 xl:flex-row xl:items-start xl:justify-between">
         <div className="space-y-3">
           <div className="flex items-center gap-1 flex-wrap">
             {STATUS_TABS.map((tab) => (
@@ -231,7 +224,7 @@ export function Missions() {
                     { resetPage: true },
                   )
                 }
-                className="h-8 min-w-40 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                className="h-8 min-w-40 rounded-md border border-border/80 bg-background/70 px-2 text-sm text-foreground"
               >
                 <option value="all">All executors</option>
                 {(agents ?? []).map((agent) => (
@@ -253,7 +246,7 @@ export function Missions() {
                     { resetPage: true },
                   )
                 }
-                className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                className="h-8 rounded-md border border-border/80 bg-background/70 px-2 text-sm text-foreground"
               />
             </label>
 
@@ -268,7 +261,7 @@ export function Missions() {
                     { resetPage: true },
                   )
                 }
-                className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                className="h-8 rounded-md border border-border/80 bg-background/70 px-2 text-sm text-foreground"
               />
             </label>
 
@@ -286,7 +279,7 @@ export function Missions() {
                     { resetPage: true },
                   );
                 }}
-                className="h-8 min-w-40 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                className="h-8 min-w-40 rounded-md border border-border/80 bg-background/70 px-2 text-sm text-foreground"
               >
                 {SORT_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
@@ -306,7 +299,7 @@ export function Missions() {
                     { resetPage: true },
                   )
                 }
-                className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                className="h-8 w-24 rounded-md border border-border/80 bg-background/70 px-2 text-sm text-foreground"
               >
                 {PAGE_SIZE_OPTIONS.map((option) => (
                   <option key={option} value={String(option)}>
@@ -335,18 +328,11 @@ export function Missions() {
 
       {missions && missions.length > 0 && (
         <>
-          <div
-            className="overflow-hidden rounded-xl border"
-            style={{
-              backgroundColor: "var(--openbot-surface-25d-raised)",
-              borderColor: "var(--openbot-surface-25d-border)",
-              boxShadow: "var(--openbot-surface-25d-shadow)",
-            }}
-          >
+          <div className="overflow-hidden rounded-md border border-border/80 bg-card/60">
             {missions.map((mission) => (
               <div
                 key={mission.id}
-                className="flex items-center gap-3 px-4 py-3 text-sm border-b border-border last:border-b-0 hover:bg-accent/30 transition-colors"
+                className="flex items-center gap-3 border-b border-border/60 px-3 py-2.5 text-sm transition-colors last:border-b-0 hover:bg-accent/50"
               >
                 <Link
                   to={`/missions/${mission.id}`}
@@ -357,7 +343,7 @@ export function Missions() {
                     {mission.title}
                   </span>
                   {mission.project && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-xs font-medium text-muted-foreground whitespace-nowrap shrink-0">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-background/60 px-2.5 py-0.5 text-xs font-medium text-muted-foreground whitespace-nowrap shrink-0">
                       <span
                         className="shrink-0 h-3 w-3 rounded-sm"
                         style={{ backgroundColor: mission.project.color ?? "#6366f1" }}
@@ -369,7 +355,7 @@ export function Missions() {
                   <span className="shrink-0 text-xs text-muted-foreground">
                     Main executor: {agentMap[mission.ownerAgentId] ?? "—"}
                   </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                     {formatDateTime(mission.createdAt)}
                   </span>
                 </Link>
@@ -378,7 +364,7 @@ export function Missions() {
           </div>
 
           <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="text-muted-foreground">
+            <span className="text-muted-foreground tabular-nums">
               Page {page}
               {missionFilters.offset !== undefined &&
               missionFilters.limit !== undefined
