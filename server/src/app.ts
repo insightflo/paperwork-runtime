@@ -76,10 +76,8 @@ import { createPluginJobCoordinator } from "./services/plugin-job-coordinator.js
 import { buildHostServices, flushPluginLogBuffer } from "./services/plugin-host-services.js";
 import { createPluginEventBus } from "./services/plugin-event-bus.js";
 import { setPluginEventBus } from "./services/activity-log.js";
-import { createPluginDevWatcher } from "./services/plugin-dev-watcher.js";
 import { createPluginHostServiceCleanup } from "./services/plugin-host-service-cleanup.js";
 import { pluginRegistryService } from "./services/plugin-registry.js";
-import { isCoreIntegratedPluginKey } from "./services/core-integrated-plugins.js";
 import { createHostClientHandlers } from "@paperclipai/plugin-sdk";
 import { heartbeatService } from "./services/heartbeat.js";
 import { createScheduler } from "./services/scheduler/index.js";
@@ -1273,31 +1271,7 @@ export async function createApp(
       logger.error({ err }, "Failed to initialize plugin tool dispatcher");
     }));
   }
-  const devWatcherInstance = !stopping && opts.uiMode === "vite-dev"
-    ? createPluginDevWatcher(
-      lifecycle,
-      async (pluginId) => {
-        const plugin = await pluginRegistry.getById(pluginId);
-        if (!plugin || isCoreIntegratedPluginKey(plugin.pluginKey)) return null;
-        return plugin.packagePath ?? null;
-      },
-    )
-    : null;
-  if (devWatcherInstance) registerStop("plugin-dev-watcher", () => devWatcherInstance.close());
-  if (!stopping) trackStartup(loaderInstance.loadAll().then((result) => {
-    if (!result) return;
-    for (const loaded of result.results) {
-      if (
-        !stopping
-        && devWatcherInstance
-        && loaded.success
-        && loaded.plugin.packagePath
-        && !isCoreIntegratedPluginKey(loaded.plugin.pluginKey)
-      ) {
-        devWatcherInstance.watch(loaded.plugin.id, loaded.plugin.packagePath);
-      }
-    }
-  }).catch((err) => {
+  if (!stopping) trackStartup(loaderInstance.loadAll().catch((err) => {
     logger.error({ err }, "Failed to load ready plugins on startup");
   }));
 
