@@ -32,14 +32,40 @@ fn valid_uuid(value: &str) -> bool {
     })
 }
 
-fn route(path: &str) -> Option<(&'static str, Option<&str>, bool)> {
+struct RouteMatch<'a> {
+    method: &'static str,
+    company_id: Option<&'a str>,
+    item: Option<(&'static str, &'a str)>,
+    default_limit: bool,
+}
+
+fn item_route(resource: Option<&str>) -> Option<(&'static str, &'static str)> {
+    match resource {
+        Some("approvals") => Some(("approval.get", "approval_id")),
+        Some("decisions") => Some(("decision.get_by_id", "decision_id")),
+        Some("secrets") => Some(("secret.get_by_id", "secret_id")),
+        Some("skills") => Some(("skill.get_by_id", "skill_id")),
+        Some("worktrees") => Some(("worktree.get_by_id", "rule_id")),
+        _ => None,
+    }
+}
+
+fn route(path: &str) -> Option<RouteMatch<'_>> {
     let path = path.split('?').next().unwrap_or(path);
-    if path == "/api/companies" { return Some(("company.list", None, false)); }
+    if path == "/api/companies" {
+        return Some(RouteMatch { method: "company.list", company_id: None, item: None, default_limit: false });
+    }
     let rest = path.strip_prefix("/api/companies/")?;
     let mut parts = rest.split('/');
     let company_id = parts.next()?;
     let resource = parts.next();
+    let item_id = parts.next();
     if parts.next().is_some() || company_id.is_empty() { return None; }
+    if let Some(item_id) = item_id {
+        if item_id.is_empty() { return None; }
+        let (method, key) = item_route(resource)?;
+        return Some(RouteMatch { method, company_id: Some(company_id), item: Some((key, item_id)), default_limit: false });
+    }
     let (method, default_limit) = match resource {
         None => ("company.get_by_id", false),
         Some("missions") => ("mission.list", false),
@@ -54,7 +80,7 @@ fn route(path: &str) -> Option<(&'static str, Option<&str>, bool)> {
         Some("worktrees") => ("worktree.list", false),
         _ => return None,
     };
-    Some((method, Some(company_id), default_limit))
+    Some(RouteMatch { method, company_id: Some(company_id), item: None, default_limit })
 }
 
 fn rpc_status(code: i64) -> u16 {
@@ -64,18 +90,19 @@ fn rpc_status(code: i64) -> u16 {
 /// Resolves a read-only REST request through the dispatcher. The JSON-RPC result is
 /// forwarded as the REST body; malformed dispatcher envelopes fail closed as bad gateway.
 pub async fn handle_rest(method: &str, path: &str, dispatcher: &Arc<dyn RpcDispatcher>) -> RestOutcome {
-    let Some((rpc_method, company_id, default_limit)) = route(path) else { return RestOutcome::NotMatched };
+    let Some(route) = route(path) else { return RestOutcome::NotMatched };
     if method != "GET" { return RestOutcome::MethodNotAllowed; }
-    if company_id.is_some_and(|id| !valid_uuid(id)) { return bad_request(); }
-    let mut params = company_id.map_or_else(|| json!({}), |id| json!({"company_id": id}));
-    if default_limit {
-        if let Some(fields) = params.as_object_mut() {
-            fields.insert("limit".to_owned(), json!(DEFAULT_LIST_LIMIT));
-        }
+    if route.company_id.is_some_and(|id| !valid_uuid(id)) || route.item.is_some_and(|(_, id)| !valid_uuid(id)) {
+        return bad_request();
+    }
+    let mut params = route.company_id.map_or_else(|| json!({}), |id| json!({"company_id": id}));
+    if let Some(fields) = params.as_object_mut() {
+        if route.default_limit { fields.insert("limit".to_owned(), json!(DEFAULT_LIST_LIMIT)); }
+        if let Some((key, item_id)) = route.item { fields.insert(key.to_owned(), json!(item_id)); }
     }
     let request = RpcRequest {
-        id: json!(format!("rest:{rpc_method}")),
-        method: rpc_method.to_owned(),
+        id: json!(format!("rest:{}", route.method)),
+        method: route.method.to_owned(),
         params: Some(params),
     };
     let rpc = dispatcher.dispatch(request).await;
@@ -118,9 +145,18 @@ mod tests {
     #[test]
     fn uuid_gate_happens_before_dispatch_on_company_scoped_routes() {
         let (dispatcher, calls) = recording_dispatcher();
+        let id = "11111111-1111-1111-1111-111111111111";
         for suffix in ["", "/missions", "/approvals", "/decisions", "/secrets", "/skills", "/wiki", "/worktrees"] {
             let path = format!("/api/companies/not-a-uuid{suffix}");
             assert_eq!(status(block_on(handle_rest("GET", &path, &dispatcher))), 400, "{path}");
+        }
+        for resource in ["approvals", "decisions", "secrets", "skills", "worktrees"] {
+            for path in [
+                format!("/api/companies/not-a-uuid/{resource}/{id}"),
+                format!("/api/companies/{id}/{resource}/not-a-uuid"),
+            ] {
+                assert_eq!(status(block_on(handle_rest("GET", &path, &dispatcher))), 400, "{path}");
+            }
         }
         assert_eq!(calls.lock().unwrap().len(), 0);
     }
@@ -140,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn all_seven_new_routes_map_exact_rpc_methods_and_params() {
+    fn collection_routes_map_exact_rpc_methods_and_params() {
         let (dispatcher, calls) = recording_dispatcher();
         let id = "11111111-1111-1111-1111-111111111111";
         let scoped = json!({"company_id": id});
@@ -166,12 +202,53 @@ mod tests {
     }
 
     #[test]
-    fn non_get_methods_are_rejected_before_dispatch_on_new_routes() {
+    fn single_item_routes_map_exact_rpc_methods_and_param_keys() {
         let (dispatcher, calls) = recording_dispatcher();
-        let id = "11111111-1111-1111-1111-111111111111";
-        for suffix in ["", "/approvals", "/decisions", "/secrets", "/skills", "/wiki", "/worktrees"] {
-            let path = format!("/api/companies/{id}{suffix}");
-            assert!(matches!(block_on(handle_rest("POST", &path, &dispatcher)), RestOutcome::MethodNotAllowed), "{path}");
+        let cid = "11111111-1111-1111-1111-111111111111";
+        let item = "22222222-2222-2222-2222-222222222222";
+        let cases = [
+            (format!("/api/companies/{cid}/approvals/{item}?x=1"), "approval.get", json!({"company_id": cid, "approval_id": item})),
+            (format!("/api/companies/{cid}/decisions/{item}?x=1"), "decision.get_by_id", json!({"company_id": cid, "decision_id": item})),
+            (format!("/api/companies/{cid}/secrets/{item}?x=1"), "secret.get_by_id", json!({"company_id": cid, "secret_id": item})),
+            (format!("/api/companies/{cid}/skills/{item}?x=1"), "skill.get_by_id", json!({"company_id": cid, "skill_id": item})),
+            (format!("/api/companies/{cid}/worktrees/{item}?x=1"), "worktree.get_by_id", json!({"company_id": cid, "rule_id": item})),
+        ];
+        for (path, _, _) in &cases {
+            assert_eq!(status(block_on(handle_rest("GET", path, &dispatcher))), 200, "{path}");
+        }
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), cases.len());
+        for ((_, method, params), (called_method, called_params)) in cases.iter().zip(calls.iter()) {
+            assert_eq!((called_method.as_str(), called_params), (*method, params), "{method}");
+        }
+    }
+
+    #[test]
+    fn non_get_methods_are_rejected_before_dispatch_on_routes() {
+        let (dispatcher, calls) = recording_dispatcher();
+        let cid = "11111111-1111-1111-1111-111111111111";
+        let item = "22222222-2222-2222-2222-222222222222";
+        let mut paths = ["", "/approvals", "/decisions", "/secrets", "/skills", "/wiki", "/worktrees"]
+            .into_iter().map(|suffix| format!("/api/companies/{cid}{suffix}")).collect::<Vec<_>>();
+        for resource in ["approvals", "decisions", "secrets", "skills", "worktrees"] {
+            paths.push(format!("/api/companies/{cid}/{resource}/{item}"));
+        }
+        for path in paths {
+            for method in ["POST", "DELETE"] {
+                assert!(matches!(block_on(handle_rest(method, &path, &dispatcher)), RestOutcome::MethodNotAllowed), "{method} {path}");
+            }
+        }
+        assert_eq!(calls.lock().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn extra_trailing_segments_are_not_matched_before_dispatch() {
+        let (dispatcher, calls) = recording_dispatcher();
+        let cid = "11111111-1111-1111-1111-111111111111";
+        let item = "22222222-2222-2222-2222-222222222222";
+        for resource in ["approvals", "decisions", "secrets", "skills", "worktrees"] {
+            let path = format!("/api/companies/{cid}/{resource}/{item}/extra");
+            assert!(matches!(block_on(handle_rest("GET", &path, &dispatcher)), RestOutcome::NotMatched), "{path}");
         }
         assert_eq!(calls.lock().unwrap().len(), 0);
     }
