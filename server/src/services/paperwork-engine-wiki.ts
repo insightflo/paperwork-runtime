@@ -14,7 +14,7 @@ export type WikiAudience = (typeof WIKI_AUDIENCES)[number];
 
 export interface WikiEntryRow {
   id: string; company_id: string; agent_id: string; mission_id: string | null;
-  pattern: string; cause: string; solution: string; error_code: string; step_id: string | null;
+  pattern: string; cause: string; solution: string; error_code: string | null; step_id: string | null;
   frequency: number; status: WikiStatus; audience: WikiAudience;
   last_seen_at: string; resolved_at: string | null; created_at: string; updated_at: string;
 }
@@ -111,7 +111,7 @@ const row = <T>(v: unknown, fields: readonly (readonly [string, (g: unknown) => 
 };
 const ENTRY_ROW = [
   ["id", isUuid], ["company_id", isUuid], ["agent_id", isUuid], ["mission_id", isUuidOrNull],
-  ["pattern", isStr], ["cause", isStr], ["solution", isStr], ["error_code", isStr],
+  ["pattern", isStr], ["cause", isStr], ["solution", isStr], ["error_code", isStrOrNull],
   ["step_id", isStrOrNull], ["frequency", isI32], ["status", isStatus], ["audience", isAudience],
   ["last_seen_at", isTs], ["resolved_at", isTsOrNull], ["created_at", isTs], ["updated_at", isTs],
 ] as const;

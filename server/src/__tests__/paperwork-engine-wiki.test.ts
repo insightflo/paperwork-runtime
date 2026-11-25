@@ -186,6 +186,25 @@ describe("wiki.mark_resolved and wiki.close typed RPC methods", () => {
 });
 
 describe("strict shape ownership and classification", () => {
+  it("decodes error_code null rows through every row-returning validator", async () => {
+    const nullErrorEntry = { ...ENTRY, error_code: null };
+    const listed = await listWikiEntries(stub({ "wiki.list": { entries: [nullErrorEntry] } }).client, LIST);
+    expect(listed.entries[0]?.error_code).toBeNull();
+    const searched = await searchRelevantWiki(stub({ "wiki.search_relevant": { entries: [nullErrorEntry] } }).client, SEARCH);
+    expect(searched.entries[0]?.error_code).toBeNull();
+    const recorded = await recordWikiFailure(
+      stub({ "wiki.record_failure": { recorded: true, entry: nullErrorEntry } }).client, RECORD,
+    );
+    expect(recorded).toEqual({ recorded: true, entry: nullErrorEntry });
+    const resolved = await markWikiEntryResolved(
+      stub({ "wiki.mark_resolved": { resolved: true, entry: nullErrorEntry } }).client, IDPARAMS,
+    );
+    expect(resolved).toEqual({ resolved: true, entry: nullErrorEntry });
+    const closed = await closeWikiEntry(
+      stub({ "wiki.close": { closed: true, entry: nullErrorEntry } }).client, IDPARAMS,
+    );
+    expect(closed).toEqual({ closed: true, entry: nullErrorEntry });
+  });
   it("rejects shapes whose required keys are inherited, not own", async () => {
     const inh = (protoObj: object, own: object) => Object.assign(Object.create(protoObj), own);
     const { id: _id, ...rest } = ENTRY;
