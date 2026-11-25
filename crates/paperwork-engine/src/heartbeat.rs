@@ -20,20 +20,20 @@ const COMMIT_ACK_CAP: Duration = Duration::from_secs(10);
 static INFLIGHT_DNS: AtomicUsize = AtomicUsize::new(0);
 static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 static CALL_LOCK: Mutex<()> = Mutex::new(());
-#[derive(Debug, PartialEq)] struct Fail(i64, &'static str, &'static str, bool); // code, message, outcome, retryable
+#[derive(Debug, PartialEq)] pub(crate) struct Fail(pub(crate) i64, pub(crate) &'static str, pub(crate) &'static str, pub(crate) bool); // code, message, outcome, retryable
 const T_OUT: Fail = Fail(-32001, "db_timeout", "not_committed", true); const UNCONF: Fail = Fail(-32002, "db_unconfigured", "not_committed", false);
-const BUSY: Fail = Fail(-32003, "db_busy", "not_committed", true); const DBERR: Fail = Fail(-32004, "db_error", "not_committed", false); const INDET: Fail = Fail(-32005, "db_commit_indeterminate", "indeterminate", false);
-fn ok(id: Value, result: Value) -> Value { json!({"jsonrpc":"2.0","id":id,"result":result}) }
-fn err(id: Value, code: i64, message: &str) -> Value { json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}}) }
+const BUSY: Fail = Fail(-32003, "db_busy", "not_committed", true); pub(crate) const DBERR: Fail = Fail(-32004, "db_error", "not_committed", false); const INDET: Fail = Fail(-32005, "db_commit_indeterminate", "indeterminate", false);
+pub(crate) fn ok(id: Value, result: Value) -> Value { json!({"jsonrpc":"2.0","id":id,"result":result}) }
+pub(crate) fn err(id: Value, code: i64, message: &str) -> Value { json!({"jsonrpc":"2.0","id":id,"error":{"code":code,"message":message}}) }
 fn fail(id: Value, f: Fail) -> Value { json!({"jsonrpc":"2.0","id":id,"error":{"code":f.0,"message":f.1,"data":{"outcome":f.2,"retryable":f.3}}}) }
 fn rem(dl: Instant) -> Duration { dl.saturating_duration_since(Instant::now()) }
-fn pre(e: tokio_postgres::Error) -> Fail { if e.as_db_error().is_some_and(|d| matches!(d.code().code(), "57014" | "55P03")) { T_OUT } else { DBERR } }
+pub(crate) fn pre(e: tokio_postgres::Error) -> Fail { if e.as_db_error().is_some_and(|d| matches!(d.code().code(), "57014" | "55P03")) { T_OUT } else { DBERR } }
 
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct ValidateP { expected_statuses: Vec<RunStatus>, next_status: RunStatus }
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct ClaimP { company_id: Uuid, agent_id: Uuid }
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct TransitionP { run_id: Uuid, company_id: Uuid, expected_statuses: Vec<RunStatus>, next_status: RunStatus, #[serde(default)] error: Option<String>, #[serde(default)] error_code: Option<String> }
 #[derive(Deserialize)] #[serde(deny_unknown_fields)] struct StaleP { company_id: Uuid, stale_before: DateTime<Utc>, limit: i64 }
-enum Db { Claim(ClaimP), Transition(TransitionP), Stale(StaleP) }
+enum Db { Claim(ClaimP), Transition(TransitionP), Stale(StaleP) } impl DbOp for Db { fn run<'x>(self, c: &'x mut Client) -> OpFut<'x> { Box::pin(run_op(c, self)) } }
 
 /// Exhaustive apply-or-reject DSN contract: plaintext loopback-only single
 /// host, keepalives on, no option outside the applied set -> -32002 pre-dial.
@@ -108,7 +108,8 @@ async fn connect_checked(c: &Config, host: &str, port: u16, h: &Hooks, dl: Insta
 fn wake_json(r: &Row) -> Value { json!({"id": r.get::<_, Uuid>(0), "company_id": r.get::<_, Uuid>(1), "agent_id": r.get::<_, Uuid>(2), "source": r.get::<_, String>(3), "reason": r.get::<_, Option<String>>(4), "idempotency_key": r.get::<_, Option<String>>(5), "payload": r.get::<_, Option<Value>>(6), "requested_at": r.get::<_, DateTime<Utc>>(7), "claimed_at": r.get::<_, Option<DateTime<Utc>>>(8)}) }
 fn stale_json(r: &Row) -> Value { json!({"id": r.get::<_, Uuid>(0), "company_id": r.get::<_, Uuid>(1), "agent_id": r.get::<_, Uuid>(2), "process_pid": r.get::<_, Option<i32>>(3), "process_loss_retry_count": r.get::<_, i32>(4), "updated_at": r.get::<_, DateTime<Utc>>(5)}) }
 
-enum Step<'x> { Commit(Transaction<'x>, Value), Done(Value) }
+pub(crate) enum Step<'x> { Commit(Transaction<'x>, Value), Done(Value) }
+pub(crate) type OpFut<'x> = Pin<Box<dyn Future<Output = Result<Step<'x>, Fail>> + 'x>>; pub(crate) trait DbOp { fn run<'x>(self, c: &'x mut Client) -> OpFut<'x>; }
 async fn run_op<'x>(c: &'x mut Client, m: Db) -> Result<Step<'x>, Fail> {
     let tx = c.transaction().await.map_err(pre)?;
     Ok(match m {
@@ -132,8 +133,8 @@ async fn run_op<'x>(c: &'x mut Client, m: Db) -> Result<Step<'x>, Fail> {
     })
 }
 
-async fn db_work(c: &mut Client, m: Db, dl: Instant) -> Result<Value, Fail> {
-    let (tx, v) = match tokio::time::timeout(rem(dl), run_op(c, m)).await {
+async fn db_work(c: &mut Client, op: impl DbOp, dl: Instant) -> Result<Value, Fail> {
+    let (tx, v) = match tokio::time::timeout(rem(dl), op.run(c)).await {
         Err(_) => return Err(T_OUT), Ok(Err(e)) => return Err(e),
         Ok(Ok(Step::Done(v))) => return Ok(v), Ok(Ok(Step::Commit(tx, v))) => (tx, v),
     };
@@ -144,21 +145,22 @@ async fn db_work(c: &mut Client, m: Db, dl: Instant) -> Result<Value, Fail> {
 /// Connect -> spawn driver -> op -> deadline-gated commit. The driver is
 /// aborted and awaited inside the same block_on on every path after it is
 /// spawned, so the socket is closed before the RPC returns.
-async fn db_run(c: Config, host: String, port: u16, h: &Hooks, m: Db, dl: Instant) -> Result<Value, Fail> {
+async fn db_run(c: Config, host: String, port: u16, h: &Hooks, op: impl DbOp, dl: Instant) -> Result<Value, Fail> {
     let stream = connect_checked(&c, &host, port, h, dl).await?;
     let (mut client, conn) = match tokio::time::timeout(rem(dl), c.connect_raw(stream, NoTls)).await {
         Ok(Ok(v)) => v, Err(_) => return Err(T_OUT), Ok(Err(e)) => return Err(pre(e)) };
     let conn_handle = tokio::spawn(conn);
-    let r = db_work(&mut client, m, dl).await;
+    let r = db_work(&mut client, op, dl).await;
     drop(client); conn_handle.abort(); let _ = conn_handle.await;
     r
 }
 
-fn db_call(id: Value, m: Db, env: &ProbeEnv, op_timeout: Duration) -> Value {
+/// Shared DB-backed RPC entry: checked DSN -> op -> deadline-gated commit.
+pub(crate) fn exec_db(id: Value, env: &ProbeEnv, op_timeout: Duration, op: impl DbOp) -> Value {
     let (c, host, port) = match checked_config(env) { Ok(v) => v, Err(e) => return fail(id, e) };
     let rt = RUNTIME.get_or_init(|| tokio::runtime::Builder::new_current_thread().enable_all().max_blocking_threads(MAX_INFLIGHT_DNS).build().unwrap());
     let _g = CALL_LOCK.lock().unwrap();
-    match rt.block_on(db_run(c, host, port, hooks(), m, Instant::now() + op_timeout)) { Ok(v) => ok(id, v), Err(e) => fail(id, e) }
+    match rt.block_on(db_run(c, host, port, hooks(), op, Instant::now() + op_timeout)) { Ok(v) => ok(id, v), Err(e) => fail(id, e) }
 }
 
 fn validate_result(p: &ValidateP) -> Value {
@@ -183,13 +185,13 @@ pub(crate) fn dispatch_with_timeout(id: Value, method: &str, params: Option<&Val
             if p.expected_statuses.is_empty() { return err(id, -32602, "invalid_params") }
             ok(id, validate_result(&p))
         }
-        "heartbeat.claim_wakeup" => { let p = need!(ClaimP); db_call(id, Db::Claim(p), env, op_timeout) }
+        "heartbeat.claim_wakeup" => { let p = need!(ClaimP); exec_db(id, env, op_timeout, Db::Claim(p)) }
         "heartbeat.transition_run_fenced" => {
             let p = need!(TransitionP);
             if validate_transition(&p.expected_statuses, p.next_status).is_err() { return err(id, -32602, "invalid_params") }
-            db_call(id, Db::Transition(p), env, op_timeout)
+            exec_db(id, env, op_timeout, Db::Transition(p))
         }
-        "heartbeat.list_stale_runs" => { let p = need!(StaleP); db_call(id, Db::Stale(p), env, op_timeout) }
+        "heartbeat.list_stale_runs" => { let p = need!(StaleP); exec_db(id, env, op_timeout, Db::Stale(p)) }
         _ => err(id, -32601, "method_not_found"),
     }
 }
