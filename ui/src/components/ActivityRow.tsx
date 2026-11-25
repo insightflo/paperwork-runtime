@@ -119,13 +119,13 @@ export function ActivityRow({ event, agentMap, entityNameMap, entityTitleMap, cl
         {name && <span className="font-medium">{name}</span>}
         {entityTitle && <span className="text-muted-foreground ml-1">— {entityTitle}</span>}
       </p>
-      <span className="text-xs text-muted-foreground shrink-0 pt-0.5">{timeAgo(event.createdAt)}</span>
+      <span className="text-xs text-muted-foreground shrink-0 pt-0.5 text-right tabular-nums">{timeAgo(event.createdAt)}</span>
     </div>
   );
 
   const classes = cn(
-    "px-4 py-2 text-sm",
-    link && "cursor-pointer hover:bg-accent/50 transition-colors",
+    "border-b border-border/60 px-3 py-1.5 text-sm",
+    link && "cursor-pointer hover:bg-accent/40 transition-colors",
     className,
   );
 
