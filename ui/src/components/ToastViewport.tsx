@@ -7,10 +7,10 @@ import { extractErrorReference } from "../lib/user-errors";
 import { cn } from "../lib/utils";
 
 const toneClasses: Record<ToastTone, string> = {
-  info: "border-sky-300 bg-sky-50 text-sky-900 dark:border-sky-500/25 dark:bg-sky-950/60 dark:text-sky-100",
-  success: "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-950/60 dark:text-emerald-100",
-  warn: "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-500/25 dark:bg-amber-950/60 dark:text-amber-100",
-  error: "border-red-300 bg-red-50 text-red-900 dark:border-red-500/30 dark:bg-red-950/60 dark:text-red-100",
+  info: "border-l-sky-600 dark:border-l-sky-400",
+  success: "border-l-emerald-600 dark:border-l-emerald-400",
+  warn: "border-l-amber-600 dark:border-l-amber-400",
+  error: "border-l-red-600 dark:border-l-red-400",
 };
 
 const toneDotClasses: Record<ToastTone, string> = {
@@ -53,7 +53,7 @@ function AnimatedToast({
   return (
     <li
       className={cn(
-        "pointer-events-auto rounded-sm border shadow-lg backdrop-blur-xl transition-[transform,opacity] duration-200 ease-out",
+        "pointer-events-auto rounded-sm border border-border/80 bg-card/95 backdrop-blur-md shadow-lg border-l-4 text-card-foreground transition-[transform,opacity] duration-200 ease-out tabular-nums",
         visible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0",
         toneClasses[toast.tone],
       )}
@@ -67,12 +67,7 @@ function AnimatedToast({
             <button
               type="button"
               onClick={handleCopyRef}
-              className="mt-1.5 inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono text-[10px] hover:opacity-80"
-              style={{
-                borderColor: "var(--openbot-border-strong)",
-                backgroundColor: "var(--openbot-bg-surface)",
-                color: "var(--openbot-text-secondary)",
-              }}
+              className="mt-1.5 inline-flex items-center gap-1 rounded-sm border border-border/80 bg-background/70 px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
             >
               <span>ref:{errorRef}</span>
               {copiedRef ? <Check className="h-2.5 w-2.5" /> : <Copy className="h-2.5 w-2.5" />}
@@ -92,7 +87,7 @@ function AnimatedToast({
           type="button"
           aria-label="Dismiss notification"
           onClick={() => onDismiss(toast.id)}
-          className="mt-0.5 shrink-0 rounded p-1 opacity-50 hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
+          className="mt-0.5 shrink-0 rounded-sm border border-transparent p-1 text-muted-foreground transition-colors hover:border-border/80 hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           <X className="h-3.5 w-3.5" />
         </button>

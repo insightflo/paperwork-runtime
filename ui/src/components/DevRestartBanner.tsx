@@ -33,23 +33,23 @@ export function DevRestartBanner({ devServer }: { devServer?: DevServerHealthSta
   const sample = devServer.changedPathsSample.slice(0, 3);
 
   return (
-    <div className="border-b border-amber-300/60 bg-amber-50 text-amber-950 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-100">
-      <div className="flex flex-col gap-3 px-3 py-2.5 md:flex-row md:items-center md:justify-between">
+    <div className="border-b border-border/80 border-l-2 border-l-amber-500/80 bg-card/90 text-card-foreground backdrop-blur-sm">
+      <div className="flex flex-col gap-3 px-3 py-2 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.18em]">
+          <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700 dark:text-amber-300">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-            <span>Restart Required</span>
+            <span>Paperwork Restart Required</span>
             {devServer.autoRestartEnabled ? (
-              <span className="rounded-full bg-amber-900/10 px-2 py-0.5 text-[10px] tracking-[0.14em] dark:bg-amber-100/10">
+              <span className="rounded-sm border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] tracking-[0.14em] text-amber-800 dark:text-amber-200 tabular-nums">
                 Auto-Restart On
               </span>
             ) : null}
           </div>
-          <p className="mt-1 text-sm">
-            {describeReason(devServer)}
+          <p className="mt-1 text-sm text-foreground/90">
+            Paperwork dev server: {describeReason(devServer)}
             {changedAt ? ` · updated ${changedAt}` : ""}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-amber-900/80 dark:text-amber-100/75">
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] tabular-nums text-muted-foreground">
             {sample.length > 0 ? (
               <span>
                 Changed: {sample.join(", ")}
@@ -67,17 +67,17 @@ export function DevRestartBanner({ devServer }: { devServer?: DevServerHealthSta
 
         <div className="flex shrink-0 items-center gap-2 text-xs font-medium">
           {devServer.waitingForIdle ? (
-            <div className="inline-flex items-center gap-2 rounded-full bg-amber-900/10 px-3 py-1.5 dark:bg-amber-100/10">
+            <div className="inline-flex items-center gap-2 rounded-sm border border-border/80 bg-background/70 px-2.5 py-1 text-[11px] tabular-nums text-muted-foreground">
               <TimerReset className="h-3.5 w-3.5" />
               <span>Waiting for {devServer.activeRunCount} live run{devServer.activeRunCount === 1 ? "" : "s"} to finish</span>
             </div>
           ) : devServer.autoRestartEnabled ? (
-            <div className="inline-flex items-center gap-2 rounded-full bg-amber-900/10 px-3 py-1.5 dark:bg-amber-100/10">
+            <div className="inline-flex items-center gap-2 rounded-sm border border-border/80 bg-background/70 px-2.5 py-1 text-[11px] tabular-nums text-muted-foreground">
               <RotateCcw className="h-3.5 w-3.5" />
               <span>Auto-restart will trigger when the instance is idle</span>
             </div>
           ) : (
-            <div className="inline-flex items-center gap-2 rounded-full bg-amber-900/10 px-3 py-1.5 dark:bg-amber-100/10">
+            <div className="inline-flex items-center gap-2 rounded-sm border border-border/80 bg-background/70 px-2.5 py-1 text-[11px] tabular-nums text-muted-foreground">
               <RotateCcw className="h-3.5 w-3.5" />
               <span>Restart <code>pnpm dev:once</code> after the active work is safe to interrupt</span>
             </div>
