@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { agents, agentToolGrants, heartbeatRuns, issues, toolDefinitions, workflowDefinitions,
   workflowRuns, workflowStepRuns, workflowStepOutputBindings } from '@paperclipai/db';
-import { pluginRoutes } from '../../routes/plugins.js';
+import { pluginToolExecuteRoutes } from '../../routes/plugin-tool-execute.js';
 import { errorHandler } from '../../middleware/index.js';
 import { artifactDagFixture } from './artifact-dag-fixture.js';
 import { admittedProducer } from './admitted-producer.js';
@@ -40,7 +40,7 @@ export async function agentArtifactFixture() {
     req.actor = { type: 'agent', agentId: agent.id, companyId: f.companyId, source: 'agent_key' };
     next();
   });
-  app.use('/api', pluginRoutes(f.db, {} as never));
+  app.use('/api', pluginToolExecuteRoutes(f.db));
   app.use(errorHandler);
   const call = (stepId: string, parameters?: unknown, extra: Record<string, unknown> = {}, tool?: string) =>
     request(app).post('/api/plugins/tools/execute').send({ tool: tool ?? (stepId === 'qa' ? 'local-qa' : stepId),

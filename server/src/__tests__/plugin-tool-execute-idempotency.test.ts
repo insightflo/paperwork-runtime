@@ -10,7 +10,7 @@ import type { Db } from "@paperclipai/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { JsonRpcCallError, PLUGIN_RPC_ERROR_CODES } from "@paperclipai/plugin-sdk";
 import { errorHandler } from "../middleware/index.js";
-import { pluginRoutes } from "../routes/plugins.js";
+import { pluginToolExecuteRoutes } from "../routes/plugin-tool-execute.js";
 import { decodeRetainedToolOutcome } from "../services/plugin-tool-execution-receipt.js";
 import { requestForRow } from "../services/plugin-tool-receipt-envelope.js";
 
@@ -116,7 +116,7 @@ describe("plugin tool execution idempotency receipts", () => {
     });
     app.use(
       "/api",
-      pluginRoutes(db, {} as never, undefined, undefined, { toolDispatcher: dispatcher } as never, undefined),
+      pluginToolExecuteRoutes(db, { toolDispatcher: dispatcher } as never),
     );
     app.use(errorHandler);
     return app;

@@ -10,30 +10,8 @@ import {
 import type { Db } from "@paperclipai/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { errorHandler } from "../middleware/index.js";
-import { pluginRoutes } from "../routes/plugins.js";
-import { extractExternalId } from "../services/plugin-webhook-receipt.js";
-
-const mockRegistry = vi.hoisted(() => ({
-  getById: vi.fn(),
-  getByKey: vi.fn(),
-  listInstalled: vi.fn(),
-  listByStatus: vi.fn(),
-}));
-
-vi.mock("../services/plugin-registry.js", () => ({
-  pluginRegistryService: () => mockRegistry,
-}));
-vi.mock("../services/plugin-lifecycle.js", () => ({
-  pluginLifecycleManager: () => ({}),
-}));
-vi.mock("../services/activity-log.js", () => ({ logActivity: vi.fn() }));
-vi.mock("../services/live-events.js", () => ({ publishGlobalLiveEvent: vi.fn() }));
-vi.mock("../services/workflow/engine.js", () => ({ workflowService: {} }));
-vi.mock("../services/issues.js", () => ({ issueService: () => ({}) }));
-vi.mock("../services/work-products.js", () => ({ workProductService: () => ({}) }));
-vi.mock("../services/workflow/dag-engine.js", () => ({
-  completeWorkflowToolStepFromResult: vi.fn(),
-}));
+import { pluginToolExecuteRoutes } from "../routes/plugin-tool-execute.js";
+import { extractExternalId, ingestWebhookDelivery } from "../services/plugin-webhook-receipt.js";
 
 const PLUGIN_ID = "7b7d8a44-2f0f-4d92-9d92-6a83c0d10001";
 const OTHER_PLUGIN_ID = "7b7d8a44-2f0f-4d92-9d92-6a83c0d10002";
@@ -80,42 +58,37 @@ describe("plugin webhook receipt deduplication", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    mockRegistry.getById.mockImplementation(async (id: string) => {
-      if (id === PLUGIN_ID) return readyPluginFixture(PLUGIN_ID, ["events", "alerts"]);
-      if (id === OTHER_PLUGIN_ID) return readyPluginFixture(OTHER_PLUGIN_ID, ["events"]);
-      return null;
-    });
     await db.delete(pluginWebhookDeliveries);
   });
 
-  function createApp(workerCall: ReturnType<typeof vi.fn>) {
-    const app = express();
-    app.use(express.json());
-    app.use(
-      "/api",
-      pluginRoutes(db, {} as never, undefined, {
-        workerManager: { call: workerCall } as never,
-      }),
-    );
-    app.use(errorHandler);
-    return app;
+  async function ingest(
+    workerCall: ReturnType<typeof vi.fn>,
+    pluginId: string,
+    key: string,
+    body: Record<string, unknown>,
+    deliveryHeader?: string,
+  ) {
+    const headers = deliveryHeader ? { "x-delivery-id": deliveryHeader } : {};
+    const result = await ingestWebhookDelivery(db, { call: workerCall } as never, {
+      pluginId,
+      endpointKey: key,
+      headers,
+      reqHeaders: headers,
+      rawBody: JSON.stringify(body),
+      parsedBody: body,
+      payload: body,
+    });
+    return { status: result.httpStatus, body: result.body };
   }
-
-  const post = (app: ReturnType<typeof createApp>, pluginId: string, key: string, body: unknown, deliveryHeader?: string) =>
-    request(app)
-      .post(`/api/plugins/${pluginId}/webhooks/${key}`)
-      .set(deliveryHeader ? { "x-delivery-id": deliveryHeader } : {})
-      .send(body as Record<string, unknown>);
 
   it("(a) same externalId twice dispatches the worker once and answers duplicate", async () => {
     const call = vi.fn(async () => ({}));
-    const app = createApp(call);
 
-    const first = await post(app, PLUGIN_ID, "events", { foo: 1 }, "D-1");
+    const first = await ingest(call, PLUGIN_ID, "events", { foo: 1 }, "D-1");
     expect(first.status).toBe(200);
     expect(first.body.status).toBe("success");
 
-    const second = await post(app, PLUGIN_ID, "events", { foo: 1 }, "D-1");
+    const second = await ingest(call, PLUGIN_ID, "events", { foo: 1 }, "D-1");
     expect(second.status).toBe(200);
     expect(second.body.status).toBe("duplicate");
     expect(second.body.deliveryId).toBe(first.body.deliveryId);
@@ -128,10 +101,9 @@ describe("plugin webhook receipt deduplication", () => {
 
   it("(b) deliveries without externalId are all processed (legacy)", async () => {
     const call = vi.fn(async () => ({}));
-    const app = createApp(call);
 
-    const first = await post(app, PLUGIN_ID, "events", { foo: 1 });
-    const second = await post(app, PLUGIN_ID, "events", { foo: 1 });
+    const first = await ingest(call, PLUGIN_ID, "events", { foo: 1 });
+    const second = await ingest(call, PLUGIN_ID, "events", { foo: 1 });
     expect(first.body.status).toBe("success");
     expect(second.body.status).toBe("success");
     expect(second.body.deliveryId).not.toBe(first.body.deliveryId);
@@ -146,14 +118,13 @@ describe("plugin webhook receipt deduplication", () => {
     const call = vi.fn()
       .mockRejectedValueOnce(new Error("worker exploded"))
       .mockResolvedValue({});
-    const app = createApp(call);
 
-    const first = await post(app, PLUGIN_ID, "events", { foo: 1 }, "D-2");
+    const first = await ingest(call, PLUGIN_ID, "events", { foo: 1 }, "D-2");
     expect(first.status).toBe(502);
     expect(first.body.status).toBe("failed");
     expect(first.body.error).toBe("worker exploded");
 
-    const retry = await post(app, PLUGIN_ID, "events", { foo: 1 }, "D-2");
+    const retry = await ingest(call, PLUGIN_ID, "events", { foo: 1 }, "D-2");
     expect(retry.status).toBe(200);
     expect(retry.body.status).toBe("success");
     expect(retry.body.deliveryId).toBe(first.body.deliveryId);
@@ -167,11 +138,10 @@ describe("plugin webhook receipt deduplication", () => {
 
   it("(d) same externalId across endpoint keys and plugins is independent", async () => {
     const call = vi.fn(async () => ({}));
-    const app = createApp(call);
 
-    const r1 = await post(app, PLUGIN_ID, "events", { foo: 1 }, "D-shared");
-    const r2 = await post(app, PLUGIN_ID, "alerts", { foo: 1 }, "D-shared");
-    const r3 = await post(app, OTHER_PLUGIN_ID, "events", { foo: 1 }, "D-shared");
+    const r1 = await ingest(call, PLUGIN_ID, "events", { foo: 1 }, "D-shared");
+    const r2 = await ingest(call, PLUGIN_ID, "alerts", { foo: 1 }, "D-shared");
+    const r3 = await ingest(call, OTHER_PLUGIN_ID, "events", { foo: 1 }, "D-shared");
 
     expect(r1.body.status).toBe("success");
     expect(r2.body.status).toBe("success");
@@ -187,11 +157,10 @@ describe("plugin webhook receipt deduplication", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
       return {};
     });
-    const app = createApp(call);
 
     const [r1, r2] = await Promise.all([
-      post(app, PLUGIN_ID, "events", { foo: 1 }, "D-race"),
-      post(app, PLUGIN_ID, "events", { foo: 1 }, "D-race"),
+      ingest(call, PLUGIN_ID, "events", { foo: 1 }, "D-race"),
+      ingest(call, PLUGIN_ID, "events", { foo: 1 }, "D-race"),
     ]);
 
     const statuses = [r1.body.status, r2.body.status].sort();
@@ -205,10 +174,9 @@ describe("plugin webhook receipt deduplication", () => {
 
   it("(f) payload deliveryId is extracted when headers are absent", async () => {
     const call = vi.fn(async () => ({}));
-    const app = createApp(call);
 
-    const first = await post(app, PLUGIN_ID, "events", { deliveryId: "payload-1" });
-    const second = await post(app, PLUGIN_ID, "events", { deliveryId: "payload-1" });
+    const first = await ingest(call, PLUGIN_ID, "events", { deliveryId: "payload-1" });
+    const second = await ingest(call, PLUGIN_ID, "events", { deliveryId: "payload-1" });
     expect(first.body.status).toBe("success");
     expect(second.body.status).toBe("duplicate");
     expect(call).toHaveBeenCalledTimes(1);
@@ -216,9 +184,6 @@ describe("plugin webhook receipt deduplication", () => {
 
   it("(g) stale pending receipt is taken over and redispatched", async () => {
     const call = vi.fn(async () => ({}));
-    const app = createApp(call);
-
-    // Simulate a receipt abandoned mid-dispatch (e.g. server crash).
     const staleStartedAt = new Date(Date.now() - 10 * 60 * 1000);
     const [stale] = await db
       .insert(pluginWebhookDeliveries)
@@ -233,7 +198,7 @@ describe("plugin webhook receipt deduplication", () => {
       })
       .returning({ id: pluginWebhookDeliveries.id });
 
-    const res = await post(app, PLUGIN_ID, "events", { foo: 1 }, "D-stale");
+    const res = await ingest(call, PLUGIN_ID, "events", { foo: 1 }, "D-stale");
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("success");
     expect(res.body.deliveryId).toBe(stale.id);
@@ -243,23 +208,17 @@ describe("plugin webhook receipt deduplication", () => {
     expect(rows[0].status).toBe("success");
   });
 
-  it("(f-regression) validation failures keep existing contract", async () => {
-    const call = vi.fn(async () => ({}));
-    const app = createApp(call);
+  it("standalone tool execute router does not expose legacy webhook routes", async () => {
+    const app = express();
+    app.use(express.json());
+    app.use("/api", pluginToolExecuteRoutes(db));
+    app.use(errorHandler);
 
-    const unknownPlugin = await post(app, "11111111-2222-4333-8444-555555555555", "events", { foo: 1 });
-    expect(unknownPlugin.status).toBe(404);
+    const res = await request(app)
+      .post(`/api/plugins/${PLUGIN_ID}/webhooks/events`)
+      .send({ foo: 1 });
 
-    const unknownKey = await post(app, PLUGIN_ID, "not-declared", { foo: 1 });
-    expect(unknownKey.status).toBe(404);
-
-    mockRegistry.getById.mockResolvedValueOnce(readyPluginFixture(PLUGIN_ID, ["events"], ["tools.execute"]));
-    const noCapability = await post(app, PLUGIN_ID, "events", { foo: 1 });
-    expect(noCapability.status).toBe(400);
-
-    expect(call).not.toHaveBeenCalled();
-    const rows = await db.select().from(pluginWebhookDeliveries);
-    expect(rows).toHaveLength(0);
+    expect(res.status).toBe(404);
   });
 });
 

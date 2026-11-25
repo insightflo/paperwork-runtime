@@ -3,7 +3,7 @@ import request from "supertest";
 import { pluginToolExecutionReceipts } from "@paperclipai/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { errorHandler } from "../middleware/index.js";
-import { pluginRoutes } from "../routes/plugins.js";
+import { pluginToolExecuteRoutes } from "../routes/plugin-tool-execute.js";
 import {
   observeExecuteToolSpy,
   PLUGIN_ROUTE_RECEIPT_COMPANY_ID,
@@ -72,13 +72,9 @@ function createApp(toolDispatcher: {
   const db = receiptFixture.routeDb({ rows: options.dbRows, rowQueue: options.dbRowQueue });
   app.use(
     "/api",
-    pluginRoutes(
+    pluginToolExecuteRoutes(
       db as never,
-      {} as never,
-      undefined,
-      undefined,
       { toolDispatcher: observeExecuteToolSpy(toolDispatcher) as never },
-      undefined,
     ),
   );
   app.use(errorHandler);

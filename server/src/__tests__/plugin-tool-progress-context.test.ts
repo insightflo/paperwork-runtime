@@ -4,7 +4,7 @@ import type { Request } from "express";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { errorHandler } from "../middleware/index.js";
-import { pluginRoutes } from "../routes/plugins.js";
+import { pluginToolExecuteRoutes } from "../routes/plugin-tool-execute.js";
 import { resetToolErrorHygieneForTests } from "../services/tool-result-hygiene.js";
 import type { RunToolAuthorizationRun } from "../services/workflow/plugin-tool-authorization.js";
 
@@ -71,7 +71,7 @@ function fixture(actor: Request["actor"], run: RunToolAuthorizationRun | null = 
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => { req.actor = actor; next(); });
-  app.use("/api", pluginRoutes(db as never, {} as never));
+  app.use("/api", pluginToolExecuteRoutes(db as never));
   app.use(errorHandler);
   return { app, db };
 }
@@ -107,7 +107,7 @@ function expectCall(db: ReturnType<typeof fixture>["db"], actor: Request["actor"
 
 // Independent contract: c07-minimum-plan-adopted.md:7–23,44–46 requires context
 // transport with unchanged execution, including mismatched/missing actor runs.
-// Authorization below is the real authorizeRunToolExecution used by pluginRoutes.
+// Authorization below is the real authorizeRunToolExecution used by pluginToolExecuteRoutes.
 describe("plugin route progress evidence context", () => {
   beforeEach(() => {
     vi.clearAllMocks();
