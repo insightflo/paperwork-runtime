@@ -7,6 +7,7 @@ members = [
   "crates/db-backup",
   "crates/engine-activity",
   "crates/engine-agent",
+  "crates/engine-api",
   "crates/engine-approval",
   "crates/engine-budget",
   "crates/engine-company",
