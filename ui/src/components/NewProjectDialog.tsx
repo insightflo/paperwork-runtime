@@ -1,9 +1,8 @@
 import { useRef, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDialog } from "../context/DialogContext";
 import { useCompany } from "../context/CompanyContext";
 import { projectsApi } from "../api/projects";
-import { goalsApi } from "../api/goals";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import {
@@ -19,10 +18,7 @@ import {
 import {
   Maximize2,
   Minimize2,
-  Target,
   Calendar,
-  Plus,
-  X,
   HelpCircle,
 } from "lucide-react";
 import {
@@ -51,7 +47,6 @@ export function NewProjectDialog() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState("planned");
-  const [goalIds, setGoalIds] = useState<string[]>([]);
   const [targetDate, setTargetDate] = useState("");
   const [expanded, setExpanded] = useState(false);
   const [workspaceLocalPath, setWorkspaceLocalPath] = useState("");
@@ -59,14 +54,7 @@ export function NewProjectDialog() {
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
 
   const [statusOpen, setStatusOpen] = useState(false);
-  const [goalOpen, setGoalOpen] = useState(false);
   const descriptionEditorRef = useRef<MarkdownEditorRef>(null);
-
-  const { data: goals } = useQuery({
-    queryKey: queryKeys.goals.list(selectedCompanyId!),
-    queryFn: () => goalsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId && newProjectOpen,
-  });
 
   const createProject = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -84,7 +72,6 @@ export function NewProjectDialog() {
     setName("");
     setDescription("");
     setStatus("planned");
-    setGoalIds([]);
     setTargetDate("");
     setExpanded(false);
     setWorkspaceLocalPath("");
@@ -145,7 +132,6 @@ export function NewProjectDialog() {
         description: description.trim() || undefined,
         status,
         color: PROJECT_COLORS[Math.floor(Math.random() * PROJECT_COLORS.length)],
-        ...(goalIds.length > 0 ? { goalIds } : {}),
         ...(targetDate ? { targetDate } : {}),
       });
 
@@ -175,9 +161,6 @@ export function NewProjectDialog() {
       handleSubmit();
     }
   }
-
-  const selectedGoals = (goals ?? []).filter((g) => goalIds.includes(g.id));
-  const availableGoals = (goals ?? []).filter((g) => !goalIds.includes(g.id));
 
   return (
     <Dialog
@@ -331,63 +314,6 @@ export function NewProjectDialog() {
                   {s.label}
                 </button>
               ))}
-            </PopoverContent>
-          </Popover>
-
-          {selectedGoals.map((goal) => (
-            <span
-              key={goal.id}
-              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs"
-            >
-              <Target className="h-3 w-3 text-muted-foreground" />
-              <span className="max-w-[160px] truncate">{goal.title}</span>
-              <button
-                className="text-muted-foreground hover:text-foreground"
-                onClick={() => setGoalIds((prev) => prev.filter((id) => id !== goal.id))}
-                aria-label={`Remove goal ${goal.title}`}
-                type="button"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          ))}
-
-          <Popover open={goalOpen} onOpenChange={setGoalOpen}>
-            <PopoverTrigger asChild>
-              <button
-                className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors disabled:opacity-60"
-                disabled={selectedGoals.length > 0 && availableGoals.length === 0}
-              >
-                {selectedGoals.length > 0 ? <Plus className="h-3 w-3 text-muted-foreground" /> : <Target className="h-3 w-3 text-muted-foreground" />}
-                {selectedGoals.length > 0 ? "+ Goal" : "Goal"}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-56 p-1" align="start">
-              {selectedGoals.length === 0 && (
-                <button
-                  className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground"
-                  onClick={() => setGoalOpen(false)}
-                >
-                  No goal
-                </button>
-              )}
-              {availableGoals.map((g) => (
-                <button
-                  key={g.id}
-                  className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 truncate"
-                  onClick={() => {
-                    setGoalIds((prev) => [...prev, g.id]);
-                    setGoalOpen(false);
-                  }}
-                >
-                  {g.title}
-                </button>
-              ))}
-              {selectedGoals.length > 0 && availableGoals.length === 0 && (
-                <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                  All goals already selected.
-                </div>
-              )}
             </PopoverContent>
           </Popover>
 
