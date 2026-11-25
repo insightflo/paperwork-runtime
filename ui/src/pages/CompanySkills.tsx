@@ -562,8 +562,8 @@ function SkillPane({
   const latestPin = shortRef(updateStatus?.latestRef);
 
   return (
-    <div className="min-w-0">
-      <div className="border-b border-border px-5 py-4">
+    <div className="min-w-0 rounded-md border border-border/80 bg-card/60">
+      <div className="border-b border-border/80 px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="flex items-center gap-2 truncate text-2xl font-semibold">
@@ -588,7 +588,7 @@ function SkillPane({
           )}
         </div>
 
-        <div className="mt-4 space-y-3 border-t border-border pt-4 text-sm">
+        <div className="mt-4 space-y-3 border-t border-border/80 pt-4 text-sm">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Source</span>
@@ -674,14 +674,14 @@ function SkillPane({
         </div>
       </div>
 
-      <div className="border-b border-border px-5 py-3">
+      <div className="border-b border-border/80 px-5 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate font-mono text-sm">{file?.path ?? "SKILL.md"}</div>
           </div>
           <div className="flex items-center gap-2">
             {file?.markdown && !editMode && (
-              <div className="flex items-center border border-border">
+              <div className="flex items-center border border-border/80">
                 <button
                   type="button"
                   className={cn("px-3 py-1.5 text-sm", viewMode === "preview" && "text-foreground", viewMode !== "preview" && "text-muted-foreground")}
@@ -694,7 +694,7 @@ function SkillPane({
                 </button>
                 <button
                   type="button"
-                  className={cn("border-l border-border px-3 py-1.5 text-sm", viewMode === "code" && "text-foreground", viewMode !== "code" && "text-muted-foreground")}
+                  className={cn("border-l border-border/80 px-3 py-1.5 text-sm", viewMode === "code" && "text-foreground", viewMode !== "code" && "text-muted-foreground")}
                   onClick={() => setViewMode("code")}
                 >
                   <span className="flex items-center gap-1.5">
@@ -1036,7 +1036,7 @@ export function CompanySkills() {
               href="https://skills.sh"
               target="_blank"
               rel="noreferrer"
-              className="flex items-start justify-between rounded-md border border-border px-3 py-3 text-foreground no-underline transition-colors hover:bg-accent/40"
+              className="flex items-start justify-between rounded-md border border-border/80 bg-card/60 px-3 py-3 text-foreground no-underline transition-colors hover:bg-accent/40"
             >
               <span>
                 <span className="block font-medium">Browse skills.sh</span>
@@ -1050,7 +1050,7 @@ export function CompanySkills() {
               href="https://github.com/search?q=SKILL.md&type=code"
               target="_blank"
               rel="noreferrer"
-              className="flex items-start justify-between rounded-md border border-border px-3 py-3 text-foreground no-underline transition-colors hover:bg-accent/40"
+              className="flex items-start justify-between rounded-md border border-border/80 bg-card/60 px-3 py-3 text-foreground no-underline transition-colors hover:bg-accent/40"
             >
               <span>
                 <span className="block font-medium">Search GitHub</span>
@@ -1065,7 +1065,7 @@ export function CompanySkills() {
         </DialogContent>
       </Dialog>
 
-      <div className="mb-4 inline-grid grid-cols-2 border border-border text-sm">
+      <div className="mb-4 inline-grid grid-cols-2 overflow-hidden rounded-md border border-border/80 bg-card/60 text-sm">
         <button
           type="button"
           className={cn(
@@ -1081,7 +1081,7 @@ export function CompanySkills() {
         <button
           type="button"
           className={cn(
-            "flex items-center justify-center gap-1.5 border-l border-border px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+            "flex items-center justify-center gap-1.5 border-l border-border/80 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
             surface === "tools" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/40",
           )}
           onClick={() => setSurface("tools")}
@@ -1095,9 +1095,9 @@ export function CompanySkills() {
       {surface === "tools" ? (
         <ToolAdminPanel companyId={selectedCompanyId} />
       ) : (
-      <div className="grid min-h-[calc(100vh-12rem)] gap-0 xl:grid-cols-[19rem_minmax(0,1fr)]">
-        <aside className="border-r border-border">
-          <div className="border-b border-border px-4 py-3">
+      <div className="grid min-h-[calc(100vh-12rem)] gap-0 tabular-nums xl:grid-cols-[19rem_minmax(0,1fr)]">
+        <aside className="border-r border-border/80">
+          <div className="border-b border-border/80 px-4 py-3">
             <>
             <div className="flex items-center justify-between gap-2">
               <div>
@@ -1122,7 +1122,7 @@ export function CompanySkills() {
               </div>
             </div>
 
-            <div className="mt-3 flex items-center gap-2 border-b border-border pb-2">
+            <div className="mt-3 flex items-center gap-2 border-b border-border/80 pb-2">
               <Search className="h-4 w-4 text-muted-foreground" />
               <input
                 value={skillFilter}
@@ -1132,7 +1132,7 @@ export function CompanySkills() {
               />
             </div>
 
-            <div className="mt-3 flex items-center gap-2 border-b border-border pb-2">
+            <div className="mt-3 flex items-center gap-2 border-b border-border/80 pb-2">
               <input
                 value={source}
                 onChange={(event) => setSource(event.target.value)}

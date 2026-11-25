@@ -101,7 +101,7 @@ export function Approvals() {
           ]} />
         </Tabs>
         <div className="flex shrink-0 items-baseline gap-2">
-          <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             {L(lang, { en: "Shown", ko: "표시" })}
           </span>
           <span className="font-mono text-lg font-semibold leading-none text-foreground tabular-nums">
@@ -123,17 +123,21 @@ export function Approvals() {
       )}
 
       {filtered.length > 0 && (
-        <div className="grid gap-3 [&>div]:rounded-md [&>div]:border [&>div]:border-border/80 [&>div]:bg-card/60">
+        <div className="grid gap-3">
           {filtered.map((approval) => (
-            <ApprovalCard
+            <div
               key={approval.id}
-              approval={approval}
-              requesterAgent={approval.requestedByAgentId ? (agents ?? []).find((a) => a.id === approval.requestedByAgentId) ?? null : null}
-              onApprove={() => approveMutation.mutate(approval.id)}
-              onReject={() => rejectMutation.mutate(approval.id)}
-              detailLink={`/approvals/${approval.id}`}
-              isPending={approveMutation.isPending || rejectMutation.isPending}
-            />
+              className="rounded-md border border-border/80 bg-card/60 [&>div]:border-0 [&>div]:bg-transparent [&>div]:shadow-none"
+            >
+              <ApprovalCard
+                approval={approval}
+                requesterAgent={approval.requestedByAgentId ? (agents ?? []).find((a) => a.id === approval.requestedByAgentId) ?? null : null}
+                onApprove={() => approveMutation.mutate(approval.id)}
+                onReject={() => rejectMutation.mutate(approval.id)}
+                detailLink={`/approvals/${approval.id}`}
+                isPending={approveMutation.isPending || rejectMutation.isPending}
+              />
+            </div>
           ))}
         </div>
       )}
