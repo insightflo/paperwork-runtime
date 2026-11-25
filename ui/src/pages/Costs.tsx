@@ -81,14 +81,14 @@ function MetricTile({
   icon: ComponentType<{ className?: string }>;
 }) {
   return (
-    <div className="border border-border p-4">
+    <div className="rounded-md border border-border/80 bg-card/60 p-4">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
           <div className="mt-2 text-2xl font-semibold tabular-nums">{value}</div>
           <div className="mt-1 text-xs leading-5 text-muted-foreground">{subtitle}</div>
         </div>
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-border">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-border/80 bg-background/60">
           <Icon className="h-4 w-4 text-muted-foreground" />
         </div>
       </div>
@@ -110,9 +110,9 @@ function FinanceSummaryCard({
   eventCount: number;
 }) {
   return (
-    <Card>
+    <Card className="rounded-md border border-border/80 bg-card/60">
       <CardHeader className="px-5 pt-5 pb-2">
-        <CardTitle className="text-base">Finance ledger</CardTitle>
+        <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Finance ledger</CardTitle>
         <CardDescription>
           Account-level charges that do not map to a single inference request.
         </CardDescription>
@@ -546,7 +546,7 @@ export function Costs() {
   const overviewError = spendError ?? financeError;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 tabular-nums">
       <div className="space-y-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
@@ -571,7 +571,7 @@ export function Costs() {
           </div>
 
           {preset === "custom" ? (
-            <div className="flex flex-wrap items-center gap-2 border border-border p-3">
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/80 bg-card/60 p-3">
               <input
                 type="date"
                 value={customFrom}
@@ -664,9 +664,9 @@ export function Costs() {
               ) : null}
 
               <div className="grid gap-4 xl:grid-cols-[1.3fr,1fr]">
-                <Card>
+                <Card className="rounded-md border border-border/80 bg-card/60">
                   <CardHeader className="px-5 pt-5 pb-2">
-                    <CardTitle className="text-base">Inference ledger</CardTitle>
+                    <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Inference ledger</CardTitle>
                     <CardDescription>
                       Request-scoped inference spend for the selected period.
                     </CardDescription>
@@ -683,7 +683,7 @@ export function Costs() {
                             : "Unlimited budget"}
                         </div>
                       </div>
-                      <div className="border border-border px-4 py-3 text-right">
+                      <div className="rounded-md border border-border/80 bg-card/60 px-4 py-3 text-right">
                         <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">usage</div>
                         <div className="mt-1 text-lg font-medium tabular-nums">
                           {formatTokens(inferenceTokenTotal)}
@@ -723,9 +723,9 @@ export function Costs() {
               </div>
 
               <div className="grid gap-4 xl:grid-cols-[1.25fr,0.95fr]">
-                <Card>
+                <Card className="rounded-md border border-border/80 bg-card/60">
                   <CardHeader className="px-5 pt-5 pb-2">
-                    <CardTitle className="text-base">By agent</CardTitle>
+                    <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">By agent</CardTitle>
                     <CardDescription>What each agent consumed in the selected period.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-2 px-5 pb-5 pt-2">
@@ -737,7 +737,7 @@ export function Costs() {
                         const isExpanded = expandedAgents.has(row.agentId);
                         const hasBreakdown = modelRows.length > 0;
                         return (
-                          <div key={row.agentId} className="border border-border px-4 py-3">
+                          <div key={row.agentId} className="rounded-md border border-border/80 bg-card/60 px-4 py-3">
                             <div
                               className={cn("flex items-start justify-between gap-3", hasBreakdown ? "cursor-pointer select-none" : "")}
                               onClick={() => hasBreakdown && toggleAgent(row.agentId)}
@@ -771,7 +771,7 @@ export function Costs() {
                             </div>
 
                             {isExpanded && modelRows.length > 0 ? (
-                              <div className="mt-3 space-y-2 border-l border-border pl-4">
+                              <div className="mt-3 space-y-2 border-l border-border/80 pl-4">
                                 {modelRows.map((modelRow) => {
                                   const sharePct = row.costCents > 0 ? Math.round((modelRow.costCents / row.costCents) * 100) : 0;
                                   return (
@@ -811,9 +811,9 @@ export function Costs() {
                 </Card>
 
                 <div className="space-y-4">
-                  <Card>
+                  <Card className="rounded-md border border-border/80 bg-card/60">
                     <CardHeader className="px-5 pt-5 pb-2">
-                      <CardTitle className="text-base">By work context</CardTitle>
+                      <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">By work context</CardTitle>
                       <CardDescription>Run costs attributed through work-context-linked items.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-2 px-5 pb-5 pt-2">
@@ -823,7 +823,7 @@ export function Costs() {
                         spendData?.byProject.map((row, index) => (
                           <div
                             key={row.projectId ?? `unattributed-${index}`}
-                            className="flex items-center justify-between gap-3 border border-border px-3 py-2 text-sm"
+                            className="flex items-center justify-between gap-3 rounded-md border border-border/80 bg-card/60 px-3 py-2 text-sm"
                           >
                             <span className="truncate">{row.projectName ?? row.projectId ?? "Unattributed"}</span>
                             <span className="font-medium tabular-nums">{formatCents(row.costCents)}</span>
@@ -847,9 +847,9 @@ export function Costs() {
             <p className="text-sm text-destructive">{(budgetError as Error).message}</p>
           ) : (
             <>
-              <Card className="border-border/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))]">
+              <Card className="rounded-md border border-border/80 bg-card/60">
                 <CardHeader className="px-5 pt-5 pb-3">
-                  <CardTitle className="text-base">Budget control plane</CardTitle>
+                  <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Budget control plane</CardTitle>
                   <CardDescription>
                     Hard-stop spend limits for agents and work contexts. Provider subscription quota stays separate and appears under Providers.
                   </CardDescription>
@@ -885,7 +885,7 @@ export function Costs() {
               {activeBudgetIncidents.length > 0 ? (
                 <div className="space-y-3">
                   <div>
-                    <h2 className="text-lg font-semibold">Active incidents</h2>
+                    <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Active incidents</h2>
                     <p className="text-sm text-muted-foreground">
                       Resolve hard stops here by raising the budget or explicitly keeping the scope paused.
                     </p>
@@ -916,7 +916,7 @@ export function Costs() {
                   return (
                     <section key={scopeType} className="space-y-3">
                       <div>
-                        <h2 className="text-lg font-semibold capitalize">{scopeType === "project" ? "Work context budgets" : `${scopeType} budgets`}</h2>
+                        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{scopeType === "project" ? "Work context budgets" : `${scopeType} budgets`}</h2>
                         <p className="text-sm text-muted-foreground">
                           {scopeType === "company"
                             ? "Company-wide monthly policy."
@@ -946,7 +946,7 @@ export function Costs() {
                 })}
 
                 {budgetPolicies.length === 0 ? (
-                  <Card>
+                  <Card className="rounded-md border border-border/80 bg-card/60">
                     <CardContent className="px-5 py-8 text-sm text-muted-foreground">
                       No budget policies yet. Set agent and work-context budgets from their detail pages, or use the existing company monthly budget control.
                     </CardContent>
@@ -1085,9 +1085,9 @@ export function Costs() {
 
               <div className="grid gap-4 xl:grid-cols-[1.2fr,0.95fr]">
                 <div className="space-y-4">
-                  <Card>
+                  <Card className="rounded-md border border-border/80 bg-card/60">
                     <CardHeader className="px-5 pt-5 pb-2">
-                      <CardTitle className="text-base">By biller</CardTitle>
+                      <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">By biller</CardTitle>
                       <CardDescription>Account-level financial events grouped by who charged or credited them.</CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-4 px-5 pb-5 pt-2 md:grid-cols-2">
