@@ -70,7 +70,7 @@ function formatDate(date: string | null | undefined): string {
 
 function DiffView({ change }: { change: ProposedRuleChange }) {
   return (
-    <div className="space-y-3 text-xs">
+    <div className="space-y-3 rounded-md border border-border/80 bg-card/60 p-3 text-xs">
       <div className="grid grid-cols-[80px_1fr] gap-x-3 gap-y-1.5 items-start">
         <span className="text-muted-foreground font-medium pt-0.5">Name</span>
         <span className="font-medium">{change.name}</span>
@@ -93,7 +93,7 @@ function DiffView({ change }: { change: ProposedRuleChange }) {
         )}
 
         <span className="text-muted-foreground font-medium pt-0.5 self-start">Predicate</span>
-        <pre className="bg-muted/50 rounded p-2 overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed">
+        <pre className="rounded-md border border-border/80 bg-background/60 p-2 overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed">
           {JSON.stringify(change.predicate, null, 2)}
         </pre>
       </div>
@@ -208,7 +208,7 @@ function ProposalRow({ proposal, agentMap }: ProposalRowProps) {
   const isPending = status === "proposed";
 
   return (
-    <div id={`proposal-${proposal.id}`} className="border-b border-border last:border-b-0">
+    <div id={`proposal-${proposal.id}`} className="border-b border-border/80 last:border-b-0">
       {/* Row header */}
       <div className="flex items-center gap-3 px-4 py-3 text-sm">
         <button
@@ -335,7 +335,7 @@ function AgentRateLimitBar({ proposals, agentMap }: AgentRateLimitBarProps) {
   if (agents.length === 0) return null;
 
   return (
-    <div className="rounded-md border border-border p-3 space-y-2">
+    <div className="rounded-md border border-border/80 bg-card/60 p-3 space-y-2">
       <p className="text-xs font-medium text-muted-foreground">Today's proposal usage</p>
       {agents.map(([agentId, count]) => (
         <div key={agentId} className="space-y-1">
@@ -468,7 +468,7 @@ export function WorktreeProposals() {
 
       {/* Proposal list */}
       {filtered.length > 0 && (
-        <div className="border border-border">
+        <div className="overflow-hidden rounded-md border border-border/80 bg-card/60">
           {filtered.map((proposal) => (
             <ProposalRow
               key={proposal.id}
