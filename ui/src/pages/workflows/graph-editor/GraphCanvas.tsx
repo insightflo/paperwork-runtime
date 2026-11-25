@@ -8,7 +8,7 @@
 // [수정시 주의] 캔버스 전용 상태(pan/scale/drag)는 절대 여기서 만들지 말고 코디네이터에서 props로 넘길 것.
 // 루트 Workflows.tsx를 역참조(import)하지 말 것.
 import * as React from "react";
-import { Fragment, type JSX } from "react";
+import { type JSX } from "react";
 import type { StepDraft } from "../step-draft.js";
 import type { PendingWorkflowConnection } from "../workflow-control-nodes.js";
 import {
@@ -26,6 +26,9 @@ import {
 } from "./graphStyles.js";
 import {
   containerColor,
+  graphEdgeColor,
+  graphEdgeDashArray,
+  graphEdgeDisplayLabel,
   type GraphContextMenuState,
   type GraphEdgeActionAnchor,
 } from "./graphUiUtils.js";
@@ -33,8 +36,12 @@ import { GraphCanvasEditTools, GraphCanvasViewTools } from "./GraphCanvasControl
 import { GraphCanvasContextMenu } from "./GraphCanvasContextMenu.js";
 import { GraphCanvasStatusStrip } from "./GraphCanvasStatusStrip.js";
 import { GraphNodeHandles } from "./GraphNodeHandles.js";
-import { GraphEdges } from "./GraphEdges.js";
 import { GraphConnectionEffects } from "./GraphConnectionEffects.js";
+import {
+  CONNECTOR_STATE_STYLES,
+  getConnectorVisualStyle,
+  type ConnectorState,
+} from "./connector-styles.js";
 
 export interface GraphCanvasProps {
   graph: WorkflowGraphModel;
@@ -83,6 +90,122 @@ export interface GraphCanvasProps {
   runCanvasContextAction: (actionId: string) => void;
   addAfter: (stepId: string | null) => void;
   handleDeleteGraphObjectPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => void;
+}
+
+type GraphEdgeEmphasis = "highlighted" | "dimmed";
+type GraphEdgeFocus = { type: "node" | "edge"; id: string } | null;
+
+const edgeKinds = ["normal", "conditional", "failure", "early-stop"] as const;
+const markerEmphasisOptions = [
+  ["base", {}],
+  ["highlighted", { highlighted: true }],
+  ["dimmed", { dimmed: true }],
+] as const;
+
+function connectorStateForEdgeKind(kind: WorkflowGraphEdge["kind"]): ConnectorState {
+  if (kind === "conditional") return "condition_true";
+  if (kind === "failure") return "blocked";
+  if (kind === "early-stop") return "rework";
+  return "default";
+}
+
+function graphEdgeEmphasis(edge: WorkflowGraphEdge, focus: GraphEdgeFocus): GraphEdgeEmphasis | null {
+  if (!focus) return null;
+  if (focus.type === "edge") return edge.id === focus.id ? "highlighted" : "dimmed";
+  return edge.source === focus.id || edge.target === focus.id ? "highlighted" : "dimmed";
+}
+
+type GraphCanvasEdgesProps = Pick<GraphCanvasProps,
+  "graph" | "selectedEdgeId" | "handleEdgeClick" | "handleEdgeDoubleClick" | "handleEdgeContextMenu"
+> & {
+  focus: GraphEdgeFocus;
+  setHoveredEdgeId: (edgeId: string | null) => void;
+};
+
+function GraphCanvasEdges({
+  graph,
+  selectedEdgeId,
+  handleEdgeClick,
+  handleEdgeDoubleClick,
+  handleEdgeContextMenu,
+  focus,
+  setHoveredEdgeId,
+}: GraphCanvasEdgesProps) {
+  const markerPrefix = React.useId();
+  return (
+    <svg aria-hidden="true" width="100%" height="100%"
+      style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "auto" }}>
+      <defs>
+        {edgeKinds.flatMap((kind) => markerEmphasisOptions.map(([emphasis, options]) => {
+          const visual = getConnectorVisualStyle(connectorStateForEdgeKind(kind), options);
+          return (
+            <marker key={`${kind}-${emphasis}`} id={`${markerPrefix}-${kind}-${emphasis}`} markerWidth="8" markerHeight="8"
+              refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+              <path d="M0,0 L8,4 L0,8 Z" fill={graphEdgeColor(kind)}
+                opacity={emphasis === "base" ? 1 : visual.opacity} />
+            </marker>
+          );
+        }))}
+      </defs>
+      <g>
+        {graph.edges.map((edge) => {
+          const source = graph.nodes.find((node) => node.id === edge.source);
+          const target = graph.nodes.find((node) => node.id === edge.target);
+          if (!source || !target) return null;
+          const startX = source.x + 172;
+          const startY = source.y + (edge.when === "condition_true" ? 24 : edge.when === "condition_false" ? 54 : 38);
+          const endX = target.x;
+          const endY = target.y + 38;
+          const midX = startX + Math.max(34, (endX - startX) / 2);
+          const edgePath = `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX - 8} ${endY}`;
+          const selected = selectedEdgeId === edge.id;
+          const color = graphEdgeColor(edge.kind);
+          const emphasis = graphEdgeEmphasis(edge, focus);
+          const connectorState = connectorStateForEdgeKind(edge.kind);
+          const visual = getConnectorVisualStyle(connectorState, {
+            highlighted: emphasis === "highlighted",
+            dimmed: emphasis === "dimmed",
+          });
+          const widthBoost = visual.strokeWidth - CONNECTOR_STATE_STYLES[connectorState].strokeWidth;
+          const lineWidth = (selected ? 4 : 3) + widthBoost;
+          const glowWidth = (selected ? 10 : 8) + widthBoost * 2;
+          const lineOpacity = emphasis ? visual.opacity : undefined;
+          const glowOpacity = emphasis
+            ? Math.max(0.04, visual.opacity * (emphasis === "highlighted" ? 0.35 : 0.25))
+            : 0.25;
+          const emphasisKey = emphasis ?? "base";
+          const transition = "opacity 150ms ease, stroke-width 150ms ease";
+          return (
+            <g key={edge.id}
+              onPointerEnter={() => setHoveredEdgeId(edge.id)}
+              onPointerLeave={() => setHoveredEdgeId(null)}
+              onMouseEnter={() => setHoveredEdgeId(edge.id)}
+              onMouseLeave={() => setHoveredEdgeId(null)}
+            >
+              <path data-graph-edge="true" data-edge-id={edge.id} data-edge-emphasis={emphasis ?? undefined} d={edgePath} fill="none"
+                stroke="transparent" strokeWidth="16" pointerEvents="stroke" style={{ cursor: "pointer" }}
+                onClick={(event) => handleEdgeClick(event, edge)}
+                onDoubleClick={(event) => handleEdgeDoubleClick(event, edge)}
+                onContextMenu={(event) => handleEdgeContextMenu(event, edge)} />
+              <path data-graph-edge-glow="true" d={edgePath} fill="none" stroke={color}
+                strokeWidth={glowWidth} strokeLinecap="round" opacity={glowOpacity}
+                strokeDasharray={graphEdgeDashArray(edge.kind)} pointerEvents="none"
+                style={{ filter: "blur(3px)", transition }} />
+              <path data-graph-edge-line="true" d={edgePath} fill="none" stroke={color}
+                strokeWidth={lineWidth} strokeLinecap="round" opacity={lineOpacity}
+                strokeDasharray={graphEdgeDashArray(edge.kind)} markerEnd={`url(#${markerPrefix}-${edge.kind}-${emphasisKey})`}
+                pointerEvents="none" style={{ transition }} />
+              {graphEdgeDisplayLabel(edge) ? (
+                <text x={midX} y={(startY + endY) / 2 - 6} fill={color} fontSize="11" fontWeight="700"
+                  opacity={emphasis ? visual.opacity : undefined} textAnchor="middle" pointerEvents="none"
+                  style={{ transition: "opacity 150ms ease" }}>{graphEdgeDisplayLabel(edge)}</text>
+              ) : null}
+            </g>
+          );
+        })}
+      </g>
+    </svg>
+  );
 }
 
 // [목적] 워크플로우 그래프 캔버스(노드/엣지/팬/줌/컨텍스트 메뉴) 렌더.
@@ -137,6 +260,21 @@ export function GraphCanvas({
   addAfter,
   handleDeleteGraphObjectPointerDown,
 }: GraphCanvasProps): JSX.Element {
+  const [hoveredNodeId, setHoveredNodeId] = React.useState<string | null>(null);
+  const [hoveredEdgeId, setHoveredEdgeId] = React.useState<string | null>(null);
+  const activeHoveredEdgeId = hoveredEdgeId && graph.edges.some((edge) => edge.id === hoveredEdgeId) ? hoveredEdgeId : null;
+  const activeHoveredNodeId = hoveredNodeId && graph.nodes.some((node) => node.id === hoveredNodeId) ? hoveredNodeId : null;
+  const selectedEdgeFocusId = selectedEdgeId && graph.edges.some((edge) => edge.id === selectedEdgeId) ? selectedEdgeId : null;
+  const selectedNodeFocusId = graph.nodes.find((node) => node.step.id === selectedStep?.id)?.id ?? null;
+  const edgeEmphasisFocus: GraphEdgeFocus = activeHoveredEdgeId
+    ? { type: "edge", id: activeHoveredEdgeId }
+    : activeHoveredNodeId
+      ? { type: "node", id: activeHoveredNodeId }
+      : selectedEdgeFocusId
+        ? { type: "edge", id: selectedEdgeFocusId }
+        : selectedNodeFocusId
+          ? { type: "node", id: selectedNodeFocusId }
+          : null;
   return (
     <div key="graph-workbench-main" style={graphWorkbenchMainStyle}>
       <div style={{ position: "relative", minHeight: 0 }}>
@@ -146,6 +284,10 @@ export function GraphCanvas({
         onPointerMove={handleCanvasPointerMove}
         onPointerUp={endCanvasPan}
         onPointerCancel={endCanvasPan}
+        onPointerLeave={() => {
+          setHoveredNodeId(null);
+          setHoveredEdgeId(null);
+        }}
         onContextMenu={handleCanvasContextMenu}
         onClick={handleCanvasClick}
       >
@@ -185,118 +327,64 @@ export function GraphCanvas({
               const color = containerColor(container.type);
               const selected = selectedContainerSummary?.id === container.id;
               return (
-                <button
-                  key={container.id}
-                  type="button"
-                  aria-label={`Select ${container.type} container ${container.title}`}
+                <button key={container.id} type="button" aria-label={`Select ${container.type} container ${container.title}`}
                   style={{
-                    position: "absolute",
-                    left: container.x,
-                    top: container.y,
-                    width: container.width,
-                    height: container.height,
-                    padding: 0,
-                    border: `${selected ? "2px solid" : "1px dashed"} ${color}`,
-                    borderRadius: "8px",
+                    position: "absolute", left: container.x, top: container.y, width: container.width, height: container.height,
+                    padding: 0, border: `${selected ? "2px solid" : "1px dashed"} ${color}`, borderRadius: "8px",
                     background: `color-mix(in srgb, ${color} 8%, transparent)`,
                     boxShadow: selected ? `0 0 0 2px color-mix(in srgb, ${color} 24%, transparent)` : "none",
-                    cursor: "pointer",
-                    pointerEvents: "auto",
-                    textAlign: "left",
-                  }}
-                >
-                  <div
-                    key="container-label"
+                    cursor: "pointer", pointerEvents: "auto", textAlign: "left",
+                  }}>
+                  <div key="container-label"
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      maxWidth: "calc(100% - 16px)",
-                      margin: "6px",
-                      padding: "3px 7px",
-                      borderRadius: "6px",
-                      background: "var(--background, #020617)",
-                      color,
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
+                      display: "inline-flex", alignItems: "center", gap: "6px", maxWidth: "calc(100% - 16px)", margin: "6px",
+                      padding: "3px 7px", borderRadius: "6px", background: "var(--background, #020617)", color,
+                      fontSize: "11px", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
                     <span key="type" style={{ textTransform: "uppercase" }}>{container.type}</span>
                     <span key="title">{container.title}</span>
                   </div>
                   {container.description ? (
-                    <div
-                      key="description"
+                    <div key="description"
                       style={{
-                        margin: "0 8px",
-                        maxWidth: "calc(100% - 16px)",
-                        color: "var(--muted-foreground, #94a3b8)",
-                        fontSize: "11px",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                        margin: "0 8px", maxWidth: "calc(100% - 16px)", color: "var(--muted-foreground, #94a3b8)",
+                        fontSize: "11px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                      }}>
                       {container.description}
                     </div>
-                  ) : (
-                    <Fragment key="description-placeholder" />
-                  )}
+                  ) : null}
                   {container.badges.length > 0 ? (
                     <div key="badges" style={{ display: "flex", flexWrap: "wrap", gap: "4px", margin: "6px 8px 0" }}>
                       {container.badges.map((badge) => (
                         <span key={badge} style={{ ...graphPolicyBadgeStyle, color }}>{badge}</span>
                       ))}
                     </div>
-                  ) : (
-                    <Fragment key="badges-placeholder" />
-                  )}
+                  ) : null}
                 </button>
               );
             })}
           </div>
           <div key="graph-groups" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
             {graph.groups.filter((group) => !group.collapsed).map((group) => (
-              <div
-                key={group.id}
+              <div key={group.id}
                 style={{
-                  position: "absolute",
-                  left: group.x,
-                  top: group.y,
-                  width: group.width,
-                  height: group.height,
-                  border: `1px solid ${group.color}`,
-                  borderRadius: "8px",
-                  background: `color-mix(in srgb, ${group.color} 10%, transparent)`,
-                  pointerEvents: "none",
-                }}
-              >
-                <div
-                  style={{
-                    display: "inline-flex",
-                    maxWidth: "calc(100% - 16px)",
-                    margin: "6px",
-                    padding: "3px 7px",
-                    borderRadius: "6px",
-                    background: "var(--background, #020617)",
-                    color: group.color,
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
+                  position: "absolute", left: group.x, top: group.y, width: group.width, height: group.height,
+                  border: `1px solid ${group.color}`, borderRadius: "8px",
+                  background: `color-mix(in srgb, ${group.color} 10%, transparent)`, pointerEvents: "none",
+                }}>
+                <div style={{
+                  display: "inline-flex", maxWidth: "calc(100% - 16px)", margin: "6px", padding: "3px 7px", borderRadius: "6px",
+                  background: "var(--background, #020617)", color: group.color, fontSize: "11px", fontWeight: 700,
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
                   {group.title}
                 </div>
               </div>
             ))}
           </div>
-          <GraphEdges graph={graph} selectedEdgeId={selectedEdgeId} handleEdgeClick={handleEdgeClick}
-            handleEdgeDoubleClick={handleEdgeDoubleClick} handleEdgeContextMenu={handleEdgeContextMenu} />
+          <GraphCanvasEdges graph={graph} selectedEdgeId={selectedEdgeId} handleEdgeClick={handleEdgeClick}
+            handleEdgeDoubleClick={handleEdgeDoubleClick} handleEdgeContextMenu={handleEdgeContextMenu}
+            focus={edgeEmphasisFocus} setHoveredEdgeId={setHoveredEdgeId} />
           <GraphConnectionEffects graph={graph} pendingConnection={pendingConnection}
             canvasScale={canvasScale} graphCanvasRef={graphCanvasRef} />
           {selectedEdgeActionAnchor ? (
@@ -326,30 +414,30 @@ export function GraphCanvas({
             >
               -
             </button>
-          ) : (
-            <Fragment key="graph-edge-remove-placeholder" />
-          )}
+          ) : null}
           <div key="graph-nodes" style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
             {graph.nodes.map((node) => {
               const selected = selectedStep?.id === node.step.id;
               const matched = matchingNodeIds.has(node.id);
               const inSelection = !selected && selectedPathNodeIds.has(node.id);
               const showNodeMetadata = selected || matched || inSelection;
+              const badgeSections = [
+                ["badges", node.advanced.badges, undefined], ["testing-badges", node.testing.badges, "#fbbf24"],
+                ["execution-badges", node.execution.badges, "#38bdf8"], ["data-flow-badges", node.dataFlow.badges, "#a78bfa"],
+                ["resource-badges", node.resources.badges, "#34d399"], ["runtime-badges", node.runStatus.runtimeBadges, "#f97316"],
+              ] as const;
               return (
-                <button
-                  key={node.id || node.order}
-                  type="button"
-                  data-graph-node="true"
+                <button key={node.id || node.order} type="button" data-graph-node="true"
                   style={{
-                    ...graphNodeStyle(selected, node.kind, matched, inSelection),
-                    left: node.x,
-                    top: node.y,
-                    cursor: draggingStepId === node.step.id ? "grabbing" : "grab",
-                    touchAction: "none",
-                    pointerEvents: "auto",
+                    ...graphNodeStyle(selected, node.kind, matched, inSelection), left: node.x, top: node.y,
+                    cursor: draggingStepId === node.step.id ? "grabbing" : "grab", touchAction: "none", pointerEvents: "auto",
                   }}
                   onPointerDown={(event) => beginNodeDrag(event, node.step.id, node.x, node.y)}
                   onPointerMove={handleNodePointerMove}
+                  onPointerEnter={() => setHoveredNodeId(node.id)}
+                  onPointerLeave={() => setHoveredNodeId(null)}
+                  onMouseEnter={() => setHoveredNodeId(node.id)}
+                  onMouseLeave={() => setHoveredNodeId(null)}
                   onPointerUp={endNodeDrag}
                   onPointerCancel={endNodeDrag}
                   onContextMenu={(event) => handleNodeContextMenu(event, node.step.id)}
@@ -357,120 +445,39 @@ export function GraphCanvas({
                   onDoubleClick={(event) => handleNodeDoubleClick(event, node.step.id)}
                   onKeyDown={(event) => handleNodeKeyDown(event, node.step.id)}
                 >
-                  <GraphNodeHandles
-                    step={node.step}
-                    pendingConnection={pendingConnection}
-                    beginEdgeConnection={beginEdgeConnection}
-                    completeEdgeConnection={completeEdgeConnection}
-                  />
+                  <GraphNodeHandles step={node.step} pendingConnection={pendingConnection}
+                    beginEdgeConnection={beginEdgeConnection} completeEdgeConnection={completeEdgeConnection} />
                   <span key="meta-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                    <span key="kind" style={{ fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", textTransform: "uppercase" }}>
-                      {node.kind}
-                    </span>
-                    <span key="status" style={{ ...statusBadgeStyle(node.runStatus.status), fontSize: "10px" }}>
-                      {node.runStatus.status}
-                    </span>
+                    <span key="kind" style={{ fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", textTransform: "uppercase" }}>{node.kind}</span>
+                    <span key="status" style={{ ...statusBadgeStyle(node.runStatus.status), fontSize: "10px" }}>{node.runStatus.status}</span>
                   </span>
-                  <span key="label" style={{ display: "block", marginTop: "6px", fontSize: "13px", fontWeight: 700, overflowWrap: "anywhere" }}>
-                    {node.label}
-                  </span>
-                  <span key="location" style={{ display: "block", marginTop: "4px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", overflowWrap: "anywhere" }}>
-                    L{node.layer} · {node.id || "(no id)"}
-                  </span>
+                  <span key="label" style={{ display: "block", marginTop: "6px", fontSize: "13px", fontWeight: 700, overflowWrap: "anywhere" }}>{node.label}</span>
+                  <span key="location" style={{ display: "block", marginTop: "4px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", overflowWrap: "anywhere" }}>L{node.layer} · {node.id || "(no id)"}</span>
                   {node.kind === "if" && node.runStatus.controlOutcome ? (
-                    <span key="if-outcome" style={{ display: "block", marginTop: "5px", fontSize: "11px", color: node.runStatus.controlOutcome === "condition_true" ? "#22c55e" : "#fb923c", fontWeight: 800 }}>
-                      IF outcome: {node.runStatus.controlOutcome === "condition_true" ? "true" : "false"}
-                    </span>
+                    <span key="if-outcome" style={{ display: "block", marginTop: "5px", fontSize: "11px", color: node.runStatus.controlOutcome === "condition_true" ? "#22c55e" : "#fb923c", fontWeight: 800 }}>IF outcome: {node.runStatus.controlOutcome === "condition_true" ? "true" : "false"}</span>
                   ) : null}
                   {matched ? (
-                    <span key="match" style={{ display: "block", marginTop: "5px", fontSize: "11px", color: "#fbbf24", fontWeight: 700 }}>
-                      Search match
-                    </span>
-                  ) : (
-                    <Fragment key="match-placeholder" />
-                  )}
+                    <span key="match" style={{ display: "block", marginTop: "5px", fontSize: "11px", color: "#fbbf24", fontWeight: 700 }}>Search match</span>
+                  ) : null}
                   {inSelection ? (
-                    <span key="selection" style={{ display: "block", marginTop: "5px", fontSize: "11px", color: "#22c55e", fontWeight: 700 }}>
-                      Selected path
-                    </span>
-                  ) : (
-                    <Fragment key="selection-placeholder" />
-                  )}
-                  {showNodeMetadata && node.advanced.badges.length > 0 ? (
-                    <span key="badges" style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px" }}>
-                      {node.advanced.badges.map((badge) => (
-                        <span key={badge} style={graphPolicyBadgeStyle}>{badge}</span>
+                    <span key="selection" style={{ display: "block", marginTop: "5px", fontSize: "11px", color: "#22c55e", fontWeight: 700 }}>Selected path</span>
+                  ) : null}
+                  {showNodeMetadata ? badgeSections.map(([key, badges, color]) => badges.length > 0 ? (
+                    <span key={key} style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px" }}>
+                      {badges.map((badge) => (
+                        <span key={badge} style={{ ...graphPolicyBadgeStyle, ...(color ? { color } : {}) }}>{badge}</span>
                       ))}
                     </span>
-                  ) : (
-                    <Fragment key="badges-placeholder" />
-                  )}
-                  {showNodeMetadata && node.testing.badges.length > 0 ? (
-                    <span key="testing-badges" style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px" }}>
-                      {node.testing.badges.map((badge) => (
-                        <span key={badge} style={{ ...graphPolicyBadgeStyle, color: "#fbbf24" }}>{badge}</span>
-                      ))}
-                    </span>
-                  ) : (
-                    <Fragment key="testing-badges-placeholder" />
-                  )}
-                  {showNodeMetadata && node.execution.badges.length > 0 ? (
-                    <span key="execution-badges" style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px" }}>
-                      {node.execution.badges.map((badge) => (
-                        <span key={badge} style={{ ...graphPolicyBadgeStyle, color: "#38bdf8" }}>{badge}</span>
-                      ))}
-                    </span>
-                  ) : (
-                    <Fragment key="execution-badges-placeholder" />
-                  )}
-                  {showNodeMetadata && node.dataFlow.badges.length > 0 ? (
-                    <span key="data-flow-badges" style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px" }}>
-                      {node.dataFlow.badges.map((badge) => (
-                        <span key={badge} style={{ ...graphPolicyBadgeStyle, color: "#a78bfa" }}>{badge}</span>
-                      ))}
-                    </span>
-                  ) : (
-                    <Fragment key="data-flow-badges-placeholder" />
-                  )}
-                  {showNodeMetadata && node.resources.badges.length > 0 ? (
-                    <span key="resource-badges" style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px" }}>
-                      {node.resources.badges.map((badge) => (
-                        <span key={badge} style={{ ...graphPolicyBadgeStyle, color: "#34d399" }}>{badge}</span>
-                      ))}
-                    </span>
-                  ) : (
-                    <Fragment key="resource-badges-placeholder" />
-                  )}
-                  {showNodeMetadata && node.runStatus.runtimeBadges.length > 0 ? (
-                    <span key="runtime-badges" style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "6px" }}>
-                      {node.runStatus.runtimeBadges.map((badge) => (
-                        <span key={badge} style={{ ...graphPolicyBadgeStyle, color: "#f97316" }}>{badge}</span>
-                      ))}
-                    </span>
-                  ) : (
-                    <Fragment key="runtime-badges-placeholder" />
-                  )}
+                  ) : null) : null}
                   {showNodeMetadata && node.runStatus.issueIdentifier ? (
-                    <span key="issue" style={{ display: "block", marginTop: "5px", fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", overflowWrap: "anywhere" }}>
-                      Issue: {node.runStatus.issueIdentifier}
-                    </span>
-                  ) : (
-                    <Fragment key="issue-placeholder" />
-                  )}
+                    <span key="issue" style={{ display: "block", marginTop: "5px", fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", overflowWrap: "anywhere" }}>Issue: {node.runStatus.issueIdentifier}</span>
+                  ) : null}
                   {showNodeMetadata && node.runStatus.summary ? (
-                    <span key="summary" style={{ display: "block", marginTop: "5px", fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", overflowWrap: "anywhere" }}>
-                      {node.runStatus.summary}
-                    </span>
-                  ) : (
-                    <Fragment key="summary-placeholder" />
-                  )}
+                    <span key="summary" style={{ display: "block", marginTop: "5px", fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", overflowWrap: "anywhere" }}>{node.runStatus.summary}</span>
+                  ) : null}
                   {showNodeMetadata && typeof node.step.graphNote === "string" && node.step.graphNote.trim() ? (
-                    <span key="note" style={{ display: "block", marginTop: "6px", fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", overflowWrap: "anywhere" }}>
-                      Note: {node.step.graphNote.trim()}
-                    </span>
-                  ) : (
-                    <Fragment key="note-placeholder" />
-                  )}
+                    <span key="note" style={{ display: "block", marginTop: "6px", fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", overflowWrap: "anywhere" }}>Note: {node.step.graphNote.trim()}</span>
+                  ) : null}
                 </button>
               );
             })}
@@ -478,19 +485,11 @@ export function GraphCanvas({
         </div>
         </div>
       </div>
-        <GraphCanvasEditTools
-          selectedStep={selectedStep}
-          selectedEdgeActionAnchor={selectedEdgeActionAnchor}
-          addAfter={addAfter}
-          handleDeleteGraphObjectPointerDown={handleDeleteGraphObjectPointerDown}
-          stopGraphControlEvent={stopGraphControlEvent}
-        />
-        <GraphCanvasViewTools
-          canvasScale={canvasScale}
-          selectedStep={selectedStep}
-          setCanvasScaleFromPoint={setCanvasScaleFromPoint}
-          runWorkbenchAction={runWorkbenchAction}
-        />
+        <GraphCanvasEditTools selectedStep={selectedStep} selectedEdgeActionAnchor={selectedEdgeActionAnchor}
+          addAfter={addAfter} handleDeleteGraphObjectPointerDown={handleDeleteGraphObjectPointerDown}
+          stopGraphControlEvent={stopGraphControlEvent} />
+        <GraphCanvasViewTools canvasScale={canvasScale} selectedStep={selectedStep}
+          setCanvasScaleFromPoint={setCanvasScaleFromPoint} runWorkbenchAction={runWorkbenchAction} />
       </div>
       <GraphCanvasStatusStrip workbenchSummary={workbenchSummary} canvasScale={canvasScale} />
     </div>
