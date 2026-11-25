@@ -230,7 +230,7 @@ function TelegramSection({ companyId, config }: TelegramSectionProps) {
       <Separator />
 
       {/* Config form */}
-      <form onSubmit={handleSave} className="space-y-4">
+      <form onSubmit={handleSave} className="space-y-4 rounded-md border border-border/80 bg-card/60 p-4">
         {/* Bot username */}
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">
@@ -371,7 +371,7 @@ export function ChannelConfig() {
       </div>
 
       {/* Segmented tabs */}
-      <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40">
+      <div className="inline-flex rounded-md border border-border/80 bg-card/60 p-0.5">
         {([
           { id: "board", label: "협업 채널 보드" },
           { id: "telegram", label: "Telegram 연동 설정" },
@@ -400,7 +400,7 @@ export function ChannelConfig() {
 
       {channelTab === "telegram" && (
         /* Telegram section */
-        <div className="space-y-4">
+        <div className="space-y-4 rounded-md border border-border/80 bg-card/60 p-4">
           <div className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4 text-muted-foreground" />
             <h2 className="text-sm font-medium">Telegram</h2>

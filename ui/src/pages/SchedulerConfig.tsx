@@ -89,9 +89,9 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
   return (
     <form
       onSubmit={handleSubmit}
-      className="border border-border rounded-md p-4 space-y-4 bg-card"
+      className="space-y-4 rounded-md border border-border/80 bg-card/60 p-4"
     >
-      <p className="text-sm font-medium">New Schedule</p>
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">New Schedule</p>
 
       {/* Agent */}
       <div className="space-y-1.5">
@@ -112,13 +112,13 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
       <div className="space-y-1.5">
         <label className="text-xs text-muted-foreground">Preset</label>
         <Select onValueChange={handlePreset} defaultValue="__custom__">
-          <SelectTrigger className="h-8 text-sm">
+          <SelectTrigger className="h-8 text-sm tabular-nums">
             <SelectValue placeholder="Choose preset..." />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__custom__">Custom</SelectItem>
             {CRON_PRESETS.map((p) => (
-              <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+              <SelectItem key={p.value} value={p.value} className="tabular-nums">{p.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -128,7 +128,7 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
       <div className="space-y-1.5">
         <label className="text-xs text-muted-foreground">Cron expression</label>
         <Input
-          className="h-8 text-sm font-mono"
+          className="h-8 text-sm font-mono tabular-nums"
           value={cronExpression}
           onChange={(e) => setCronExpression(e.target.value)}
           placeholder="* * * * *"
@@ -195,7 +195,7 @@ function ScheduleRow({ schedule, agentName, companyId }: ScheduleRowProps) {
 
   return (
     <div className={cn(
-      "flex items-center gap-3 px-4 py-3 text-sm border-b border-border last:border-b-0",
+      "flex items-center gap-3 rounded-md border border-border/80 bg-card/60 px-4 py-3 text-sm",
       !schedule.enabled && "opacity-60",
     )}>
       {/* Icon */}
@@ -203,7 +203,7 @@ function ScheduleRow({ schedule, agentName, companyId }: ScheduleRowProps) {
 
       {/* Cron + agent */}
       <div className="flex-1 min-w-0 space-y-0.5">
-        <p className="font-mono text-xs font-medium truncate">{schedule.cronExpression}</p>
+        <p className="font-mono text-xs font-medium truncate tabular-nums">{schedule.cronExpression}</p>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>{agentName}</span>
           <span>·</span>
@@ -213,14 +213,14 @@ function ScheduleRow({ schedule, agentName, companyId }: ScheduleRowProps) {
 
       {/* Next run */}
       <div className="shrink-0 text-right hidden sm:block">
-        <p className="text-xs text-muted-foreground">Next run</p>
-        <p className="text-xs font-medium">{formatDate(schedule.nextRunAt)}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Next run</p>
+        <p className="text-xs font-medium tabular-nums">{formatDate(schedule.nextRunAt)}</p>
       </div>
 
       {/* Last run */}
       <div className="shrink-0 text-right hidden md:block">
-        <p className="text-xs text-muted-foreground">Last run</p>
-        <p className="text-xs">{formatDate(schedule.lastRunAt)}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Last run</p>
+        <p className="text-xs tabular-nums">{formatDate(schedule.lastRunAt)}</p>
       </div>
 
       {/* Toggle */}
@@ -298,7 +298,7 @@ export function SchedulerConfig() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between rounded-md border border-border/80 bg-card/60 px-3 py-2">
         <div>
           <h1 className="text-base font-semibold">Scheduler</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -337,7 +337,7 @@ export function SchedulerConfig() {
 
       {/* Schedule list */}
       {schedules && schedules.length > 0 && (
-        <div className="border border-border">
+        <div className="space-y-2">
           {schedules.map((schedule) => (
             <ScheduleRow
               key={schedule.id}
