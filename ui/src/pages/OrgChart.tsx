@@ -191,21 +191,15 @@ export function OrgChart() {
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
 
-  // Center the chart on first load
-  const hasInitialized = useRef(false);
-  useEffect(() => {
-    if (hasInitialized.current || allNodes.length === 0 || !containerRef.current) return;
-    hasInitialized.current = true;
-
+  const fitChartToScreen = useCallback(() => {
     const container = containerRef.current;
+    if (!container) return;
+
     const containerW = container.clientWidth;
     const containerH = container.clientHeight;
-
-    // Fit chart to container
     const scaleX = (containerW - 40) / bounds.width;
     const scaleY = (containerH - 40) / bounds.height;
     const fitZoom = Math.min(scaleX, scaleY, 1);
-
     const chartW = bounds.width * fitZoom;
     const chartH = bounds.height * fitZoom;
 
@@ -214,7 +208,26 @@ export function OrgChart() {
       x: (containerW - chartW) / 2,
       y: (containerH - chartH) / 2,
     });
-  }, [allNodes, bounds]);
+  }, [bounds]);
+
+  const applyCenterZoom = useCallback((newZoom: number) => {
+    const container = containerRef.current;
+    if (container) {
+      const cx = container.clientWidth / 2;
+      const cy = container.clientHeight / 2;
+      const scale = newZoom / zoom;
+      setPan({ x: cx - scale * (cx - pan.x), y: cy - scale * (cy - pan.y) });
+    }
+    setZoom(newZoom);
+  }, [zoom, pan]);
+
+  // Center the chart on first load
+  const hasInitialized = useRef(false);
+  useEffect(() => {
+    if (hasInitialized.current || allNodes.length === 0 || !containerRef.current) return;
+    hasInitialized.current = true;
+    fitChartToScreen();
+  }, [allNodes, fitChartToScreen]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return;
@@ -273,7 +286,7 @@ export function OrgChart() {
     <div className="flex flex-col h-full">
     <div
       ref={containerRef}
-      className="w-full flex-1 min-h-0 overflow-hidden relative bg-muted/20 border border-border rounded-lg"
+      className="w-full flex-1 min-h-0 overflow-hidden relative rounded-md border border-border/80 bg-muted/20"
       style={{ cursor: dragging ? "grabbing" : "grab" }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -282,55 +295,30 @@ export function OrgChart() {
       onWheel={handleWheel}
     >
       {/* Zoom controls */}
-      <div className="absolute top-3 right-3 z-10 flex flex-col gap-1">
+      <div className="absolute top-3 right-3 z-10 w-12 overflow-hidden rounded-md border border-border/80 bg-card/80 backdrop-blur-sm">
+        <div className="border-b border-border/60 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Zoom
+        </div>
         <button
-          className="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-accent transition-colors"
-          onClick={() => {
-            const newZoom = Math.min(zoom * 1.2, 2);
-            const container = containerRef.current;
-            if (container) {
-              const cx = container.clientWidth / 2;
-              const cy = container.clientHeight / 2;
-              const scale = newZoom / zoom;
-              setPan({ x: cx - scale * (cx - pan.x), y: cy - scale * (cy - pan.y) });
-            }
-            setZoom(newZoom);
-          }}
+          className="flex h-7 w-full items-center justify-center text-sm transition-colors hover:bg-accent"
+          onClick={() => applyCenterZoom(Math.min(zoom * 1.2, 2))}
           aria-label="Zoom in"
         >
           +
         </button>
         <button
-          className="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-sm hover:bg-accent transition-colors"
-          onClick={() => {
-            const newZoom = Math.max(zoom * 0.8, 0.2);
-            const container = containerRef.current;
-            if (container) {
-              const cx = container.clientWidth / 2;
-              const cy = container.clientHeight / 2;
-              const scale = newZoom / zoom;
-              setPan({ x: cx - scale * (cx - pan.x), y: cy - scale * (cy - pan.y) });
-            }
-            setZoom(newZoom);
-          }}
+          className="flex h-7 w-full items-center justify-center border-t border-border/60 text-sm transition-colors hover:bg-accent"
+          onClick={() => applyCenterZoom(Math.max(zoom * 0.8, 0.2))}
           aria-label="Zoom out"
         >
           &minus;
         </button>
+        <div className="border-t border-border/60 px-1 py-1 text-center font-mono text-[10px] text-muted-foreground tabular-nums">
+          {Math.round(zoom * 100)}%
+        </div>
         <button
-          className="w-7 h-7 flex items-center justify-center bg-background border border-border rounded text-[10px] hover:bg-accent transition-colors"
-          onClick={() => {
-            if (!containerRef.current) return;
-            const cW = containerRef.current.clientWidth;
-            const cH = containerRef.current.clientHeight;
-            const scaleX = (cW - 40) / bounds.width;
-            const scaleY = (cH - 40) / bounds.height;
-            const fitZoom = Math.min(scaleX, scaleY, 1);
-            const chartW = bounds.width * fitZoom;
-            const chartH = bounds.height * fitZoom;
-            setZoom(fitZoom);
-            setPan({ x: (cW - chartW) / 2, y: (cH - chartH) / 2 });
-          }}
+          className="flex h-7 w-full items-center justify-center border-t border-border/60 text-[10px] font-semibold uppercase tracking-wider transition-colors hover:bg-accent"
+          onClick={fitChartToScreen}
           title="Fit to screen"
           aria-label="Fit chart to screen"
         >
@@ -383,7 +371,7 @@ export function OrgChart() {
             <div
               key={node.id}
               data-org-card
-              className="absolute bg-card border border-border rounded-lg shadow-sm hover:shadow-md hover:border-foreground/20 transition-[box-shadow,border-color] duration-150 cursor-pointer select-none"
+              className="absolute cursor-pointer select-none rounded-md border border-border/80 bg-card/80 transition-colors duration-150 hover:border-foreground/30 hover:bg-accent/20"
               style={{
                 left: node.x,
                 top: node.y,
@@ -395,7 +383,7 @@ export function OrgChart() {
               <div className="flex items-center px-4 py-3 gap-3">
                 {/* Agent icon + status dot */}
                 <div className="relative shrink-0">
-                  <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-background/70">
                     <AgentIcon icon={agent?.icon} className="h-4.5 w-4.5 text-foreground/70" />
                   </div>
                   <span
@@ -408,11 +396,11 @@ export function OrgChart() {
                   <span className="text-sm font-semibold text-foreground leading-tight">
                     {node.name}
                   </span>
-                  <span className="text-[11px] text-muted-foreground leading-tight mt-0.5">
+                  <span className="mt-0.5 text-[10px] font-semibold uppercase leading-tight tracking-wider text-muted-foreground">
                     {agent?.title ?? roleLabel(node.role)}
                   </span>
                   {agent && (
-                    <span className="text-[10px] text-muted-foreground/60 font-mono leading-tight mt-1">
+                    <span className="mt-1 font-mono text-[10px] uppercase leading-tight text-muted-foreground/60">
                       {adapterLabels[agent.adapterType] ?? agent.adapterType}
                     </span>
                   )}

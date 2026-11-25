@@ -144,20 +144,21 @@ export function InstanceSettings() {
 
   return (
     <div className="max-w-5xl space-y-6">
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Settings className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">Scheduler Heartbeats</h1>
+      <div className="rounded-md border border-border/80 bg-card/60 px-4 py-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Settings className="h-4 w-4 text-muted-foreground" />
+              <h1 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Scheduler Heartbeats</h1>
+            </div>
+            <p className="text-sm text-muted-foreground">Agents with a timer heartbeat enabled across all of your companies.</p>
+          </div>
+          <div className="flex gap-4 text-sm text-muted-foreground">
+            <span><span className="font-semibold text-foreground tabular-nums">{activeCount}</span> active</span>
+            <span><span className="font-semibold text-foreground tabular-nums">{disabledCount}</span> disabled</span>
+            <span><span className="font-semibold text-foreground tabular-nums">{grouped.length}</span> {grouped.length === 1 ? "company" : "companies"}</span>
+          </div>
         </div>
-        <p className="text-sm text-muted-foreground">
-          Agents with a timer heartbeat enabled across all of your companies.
-        </p>
-      </div>
-
-      <div className="flex gap-4 text-sm text-muted-foreground">
-        <span><span className="font-semibold text-foreground">{activeCount}</span> active</span>
-        <span><span className="font-semibold text-foreground">{disabledCount}</span> disabled</span>
-        <span><span className="font-semibold text-foreground">{grouped.length}</span> {grouped.length === 1 ? "company" : "companies"}</span>
       </div>
 
       {actionError && (
@@ -174,12 +175,12 @@ export function InstanceSettings() {
       ) : (
         <div className="space-y-4">
           {grouped.map((group) => (
-            <Card key={group.companyName}>
+            <Card key={group.companyName} className="gap-0 overflow-hidden rounded-md border border-border/80 bg-card/60 py-0 shadow-none">
               <CardContent className="p-0">
-                <div className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <div className="border-b border-border/60 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   {group.companyName}
                 </div>
-                <div className="divide-y">
+                <div className="divide-y divide-border/60">
                   {group.agents.map((agent) => {
                     const draftValue = intervalDrafts[agent.id] ?? intervalMinutesValue(agent.intervalSec);
                     const parsedIntervalSec = parseIntervalMinutesToSec(draftValue);
@@ -225,7 +226,7 @@ export function InstanceSettings() {
                             <Input
                               aria-label={`${agent.agentName} heartbeat interval minutes`}
                               aria-invalid={intervalInvalid}
-                              className="h-7 w-20 px-2 text-right text-xs"
+                              className="h-7 w-20 px-2 text-right text-xs tabular-nums"
                               min={1}
                               step={1}
                               type="number"
