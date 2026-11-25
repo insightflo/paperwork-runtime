@@ -3,7 +3,7 @@ import request from "supertest";
 import { companies, createDb, pluginToolExecutionReceipts, startEmbeddedPostgresTestDatabase, type Db } from "@paperclipai/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { errorHandler } from "../middleware/index.js";
-import { pluginRoutes } from "../routes/plugins.js";
+import { pluginToolExecuteRoutes } from "../routes/plugin-tool-execute.js";
 import { createPluginToolDispatcher } from "../services/plugin-tool-dispatcher.js";
 import { createPluginToolRegistry } from "../services/plugin-tool-registry.js";
 import { createRuntimeExecutionLifecycle } from "../services/runtime-execution-lifecycle.js";
@@ -85,9 +85,9 @@ describe("plugin shutdown start boundary", () => {
       req.actor = { type: "board", userId: "board-1", companyIds: [COMPANY_ID], source: "session" } as never;
       next();
     });
-    app.use("/api", pluginRoutes(db, {} as never, undefined, undefined, { toolDispatcher: {
+    app.use("/api", pluginToolExecuteRoutes(db, { toolDispatcher: {
       listToolsForAgent: vi.fn(), getTool: vi.fn(() => registered ? { namespacedName: TOOL } : null), executeToolObserved,
-    } as never }, undefined));
+    } as never }));
     app.use(errorHandler);
     return app;
   }

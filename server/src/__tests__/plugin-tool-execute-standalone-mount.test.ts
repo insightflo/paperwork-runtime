@@ -7,8 +7,6 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../app.js";
 import { errorHandler } from "../middleware/index.js";
 import { pluginToolExecuteRoutes } from "../routes/plugin-tool-execute.js";
-import { pluginRoutes } from "../routes/plugins.js";
-import { createHttpHandlerLifetime } from "../services/http-handler-lifetime.js";
 import {
   observeExecuteToolSpy,
   PLUGIN_ROUTE_RECEIPT_COMPANY_ID,
@@ -87,16 +85,7 @@ describe("standalone plugin tool execute mount (Phase 0-2 Step 1b-1)", () => {
     expect(res.body).toEqual({ pluginId: "acme.linear", toolName: "search-issues", result: { content: "ok" } });
   });
 
-  it("(b) pluginRoutes with skipToolExecuteRoute does not serve the execute route", async () => {
-    const router = pluginRoutes(fixture.db, {} as never, undefined, undefined,
-      { toolDispatcher: makeDispatcher() } as never, { workerManager: {} as never },
-      { lifetime: createHttpHandlerLifetime(), skipToolExecuteRoute: true });
-    const res = await request(boardApp(router)).post("/api/plugins/tools/execute")
-      .send({ tool: TOOL, parameters: { q: "x" }, runContext });
-    expect(res.status).toBe(404);
-  });
-
-  it("(c) real app mounts the standalone execute router as a direct /api sibling before pluginRoutes", async () => {
+  it("(b) real app keeps the standalone execute router mounted while legacy plugin install is absent", async () => {
     const localPluginDir = await mkdtemp(path.join(tmpdir(), "p02-s1b1-plugins-"));
     const app = await createApp(fixture.db, {
       uiMode: "none", serverPort: 3100, storageService: {} as never,
@@ -117,15 +106,14 @@ describe("standalone plugin tool execute mount (Phase 0-2 Step 1b-1)", () => {
       const standaloneIdx = apiStack.findIndex((layer) => ownsPostRoute(layer, "/plugins/tools/execute"));
       const pluginRoutesIdx = apiStack.findIndex((layer) => ownsPostRoute(layer, "/plugins/install"));
       expect(standaloneIdx).toBeGreaterThanOrEqual(0);
-      expect(pluginRoutesIdx).toBeGreaterThanOrEqual(0);
-      expect(standaloneIdx).toBeLessThan(pluginRoutesIdx);
+      expect(pluginRoutesIdx).toBe(-1);
       expect(hits[0]!.stack).toBe(apiStack[standaloneIdx]!.handle!.stack!);
       const standaloneRoutes: RouteLayer[] = [];
       collectRouteLayers(apiStack[standaloneIdx]!.handle!.stack!, standaloneRoutes);
       expect(standaloneRoutes).toEqual([hits[0]!.layer]);
-      const nestedExecute: Array<{ stack: RouteLayer[]; layer: RouteLayer }> = [];
-      collectPostLayers(apiStack[pluginRoutesIdx]!.handle!.stack!, "/plugins/tools/execute", nestedExecute);
-      expect(nestedExecute).toHaveLength(0);
+      const installHits: Array<{ stack: RouteLayer[]; layer: RouteLayer }> = [];
+      collectPostLayers(root, "/plugins/install", installHits);
+      expect(installHits).toHaveLength(0);
     } finally {
       await app.runtimeShutdown.dispose();
       await rm(localPluginDir, { recursive: true, force: true });

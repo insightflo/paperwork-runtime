@@ -36,7 +36,6 @@ import {
 } from "./routes/workflow-webhooks.js";
 import { requireMaintenanceCompany } from "./middleware/company-kind-gate.js";
 import { executionWorkspaceRoutes } from "./routes/execution-workspaces.js";
-import { goalRoutes } from "./routes/goals.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { secretRoutes } from "./routes/secrets.js";
 import { companyDataStorageRoutes } from "./routes/company-data-storage.js";
@@ -62,7 +61,6 @@ import { llmRoutes } from "./routes/llms.js";
 import { assetRoutes } from "./routes/assets.js";
 import { accessRoutes } from "./routes/access.js";
 import { assertCompanyAccess } from "./routes/authz.js";
-import { pluginRoutes } from "./routes/plugins.js";
 import { pluginToolExecuteRoutes } from "./routes/plugin-tool-execute.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { applyUiBranding } from "./ui-branding.js";
@@ -78,10 +76,7 @@ import { createPluginJobCoordinator } from "./services/plugin-job-coordinator.js
 import { buildHostServices, flushPluginLogBuffer } from "./services/plugin-host-services.js";
 import { createPluginEventBus } from "./services/plugin-event-bus.js";
 import { setPluginEventBus } from "./services/activity-log.js";
-import { createPluginDevWatcher } from "./services/plugin-dev-watcher.js";
 import { createPluginHostServiceCleanup } from "./services/plugin-host-service-cleanup.js";
-import { pluginRegistryService } from "./services/plugin-registry.js";
-import { isCoreIntegratedPluginKey } from "./services/core-integrated-plugins.js";
 import { createHostClientHandlers } from "@paperclipai/plugin-sdk";
 import { heartbeatService } from "./services/heartbeat.js";
 import { createScheduler } from "./services/scheduler/index.js";
@@ -636,7 +631,6 @@ export async function createApp(
   api.use(worktreeRoutes(db));
   // CRITICAL: single mount for maintenance gate — per-route is forbidden
   api.use("/maintenance", requireMaintenanceCompany(db), worktreeRoutes(db));
-  api.use(goalRoutes(db));
   api.use(approvalRoutes(db));
   api.use(secretRoutes(db));
   api.use(companyDataStorageRoutes(db));
@@ -658,7 +652,6 @@ export async function createApp(
   api.use(instanceSettingsRoutes(db));
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();
-  const pluginRegistry = pluginRegistryService(db);
   const eventBus = createPluginEventBus();
   setPluginEventBus(eventBus);
   registerNativeWorkflowToolResultEventHandlers(db, eventBus);
@@ -750,15 +743,6 @@ export async function createApp(
   );
   loader = loaderInstance;
   api.use(pluginToolExecuteRoutes(db, { toolDispatcher: toolDispatcherInstance }, { lifetime: httpHandlerLifetime, runtimeLifecycle: runtimeExecutionLifecycle }));
-  api.use(pluginRoutes(
-    db,
-    loaderInstance,
-    { scheduler: pluginSchedulerInstance, jobStore },
-    { workerManager },
-    { toolDispatcher: toolDispatcherInstance },
-    { workerManager },
-    { lifetime: httpHandlerLifetime, runtimeLifecycle: runtimeExecutionLifecycle, skipToolExecuteRoute: true },
-  ));
   api.use(
     accessRoutes(db, {
       deploymentMode: opts.deploymentMode,
@@ -1285,31 +1269,7 @@ export async function createApp(
       logger.error({ err }, "Failed to initialize plugin tool dispatcher");
     }));
   }
-  const devWatcherInstance = !stopping && opts.uiMode === "vite-dev"
-    ? createPluginDevWatcher(
-      lifecycle,
-      async (pluginId) => {
-        const plugin = await pluginRegistry.getById(pluginId);
-        if (!plugin || isCoreIntegratedPluginKey(plugin.pluginKey)) return null;
-        return plugin.packagePath ?? null;
-      },
-    )
-    : null;
-  if (devWatcherInstance) registerStop("plugin-dev-watcher", () => devWatcherInstance.close());
-  if (!stopping) trackStartup(loaderInstance.loadAll().then((result) => {
-    if (!result) return;
-    for (const loaded of result.results) {
-      if (
-        !stopping
-        && devWatcherInstance
-        && loaded.success
-        && loaded.plugin.packagePath
-        && !isCoreIntegratedPluginKey(loaded.plugin.pluginKey)
-      ) {
-        devWatcherInstance.watch(loaded.plugin.id, loaded.plugin.packagePath);
-      }
-    }
-  }).catch((err) => {
+  if (!stopping) trackStartup(loaderInstance.loadAll().catch((err) => {
     logger.error({ err }, "Failed to load ready plugins on startup");
   }));
 

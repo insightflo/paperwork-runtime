@@ -7,7 +7,7 @@ import { eq, sql } from "drizzle-orm";
 import { companies, createDb, pluginToolExecutionReceipts, startEmbeddedPostgresTestDatabase, type Db } from "@paperclipai/db";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { errorHandler } from "../middleware/index.js";
-import { pluginRoutes } from "../routes/plugins.js";
+import { pluginToolExecuteRoutes } from "../routes/plugin-tool-execute.js";
 import { createPluginToolDispatcher } from "../services/plugin-tool-dispatcher.js";
 import { createPluginWorkerManager, type PluginWorkerHandle, type PluginWorkerManager } from "../services/plugin-worker-manager.js";
 import { decodeRetainedToolOutcome, insertInternalToolReceipt, releaseRetainedHttpToolUnsentReceipt, stageRetainedToolOutcome, type RetainedToolRequest } from "../services/plugin-tool-execution-receipt.js";
@@ -79,7 +79,7 @@ describe("retained HTTP plugin tool consumer", () => {
   afterAll(async () => { await db.$client.end({ timeout: 5 }); await tempDb.cleanup(); });
   function app(dbArg: Db, dispatcher: Record<string, unknown>) {
     const server = express(); server.use(express.json()); server.use((req, _res, next) => { req.actor = { type: "board", userId: "board", companyIds: [COMPANY], source: "session" } as never; next(); });
-    server.use("/api", pluginRoutes(dbArg, {} as never, undefined, undefined, { toolDispatcher: dispatcher } as never, undefined));
+    server.use("/api", pluginToolExecuteRoutes(dbArg, { toolDispatcher: dispatcher } as never));
     server.use(errorHandler); return server;
   }
   const post = (server: ReturnType<typeof app>, body: Record<string, unknown>) => request(server).post("/api/plugins/tools/execute").send(body);

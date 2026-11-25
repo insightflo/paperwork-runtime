@@ -4,7 +4,6 @@ import { activityApi } from "../api/activity";
 import { agentsApi } from "../api/agents";
 import { issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
-import { goalsApi } from "../api/goals";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -103,11 +102,6 @@ export function Activity() {
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
-  const { data: goals } = useQuery({
-    queryKey: queryKeys.goals.list(selectedCompanyId!),
-    queryFn: () => goalsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
-  });
 
   const agentMap = useMemo(() => {
     const map = new Map<string, Agent>();
@@ -120,9 +114,8 @@ export function Activity() {
     for (const i of issues ?? []) map.set(`issue:${i.id}`, i.identifier ?? i.id.slice(0, 8));
     for (const a of agents ?? []) map.set(`agent:${a.id}`, a.name);
     for (const p of projects ?? []) map.set(`project:${p.id}`, p.name);
-    for (const g of goals ?? []) map.set(`goal:${g.id}`, g.title);
     return map;
-  }, [issues, agents, projects, goals]);
+  }, [issues, agents, projects]);
 
   const entityTitleMap = useMemo(() => {
     const map = new Map<string, string>();

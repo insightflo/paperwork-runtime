@@ -107,10 +107,6 @@ vi.mock("../services/workflow/tool-result-events.js", () => ({
   registerNativeWorkflowToolResultEventHandlers: nativeWorkflowToolResultEventHandlers,
 }));
 
-vi.mock("../services/plugin-dev-watcher.js", () => ({
-  createPluginDevWatcher: vi.fn(() => null),
-}));
-
 vi.mock("../services/plugin-host-service-cleanup.js", () => ({
   createPluginHostServiceCleanup: vi.fn(() => ({
     disposeAll: vi.fn(),

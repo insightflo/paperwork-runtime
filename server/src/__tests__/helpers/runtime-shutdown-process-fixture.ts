@@ -24,7 +24,6 @@ const entryPath = fileURLToPath(new URL("../../index.ts", import.meta.url));
 const pluginWorkerPath = fileURLToPath(new URL("../fixtures/plugin-job-rpc-worker.cjs", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 const sourcePaths = [entryPath, fileURLToPath(new URL("../../app.ts", import.meta.url)),
-  fileURLToPath(new URL("../../routes/plugins.ts", import.meta.url)),
   fileURLToPath(new URL("../../routes/tool-definitions.ts", import.meta.url)),
   fileURLToPath(new URL("../../routes/tool-progress.ts", import.meta.url)),
   fileURLToPath(new URL("../../services/tools/progress-store.ts", import.meta.url)),
