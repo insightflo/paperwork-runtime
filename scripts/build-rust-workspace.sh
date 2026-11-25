@@ -28,7 +28,6 @@ ARTIFACTS=(
   "mission-core:paperclip-mission-core"
   "ops-control:paperclip-ops-control"
   "paperwork-engine:paperwork-engine"
-  "portability-yaml:paperclip-portability-yaml"
   "process-supervisor:paperclip-process-supervisor"
   "provider-auth-core:paperclip-provider-auth-core"
   "provider-runtime-core:paperclip-provider-runtime-core"
