@@ -40,7 +40,26 @@ export function MyIssues() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 tabular-nums">
+      <div className="flex items-center justify-between gap-3 rounded-md border border-border/80 bg-card/60 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            My Work Queue
+          </span>
+          <span className="hidden truncate text-xs text-muted-foreground sm:inline">
+            Unassigned active work items
+          </span>
+        </div>
+        <div className="flex shrink-0 items-baseline gap-2">
+          <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Open
+          </span>
+          <span className="font-mono text-lg font-semibold leading-none text-foreground tabular-nums">
+            {myIssues.length}
+          </span>
+        </div>
+      </div>
+
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
       {myIssues.length === 0 && (
@@ -48,7 +67,7 @@ export function MyIssues() {
       )}
 
       {myIssues.length > 0 && (
-        <div className="border border-border">
+        <div className="overflow-hidden rounded-md border border-border/80 bg-card/60 tabular-nums">
           {myIssues.map((issue) => (
             <EntityRow
               key={issue.id}
@@ -62,7 +81,7 @@ export function MyIssues() {
                 </>
               }
               trailing={
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-muted-foreground tabular-nums">
                   {formatDate(issue.createdAt)}
                 </span>
               }
