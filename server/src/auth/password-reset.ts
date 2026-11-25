@@ -1,3 +1,10 @@
+import {
+  readSmtpConfigFromEnv,
+  sendSmtpMail,
+  type SendSmtpMailOptions,
+  type SmtpConfig,
+} from "./smtp-mailer.js";
+
 export type PasswordResetDelivery = {
   email: string;
   url: string;
@@ -76,12 +83,16 @@ export type CreatePasswordResetSenderOptions = {
   expiresInSeconds?: number;
   fetchImpl?: FetchLike;
   logger?: PasswordResetLogger;
+  smtpConfig?: SmtpConfig | null;
+  smtpOptions?: SendSmtpMailOptions;
+  smtpSend?: typeof sendSmtpMail;
 };
 
 export function createPasswordResetSender(opts: CreatePasswordResetSenderOptions = {}) {
   const expiresInSeconds = opts.expiresInSeconds ?? PASSWORD_RESET_EXPIRES_IN_SECONDS;
   const fetchImpl = opts.fetchImpl ?? fetch;
   const logger = opts.logger ?? defaultLogger;
+  const smtpSend = opts.smtpSend ?? sendSmtpMail;
 
   return async function sendResetPassword({ user, url, token }: {
     user: { email?: string | null };
@@ -95,6 +106,33 @@ export function createPasswordResetSender(opts: CreatePasswordResetSenderOptions
     if (opts.deliver) {
       try {
         await opts.deliver({ email, url, token, expiresAt });
+        return;
+      } catch {
+        logger.warn(metadata(), "Password reset delivery failed");
+        throw deliveryError();
+      }
+    }
+
+    const smtpConfig = opts.smtpConfig !== undefined ? opts.smtpConfig : readSmtpConfigFromEnv();
+    if (smtpConfig) {
+      try {
+        await smtpSend(smtpConfig, {
+          to: email,
+          subject: "Reset your Paperwork password",
+          text: [
+            "Hello,",
+            "",
+            "We received a request to reset the password for this Paperwork account.",
+            "Open this link to choose a new password:",
+            "",
+            url,
+            "",
+            "This link expires in 1 hour.",
+            "If you did not request a password reset, you can ignore this email.",
+            "",
+            "— Paperwork",
+          ].join("\n"),
+        }, opts.smtpOptions);
         return;
       } catch {
         logger.warn(metadata(), "Password reset delivery failed");
