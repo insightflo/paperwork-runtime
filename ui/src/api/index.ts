@@ -10,7 +10,6 @@ export { issuesApi } from "./issues";
 export { workItemsApi } from "./issues";
 export { executionWorkspacesApi } from "./execution-workspaces";
 export { executionContextsApi } from "./execution-workspaces";
-export { goalsApi } from "./goals";
 export { approvalsApi } from "./approvals";
 export { costsApi } from "./costs";
 export { activityApi } from "./activity";

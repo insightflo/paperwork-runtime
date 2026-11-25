@@ -6,8 +6,6 @@ import { OnboardingWizard } from "./OnboardingWizard";
 
 const mocks = vi.hoisted(() => ({
   createCompany: vi.fn(),
-  createGoal: vi.fn(),
-  listGoals: vi.fn(),
   adapterModels: vi.fn(),
   createAgent: vi.fn(),
   testEnvironment: vi.fn(),
@@ -21,15 +19,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("../api/companies", () => ({
   companiesApi: { create: mocks.createCompany },
-}));
-vi.mock("../api/goals", () => ({
-  goalsApi: {
-    create: mocks.createGoal,
-    list: mocks.listGoals,
-    get: vi.fn(),
-    update: vi.fn(),
-    remove: vi.fn(),
-  },
 }));
 vi.mock("../api/agents", () => ({
   agentsApi: {
@@ -107,7 +96,7 @@ describe("OnboardingWizard goals cleanup", () => {
     host.remove();
   });
 
-  it("creates the step 1 company without any live goalsApi call", async () => {
+  it("creates the step 1 company without calling /goals", async () => {
     await act(async () => {
       root.render(<OnboardingWizard />);
     });
@@ -132,8 +121,6 @@ describe("OnboardingWizard goals cleanup", () => {
     expect(mocks.createCompany).toHaveBeenCalledTimes(1);
     expect(mocks.createCompany).toHaveBeenCalledWith({ name: "Acme" });
     expect(mocks.setSelectedCompanyId).toHaveBeenCalledWith("company-1");
-    expect(mocks.createGoal).not.toHaveBeenCalled();
-    expect(mocks.listGoals).not.toHaveBeenCalled();
     expect(host.textContent).toContain("Create your first agent");
   });
 });
