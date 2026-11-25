@@ -8,10 +8,24 @@ paperclip-provider-auth-core = { path = "../provider-auth-core" }
 paperclip-provider-runtime-core = { path = "../provider-runtime-core" }
 paperclip-quota-router = { path = "../quota-router" }
 paperclip-redactor-core = { path = "../redactor-core" }
-paperwork-engine-heartbeat = { path = "../engine-heartbeat" }
+paperwork-engine-activity = { path = "../engine-activity" }
+paperwork-engine-agent = { path = "../engine-agent" }
+paperwork-engine-approval = { path = "../engine-approval" }
 paperwork-engine-budget = { path = "../engine-budget" }
+paperwork-engine-company = { path = "../engine-company" }
+paperwork-engine-cost = { path = "../engine-cost" }
+paperwork-engine-decision = { path = "../engine-decision" }
+paperwork-engine-heartbeat = { path = "../engine-heartbeat" }
+paperwork-engine-issue = { path = "../engine-issue" }
+paperwork-engine-knowledge = { path = "../engine-knowledge" }
+paperwork-engine-mission = { path = "../engine-mission" }
+paperwork-engine-schedule = { path = "../engine-schedule" }
 paperwork-engine-secret = { path = "../engine-secret" }
+paperwork-engine-skill = { path = "../engine-skill" }
+paperwork-engine-tool = { path = "../engine-tool" }
+paperwork-engine-wiki = { path = "../engine-wiki" }
 paperwork-engine-workflow = { path = "../engine-workflow" }
+paperwork-engine-worktree = { path = "../engine-worktree" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

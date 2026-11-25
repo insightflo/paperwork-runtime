@@ -885,15 +885,51 @@ dependencies = [
  "paperclip-provider-runtime-core",
  "paperclip-quota-router",
  "paperclip-redactor-core",
+ "paperwork-engine-activity",
+ "paperwork-engine-agent",
+ "paperwork-engine-approval",
  "paperwork-engine-budget",
+ "paperwork-engine-company",
+ "paperwork-engine-cost",
+ "paperwork-engine-decision",
  "paperwork-engine-heartbeat",
+ "paperwork-engine-issue",
+ "paperwork-engine-knowledge",
+ "paperwork-engine-mission",
+ "paperwork-engine-schedule",
  "paperwork-engine-secret",
+ "paperwork-engine-skill",
+ "paperwork-engine-tool",
+ "paperwork-engine-wiki",
  "paperwork-engine-workflow",
+ "paperwork-engine-worktree",
  "serde",
  "serde_json",
  "socket2",
  "tokio",
  "tokio-postgres",
+ "uuid",
+]
+
+[[package]]
+name = "paperwork-engine-activity"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "paperwork-engine-agent"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "postgres",
+ "serde",
+ "serde_json",
  "uuid",
 ]
 
@@ -920,11 +956,88 @@ dependencies = [
 ]
 
 [[package]]
+name = "paperwork-engine-company"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "paperwork-engine-cost"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "paperwork-engine-decision"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "paperwork-engine-heartbeat"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "paperclip-process-supervisor",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "paperwork-engine-issue"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "paperwork-engine-knowledge"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "paperwork-engine-mission"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "paperwork-engine-schedule"
+version = "0.1.0"
+dependencies = [
+ "chrono",
  "postgres",
  "serde",
  "serde_json",
@@ -943,7 +1056,51 @@ dependencies = [
 ]
 
 [[package]]
+name = "paperwork-engine-skill"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "paperwork-engine-tool"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "paperwork-engine-wiki"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
 name = "paperwork-engine-workflow"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "paperwork-engine-worktree"
 version = "0.1.0"
 dependencies = [
  "chrono",
