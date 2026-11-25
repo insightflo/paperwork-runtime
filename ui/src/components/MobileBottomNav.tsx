@@ -59,7 +59,7 @@ export function MobileBottomNav({ visible }: MobileBottomNavProps) {
   return (
     <nav
       className={cn(
-        "fixed bottom-0 left-0 right-0 z-30 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85 transition-transform duration-200 ease-out md:hidden pb-[env(safe-area-inset-bottom)]",
+        "fixed bottom-0 left-0 right-0 z-30 border-t border-border/80 bg-sidebar/95 backdrop-blur-md transition-transform duration-200 ease-out md:hidden pb-[env(safe-area-inset-bottom)]",
         visible ? "translate-y-0" : "translate-y-full",
       )}
       aria-label="Mobile navigation"
@@ -77,7 +77,7 @@ export function MobileBottomNav({ visible }: MobileBottomNavProps) {
                 className={cn(
                   "relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-md text-[10px] font-medium transition-colors",
                   active
-                    ? "text-foreground"
+                    ? "text-primary"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -96,7 +96,7 @@ export function MobileBottomNav({ visible }: MobileBottomNavProps) {
                 cn(
                   "relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-md text-[10px] font-medium transition-colors",
                   isActive
-                    ? "text-foreground"
+                    ? "text-primary"
                     : "text-muted-foreground hover:text-foreground",
                 )
               }

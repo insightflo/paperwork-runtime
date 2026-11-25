@@ -1,6 +1,40 @@
 import type { Request } from "express";
 import { forbidden, unauthorized } from "../errors.js";
 
+export const TEAM_ROLES = ["owner", "admin", "member", "viewer"] as const;
+export type TeamRole = (typeof TEAM_ROLES)[number];
+
+const TEAM_ROLE_RANKS: Record<TeamRole, number> = {
+  owner: 0,
+  admin: 1,
+  member: 2,
+  viewer: 3,
+};
+
+function isTeamRole(role: unknown): role is TeamRole {
+  return typeof role === "string" && (TEAM_ROLES as readonly string[]).includes(role);
+}
+
+export function hasMinimumTeamRole(actual: unknown, required: unknown) {
+  if (!isTeamRole(actual) || !isTeamRole(required)) {
+    return false;
+  }
+  return TEAM_ROLE_RANKS[actual] <= TEAM_ROLE_RANKS[required];
+}
+
+export function canManageTeamRole(actorRole: unknown, targetRole: unknown) {
+  if (!isTeamRole(actorRole) || !isTeamRole(targetRole)) {
+    return false;
+  }
+  if (actorRole === "owner") {
+    return true;
+  }
+  if (actorRole === "admin") {
+    return targetRole === "member" || targetRole === "viewer";
+  }
+  return false;
+}
+
 export function assertBoard(req: Request) {
   if (req.actor.type !== "board") {
     throw forbidden("Board access required");

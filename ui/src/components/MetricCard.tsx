@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "@/lib/router";
+import { cn } from "@/lib/utils";
 
 interface MetricCardProps {
   icon: LucideIcon;
@@ -15,13 +16,18 @@ export function MetricCard({ icon: Icon, value, label, description, to, onClick 
   const isClickable = !!(to || onClick);
 
   const inner = (
-    <div className={`h-full px-4 py-4 sm:px-5 sm:py-5 rounded-lg transition-colors${isClickable ? " hover:bg-accent/50 cursor-pointer" : ""}`}>
+    <div
+      className={cn(
+        "h-full rounded-lg border border-border/80 bg-card/80 px-4 py-3.5 sm:px-5 sm:py-4 transition-colors",
+        isClickable && "cursor-pointer hover:border-primary/40 hover:bg-accent/40",
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
           <p className="text-2xl sm:text-3xl font-semibold tracking-tight tabular-nums">
             {value}
           </p>
-          <p className="text-xs sm:text-sm font-medium text-muted-foreground mt-1">
+          <p className="mt-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             {label}
           </p>
           {description && (

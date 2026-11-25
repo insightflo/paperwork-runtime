@@ -224,13 +224,12 @@ export function Layout() {
               onPointerLeave={() => slide.setHoveringSubNav(false)}
             >
               <div
-                className="flex-1 min-h-0 overflow-hidden"
+                className="flex-1 min-h-0 overflow-hidden bg-sidebar"
                 style={{
                   opacity: slide.metrics.subNavOpacity,
                   transform: `scale(${slide.metrics.subNavScale})`,
                   transformOrigin: "top left",
                   filter: slide.metrics.subNavBlurPx > 0 ? `blur(${slide.metrics.subNavBlurPx}px)` : undefined,
-                  backgroundColor: "var(--openbot-subnav-bg)",
                 }}
               >
                 {sidePanel}

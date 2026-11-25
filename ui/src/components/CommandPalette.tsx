@@ -102,12 +102,18 @@ export function CommandPalette() {
   );
 
   return (
-    <CommandDialog open={open} onOpenChange={(v) => {
+    <CommandDialog
+      open={open}
+      onOpenChange={(v) => {
         setOpen(v);
         if (v && isMobile) setSidebarOpen(false);
-      }}>
+      }}
+      title="Paperwork command palette"
+      description="Search Paperwork work, agents, and work contexts"
+      className="border-border/80 bg-card/95 backdrop-blur-md [&>div:first-child]:bg-transparent"
+    >
       <CommandInput
-        placeholder="Search work, agents, work contexts..."
+        placeholder="Search Paperwork work, agents, work contexts..."
         value={query}
         onValueChange={setQuery}
       />
@@ -123,7 +129,9 @@ export function CommandPalette() {
           >
             <SquarePen className="mr-2 h-4 w-4" />
             Create new work item
-            <span className="ml-auto text-xs text-muted-foreground">C</span>
+            <kbd className="ml-auto rounded-sm border border-border/80 bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] leading-none text-muted-foreground tabular-nums">
+              C
+            </kbd>
           </CommandItem>
           <CommandItem
             onSelect={() => {

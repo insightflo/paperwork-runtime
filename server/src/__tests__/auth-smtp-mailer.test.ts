@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createPasswordResetSender } from "../auth/password-reset.js";
 import {
   readSmtpConfigFromEnv,
+  resolveSmtpTlsServername,
   sendSmtpMail,
   type SmtpConfig,
 } from "../auth/smtp-mailer.js";
@@ -14,7 +15,7 @@ type MockSmtpServer = {
   close: () => Promise<void>;
 };
 
-async function startMockSmtpServer(opts: { authResponse?: string } = {}): Promise<MockSmtpServer> {
+async function startMockSmtpServer(opts: { authResponse?: string; ehloResponse?: string } = {}): Promise<MockSmtpServer> {
   let transcript = "";
   let connections = 0;
   const sockets = new Set<net.Socket>();
@@ -42,7 +43,7 @@ async function startMockSmtpServer(opts: { authResponse?: string } = {}): Promis
         } else {
           const upper = line.toUpperCase();
           if (upper.startsWith("EHLO ")) {
-            socket.write("250-localhost\r\n250-AUTH PLAIN\r\n250 OK\r\n");
+            socket.write(opts.ehloResponse ?? "250-localhost\r\n250-AUTH PLAIN\r\n250 OK\r\n");
           } else if (upper.startsWith("AUTH PLAIN")) {
             socket.write(opts.authResponse ?? "235 2.7.0 authenticated\r\n");
           } else if (upper.startsWith("MAIL FROM:") || upper.startsWith("RCPT TO:")) {
@@ -193,6 +194,52 @@ describe("sendSmtpMail", () => {
       await server.close();
     }
   });
+
+  it("fails closed before AUTH when EHLO does not advertise the AUTH capability", async () => {
+    const server = await startMockSmtpServer({ ehloResponse: "250-localhost\r\n250 OK\r\n" });
+    try {
+      const error = await sendSmtpMail(smtpConfig(server.port), {
+        to: "user@example.com",
+        subject: "Reset",
+        text: "body",
+      }, { allowInsecurePlain: true }).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("SMTP server did not advertise AUTH capability");
+      expect((error as Error).message).not.toContain("smtp-pass");
+      expect(server.transcript()).not.toContain("AUTH PLAIN");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("recognizes case-insensitive AUTH capability spellings in multiline EHLO replies", async () => {
+    const replies = [
+      "250-localhost\r\n250-AUTH PLAIN LOGIN\r\n250 OK\r\n",
+      "250-localhost\r\n250 auth plain\r\n",
+      "250-localhost\r\n250-AUTH=PLAIN\r\n250 OK\r\n",
+    ];
+    for (const ehloResponse of replies) {
+      const server = await startMockSmtpServer({ ehloResponse });
+      try {
+        await sendSmtpMail(smtpConfig(server.port), {
+          to: "user@example.com",
+          subject: "Reset",
+          text: "body",
+        }, { allowInsecurePlain: true });
+        expect(server.transcript()).toContain("AUTH PLAIN");
+      } finally {
+        await server.close();
+      }
+    }
+  });
+
+  it("omits TLS SNI for IP-literal hosts and keeps it for DNS hostnames", () => {
+    expect(resolveSmtpTlsServername("127.0.0.1")).toBeUndefined();
+    expect(resolveSmtpTlsServername("::1")).toBeUndefined();
+    expect(resolveSmtpTlsServername("[2001:db8::1]")).toBeUndefined();
+    expect(resolveSmtpTlsServername("smtp.example.com")).toBe("smtp.example.com");
+  });
 });
 
 describe("createPasswordResetSender SMTP integration", () => {
@@ -202,6 +249,7 @@ describe("createPasswordResetSender SMTP integration", () => {
     try {
       vi.stubEnv("PAPERWORK_SMTP_HOST", "127.0.0.1");
       vi.stubEnv("PAPERWORK_SMTP_PORT", String(server.port));
+      vi.stubEnv("PAPERWORK_SMTP_SECURE", "false");
       vi.stubEnv("PAPERWORK_SMTP_USER", "smtp-user");
       vi.stubEnv("PAPERWORK_SMTP_PASS", "smtp-pass");
       vi.stubEnv("PAPERWORK_SMTP_FROM", "reset@example.com");

@@ -114,8 +114,20 @@ function isLoopbackHost(host: string): boolean {
   return normalized === "localhost" || normalized === "::1" || normalized.startsWith("127.");
 }
 
+export function resolveSmtpTlsServername(host: string, opts: Pick<SendSmtpMailOptions, "servername" | "tls"> = {}): string | undefined {
+  const explicit = opts.tls?.servername ?? opts.servername;
+  if (explicit !== undefined) return explicit;
+  const normalized = host.trim().replace(/^\[|\]$/g, "");
+  return net.isIP(normalized) === 0 ? host : undefined;
+}
+
 function tlsOptions(config: SmtpConfig, opts: SendSmtpMailOptions): tls.ConnectionOptions {
-  return { ...opts.tls, servername: opts.tls?.servername ?? opts.servername ?? config.host, rejectUnauthorized: opts.tls?.rejectUnauthorized ?? opts.rejectUnauthorized ?? true };
+  const servername = resolveSmtpTlsServername(config.host, opts);
+  return {
+    ...opts.tls,
+    ...(servername === undefined ? {} : { servername }),
+    rejectUnauthorized: opts.tls?.rejectUnauthorized ?? opts.rejectUnauthorized ?? true,
+  };
 }
 
 function waitForSocket(socket: net.Socket, event: "connect" | "secureConnect"): Promise<void> {
@@ -142,8 +154,11 @@ async function command(io: SmtpIo, line: string, context: string): Promise<SmtpR
   return read2xx(io, context);
 }
 
-function advertisesStarttls(reply: SmtpReply): boolean {
-  return reply.lines.some((line) => line.slice(4).trim().toUpperCase().split(/\s+/).includes("STARTTLS"));
+function advertisesCapability(reply: SmtpReply, capability: "AUTH" | "STARTTLS"): boolean {
+  return reply.lines.some((line) => {
+    const keyword = /^\d{3}[ -]([^\s]+)/.exec(line)?.[1];
+    return keyword?.split("=", 1)[0].toUpperCase() === capability;
+  });
 }
 
 function buildData(config: SmtpConfig, message: SmtpMessage): string {
@@ -182,20 +197,21 @@ export async function sendSmtpMail(config: SmtpConfig, message: SmtpMessage, opt
     await waitForSocket(socket, implicitTls ? "secureConnect" : "connect");
     io = new SmtpIo(socket);
     await read2xx(io, "greeting");
-    const initialEhlo = await command(io, "EHLO paperwork.local", "EHLO");
+    let ehlo = await command(io, "EHLO paperwork.local", "EHLO");
     let encrypted = implicitTls;
 
-    if (!encrypted && advertisesStarttls(initialEhlo)) {
+    if (!encrypted && advertisesCapability(ehlo, "STARTTLS")) {
       await command(io, "STARTTLS", "STARTTLS");
       io.detach();
       socket = tls.connect({ ...tlsOptions(config, opts), socket });
       await waitForSocket(socket, "secureConnect");
       io = new SmtpIo(socket);
       encrypted = true;
-      await command(io, "EHLO paperwork.local", "EHLO");
+      ehlo = await command(io, "EHLO paperwork.local", "EHLO");
     }
     if (!encrypted && !(opts.allowInsecurePlain === true && isLoopbackHost(config.host))) throw new Error("SMTP server does not offer STARTTLS");
     if (config.user && config.pass) {
+      if (!advertisesCapability(ehlo, "AUTH")) throw new Error("SMTP server did not advertise AUTH capability");
       const credential = Buffer.from(`\0${config.user}\0${config.pass}`, "utf8").toString("base64");
       await command(io, `AUTH PLAIN ${credential}`, "AUTH PLAIN");
     }

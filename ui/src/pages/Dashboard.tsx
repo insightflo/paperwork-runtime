@@ -197,7 +197,7 @@ export function Dashboard() {
   const hasNoAgents = agents !== undefined && agents.length === 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 tabular-nums">
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
       {hasNoAgents && (
@@ -326,7 +326,7 @@ export function Dashboard() {
             />
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 [&>div]:rounded-md [&>div]:border [&>div]:border-border/80 [&>div]:bg-card/60">
             <ChartCard title="Run Activity" subtitle="Last 14 days">
               <RunActivityChart runs={runStats?.days ?? []} />
             </ChartCard>
@@ -345,10 +345,10 @@ export function Dashboard() {
             {/* Recent Activity */}
             {recentActivity.length > 0 && (
               <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
                   Recent Activity
                 </h3>
-                <div className="border border-border divide-y divide-border overflow-hidden">
+                <div className="rounded-md border border-border/80 bg-card/60 divide-y divide-border/60 overflow-hidden">
                   {recentActivity.map((event) => (
                     <ActivityRow
                       key={event.id}
@@ -366,10 +366,10 @@ export function Dashboard() {
             {/* Recent Missions */}
             {missions && missions.length > 0 && (
               <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
                   Recent Missions
                 </h3>
-                <div className="border border-border divide-y divide-border overflow-hidden">
+                <div className="rounded-md border border-border/80 bg-card/60 divide-y divide-border/60 overflow-hidden">
                   {[...missions]
                     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                     .slice(0, 5)
@@ -391,15 +391,15 @@ export function Dashboard() {
             )}
 
             <div className="min-w-0">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
+              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
                   Recent Work
               </h3>
               {recentIssues.length === 0 ? (
-                <div className="border border-border p-4">
+                <div className="rounded-md border border-border/80 bg-card/60 p-4">
                   <p className="text-sm text-muted-foreground">No work yet.</p>
                 </div>
               ) : (
-                <div className="border border-border divide-y divide-border overflow-hidden">
+                <div className="rounded-md border border-border/80 bg-card/60 divide-y divide-border/60 overflow-hidden">
                   {recentIssues.slice(0, 10).map((issue) => (
                     <Link
                       key={issue.id}

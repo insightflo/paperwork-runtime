@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState, type InputHTMLAttributes } from "react";
+import { useEffect, useMemo, useState, type InputHTMLAttributes, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "@/lib/router";
 import { authApi } from "../api/auth";
 import { queryKeys } from "../lib/queryKeys";
 import { resolveAuthRedirectPath } from "../lib/auth-redirect";
 import { Button } from "@/components/ui/button";
-import { LogIn, Sparkles } from "lucide-react";
+import { Fingerprint, Github, LogIn, Sparkles } from "lucide-react";
 
 type AuthMode = "sign_in" | "sign_up" | "forgot_password" | "reset_password";
 const inputClass = "w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/50";
@@ -29,6 +29,22 @@ function Field({ id, label, ...props }: InputHTMLAttributes<HTMLInputElement> & 
     </div>
   );
 }
+
+function ProviderBadge({ id }: { id: string }) {
+  const iconClass = "h-4 w-4";
+  const icons: Record<string, ReactNode> = {
+    google: <svg viewBox="0 0 24 24" className={iconClass} aria-hidden="true"><path fill="currentColor" d="M12.545 10.239v3.821h5.445c-.712 2.315-2.647 3.972-5.445 3.972-3.332 0-6.033-2.701-6.033-6.032s2.701-6.032 6.033-6.032c1.498 0 2.866.549 3.921 1.453l2.814-2.814C17.503 2.988 15.139 2 12.545 2 7.021 2 2.543 6.477 2.543 12s4.478 10 10.002 10c8.396 0 10.249-7.85 9.426-11.761L12.545 10.239z"/></svg>,
+    github: <Github className={iconClass} aria-hidden="true" />,
+    microsoft: <svg viewBox="0 0 24 24" className={iconClass} aria-hidden="true"><path fill="currentColor" d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/></svg>,
+    oidc: <Fingerprint className={iconClass} aria-hidden="true" />,
+  };
+  const icon = icons[id.toLowerCase()] ?? <LogIn className={iconClass} aria-hidden="true" />;
+  return <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border/80 bg-background/70 text-foreground shadow-sm">{icon}</span>;
+}
+
+type AuthApiWithSocialSignIn = typeof authApi & { signInSocial?: typeof authApi.startSocialSignIn };
+const signInSocial = (input: Parameters<typeof authApi.startSocialSignIn>[0]) =>
+  ((authApi as AuthApiWithSocialSignIn).signInSocial ?? authApi.startSocialSignIn)(input);
 
 export function AuthPage() {
   const queryClient = useQueryClient();
@@ -101,7 +117,7 @@ export function AuthPage() {
     },
   });
   const socialMutation = useMutation({
-    mutationFn: (provider: string) => authApi.startSocialSignIn({ provider, callbackURL: nextPath }),
+    mutationFn: (provider: string) => signInSocial({ provider, callbackURL: nextPath }),
     onSuccess: ({ url }) => {
       window.location.assign(url);
     },
@@ -221,9 +237,17 @@ export function AuthPage() {
               </div>
               <div className="mt-4 space-y-2">
                 {socialProviders.map((provider) => (
-                  <Button key={provider.id} type="button" variant="outline" className="w-full" disabled={socialMutation.isPending} onClick={() => socialMutation.mutate(provider.id)}>
-                    <LogIn className="h-4 w-4" aria-hidden="true" />
-                    Continue with {provider.label}
+                  <Button
+                    key={provider.id}
+                    type="button"
+                    variant="outline"
+                    data-auth-provider={provider.id}
+                    className="h-9 w-full justify-start border-border/80 bg-card/70 px-3 shadow-none hover:border-primary/50 hover:bg-accent/60 dark:border-border/80 dark:bg-card/70 dark:hover:border-primary/50 dark:hover:bg-accent/60"
+                    disabled={socialMutation.isPending}
+                    onClick={() => socialMutation.mutate(provider.id)}
+                  >
+                    <ProviderBadge id={provider.id} />
+                    <span className="truncate">Continue with {provider.label}</span>
                   </Button>
                 ))}
               </div>

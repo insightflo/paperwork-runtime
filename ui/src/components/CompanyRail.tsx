@@ -10,6 +10,7 @@ import { sidebarBadgesApi } from "../api/sidebarBadges";
 import { heartbeatsApi } from "../api/heartbeats";
 import { useAfterInitialPaint } from "../hooks/useAfterInitialPaint";
 import { useLocation, useNavigate } from "@/lib/router";
+import { cn } from "../lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Company } from "@paperclipai/shared";
 import { PapercompanyLogoIcon } from "./PapercompanyLogoIcon";
@@ -114,27 +115,39 @@ export function CompanyRail() {
   );
 
   return (
-    <div className="flex flex-col items-center w-[72px] shrink-0 h-full bg-background border-r border-border">
-      <div className="flex items-center justify-center h-12 w-full shrink-0">
+    <div className="flex flex-col items-center w-[72px] shrink-0 h-full bg-sidebar border-r border-sidebar-border">
+      <div className="flex items-center justify-center h-11 w-full shrink-0">
         <PapercompanyLogoIcon className="h-7 w-7" />
       </div>
 
-      <div className="flex-1 flex flex-col items-center gap-2 py-3 w-full overflow-y-auto overflow-x-hidden scrollbar-none">
+      <div className="flex-1 flex flex-col items-center gap-1.5 py-2 w-full overflow-y-auto overflow-x-hidden scrollbar-none">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={orderedCompanies.map((c) => c.id)} strategy={verticalListSortingStrategy}>
-            {orderedCompanies.map((company) => (
-              <SortableCompanyItem
-                key={company.id}
-                company={company}
-                isSelected={company.id === highlightedCompanyId}
-                hasLiveAgents={hasLiveAgentsByCompanyId.get(company.id) ?? false}
-                hasUnreadInbox={hasUnreadInboxByCompanyId.get(company.id) ?? false}
-                onSelect={() => {
-                  setSelectedCompanyId(company.id);
-                  if (isInstanceRoute) navigate(`/${company.issuePrefix}/missions`);
-                }}
-              />
-            ))}
+            {orderedCompanies.map((company) => {
+              const isSelected = company.id === highlightedCompanyId;
+              return (
+                <div
+                  key={company.id}
+                  data-company-rail-item={company.id}
+                  data-active={isSelected ? "true" : undefined}
+                  className={cn(
+                    "flex w-full justify-center",
+                    isSelected && "[&_a>div:first-child]:bg-primary",
+                  )}
+                >
+                  <SortableCompanyItem
+                    company={company}
+                    isSelected={isSelected}
+                    hasLiveAgents={hasLiveAgentsByCompanyId.get(company.id) ?? false}
+                    hasUnreadInbox={hasUnreadInboxByCompanyId.get(company.id) ?? false}
+                    onSelect={() => {
+                      setSelectedCompanyId(company.id);
+                      if (isInstanceRoute) navigate(`/${company.issuePrefix}/missions`);
+                    }}
+                  />
+                </div>
+              );
+            })}
           </SortableContext>
         </DndContext>
       </div>
