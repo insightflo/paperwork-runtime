@@ -638,7 +638,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                     {codebase.effectiveLocalFolder}
                   </div>
                   {codebase.origin === "managed_checkout" && (
-                    <div className="text-[11px] text-muted-foreground">Paperclip-managed folder.</div>
+                    <div className="text-[11px] text-muted-foreground">Paperwork-managed folder.</div>
                   )}
                 </div>
                 <div className="flex items-center gap-1">
@@ -670,7 +670,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
 
             {hasAdditionalLegacyWorkspaces && (
               <div className="text-[11px] text-muted-foreground">
-                Additional legacy execution-context records exist on this work context. Paperclip is using the primary execution context as the codebase view.
+                Additional legacy execution-context records exist on this work context. Paperwork is using the primary execution context as the codebase view.
               </div>
             )}
 
