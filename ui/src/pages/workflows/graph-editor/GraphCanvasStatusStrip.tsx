@@ -4,7 +4,9 @@ import { graphPolicyBadgeStyle } from "../workflow-page-styles.js";
 import { CONNECTOR_STATE_STYLES, type ConnectorState } from "./connector-styles.js";
 import { graphStatusStripStyle } from "./graphStyles.js";
 
-const connectorStates = Object.keys(CONNECTOR_STATE_STYLES) as ConnectorState[];
+export const GRAPH_CANVAS_CONNECTOR_STATES: readonly ConnectorState[] = [
+  "default", "condition_true", "condition_false", "blocked", "rework",
+];
 const connectorLegendStyle: CSSProperties = {
   gridColumn: "1 / -1",
   display: "flex",
@@ -30,7 +32,7 @@ const connectorLegendItemStyle: CSSProperties = {
 function ConnectorStateLegend(): JSX.Element {
   return (
     <ul data-connector-state-legend="true" role="list" aria-label="Connector state legend" style={connectorLegendStyle}>
-      {connectorStates.map((state) => {
+      {GRAPH_CANVAS_CONNECTOR_STATES.map((state) => {
         const style = CONNECTOR_STATE_STYLES[state];
         return (
           <li key={state} data-connector-state={state} style={connectorLegendItemStyle}>
