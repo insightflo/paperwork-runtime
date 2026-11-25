@@ -28,7 +28,7 @@ type HeartbeatSchedulerLogger = {
 
 export type HeartbeatSchedulerOptions = {
   heartbeat: HeartbeatSchedulerHeartbeat;
-  routines: HeartbeatSchedulerRoutines;
+  routines?: HeartbeatSchedulerRoutines;
   logger: HeartbeatSchedulerLogger;
   timerIntervalMs: number;
   routineIntervalMs?: number;
@@ -156,8 +156,8 @@ export function createHeartbeatScheduler(opts: HeartbeatSchedulerOptions): Heart
   };
 
   const tickRoutines = async () => {
-    const result = await opts.routines.tickScheduledTriggers(new Date());
-    if ((result.triggered ?? 0) > 0) {
+    const result = await opts.routines?.tickScheduledTriggers(new Date());
+    if ((result?.triggered ?? 0) > 0) {
       opts.logger.info({ ...result }, "routine scheduler tick enqueued runs");
     }
   };
@@ -198,7 +198,7 @@ export function createHeartbeatScheduler(opts: HeartbeatSchedulerOptions): Heart
 
       runAutomaticLane(generation, "recovery", () => recover());
       timerHandle = setInterval(() => runAutomaticLane(generation, "timer", tickTimers), opts.timerIntervalMs);
-      routineHandle = setInterval(() => runAutomaticLane(generation, "routine", tickRoutines), routineIntervalMs);
+      if (opts.routines) routineHandle = setInterval(() => runAutomaticLane(generation, "routine", tickRoutines), routineIntervalMs);
       recoveryHandle = setInterval(
         () => runAutomaticLane(generation, "recovery", () => recover(recoveryStaleThresholdMs)),
         recoveryIntervalMs,
