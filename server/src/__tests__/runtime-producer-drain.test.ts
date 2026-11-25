@@ -29,14 +29,11 @@ describe("runtime producer drains", () => {
       reapStalledIssueExecutionLocks: vi.fn(async () => undefined),
       resumeQueuedRuns: vi.fn(async () => undefined),
     };
-    const routines = { tickScheduledTriggers: vi.fn(async () => ({ triggered: 0 })) };
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const scheduler = createHeartbeatScheduler({
       heartbeat,
-      routines,
       logger,
       timerIntervalMs: 1_000,
-      routineIntervalMs: 1_000,
       recoveryIntervalMs: 30_001,
     });
 
@@ -52,7 +49,6 @@ describe("runtime producer drains", () => {
     expect(drained).toBe(false);
     expect(heartbeat.reapOrphanedRuns).toHaveBeenCalledTimes(1);
     expect(heartbeat.tickTimers).not.toHaveBeenCalled();
-    expect(routines.tickScheduledTriggers).not.toHaveBeenCalled();
 
     recovery.resolve(undefined);
     await drain;
