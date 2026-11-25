@@ -20,7 +20,7 @@ const COMMIT_ACK_CAP: Duration = Duration::from_secs(10);
 static INFLIGHT_DNS: AtomicUsize = AtomicUsize::new(0);
 static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 static CALL_LOCK: Mutex<()> = Mutex::new(());
-#[derive(Debug, PartialEq)] pub(crate) struct Fail(i64, &'static str, &'static str, bool); // code, message, outcome, retryable
+#[derive(Debug, PartialEq)] pub(crate) struct Fail(pub(crate) i64, pub(crate) &'static str, pub(crate) &'static str, pub(crate) bool); // code, message, outcome, retryable
 const T_OUT: Fail = Fail(-32001, "db_timeout", "not_committed", true); const UNCONF: Fail = Fail(-32002, "db_unconfigured", "not_committed", false);
 const BUSY: Fail = Fail(-32003, "db_busy", "not_committed", true); pub(crate) const DBERR: Fail = Fail(-32004, "db_error", "not_committed", false); const INDET: Fail = Fail(-32005, "db_commit_indeterminate", "indeterminate", false);
 pub(crate) fn ok(id: Value, result: Value) -> Value { json!({"jsonrpc":"2.0","id":id,"result":result}) }
