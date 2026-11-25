@@ -596,7 +596,7 @@ export function MissionDetail() {
           </Button>
         </div>
 
-        <TabsContent value="overview" className="mt-4 [&>div>div:first-child>div]:border-border/80 [&>div>div:first-child>div]:bg-card/60 [&>div>div:first-child>div]:tabular-nums">
+        <TabsContent value="overview" className="mt-4 [&>div>div:first-child>div]:rounded-md [&>div>div:first-child>div]:border [&>div>div:first-child>div]:border-border/80 [&>div>div:first-child>div]:bg-card/60 [&>div>div:first-child>div]:tabular-nums">
           <MissionExecutionOverview missionId={missionId} mission={mission} />
         </TabsContent>
 
