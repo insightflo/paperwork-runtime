@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 //! Bounded Tokio HTTP/1.1 API gateway foundation with SSE and fail-closed JSON-RPC validation.
 
+pub mod bridge; pub mod routes;
+
 use serde_json::{json, Value};
 use std::{future::Future, pin::Pin, sync::Arc, task::Poll, time::{Duration, Instant}};
 use tokio::{io::{AsyncRead, AsyncReadExt, AsyncWriteExt}, net::{TcpListener, TcpStream}, sync::watch, task::JoinSet};
@@ -109,7 +111,7 @@ async fn read_request<S: AsyncRead + Unpin>(stream: &mut S) -> Result<Request, R
 }
 
 fn status_reason(status: u16) -> &'static str {
-    match status { 200 => "OK", 400 => "Bad Request", 404 => "Not Found", 405 => "Method Not Allowed", 413 => "Payload Too Large", _ => "Internal Server Error" }
+    match status { 200 => "OK", 400 => "Bad Request", 404 => "Not Found", 405 => "Method Not Allowed", 413 => "Payload Too Large", 501 => "Not Implemented", 502 => "Bad Gateway", _ => "Internal Server Error" }
 }
 async fn write_response(stream: &mut TcpStream, status: u16, content_type: &str, body: &[u8], extra_headers: &str) -> tokio::io::Result<()> {
     let head = format!("HTTP/1.1 {} {}\r\ncontent-length: {}\r\ncontent-type: {}\r\ncache-control: no-store\r\nconnection: close\r\n{}\r\n",
@@ -183,6 +185,11 @@ async fn try_handle_connection(mut stream: TcpStream, dispatcher: Arc<dyn RpcDis
     let request = match read_request(&mut stream).await {
         Ok(request) => request, Err(reject) => return write_error(&mut stream, reject, "").await,
     };
+    match routes::handle_rest(&request.method, &request.path, &dispatcher).await {
+        routes::RestOutcome::NotMatched => {}
+        routes::RestOutcome::MethodNotAllowed => return write_error(&mut stream, Reject { status: 405, error: "method_not_allowed" }, "allow: GET\r\n").await,
+        routes::RestOutcome::Response { status, body } => return write_response(&mut stream, status, "application/json", &body, "").await,
+    }
     let expected = match request.path.as_str() {
         "/api/health" | "/api/events" => "GET", "/api/rpc" => "POST", _ => "",
     };
