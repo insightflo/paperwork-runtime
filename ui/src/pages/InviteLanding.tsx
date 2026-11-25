@@ -13,31 +13,25 @@ type JoinType = "human" | "agent";
 const joinAdapterOptions: AgentAdapterType[] = [...AGENT_ADAPTER_TYPES];
 
 const adapterLabels: Record<string, string> = {
-  claude_local: "Claude (local)",
-  codex_local: "Codex (local)",
-  antigravity_local: "Antigravity (local)",
-  gemini_local: "Gemini CLI (local)",
-  opencode_local: "OpenCode (local)",
-  hermes_local: "Hermes Agent (local)",
-  commandcode_local: "Command Code (local)",
-  openclaw_gateway: "OpenClaw Gateway",
-  cursor: "Cursor (local)",
-  pi_local: "Pi (local)",
-  process: "Process",
-  http: "HTTP",
+  claude_local: "Claude (local)", codex_local: "Codex (local)",
+  antigravity_local: "Antigravity (local)", gemini_local: "Gemini CLI (local)",
+  opencode_local: "OpenCode (local)", hermes_local: "Hermes Agent (local)",
+  commandcode_local: "Command Code (local)", openclaw_gateway: "OpenClaw Gateway",
+  cursor: "Cursor (local)", pi_local: "Pi (local)",
+  process: "Process", http: "HTTP",
 };
 
 const ENABLED_INVITE_ADAPTERS = new Set([
-  "claude_local",
-  "codex_local",
-  "antigravity_local",
-  "gemini_local",
-  "opencode_local",
-  "hermes_local",
-  "cursor",
-  "commandcode_local",
+  "claude_local", "codex_local", "antigravity_local", "gemini_local",
+  "opencode_local", "hermes_local", "cursor", "commandcode_local",
   "pi_local",
 ]);
+
+const cardClass = "rounded-md border border-border/80 bg-card/80 p-6";
+const eyebrowClass = "mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
+const insetPanelClass = "rounded-md border border-border/80 bg-background/60 p-3 text-xs text-muted-foreground";
+const fieldLabelClass = `block ${eyebrowClass}`;
+const inputClass = "w-full rounded-md border border-border/80 bg-background/70 px-3 py-2 text-sm";
 
 function dateTime(value: string) {
   return new Date(value).toLocaleString();
@@ -139,7 +133,8 @@ export function InviteLandingPage() {
   if (inviteQuery.error || !invite) {
     return (
       <div className="mx-auto max-w-xl py-10">
-        <div className="rounded-lg border border-border bg-card p-6">
+        <div className={cardClass}>
+          <div className={eyebrowClass}>Invite access</div>
           <h1 className="text-lg font-semibold">Invite not available</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             This invite may be expired, revoked, or already used.
@@ -152,7 +147,8 @@ export function InviteLandingPage() {
   if (result?.kind === "bootstrap") {
     return (
       <div className="mx-auto max-w-xl py-10">
-        <div className="rounded-lg border border-border bg-card p-6">
+        <div className={cardClass}>
+          <div className={eyebrowClass}>Bootstrap access</div>
           <h1 className="text-lg font-semibold">Bootstrap complete</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             The first instance admin is now configured. You can continue to the board.
@@ -187,39 +183,41 @@ export function InviteLandingPage() {
     const diagnostics = Array.isArray(payload.diagnostics) ? payload.diagnostics : [];
     return (
       <div className="mx-auto max-w-xl py-10">
-        <div className="rounded-lg border border-border bg-card p-6">
+        <div className={cardClass}>
+          <div className={eyebrowClass}>Join approval</div>
           <h1 className="text-lg font-semibold">Join request submitted</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Your request is pending admin approval. You will not have access until approved.
           </p>
-          <div className="mt-4 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-            Request ID: <span className="font-mono">{payload.id}</span>
+          <div className={`mt-4 ${insetPanelClass}`}>
+            <div className={eyebrowClass}>Request ID</div>
+            <div className="font-mono">{payload.id}</div>
           </div>
           {claimSecret && claimApiKeyPath && (
-            <div className="mt-3 space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">One-time claim secret (save now)</p>
+            <div className={`mt-3 space-y-1 ${insetPanelClass}`}>
+              <p className={eyebrowClass}>One-time claim secret (save now)</p>
               <p className="font-mono break-all">{claimSecret}</p>
               <p className="font-mono break-all">POST {claimApiKeyPath}</p>
             </div>
           )}
           {(onboardingSkillUrl || onboardingSkillPath || onboardingInstallPath) && (
-            <div className="mt-3 space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">Paperwork skill bootstrap</p>
+            <div className={`mt-3 space-y-1 ${insetPanelClass}`}>
+              <p className={eyebrowClass}>Paperwork skill bootstrap</p>
               {onboardingSkillUrl && <p className="font-mono break-all">GET {onboardingSkillUrl}</p>}
               {!onboardingSkillUrl && onboardingSkillPath && <p className="font-mono break-all">GET {onboardingSkillPath}</p>}
               {onboardingInstallPath && <p className="font-mono break-all">Install to {onboardingInstallPath}</p>}
             </div>
           )}
           {(onboardingTextUrl || onboardingTextPath) && (
-            <div className="mt-3 space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">Agent-readable onboarding text</p>
+            <div className={`mt-3 space-y-1 ${insetPanelClass}`}>
+              <p className={eyebrowClass}>Agent-readable onboarding text</p>
               {onboardingTextUrl && <p className="font-mono break-all">GET {onboardingTextUrl}</p>}
               {!onboardingTextUrl && onboardingTextPath && <p className="font-mono break-all">GET {onboardingTextPath}</p>}
             </div>
           )}
           {diagnostics.length > 0 && (
-            <div className="mt-3 space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">Connectivity diagnostics</p>
+            <div className={`mt-3 space-y-1 ${insetPanelClass}`}>
+              <p className={eyebrowClass}>Connectivity diagnostics</p>
               {diagnostics.map((diag) => (
                 <div key={`${diag.code}:${diag.message}`} className="space-y-0.5">
                   <p className={diag.level === "warn" ? "text-amber-600 dark:text-amber-400" : undefined}>
@@ -237,7 +235,8 @@ export function InviteLandingPage() {
 
   return (
     <div className="mx-auto max-w-xl py-10">
-      <div className="rounded-lg border border-border bg-card p-6">
+      <div className={cardClass}>
+        <div className={eyebrowClass}>{invite.inviteType === "bootstrap_ceo" ? "Bootstrap access" : "Invite intake"}</div>
         <h1 className="text-xl font-semibold">
           {invite.inviteType === "bootstrap_ceo" ? "Bootstrap your Paperwork instance" : "Join this Paperwork company"}
         </h1>
@@ -265,17 +264,17 @@ export function InviteLandingPage() {
         {joinType === "agent" && invite.inviteType !== "bootstrap_ceo" && (
           <div className="mt-4 space-y-3">
             <label className="block text-sm">
-              <span className="mb-1 block text-muted-foreground">Agent name</span>
+              <span className={fieldLabelClass}>Agent name</span>
               <input
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                className={inputClass}
                 value={agentName}
                 onChange={(event) => setAgentName(event.target.value)}
               />
             </label>
             <label className="block text-sm">
-              <span className="mb-1 block text-muted-foreground">Adapter type</span>
+              <span className={fieldLabelClass}>Adapter type</span>
               <select
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                className={inputClass}
                 value={adapterType}
                 onChange={(event) => setAdapterType(event.target.value as AgentAdapterType)}
               >
@@ -287,9 +286,9 @@ export function InviteLandingPage() {
               </select>
             </label>
             <label className="block text-sm">
-              <span className="mb-1 block text-muted-foreground">Capabilities (optional)</span>
+              <span className={fieldLabelClass}>Capabilities (optional)</span>
               <textarea
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                className={inputClass}
                 rows={4}
                 value={capabilities}
                 onChange={(event) => setCapabilities(event.target.value)}
@@ -299,7 +298,7 @@ export function InviteLandingPage() {
         )}
 
         {requiresAuthForHuman && (
-          <div className="mt-4 rounded-md border border-border bg-muted/30 p-3 text-sm">
+          <div className="mt-4 rounded-md border border-border/80 bg-background/60 p-3 text-sm">
             Sign in or create an account before submitting a human join request.
             <div className="mt-2">
               <Button asChild size="sm" variant="outline">

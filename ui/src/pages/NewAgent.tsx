@@ -34,6 +34,8 @@ const SUPPORTED_ADVANCED_ADAPTER_TYPES = new Set<CreateConfigValues["adapterType
   "pi_local",
 ]);
 
+const cockpitConfigCardOverrides = "[&_.border.rounded-lg]:rounded-md [&_.border.rounded-lg.border-border]:border-border/80 [&_.border.rounded-lg.border-border]:bg-card/60";
+
 function createValuesForAdapterType(
   adapterType: CreateConfigValues["adapterType"],
 ): CreateConfigValues {
@@ -170,19 +172,17 @@ export function NewAgent() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-2xl space-y-4 tabular-nums">
       <div>
         <h1 className="text-lg font-semibold">New Agent</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Advanced agent configuration
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground">Advanced agent configuration</p>
       </div>
 
-      <div className="border border-border">
+      <div className="rounded-md border border-border/80 bg-card/60">
         {/* Name */}
-        <div className="px-4 pt-4 pb-2">
+        <div className="px-4 pb-2 pt-4">
           <input
-            className="w-full text-lg font-semibold bg-transparent outline-none placeholder:text-muted-foreground/50"
+            className="w-full bg-transparent text-lg font-semibold outline-none placeholder:text-muted-foreground/50"
             placeholder="Agent name"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -192,7 +192,7 @@ export function NewAgent() {
         {/* Title */}
         <div className="px-4 pb-2">
           <input
-            className="w-full bg-transparent outline-none text-sm text-muted-foreground placeholder:text-muted-foreground/40"
+            className="w-full bg-transparent text-sm text-muted-foreground outline-none placeholder:text-muted-foreground/40"
             placeholder="Title (e.g. VP of Engineering)"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -200,14 +200,14 @@ export function NewAgent() {
         </div>
 
         {/* Property chips: Role + Reports To */}
-        <div className="flex items-center gap-1.5 px-4 py-2 border-t border-border flex-wrap">
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-border/80 px-4 py-2">
           <Popover open={roleOpen} onOpenChange={setRoleOpen}>
             <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors",
-                  isFirstAgent && "opacity-60 cursor-not-allowed"
+              <button
+                type="button"
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-accent/50",
+                  isFirstAgent && "cursor-not-allowed opacity-60",
                 )}
                 disabled={isFirstAgent}
               >
@@ -217,12 +217,12 @@ export function NewAgent() {
             </PopoverTrigger>
             <PopoverContent className="w-36 p-1" align="start">
               {AGENT_ROLES.map((r) => (
-                  <button
-                    type="button"
-                    key={r}
-                    className={cn(
-                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-                    r === role && "bg-accent"
+                <button
+                  type="button"
+                  key={r}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50",
+                    r === role && "bg-accent",
                   )}
                   onClick={() => { setRole(r); setRoleOpen(false); }}
                 >
@@ -231,81 +231,66 @@ export function NewAgent() {
               ))}
             </PopoverContent>
           </Popover>
-
-          <ReportsToPicker
-            agents={agents ?? []}
-            value={reportsTo}
-            onChange={setReportsTo}
-            disabled={isFirstAgent}
-          />
+          <ReportsToPicker agents={agents ?? []} value={reportsTo} onChange={setReportsTo} disabled={isFirstAgent} />
         </div>
+      </div>
 
-        {/* Shared config form */}
+      {/* Shared config form */}
+      <div className={cockpitConfigCardOverrides}>
         <AgentConfigForm
           mode="create"
           values={configValues}
           onChange={(patch) => setConfigValues((prev) => ({ ...prev, ...patch }))}
           adapterModels={adapterModels}
+          sectionLayout="cards"
         />
+      </div>
 
-        <div className="border-t border-border px-4 py-4">
-          <div className="space-y-3">
-            <div>
-              <h2 className="text-sm font-medium">Company skills</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                  Optional skills from the company library. Built-in Paperwork runtime skills are added automatically.
-              </p>
+      <section className="rounded-md border border-border/80 bg-card/60 px-4 py-4">
+        <div className="space-y-3">
+          <div>
+            <h2 className="text-sm font-medium">Company skills</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Optional skills from the company library. Built-in Paperwork runtime skills are added automatically.
+            </p>
+          </div>
+          {availableSkills.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No optional company skills installed yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {availableSkills.map((skill) => {
+                const inputId = `skill-${skill.id}`;
+                const checked = selectedSkillKeys.includes(skill.key);
+                return (
+                  <div key={skill.id} className="flex items-start gap-3">
+                    <Checkbox
+                      id={inputId}
+                      checked={checked}
+                      onCheckedChange={(next) => toggleSkill(skill.key, next === true)}
+                    />
+                    <label htmlFor={inputId} className="grid gap-1 leading-none">
+                      <span className="text-sm font-medium">{skill.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {skill.description ?? skill.key}
+                      </span>
+                    </label>
+                  </div>
+                );
+              })}
             </div>
-            {availableSkills.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No optional company skills installed yet.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {availableSkills.map((skill) => {
-                  const inputId = `skill-${skill.id}`;
-                  const checked = selectedSkillKeys.includes(skill.key);
-                  return (
-                    <div key={skill.id} className="flex items-start gap-3">
-                      <Checkbox
-                        id={inputId}
-                        checked={checked}
-                        onCheckedChange={(next) => toggleSkill(skill.key, next === true)}
-                      />
-                      <label htmlFor={inputId} className="grid gap-1 leading-none">
-                        <span className="text-sm font-medium">{skill.name}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {skill.description ?? skill.key}
-                        </span>
-                      </label>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          )}
         </div>
+      </section>
 
-        {/* Footer */}
-        <div className="border-t border-border px-4 py-3">
-          {isFirstAgent && (
-            <p className="text-xs text-muted-foreground mb-2">This will be the CEO</p>
-          )}
-          {formError && (
-            <p className="text-xs text-destructive mb-2">{formError}</p>
-          )}
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate("/agents")}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              disabled={!name.trim() || createAgent.isPending}
-              onClick={handleSubmit}
-            >
-              {createAgent.isPending ? "Creating…" : "Create agent"}
-            </Button>
-          </div>
+      {/* Footer */}
+      <div className="rounded-md border border-border/80 bg-card/60 px-4 py-3">
+        {isFirstAgent && <p className="mb-2 text-xs text-muted-foreground">This will be the CEO</p>}
+        {formError && <p className="mb-2 text-xs text-destructive">{formError}</p>}
+        <div className="flex items-center justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={() => navigate("/agents")}>Cancel</Button>
+          <Button size="sm" disabled={!name.trim() || createAgent.isPending} onClick={handleSubmit}>
+            {createAgent.isPending ? "Creating…" : "Create agent"}
+          </Button>
         </div>
       </div>
     </div>

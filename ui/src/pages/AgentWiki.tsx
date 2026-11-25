@@ -81,12 +81,12 @@ export function AgentWiki() {
         : { patterns: recentPatterns, entries: activeEntries };
 
   return (
-    <div className="space-y-5 p-6">
-      <header>
-        <h1 className="flex items-center gap-2 text-xl font-semibold">
-          <Brain className="h-5 w-5" /> Mistology Wiki
+    <div className="space-y-4 p-6 tabular-nums [&_h2]:text-[11px] [&_h2]:font-semibold [&_h2]:uppercase [&_h2]:tracking-wider [&_h2]:text-muted-foreground [&_article]:rounded-md [&_article]:border-border/80 [&_article]:bg-card/60 [&_article]:shadow-none [&_section.rounded-lg.border]:rounded-md [&_section.rounded-lg.border]:border-border/80 [&_section.rounded-lg.border]:bg-card/60 [&_section.rounded-lg.border]:shadow-none [&_div.rounded-md.border]:border-border/80 [&_div.rounded-md.border]:bg-card/60 [&_p.rounded-lg.border]:rounded-md [&_p.rounded-lg.border]:border-border/80 [&_p.rounded-lg.border]:bg-card/60">
+      <header className="rounded-md border border-border/80 bg-card/60 px-3 py-2">
+        <h1 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <Brain className="h-3.5 w-3.5" /> Mistology Wiki
         </h1>
-        <p className="text-sm text-muted-foreground">
+        <p className="mt-0.5 text-xs text-muted-foreground">
           {L(lang, {
             en: "Auto-collected, deduplicated mistakes and durable rules with 30-day TTL (read-only).",
             ko: "자동 수집·중복 제거·30일 TTL로 관리되는 오답·규약 기록입니다(읽기 전용).",
@@ -96,7 +96,7 @@ export function AgentWiki() {
 
       <WikiMetricsBar patterns={patterns} entries={entries} />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/80 bg-card/60 p-2">
         {tab !== "kb" && (
           <div className="relative">
             <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />

@@ -37,16 +37,16 @@ export function ExecutionWorkspaceDetail() {
   if (!workspace) return null;
 
   return (
-    <div className="max-w-2xl space-y-4">
+    <div className="max-w-2xl space-y-4 tabular-nums">
       <div className="space-y-1">
-        <div className="text-xs text-muted-foreground">Execution context</div>
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Execution context</div>
         <h1 className="text-2xl font-semibold">{workspace.name}</h1>
         <div className="text-sm text-muted-foreground">
           {workspace.status} · {workspace.mode} · {workspace.providerType}
         </div>
       </div>
 
-      <div className="rounded-lg border border-border p-4">
+      <div className="rounded-md border border-border/80 bg-card/60 p-4">
         <DetailRow label="Work Context">
           {workspace.projectId ? <Link to={`/projects/${workspace.projectId}`} className="hover:underline">{workspace.projectId}</Link> : "None"}
         </DetailRow>

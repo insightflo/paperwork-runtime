@@ -95,6 +95,12 @@ export function toLlmStructuredProvidersPatch(rows: ProviderRow[], defaultProvid
 
 const chip = "rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-60";
 const providerFields = [["name", "공급자 이름 (Name)"], ["baseUrl", "Base URL"], ["model", "Model"], ["apiKey", "API Key"]] as const;
+const cockpitSectionHeader = "text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
+const cockpitPanel = "rounded-md border border-border/80 bg-card/60";
+const cockpitSectionOverrides =
+  "[&>section]:rounded-md [&>section]:border [&>section]:border-border/80 [&>section]:bg-card/60 [&>section]:p-4 " +
+  "[&>section_h2]:text-[11px] [&>section_h2]:font-semibold [&>section_h2]:uppercase [&>section_h2]:tracking-wider [&>section_h2]:text-muted-foreground " +
+  "[&>section>ul>li]:rounded-md [&>section>ul>li]:border [&>section>ul>li]:border-border/80 [&>section>ul>li]:bg-card/60";
 const PI_CLI_STATUS_QUERY_KEY = ["instance", "pi-cli-status"] as const;
 
 export function piCliVersionLabel(version: string | null | undefined): string {
@@ -130,7 +136,7 @@ function ProviderCard({ row, saved, isDefault, update, selectDefault, remove }: 
     }
   }
   const models = result?.models.filter((model) => model.toLowerCase().includes(filter.trim().toLowerCase())) ?? [];
-  return <fieldset disabled={pending} className="grid min-w-0 gap-3 rounded-lg border border-border p-4">
+  return <fieldset disabled={pending} className={cn("grid min-w-0 gap-3 p-4", cockpitPanel)}>
     <div className="flex flex-wrap items-center gap-2">
       <button type="button" className={cn(chip, isDefault && "bg-primary text-primary-foreground hover:bg-primary/90")}
         aria-pressed={isDefault} onClick={selectDefault}>기본 공급자</button>
@@ -224,11 +230,11 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
   };
 
   return (
-    <section className="rounded-xl border border-border bg-card p-5">
+    <section className={cn(cockpitPanel, "p-4")}>
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-sm font-semibold">Multi-CLI &amp; Model Runtime (OpenBot Manager)</h2>
+        <h2 className={cockpitSectionHeader}>Multi-CLI &amp; Model Runtime (OpenBot Manager)</h2>
         {runtimes.length > 0 && (
-          <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
+          <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium tabular-nums">
             {`${installedCount} / ${runtimes.length} CLI 설치됨`}
           </span>
         )}
@@ -237,11 +243,9 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
           : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300")}>
           {status?.installed ? `Pi CLI ${piCliVersionLabel(status.version)}` : "Pi CLI not detected"}
         </span>
-        <span className="text-xs text-muted-foreground">{`총 ${catalogModels.length}개 모델`}</span>
+        <span className="text-xs text-muted-foreground tabular-nums">{`총 ${catalogModels.length}개 모델`}</span>
       </div>
-      <p className="mt-1.5 break-all font-mono text-xs text-muted-foreground">
-        {`${status?.executablePath ?? "pi"} · ${status?.agentDir ?? "~/.pi/agent"}`}
-      </p>
+      <p className="mt-1.5 break-all font-mono text-xs text-muted-foreground">{`${status?.executablePath ?? "pi"} · ${status?.agentDir ?? "~/.pi/agent"}`}</p>
       {status?.error && <p role="alert" className="mt-2 text-xs text-amber-700 dark:text-amber-300">{status.error}</p>}
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" className={chip} disabled={busy}
@@ -270,9 +274,7 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
 
       {runtimes.length > 0 && (
         <>
-          <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Installed Coding Agent CLIs
-          </h3>
+          <h3 className={cn("mt-5", cockpitSectionHeader)}>Installed Coding Agent CLIs</h3>
           <ul className="mt-2 grid gap-2 sm:grid-cols-2">
             {runtimes.map((rt) => {
               const modelsPending = actionPending("models", rt.id);
@@ -280,7 +282,7 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
               const checkPending = actionPending("check", rt.id);
               const canSelfUpdate = rt.installed && rt.supportsSelfUpdate;
               return (
-              <li key={rt.id} className="grid gap-1.5 rounded-md border border-border px-3 py-2.5">
+              <li key={rt.id} className={cn("grid gap-1.5 px-3 py-2.5", cockpitPanel)}>
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-sm font-medium">{rt.name}</span>
                   <span className={cn("rounded-full px-2 py-0.5 text-xs", rt.installed
@@ -303,16 +305,14 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
                     : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300")}>
                     {rt.authConfigured ? "인증됨" : "미인증"}
                   </span>
-                  <span className="ml-auto text-xs text-muted-foreground">{`모델 ${rt.modelCount}개`}</span>
+                  <span className="ml-auto text-xs text-muted-foreground tabular-nums">{`모델 ${rt.modelCount}개`}</span>
                 </div>
                 <p className="break-all font-mono text-xs text-muted-foreground">
                   {rt.executablePath ?? rt.adapterType}
                   {rt.authSource ? ` · ${rt.authSource}` : ""}
                 </p>
                 {rt.updateAvailable && rt.latestVersion && (
-                  <p className="font-mono text-xs text-amber-700 dark:text-amber-300">
-                    {`${piCliVersionLabel(rt.version)} → v${rt.latestVersion}`}
-                  </p>
+                  <p className="font-mono text-xs text-amber-700 dark:text-amber-300">{`${piCliVersionLabel(rt.version)} → v${rt.latestVersion}`}</p>
                 )}
                 <div className="flex flex-wrap gap-1.5">
                   <button type="button" className={cn(chip, "px-2 py-0.5 text-xs")} disabled={busy}
@@ -339,20 +339,20 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
         </>
       )}
 
-      <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pi CLI Providers</h3>
+      <h3 className={cn("mt-5", cockpitSectionHeader)}>Pi CLI Providers</h3>
       {providers.length === 0 ? (
         <p className="mt-2 text-sm text-muted-foreground">~/.pi/agent/models.json 에 등록된 공급자가 없습니다.</p>
       ) : (
         <ul className="mt-2 grid gap-2">
           {providers.map((p) => (
-            <li key={p.id} className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2">
+            <li key={p.id} className={cn("flex flex-wrap items-center gap-2 px-3 py-2", cockpitPanel)}>
               <span className="font-mono text-sm font-medium">{p.id}</span>
               <span className={cn("rounded-full px-2 py-0.5 text-xs", p.authConfigured
                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
                 : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300")}>
                 {p.authConfigured ? "로그인됨 (auth.json)" : "미인증"}
               </span>
-              <span className="text-xs text-muted-foreground">{`${p.api ?? "api 미지정"} · 모델 ${p.modelCount}개`}</span>
+              <span className="text-xs text-muted-foreground tabular-nums">{`${p.api ?? "api 미지정"} · 모델 ${p.modelCount}개`}</span>
               {p.baseUrl && <span className="break-all font-mono text-xs text-muted-foreground">{p.baseUrl}</span>}
               {p.authConfigured && (
                 <button type="button" className={cn(chip, "ml-auto px-2 py-1 text-xs text-destructive")} disabled={busy}
@@ -364,16 +364,16 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
         </ul>
       )}
 
-      <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Live Pi Model Catalog</h3>
+      <h3 className={cn("mt-5", cockpitSectionHeader)}>Live Pi Model Catalog</h3>
       <Input aria-label="pi 모델 카탈로그 검색" placeholder="모델 검색..." value={modelFilter}
         onChange={(event) => setModelFilter(event.target.value)} className="mt-2 max-w-sm" />
-      <div className="mt-2 max-h-48 overflow-y-auto rounded-md border border-border">
+      <div className={cn("mt-2 max-h-48 overflow-y-auto", cockpitPanel)}>
         {filteredModels.length === 0 ? (
           <p className="px-3 py-2 text-sm text-muted-foreground">
             {catalogModels.length === 0 ? "카탈로그가 비어 있습니다." : "검색 결과가 없습니다."}
           </p>
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-border/60">
             {filteredModels.map((ref) => (
               <li key={ref} className="flex items-center gap-2 px-3 py-1.5">
                 <span className="min-w-0 flex-1 break-all font-mono text-xs">{ref}</span>
@@ -475,13 +475,13 @@ export function InstanceGeneralSettings() {
   }
   const censorUsernameInLogs = generalQuery.data?.censorUsernameInLogs === true;
   return (
-    <div className="max-w-4xl space-y-6">
-      <div className="space-y-2">
+    <div className={cn("max-w-4xl space-y-6 tabular-nums", cockpitSectionOverrides)}>
+      <div className={cn(cockpitPanel, "px-4 py-3")}>
         <div className="flex items-center gap-2">
-          <SlidersHorizontal className="h-5 w-5 text-muted-foreground" />
-          <h1 className="text-lg font-semibold">General</h1>
+          <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+          <h1 className={cockpitSectionHeader}>General</h1>
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="mt-1 text-sm text-muted-foreground">
           Configure instance-wide defaults that affect how operator-visible logs are displayed.
         </p>
       </div>
@@ -492,10 +492,10 @@ export function InstanceGeneralSettings() {
         </div>
       )}
 
-      <section className="rounded-xl border border-border bg-card p-5">
+      <section className={cn(cockpitPanel, "p-4")}>
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5">
-            <h2 className="text-sm font-semibold">Censor username in logs</h2>
+            <h2 className={cockpitSectionHeader}>Censor username in logs</h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
               Hide the username segment in home-directory paths and similar operator-visible log output. Standalone
               username mentions outside of paths are not yet masked in the live transcript view. This is off by
@@ -522,8 +522,8 @@ export function InstanceGeneralSettings() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-5">
-        <h2 className="text-sm font-semibold">Judgment connection</h2>
+      <section className={cn(cockpitPanel, "p-4")}>
+        <h2 className={cockpitSectionHeader}>Judgment connection</h2>
         <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
           TypeSafe 호환 판단 API 주소(비우면 기본값)를 지정합니다. 모델 미설정 시 정의별 모델 사용.
           서버 환경의 기존 판단 API 키가 이 주소로 전송됨.
@@ -568,8 +568,8 @@ export function InstanceGeneralSettings() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-5">
-        <h2 className="text-sm font-semibold">Structured LLM connection (1-shot API)</h2>
+      <section className={cn(cockpitPanel, "p-4")}>
+        <h2 className={cockpitSectionHeader}>Structured LLM connection (1-shot API)</h2>
         {!savedIds.length && (settings?.llmStructuredBaseUrl || settings?.llmStructuredApiKeyConfigured) &&
           <p className="mt-2 break-all text-sm text-muted-foreground">
             기존 연결: {settings.llmStructuredBaseUrl || "주소 미설정"} · {settings.llmStructuredModel || "모델 미설정"}

@@ -174,9 +174,9 @@ export function ApprovalDetail() {
           };
 
   return (
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6 max-w-3xl tabular-nums [&_.border.rounded-lg]:rounded-md [&_.border.rounded-lg.border-border]:border-border/80 [&_.border.rounded-lg.border-border]:bg-card/60">
       {showApprovedBanner && (
-        <div className="border border-green-300 dark:border-green-700/40 bg-green-50 dark:bg-green-900/20 rounded-lg px-4 py-3 animate-in fade-in zoom-in-95 duration-300">
+        <div className="border border-green-300 dark:border-green-700/40 bg-green-50 dark:bg-green-900/20 rounded-md px-4 py-3 animate-in fade-in zoom-in-95 duration-300">
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-start gap-2">
               <div className="relative mt-0.5">
@@ -201,18 +201,18 @@ export function ApprovalDetail() {
           </div>
         </div>
       )}
-      <div className="border border-border rounded-lg p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TypeIcon className="h-5 w-5 text-muted-foreground shrink-0" />
-            <div>
-              <h2 className="text-lg font-semibold">{approvalLabel(approval.type, approval.payload as Record<string, unknown> | null, lang)}</h2>
-              <p className="text-xs text-muted-foreground font-mono">{approval.id}</p>
-            </div>
+      <div className="flex items-center justify-between gap-3 rounded-md border border-border/80 bg-card/60 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <TypeIcon className="h-5 w-5 text-muted-foreground shrink-0" />
+          <div>
+            <h2 className="text-lg font-semibold">{approvalLabel(approval.type, approval.payload as Record<string, unknown> | null, lang)}</h2>
+            <p className="text-xs text-muted-foreground font-mono">{approval.id}</p>
           </div>
-          <span title={approval.status} className="text-xs font-medium">{humanLabel(lang, "approvalStatus", approval.status).label}</span>
         </div>
-        <div className="text-sm space-y-1">
+        <span title={approval.status} className="text-xs font-medium">{humanLabel(lang, "approvalStatus", approval.status).label}</span>
+      </div>
+      <div className="rounded-md border border-border/80 bg-card/60 p-4 space-y-3">
+        <div className="text-sm space-y-1 [&_section]:rounded-md [&_section.border-border]:border-border/80 [&_section.border-border]:bg-card/60">
           {approval.requestedByAgentId && (
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground text-xs">{L(lang, { en: "Requested by", ko: "요청:" })}</span>
@@ -250,7 +250,7 @@ export function ApprovalDetail() {
                 <Link
                   key={issue.id}
                   to={`/issues/${issue.identifier ?? issue.id}`}
-                  className="block text-xs rounded border border-border/70 px-2 py-1.5 hover:bg-accent/20"
+                  className="block rounded-md border border-border/80 bg-card/60 px-2 py-1.5 text-xs hover:bg-accent/20"
                 >
                   <span className="font-mono text-muted-foreground mr-2">
                     {issue.identifier ?? issue.id.slice(0, 8)}
