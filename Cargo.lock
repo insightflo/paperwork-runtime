@@ -887,6 +887,7 @@ dependencies = [
  "paperclip-redactor-core",
  "paperwork-engine-budget",
  "paperwork-engine-heartbeat",
+ "paperwork-engine-secret",
  "serde",
  "serde_json",
  "socket2",
@@ -923,6 +924,17 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "paperclip-process-supervisor",
+ "postgres",
+ "serde",
+ "serde_json",
+ "uuid",
+]
+
+[[package]]
+name = "paperwork-engine-secret"
+version = "0.1.0"
+dependencies = [
+ "chrono",
  "postgres",
  "serde",
  "serde_json",
