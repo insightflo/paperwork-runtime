@@ -62,7 +62,6 @@ import { llmRoutes } from "./routes/llms.js";
 import { assetRoutes } from "./routes/assets.js";
 import { accessRoutes } from "./routes/access.js";
 import { assertCompanyAccess } from "./routes/authz.js";
-import { pluginRoutes } from "./routes/plugins.js";
 import { pluginToolExecuteRoutes } from "./routes/plugin-tool-execute.js";
 import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { applyUiBranding } from "./ui-branding.js";
@@ -750,15 +749,6 @@ export async function createApp(
   );
   loader = loaderInstance;
   api.use(pluginToolExecuteRoutes(db, { toolDispatcher: toolDispatcherInstance }, { lifetime: httpHandlerLifetime, runtimeLifecycle: runtimeExecutionLifecycle }));
-  api.use(pluginRoutes(
-    db,
-    loaderInstance,
-    { scheduler: pluginSchedulerInstance, jobStore },
-    { workerManager },
-    { toolDispatcher: toolDispatcherInstance },
-    { workerManager },
-    { lifetime: httpHandlerLifetime, runtimeLifecycle: runtimeExecutionLifecycle, skipToolExecuteRoute: true },
-  ));
   api.use(
     accessRoutes(db, {
       deploymentMode: opts.deploymentMode,

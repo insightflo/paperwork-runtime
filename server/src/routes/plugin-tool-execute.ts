@@ -9,14 +9,21 @@ import {
   normalizeIdempotencyKey,
 } from "../services/plugin-tool-execution-receipt.js";
 import { finalizeHttpCoreResponse, isPositiveHttpDeferral } from "../services/http-core-response-finalization.js";
-import type { RuntimeExecutionIdentity } from "../services/runtime-execution-lifecycle.js";
+import type { RuntimeExecutionIdentity, RuntimeExecutionLifecycle } from "../services/runtime-execution-lifecycle.js";
+import type { createHttpHandlerLifetime } from "../services/http-handler-lifetime.js";
+import type { PluginToolDispatcher } from "../services/plugin-tool-dispatcher.js";
 import { createPluginToolHttpConsumer } from "../services/plugin-tool-http-consumer.js";
 import { executePluginCoreToolCall } from "../services/workflow/plugin-core-tool-call.js";
 import { listWorkflowToolCatalog } from "../services/workflow/tool-catalog.js";
 import { authorizeRunToolExecution } from "../services/workflow/plugin-tool-authorization.js";
 import { resolveRunStepEnv } from "../services/workflow/core-tool-executor.js";
 import { assertBoard, assertCompanyAccess } from "./authz.js";
-import type { PluginRouteRuntimeOptions, PluginRouteToolDeps } from "./plugins.js";
+export interface PluginRouteToolDeps { toolDispatcher: PluginToolDispatcher }
+
+export interface PluginRouteRuntimeOptions {
+  lifetime: ReturnType<typeof createHttpHandlerLifetime>;
+  runtimeLifecycle?: RuntimeExecutionLifecycle;
+}
 
 /** Request body for POST /api/plugins/tools/execute */
 interface PluginToolExecuteRequest {
@@ -34,7 +41,7 @@ interface PluginToolExecuteRequest {
   idempotencyKey?: string;
 }
 
-/** Dependencies injected by `pluginRoutes(...)` for the tool execute route. */
+/** Dependencies injected into the standalone tool execute route. */
 export interface PluginToolExecuteRouteContext {
   db: Db;
   toolDeps?: PluginRouteToolDeps;
@@ -173,10 +180,7 @@ export function registerPluginToolExecuteRoute(
     }
 
     const receipt = {
-      id: decision.receiptId,
-      companyId: runContext.companyId,
-      runId: String(runContext.runId),
-      tool,
+      id: decision.receiptId, companyId: runContext.companyId, runId: String(runContext.runId), tool,
     };
     const requestIdentity: RuntimeExecutionIdentity | undefined = runtimeOptions ? {
       requestId: receipt.id,
@@ -212,13 +216,7 @@ export function registerPluginToolExecuteRoute(
       stepId: stepEnv.PAPERCLIP_WORKFLOW_STEP_ID ?? null,
     };
     const finalizationBase = {
-      db,
-      req,
-      res,
-      lifetime: runtimeOptions?.lifetime,
-      receipt,
-      requestIdentity,
-      workflowAuditScope,
+      db, req, res, lifetime: runtimeOptions?.lifetime, receipt, requestIdentity, workflowAuditScope,
     };
 
     if (executionFailed) {
@@ -279,13 +277,11 @@ export function registerPluginToolExecuteRoute(
     });
   };
 
-  router.post(
-    "/plugins/tools/execute",
-    runtimeOptions ? runtimeOptions.lifetime.wrapTerminal(executePluginToolHandler) : executePluginToolHandler,
-  );
+  router.post("/plugins/tools/execute",
+    runtimeOptions ? runtimeOptions.lifetime.wrapTerminal(executePluginToolHandler) : executePluginToolHandler);
 }
 
-/** Standalone router owning POST /plugins/tools/execute; mounted before pluginRoutes (which skips it). */
+/** Standalone router owning POST /plugins/tools/execute. */
 export function pluginToolExecuteRoutes(
   db: Db,
   toolDeps?: PluginRouteToolDeps,
