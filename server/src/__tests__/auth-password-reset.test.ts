@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Db } from "@paperclipai/db";
 import { createBetterAuthInstance } from "../auth/better-auth.js";
 import {
@@ -12,6 +12,16 @@ import type { Config } from "../config.js";
 const email = "user@example.com";
 const rawToken = "raw-reset-token";
 const resetUrl = `https://paperwork.example.com/api/auth/reset-password/${rawToken}?callbackURL=https%3A%2F%2Fpaperwork.example.com%2Freset`;
+
+beforeEach(() => {
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith("PAPERWORK_SMTP_")) vi.stubEnv(key, undefined);
+  }
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function input() {
   return {
@@ -109,7 +119,6 @@ describe("createPasswordResetSender", () => {
     vi.stubEnv("PAPERWORK_AUTH_RESET_WEBHOOK_URL", "https://work-env-webhook.example.com/reset");
     await sendResetPassword(input());
     expect(fetchImpl.mock.calls[1]?.[0]).toBe("https://work-env-webhook.example.com/reset");
-    vi.unstubAllEnvs();
   });
 
   it("fails closed with sanitized errors for non-2xx webhook responses", async () => {
