@@ -68,11 +68,7 @@ export function PropertiesPanel({ controller }: { controller: InspectorControlle
   if (!controller.isExpanded) {
     return (
       <aside
-        className="hidden md:flex w-11 shrink-0 border-l flex-col items-center"
-        style={{
-          backgroundColor: "var(--openbot-surface-25d-bg)",
-          borderColor: "var(--openbot-surface-25d-border)",
-        }}
+        className="hidden md:flex w-11 shrink-0 border-l border-border/80 bg-sidebar/95 flex-col items-center"
       >
         <button
           type="button"
@@ -87,7 +83,7 @@ export function PropertiesPanel({ controller }: { controller: InspectorControlle
           >
             <PanelRightOpen className="h-4 w-4 shrink-0" />
           </span>
-          <span className="text-[10px] font-medium uppercase tracking-wide [writing-mode:vertical-rl]">
+          <span className="text-[10px] font-mono font-medium uppercase tracking-wider [writing-mode:vertical-rl]">
             Inspector
           </span>
         </button>
@@ -97,12 +93,8 @@ export function PropertiesPanel({ controller }: { controller: InspectorControlle
 
   return (
     <aside
-      className="hidden md:flex border-l flex-col shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-in-out"
-      style={{
-        width: "var(--openbot-inspector-width)",
-        backgroundColor: "var(--openbot-surface-25d-bg)",
-        borderColor: "var(--openbot-surface-25d-border)",
-      }}
+      className="hidden md:flex border-l border-border/80 bg-sidebar/95 flex-col shrink-0 overflow-hidden transition-[width,opacity] duration-200 ease-in-out"
+      style={{ width: "var(--openbot-inspector-width)" }}
     >
       <InspectorSidePanel
         companyId={selectedCompanyId}
