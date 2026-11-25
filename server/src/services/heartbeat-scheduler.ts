@@ -15,10 +15,6 @@ type HeartbeatSchedulerHeartbeat = {
   resumeQueuedRuns(): Promise<unknown>;
 };
 
-type HeartbeatSchedulerRoutines = {
-  tickScheduledTriggers(now: Date): Promise<{ triggered?: number }>;
-};
-
 type HeartbeatSchedulerLogger = {
   info(message: string): void;
   info(obj: unknown, message: string): void;
@@ -28,10 +24,8 @@ type HeartbeatSchedulerLogger = {
 
 export type HeartbeatSchedulerOptions = {
   heartbeat: HeartbeatSchedulerHeartbeat;
-  routines?: HeartbeatSchedulerRoutines;
   logger: HeartbeatSchedulerLogger;
   timerIntervalMs: number;
-  routineIntervalMs?: number;
   recoveryIntervalMs?: number;
   recoveryStaleThresholdMs?: number;
 };
@@ -42,25 +36,22 @@ export type HeartbeatScheduler = {
   drain(): Promise<void>;
 };
 
-type Lane = "timer" | "routine" | "recovery";
+type Lane = "timer" | "recovery";
 
 const RECOVERY_LANE_TIMEOUT_MS = 4 * 60 * 1000;
 
 export function createHeartbeatScheduler(opts: HeartbeatSchedulerOptions): HeartbeatScheduler {
-  const routineIntervalMs = opts.routineIntervalMs ?? opts.timerIntervalMs;
   const recoveryIntervalMs = opts.recoveryIntervalMs ?? Math.max(opts.timerIntervalMs * 10, 5 * 60 * 1000);
   const recoveryStaleThresholdMs = opts.recoveryStaleThresholdMs ?? 5 * 60 * 1000;
   const activeExecutionTimeoutMs = 15 * 60 * 1000;
   const queuedStaleThresholdMs = Math.max(recoveryStaleThresholdMs * 3, 15 * 60 * 1000);
   const laneTimeoutMs: Record<Lane, number> = {
     timer: Math.max(opts.timerIntervalMs * 2, 30_000),
-    routine: Math.max(routineIntervalMs * 2, 30_000),
     recovery: Math.min(RECOVERY_LANE_TIMEOUT_MS, Math.max(recoveryIntervalMs - 30_000, 30_000)),
   };
 
   let running = false;
   let timerHandle: ReturnType<typeof setInterval> | null = null;
-  let routineHandle: ReturnType<typeof setInterval> | null = null;
   let recoveryHandle: ReturnType<typeof setInterval> | null = null;
   let timerGeneration = 0;
   const activeTasks = new Set<Promise<unknown>>();
@@ -75,18 +66,16 @@ export function createHeartbeatScheduler(opts: HeartbeatSchedulerOptions): Heart
   };
   const laneFlights: Record<Lane, number> = {
     timer: 0,
-    routine: 0,
     recovery: 0,
   };
   const inFlight: Record<Lane, boolean> = {
     timer: false,
-    routine: false,
     recovery: false,
   };
 
   const runLane = (lane: Lane, task: () => Promise<void>) => {
     if (inFlight[lane]) {
-      const label = lane === "timer" ? "heartbeat timer tick" : lane === "routine" ? "routine scheduler tick" : "heartbeat recovery";
+      const label = lane === "timer" ? "heartbeat timer tick" : "heartbeat recovery";
       opts.logger.warn(`Skipping ${label} because the previous tick is still running`);
       return;
     }
@@ -98,7 +87,7 @@ export function createHeartbeatScheduler(opts: HeartbeatSchedulerOptions): Heart
       trackTask(Promise.resolve()
         .then(task)
         .catch((err) => {
-          const message = lane === "timer" ? "heartbeat timer tick failed" : "routine scheduler tick failed";
+          const message = "heartbeat timer tick failed";
           opts.logger.error({ err }, message);
         })
         .finally(() => {
@@ -155,13 +144,6 @@ export function createHeartbeatScheduler(opts: HeartbeatSchedulerOptions): Heart
     }
   };
 
-  const tickRoutines = async () => {
-    const result = await opts.routines?.tickScheduledTriggers(new Date());
-    if ((result?.triggered ?? 0) > 0) {
-      opts.logger.info({ ...result }, "routine scheduler tick enqueued runs");
-    }
-  };
-
   const recover = async (staleThresholdMs?: number) => {
     if (staleThresholdMs === undefined) {
       await opts.heartbeat.reapOrphanedRuns();
@@ -198,7 +180,6 @@ export function createHeartbeatScheduler(opts: HeartbeatSchedulerOptions): Heart
 
       runAutomaticLane(generation, "recovery", () => recover());
       timerHandle = setInterval(() => runAutomaticLane(generation, "timer", tickTimers), opts.timerIntervalMs);
-      if (opts.routines) routineHandle = setInterval(() => runAutomaticLane(generation, "routine", tickRoutines), routineIntervalMs);
       recoveryHandle = setInterval(
         () => runAutomaticLane(generation, "recovery", () => recover(recoveryStaleThresholdMs)),
         recoveryIntervalMs,
@@ -210,10 +191,8 @@ export function createHeartbeatScheduler(opts: HeartbeatSchedulerOptions): Heart
       running = false;
       timerGeneration += 1;
       if (timerHandle) clearInterval(timerHandle);
-      if (routineHandle) clearInterval(routineHandle);
       if (recoveryHandle) clearInterval(recoveryHandle);
       timerHandle = null;
-      routineHandle = null;
       recoveryHandle = null;
     },
 
