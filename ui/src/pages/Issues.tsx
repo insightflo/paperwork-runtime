@@ -104,19 +104,41 @@ export function Issues() {
   }
 
   return (
-    <IssuesList
-      issues={issues ?? []}
-      isLoading={isLoading}
-      error={error as Error | null}
-      agents={agents}
-      projects={projects}
-      liveIssueIds={liveIssueIds}
-      viewStateKey="paperclip:issues-view"
-      issueLinkState={issueLinkState}
-      initialAssignees={searchParams.get("assignee") ? [searchParams.get("assignee")!] : undefined}
-      initialSearch={initialSearch}
-      onSearchChange={handleSearchChange}
-      onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
-    />
+    <div className="space-y-4 tabular-nums">
+      <div className="flex items-center justify-between gap-3 rounded-md border border-border/80 bg-card/60 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Work Queue
+          </span>
+          <span className="hidden truncate text-xs text-muted-foreground sm:inline">
+            Triage, assignment, and execution state
+          </span>
+        </div>
+        <div className="flex shrink-0 items-baseline gap-2">
+          <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Total
+          </span>
+          <span className="font-mono text-lg font-semibold leading-none text-foreground tabular-nums">
+            {issues ? issues.length : "—"}
+          </span>
+        </div>
+      </div>
+      <div className="[&>div>div:first-child]:rounded-md [&>div>div:first-child]:border [&>div>div:first-child]:border-border/80 [&>div>div:first-child]:bg-card/60 [&>div>div:first-child]:px-3 [&>div>div:first-child]:py-2 [&_span.uppercase]:text-muted-foreground">
+        <IssuesList
+          issues={issues ?? []}
+          isLoading={isLoading}
+          error={error as Error | null}
+          agents={agents}
+          projects={projects}
+          liveIssueIds={liveIssueIds}
+          viewStateKey="paperclip:issues-view"
+          issueLinkState={issueLinkState}
+          initialAssignees={searchParams.get("assignee") ? [searchParams.get("assignee")!] : undefined}
+          initialSearch={initialSearch}
+          onSearchChange={handleSearchChange}
+          onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+        />
+      </div>
+    </div>
   );
 }
