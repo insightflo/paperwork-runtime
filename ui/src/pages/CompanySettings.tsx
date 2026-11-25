@@ -232,7 +232,7 @@ export function CompanySettings() {
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-2xl space-y-6 [&>section>div:first-child]:text-[11px] [&>section>div:first-child]:font-semibold [&>section>div:first-child]:uppercase [&>section>div:first-child]:tracking-wider [&>section>div:first-child]:text-muted-foreground [&>section>div:last-child]:rounded-md [&>section>div:last-child]:border [&>section>div:last-child]:border-border/80 [&>section>div:last-child]:bg-card/60">
       <div className="flex items-center gap-2">
         <Settings className="h-5 w-5 text-muted-foreground" />
         <h1 className="text-lg font-semibold">Company Settings</h1>
@@ -240,10 +240,10 @@ export function CompanySettings() {
 
       {/* General */}
       <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           General
         </div>
-        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+        <div className="space-y-3 rounded-md border border-border/80 bg-card/60 px-4 py-4">
           <Field label="Company name" hint="The display name for your company.">
             <input
               className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
@@ -306,10 +306,10 @@ export function CompanySettings() {
 
       {/* Appearance */}
       <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Appearance
         </div>
-        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+        <div className="space-y-3 rounded-md border border-border/80 bg-card/60 px-4 py-4">
           <div className="flex items-start gap-4">
             <div className="shrink-0">
               <CompanyPatternIcon
@@ -428,10 +428,10 @@ export function CompanySettings() {
 
       {/* Hiring */}
       <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Hiring
         </div>
-        <div className="rounded-md border border-border px-4 py-3">
+        <div className="rounded-md border border-border/80 bg-card/60 px-4 py-3">
           <ToggleField
             label="Require board approval for new hires"
             hint="New agent hires stay pending until approved by board."
@@ -441,14 +441,14 @@ export function CompanySettings() {
         </div>
       </div>
 
-      <AccessSettingsSection selectedCompanyId={selectedCompanyId} />
+      <div className="[&>div>div:first-child]:text-[11px] [&>div>div:first-child]:font-semibold [&>div>div:first-child]:uppercase [&>div>div:first-child]:tracking-wider [&>div>div:first-child]:text-muted-foreground [&>div>div:last-child]:rounded-md [&>div>div:last-child]:border [&>div>div:last-child]:border-border/80 [&>div>div:last-child]:bg-card/60"><AccessSettingsSection selectedCompanyId={selectedCompanyId} /></div>
 
       {/* Invites */}
       <div className="space-y-4">
-        <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Invites
         </div>
-        <div className="space-y-3 rounded-md border border-border px-4 py-4">
+        <div className="space-y-3 rounded-md border border-border/80 bg-card/60 px-4 py-4">
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">
               Generate an OpenClaw agent invite snippet.
@@ -517,10 +517,10 @@ export function CompanySettings() {
 
       {/* Danger Zone */}
       <div className="space-y-4">
-        <div className="text-xs font-medium text-destructive uppercase tracking-wide">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-destructive">
           Danger Zone
         </div>
-        <div className="space-y-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-4">
+        <div className="space-y-3 rounded-md border border-border/80 bg-card/60 px-4 py-4">
           <p className="text-sm text-muted-foreground">
             Archive this company to hide it from the sidebar. This persists in
             the database.
