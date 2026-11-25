@@ -97,6 +97,14 @@ export const authApi = {
     await authPost("/sign-up/email", input);
   },
 
+  requestPasswordReset: async (input: { email: string; redirectTo?: string }): Promise<void> => {
+    await authPost("/request-password-reset", input);
+  },
+
+  resetPassword: async (input: { token: string; newPassword: string }): Promise<void> => {
+    await authPost("/reset-password", input);
+  },
+
   startSocialSignIn: async (input: { provider: string; callbackURL: string }) => {
     const payload = await authPost("/sign-in/social", {
       provider: input.provider,

@@ -103,6 +103,38 @@ describe("authApi", () => {
     });
   });
 
+  it("posts password reset requests to the Better Auth endpoint", async () => {
+    const fetchMock = vi.fn(async () => mockResponse(200, { ok: true }));
+    setFetchMock(fetchMock);
+
+    await expect(authApi.requestPasswordReset({
+      email: "u@example.com",
+      redirectTo: "https://paperwork.example.test/auth",
+    })).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/request-password-reset", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: "u@example.com",
+        redirectTo: "https://paperwork.example.test/auth",
+      }),
+    });
+  });
+
+  it("posts reset password tokens and new passwords to the Better Auth endpoint", async () => {
+    const fetchMock = vi.fn(async () => mockResponse(200, { ok: true }));
+    setFetchMock(fetchMock);
+
+    await expect(authApi.resetPassword({ token: "token-1", newPassword: "new-secret-1" })).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/reset-password", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "token-1", newPassword: "new-secret-1" }),
+    });
+  });
+
   it("throws server error message for failed auth posts", async () => {
     const fetchMock = vi.fn(async () => mockResponse(400, { error: { message: "Invalid credentials" } }));
     setFetchMock(fetchMock);
