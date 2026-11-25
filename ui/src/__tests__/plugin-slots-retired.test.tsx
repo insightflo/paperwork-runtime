@@ -2,7 +2,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pluginsApi } from "@/api/plugins";
 import {
   PluginLauncherOutlet,
   PluginLauncherProvider,
@@ -10,27 +9,14 @@ import {
 } from "../plugins/launchers";
 import { PluginSlotOutlet, usePluginSlots } from "../plugins/slots";
 
-vi.mock("@/api/plugins", () => ({
-  pluginsApi: {
-    listUiContributions: vi.fn(),
-    bridgePerformAction: vi.fn(),
-  },
-}));
-
-vi.mock("@/lib/router", () => ({
-  useLocation: () => ({ key: "plugin-retired-test", pathname: "/" }),
-  useNavigate: () => vi.fn(),
-}));
-
-const listUiContributions = vi.mocked(pluginsApi.listUiContributions);
 
 describe("retired plugin UI contribution discovery", () => {
   let host: HTMLDivElement;
   let root: Root;
 
   beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    listUiContributions.mockClear();
     host = document.createElement("div");
     document.body.append(host);
     root = createRoot(host);
@@ -39,6 +25,7 @@ describe("retired plugin UI contribution discovery", () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     host.remove();
+    vi.restoreAllMocks();
   });
 
   it("returns empty slot and launcher results without fetching or rendering error banners", async () => {
@@ -84,7 +71,7 @@ describe("retired plugin UI contribution discovery", () => {
       isLoading: false,
       errorMessage: null,
     });
-    expect(listUiContributions).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
     expect(host.textContent).not.toContain("Plugin extensions unavailable");
     expect(host.textContent).not.toContain("Plugin launchers unavailable");
   });
