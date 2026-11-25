@@ -40,7 +40,7 @@ vi.mock("@tanstack/react-query", () => ({
                 description: "Prepare the mission brief",
                 toolNames: ["search-docs"],
                 knowledgeBaseIds: ["kb-product"],
-                status: "running",
+                status: "completed",
                 issueId: "issue-1",
                 issue: {
                   id: "issue-1",
@@ -71,10 +71,13 @@ vi.mock("@tanstack/react-query", () => ({
                 type: "agent",
                 agentId: "",
                 dependencies: ["draft"],
+                conditionalDependencies: [
+                  { stepId: "qa", when: "qa_request_changes", isBackEdge: true, maxIterations: 2 },
+                ],
                 description: null,
                 toolNames: [],
                 knowledgeBaseIds: [],
-                status: "pending",
+                status: "running",
                 issueId: "issue-2",
                 issue: {
                   id: "issue-2",
@@ -193,10 +196,10 @@ vi.mock("@tanstack/react-query", () => ({
               },
             ],
             progress: {
-              totalSteps: 7,
-              pendingSteps: 6,
+              totalSteps: 8,
+              pendingSteps: 5,
               runningSteps: 1,
-              completedSteps: 0,
+              completedSteps: 1,
               failedSteps: 0,
               skippedSteps: 0,
             },
@@ -301,9 +304,9 @@ describe("WorkflowDagPanel", () => {
   it("renders dependency edges between levelled step nodes in graph mode", () => {
     const html = renderToStaticMarkup(<WorkflowDagPanel missionId="mission-1" />);
 
-    // review depends on draft -> an SVG edge line is drawn between the two nodes.
+    // review depends on draft -> an SVG connector path is drawn between the two nodes.
     expect(html).toContain("Review");
-    expect(html).toContain("<line");
+    expect(html).toContain("<path");
     // draft stays the entry step (column 0); review is the downstream node.
     expect(html).toContain("Entry");
   });
@@ -311,9 +314,10 @@ describe("WorkflowDagPanel", () => {
   it("renders conditional IF branch edges with labels in graph mode", () => {
     const html = renderToStaticMarkup(<WorkflowDagPanel missionId="mission-1" />);
 
-    // IF forward edges: dashed conditional (true/false) + dashed failure edges exist.
-    expect(html).toContain('stroke-dasharray="6 4"');
-    expect(html).toContain('stroke-dasharray="3 4"');
+    // IF forward edges use the shared colorblind-safe conditional/failure dash vocabulary.
+    expect(html).toContain('stroke-dasharray="11 4 2 4"');
+    expect(html).toContain('stroke-dasharray="2 4"');
+    expect(html).toContain('stroke-dasharray="5 5"');
     // Branch labels rendered on the edges.
     expect(html).toContain(">true<");
     expect(html).toContain(">false<");
@@ -328,6 +332,51 @@ describe("WorkflowDagPanel", () => {
     expect(html).toContain("Hold for review");
   });
 
+  it("spreads multiple outgoing forward edges from one step across distinct ports", () => {
+    const html = renderToStaticMarkup(<WorkflowDagPanel missionId="mission-1" />);
+    const gateEdgeStarts = [...html.matchAll(
+      /<g[^>]*data-source-step-id="gate"[^>]*><path[^>]*d="M -?\d+(?:\.\d+)?,(-?\d+(?:\.\d+)?)/g,
+    )].map((match) => Number(match[1]));
+
+    expect(gateEdgeStarts).toHaveLength(3);
+    expect(new Set(gateEdgeStarts).size).toBe(3);
+    const sortedStarts = [...gateEdgeStarts].sort((a, b) => a - b);
+    expect(sortedStarts[1] - sortedStarts[0]).toBeCloseTo(18, 5);
+    expect(sortedStarts[2] - sortedStarts[1]).toBeCloseTo(18, 5);
+  });
+
+  it("staggers multiple rework back-edge lanes and masks each label with a backdrop", () => {
+    const html = renderToStaticMarkup(<WorkflowDagPanel missionId="mission-1" />);
+    const reworkGroups = html.match(/<g data-connector-state="rework">.*?<\/g>/g) ?? [];
+    const labelYs = reworkGroups.map((group) => Number(group.match(/<text x="[^"]+" y="([^"]+)"/)?.[1]));
+
+    expect(reworkGroups).toHaveLength(2);
+    expect(new Set(labelYs).size).toBe(2);
+    for (const group of reworkGroups) {
+      expect(group).toContain('data-edge-label-backdrop="true"');
+      expect(group).toContain("<rect");
+    }
+  });
+
+  it("applies distinct colorblind-safe dash and motion attributes by connector state", () => {
+    const html = renderToStaticMarkup(<WorkflowDagPanel missionId="mission-1" />);
+    const expectations = [
+      ["running", "14 6", "wf-connector-motion-flow"],
+      ["completed", "24 3 1 3", "wf-connector-motion-settled"],
+      ["blocked", "5 5", "wf-connector-motion-pulse"],
+      ["condition_true", "11 4 2 4", "wf-connector-motion-flow-true"],
+      ["condition_false", "2 4", "wf-connector-motion-flow-false"],
+      ["rework", "12 3 3 3", "wf-connector-motion-loopback"],
+    ] as const;
+
+    for (const [state, dash, motionClass] of expectations) {
+      expect(html).toContain(`data-connector-state="${state}"`);
+      expect(html).toContain(`stroke-dasharray="${dash}"`);
+      expect(html).toContain(motionClass);
+    }
+    expect(html).toContain('fill="context-stroke"');
+  });
+
   it("shows a flowmap export download link for the active run in graph mode", () => {
     const html = renderToStaticMarkup(<WorkflowDagPanel missionId="mission-1" />);
 
@@ -335,12 +384,13 @@ describe("WorkflowDagPanel", () => {
     expect(html).toContain('href="/api/missions/mission-1/workflow-runs/run-1/flowmap"');
   });
 
-  it("renders rework back-edge loops as curved amber edges with iteration cap", () => {
+  it("renders rework back-edge loops as curved colorblind-safe edges with iteration cap", () => {
     const html = renderToStaticMarkup(<WorkflowDagPanel missionId="mission-1" />);
 
-    // qa --(request_changes)--> fix back-edge: dashed loop path with cap label.
-    expect(html).toContain('stroke-dasharray="8 3 2 3"');
+    // qa --(request_changes)--> fix/review back-edges: dashed loop paths with cap labels.
+    expect(html).toContain('stroke-dasharray="12 3 3 3"');
     expect(html).toContain("rework ×3");
+    expect(html).toContain("rework ×2");
     expect(html).toContain("<path");
   });
 
