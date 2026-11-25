@@ -53,9 +53,12 @@ mod tests {
         let dispatcher = Arc::new(ClosureDispatcher::new(move |request: RpcRequest| {
             seen.lock().unwrap().push((request.method.clone(), request.params.clone().unwrap_or(Value::Null)));
             let result = match request.method.as_str() {
-                "company.list" => json!({"companies":[]}), "mission.list" => json!({"missions":[]}),
-                "workflow.list" => json!({"workflows":[]}), "issue.list" => json!({"issues":[]}),
-                _ => json!({"agents":[]}),
+                "company.list" => json!({"companies":[]}), "company.get_by_id" => json!({"company":{}}),
+                "mission.list" => json!({"missions":[]}), "workflow.list" => json!({"workflows":[]}),
+                "issue.list" => json!({"issues":[]}), "approval.list" => json!({"approvals":[]}),
+                "decision.list" => json!({"decisions":[]}), "secret.list" => json!({"secrets":[]}),
+                "skill.list" => json!({"skills":[]}), "wiki.list" => json!({"entries":[]}),
+                "worktree.list" => json!({"rules":[]}), _ => json!({"agents":[]}),
             };
             json!({"jsonrpc":"2.0","id":request.id,"result":result})
         }));
@@ -197,29 +200,38 @@ mod tests {
     }
 
     #[test]
-    fn all_five_read_routes_map_to_rpc_with_company_scope_and_query_stripping() {
+    fn all_read_routes_map_to_rpc_with_company_scope_and_query_stripping() {
         block_on(async {
             let (dispatcher, calls) = recording_dispatcher();
             let (addr, tx, task) = start_server(dispatcher).await;
             let id = "11111111-1111-1111-1111-111111111111";
             let cases = [
                 ("/api/companies?ignored=yes".to_owned(), "company.list", "companies"),
+                (format!("/api/companies/{id}?x=1"), "company.get_by_id", "company"),
                 (format!("/api/companies/{id}/missions?x=1"), "mission.list", "missions"),
                 (format!("/api/companies/{id}/workflows?x=1"), "workflow.list", "workflows"),
                 (format!("/api/companies/{id}/issues?x=1"), "issue.list", "issues"),
                 (format!("/api/companies/{id}/agents?x=1"), "agent.list", "agents"),
+                (format!("/api/companies/{id}/approvals?x=1"), "approval.list", "approvals"),
+                (format!("/api/companies/{id}/decisions?x=1"), "decision.list", "decisions"),
+                (format!("/api/companies/{id}/secrets?x=1"), "secret.list", "secrets"),
+                (format!("/api/companies/{id}/skills?x=1"), "skill.list", "skills"),
+                (format!("/api/companies/{id}/wiki?x=1"), "wiki.list", "entries"),
+                (format!("/api/companies/{id}/worktrees?x=1"), "worktree.list", "rules"),
             ];
             for (path, rpc_method, key) in &cases {
                 let response = get(addr, path).await;
                 assert!(response.starts_with("HTTP/1.1 200 OK\r\n"), "{rpc_method}: {response}");
-                assert!(json_body(&response)[key].is_array(), "{rpc_method}");
+                assert!(json_body(&response).get(*key).is_some(), "{rpc_method}");
             }
             stop_server(tx, task).await;
             let calls = calls.lock().unwrap();
-            assert_eq!(calls.len(), 5);
+            assert_eq!(calls.len(), cases.len());
             for ((_, rpc_method, _), (called, params)) in cases.iter().zip(calls.iter()) {
                 assert_eq!(called, rpc_method);
-                let expected = if *rpc_method == "company.list" { json!({}) } else { json!({"company_id": id}) };
+                let expected = if *rpc_method == "company.list" { json!({}) }
+                    else if matches!(*rpc_method, "approval.list" | "decision.list" | "secret.list" | "wiki.list") { json!({"company_id": id, "limit": 50_i64}) }
+                    else { json!({"company_id": id}) };
                 assert_eq!(*params, expected);
             }
         });
