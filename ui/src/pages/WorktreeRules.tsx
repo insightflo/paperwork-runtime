@@ -306,8 +306,8 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 border border-border rounded-md p-4 bg-card">
-      <p className="text-sm font-medium">{initial ? "Edit Rule" : "New Rule"}</p>
+    <form onSubmit={handleSubmit} className="space-y-4 rounded-md border border-border/80 bg-card/60 p-4">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{initial ? "Edit Rule" : "New Rule"}</p>
 
       {/* Name */}
       <div className="space-y-1.5">
@@ -478,7 +478,7 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
 
   if (editing) {
     return (
-      <div className="px-4 py-3 border-b border-border last:border-b-0">
+      <div className="px-4 py-3 border-b border-border/80 last:border-b-0">
         <RuleForm
           initial={rule}
           onSubmit={(input) => updateMutation.mutate(input)}
@@ -491,7 +491,7 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
   }
 
   return (
-    <div className={cn("border-b border-border last:border-b-0", !rule.enabled && "opacity-60")}>
+    <div className={cn("border-b border-border/80 last:border-b-0", !rule.enabled && "opacity-60")}>
       {/* Row header */}
       <div className="flex items-center gap-3 px-4 py-3 text-sm">
         <button
@@ -557,7 +557,7 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
           )}
           <div>
             <p className="font-medium text-foreground mb-1">Predicate:</p>
-            <pre className="bg-muted/50 rounded p-2 overflow-x-auto text-xs font-mono whitespace-pre-wrap break-all">
+            <pre className="rounded-md border border-border/80 bg-background/60 p-2 overflow-x-auto text-xs font-mono whitespace-pre-wrap break-all">
               {JSON.stringify(rule.predicate, null, 2)}
             </pre>
           </div>
@@ -625,7 +625,7 @@ export function WorktreeRules() {
       : rules ?? [];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 tabular-nums">
       {error && (
         <p className="text-sm text-destructive">
           {error instanceof Error ? error.message : String(error)}
@@ -633,7 +633,7 @@ export function WorktreeRules() {
       )}
 
       {/* Segmented main tabs */}
-      <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40">
+      <div className="inline-flex rounded-md border border-border/80 bg-card/60 p-0.5">
         {([
           { id: "rules", label: "승인 가드레일 (Approval Gates)" },
           { id: "ops", label: "Hermit Gate & 리소스 콘솔" },
@@ -659,7 +659,7 @@ export function WorktreeRules() {
       {mainTab === "rules" && (
       <>
       <p className="text-xs text-muted-foreground">외부 발행·배포·신고·결제 등 자유 미션에서도 반드시 사람 승인이 필요한 하드 가드레일을 설정합니다. 일반 업무 규정·플레이북은 Wiki → KB 트리에 등록하세요.</p>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-md border border-border/80 bg-card/60 p-2 sm:flex-row sm:items-center sm:justify-between">
         {/* Severity filter tabs */}
         <div className="flex items-center gap-1 flex-wrap">
           {(["all", ...SEVERITIES] as const).map((s) => (
@@ -672,7 +672,7 @@ export function WorktreeRules() {
             >
               {s === "all" ? "All" : s}
               {s !== "all" && rules && (
-                <span className="ml-1 text-[10px] opacity-70">
+                <span className="ml-1 text-[10px] opacity-70 tabular-nums">
                   {rules.filter((r) => r.severity === s).length}
                 </span>
               )}
@@ -719,7 +719,7 @@ export function WorktreeRules() {
 
       {/* Rule list */}
       {filtered.length > 0 && (
-        <div className="border border-border">
+        <div className="overflow-hidden rounded-md border border-border/80 bg-card/60">
           {filtered.map((rule) => (
             <RuleRow key={rule.id} rule={rule} companyId={selectedCompanyId} />
           ))}
