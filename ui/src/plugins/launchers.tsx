@@ -79,8 +79,8 @@ type PluginLauncherRuntimeContextValue = {
    * Open a launcher using already-discovered contribution metadata.
    *
    * The runtime accepts the normalized `PluginUiContribution` so callers can
-   * reuse the `/api/plugins/ui-contributions` payload they already fetched
-   * instead of issuing another request for each launcher activation.
+   * reuse the normalized contribution payload they already fetched instead
+   * of issuing another request for each launcher activation.
    */
   activateLauncher(
     launcher: ResolvedPluginLauncher,
@@ -103,15 +103,6 @@ type LauncherInstance = {
   closeHandlers: Set<PluginRenderCloseHandler>;
 };
 
-const entityScopedZones = new Set<PluginLauncherPlacementZone>([
-  "detailTab",
-  "taskDetailView",
-  "contextMenuItem",
-  "commentAnnotation",
-  "commentContextMenuItem",
-  "projectSidebarItem",
-  "toolbarButton",
-]);
 const focusableElementSelector = [
   "button:not([disabled])",
   "[href]",
@@ -126,11 +117,6 @@ const supportedLauncherBounds = new Set<PluginLauncherBounds>(
 );
 
 const PluginLauncherRuntimeContext = createContext<PluginLauncherRuntimeContextValue | null>(null);
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message;
-  return "Unknown error";
-}
 
 function buildLauncherHostContext(
   context: PluginLauncherContext,
@@ -252,77 +238,24 @@ function isPluginLauncherBounds(value: unknown): value is PluginLauncherBounds {
 }
 
 /**
- * Discover launchers for the requested host placement zones from the normalized
- * `/api/plugins/ui-contributions` response.
- *
- * This is the shared discovery path for toolbar, sidebar, detail-view, and
- * context-menu launchers. The hook applies host-side entity filtering and
- * returns both the sorted launcher list and a contribution map so activation
- * can stay on cached metadata.
+ * Retired plugin launcher discovery hook. Contribution fetching has been
+ * removed ahead of the plugin API unmount; keep the exported shape stable for
+ * existing host surfaces without issuing network requests.
  */
 export function usePluginLaunchers(
   filters: UsePluginLaunchersFilters,
 ): UsePluginLaunchersResult {
-  const queryEnabled = filters.enabled ?? true;
-  const { data, isLoading, error } = useQuery({
-    queryKey: queryKeys.plugins.uiContributions,
-    queryFn: () => pluginsApi.listUiContributions(),
-    enabled: queryEnabled,
-  });
-
-  const placementZonesKey = useMemo(
-    () => [...filters.placementZones].sort().join("|"),
-    [filters.placementZones],
+  void filters;
+  const launchers = useMemo<ResolvedPluginLauncher[]>(() => [], []);
+  const contributionsByPluginId = useMemo(
+    () => new Map<string, PluginUiContribution>(),
+    [],
   );
-
-  const contributionsByPluginId = useMemo(() => {
-    const byPluginId = new Map<string, PluginUiContribution>();
-    for (const contribution of data ?? []) {
-      byPluginId.set(contribution.pluginId, contribution);
-    }
-    return byPluginId;
-  }, [data]);
-
-  const launchers = useMemo(() => {
-    const placementZones = new Set(
-      placementZonesKey.split("|").filter(Boolean) as PluginLauncherPlacementZone[],
-    );
-    const rows: ResolvedPluginLauncher[] = [];
-    for (const contribution of data ?? []) {
-      for (const launcher of contribution.launchers) {
-        if (!placementZones.has(launcher.placementZone)) continue;
-        if (entityScopedZones.has(launcher.placementZone)) {
-          if (!filters.entityType) continue;
-          if (!launcher.entityTypes?.includes(filters.entityType)) continue;
-        }
-        rows.push({
-          ...launcher,
-          pluginId: contribution.pluginId,
-          pluginKey: contribution.pluginKey,
-          pluginDisplayName: contribution.displayName,
-          pluginVersion: contribution.version,
-          uiEntryFile: contribution.uiEntryFile,
-        });
-      }
-    }
-
-    rows.sort((a, b) => {
-      const ao = a.order ?? Number.MAX_SAFE_INTEGER;
-      const bo = b.order ?? Number.MAX_SAFE_INTEGER;
-      if (ao !== bo) return ao - bo;
-      const pluginCmp = a.pluginDisplayName.localeCompare(b.pluginDisplayName);
-      if (pluginCmp !== 0) return pluginCmp;
-      return a.displayName.localeCompare(b.displayName);
-    });
-
-    return rows;
-  }, [data, filters.entityType, placementZonesKey]);
-
   return {
     launchers,
     contributionsByPluginId,
-    isLoading: queryEnabled && isLoading,
-    errorMessage: error ? getErrorMessage(error) : null,
+    isLoading: false,
+    errorMessage: null,
   };
 }
 
