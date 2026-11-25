@@ -89,7 +89,7 @@ mod tests {
     fn health_endpoint_over_localhost() {
         block_on(async {
             let (addr, tx, task) = start_server().await;
-            let response = raw_request(addr, b"GET /api/health HTTP/1.1\r\nhost: 127.0.0.1\r\n\r\n").await;
+            let response = raw_request(addr, b"GET /api/health HTTP/1.1\r\nHost: localhost\r\n\r\n").await;
             stop_server(tx, task).await;
             assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
             assert!(response.contains("cache-control: no-store\r\n"));
@@ -104,7 +104,7 @@ mod tests {
         block_on(async {
             let (addr, tx, task) = start_server().await;
             let mut stream = TcpStream::connect(addr).await.unwrap();
-            stream.write_all(b"GET /api/events HTTP/1.1\r\nhost: 127.0.0.1\r\n\r\n").await.unwrap();
+            stream.write_all(b"GET /api/events HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
             let head = read_head(&mut stream).await;
             let frames = read_two_frames(&mut stream).await;
             drop(stream);
@@ -121,16 +121,16 @@ mod tests {
         block_on(async {
             let (addr, tx, task) = start_server().await;
             let valid = json!({"jsonrpc": "2.0", "id": 7, "method": "test.echo", "params": {"x": 1}}).to_string();
-            let request = format!("POST /api/rpc HTTP/1.1\r\nhost: 127.0.0.1\r\ncontent-length: {}\r\n\r\n{valid}", valid.len());
+            let request = format!("POST /api/rpc HTTP/1.1\r\nHost: localhost\r\ncontent-length: {}\r\n\r\n{valid}", valid.len());
             let response = raw_request(addr, request.as_bytes()).await;
             assert!(response.starts_with("HTTP/1.1 200 OK\r\n"));
             let body = json_body(&response);
             assert_eq!((body["id"].clone(), body["result"]["method"].clone()), (json!(7), json!("test.echo")));
-            let invalid = "POST /api/rpc HTTP/1.1\r\nhost: 127.0.0.1\r\ncontent-length: 1\r\n\r\n{";
+            let invalid = "POST /api/rpc HTTP/1.1\r\nHost: localhost\r\ncontent-length: 1\r\n\r\n{";
             let body = json_body(&raw_request(addr, invalid.as_bytes()).await);
             assert_eq!(body["error"]["code"], json!(-32700));
             let bad_id = json!({"jsonrpc": "2.0", "id": {"bad": 1}, "method": "test.echo"}).to_string();
-            let request = format!("POST /api/rpc HTTP/1.1\r\nhost: 127.0.0.1\r\ncontent-length: {}\r\n\r\n{bad_id}", bad_id.len());
+            let request = format!("POST /api/rpc HTTP/1.1\r\nHost: localhost\r\ncontent-length: {}\r\n\r\n{bad_id}", bad_id.len());
             let body = json_body(&raw_request(addr, request.as_bytes()).await);
             assert_eq!((body["id"].clone(), body["error"]["code"].clone()), (Value::Null, json!(-32600)));
             stop_server(tx, task).await;
@@ -141,13 +141,13 @@ mod tests {
     fn http_rejects_malformed_oversized_unknown_and_unsupported_requests() {
         block_on(async {
             let (addr, tx, task) = start_server().await;
-            let malformed = raw_request(addr, b"POST /api/rpc HTTP/1.1\r\nhost: 127.0.0.1\r\ncontent-length: x\r\n\r\n").await;
-            let bad_target = raw_request(addr, b"GET /api/health\tbad HTTP/1.1\r\nhost: 127.0.0.1\r\n\r\n").await;
-            let oversized = raw_request(addr, b"POST /api/rpc HTTP/1.1\r\nhost: 127.0.0.1\r\ncontent-length: 1048577\r\n\r\n").await;
-            let long_header = format!("GET /api/health HTTP/1.1\r\nhost: 127.0.0.1\r\nx-long: {}\r\n\r\n", "x".repeat(17 * 1024));
+            let malformed = raw_request(addr, b"POST /api/rpc HTTP/1.1\r\nHost: localhost\r\ncontent-length: x\r\n\r\n").await;
+            let bad_target = raw_request(addr, b"GET /api/health\tbad HTTP/1.1\r\nHost: localhost\r\n\r\n").await;
+            let oversized = raw_request(addr, b"POST /api/rpc HTTP/1.1\r\nHost: localhost\r\ncontent-length: 1048577\r\n\r\n").await;
+            let long_header = format!("GET /api/health HTTP/1.1\r\nHost: localhost\r\nx-long: {}\r\n\r\n", "x".repeat(17 * 1024));
             let oversized_head = raw_request(addr, long_header.as_bytes()).await;
-            let unknown = raw_request(addr, b"GET /nope HTTP/1.1\r\nhost: 127.0.0.1\r\n\r\n").await;
-            let unsupported = raw_request(addr, b"POST /api/health HTTP/1.1\r\nhost: 127.0.0.1\r\ncontent-length: 0\r\n\r\n").await;
+            let unknown = raw_request(addr, b"GET /nope HTTP/1.1\r\nHost: localhost\r\n\r\n").await;
+            let unsupported = raw_request(addr, b"POST /api/health HTTP/1.1\r\nHost: localhost\r\ncontent-length: 0\r\n\r\n").await;
             stop_server(tx, task).await;
             assert!(malformed.starts_with("HTTP/1.1 400 Bad Request\r\n"));
             assert!(bad_target.starts_with("HTTP/1.1 400 Bad Request\r\n"));
@@ -156,6 +156,20 @@ mod tests {
             assert!(unknown.starts_with("HTTP/1.1 404 Not Found\r\n"));
             assert!(unsupported.starts_with("HTTP/1.1 405 Method Not Allowed\r\n"));
             assert!(unsupported.contains("allow: GET\r\n"));
+        });
+    }
+
+    #[test]
+    fn http11_requires_exactly_one_nonempty_host_header() {
+        block_on(async {
+            let (addr, tx, task) = start_server().await;
+            let missing = raw_request(addr, b"GET /api/health HTTP/1.1\r\n\r\n").await;
+            let duplicate = raw_request(addr, b"GET /api/health HTTP/1.1\r\nHost: localhost\r\nhost: localhost\r\n\r\n").await;
+            let blank = raw_request(addr, b"GET /api/health HTTP/1.1\r\nHost: \t \r\n\r\n").await;
+            stop_server(tx, task).await;
+            assert!(missing.starts_with("HTTP/1.1 400 Bad Request\r\n"));
+            assert!(duplicate.starts_with("HTTP/1.1 400 Bad Request\r\n"));
+            assert!(blank.starts_with("HTTP/1.1 400 Bad Request\r\n"));
         });
     }
 }
