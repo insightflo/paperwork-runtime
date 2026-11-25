@@ -93,19 +93,24 @@ export function SidebarFooterBar(props: {
   withBackground?: boolean;
 }) {
   return (
-    <div className={cn("border-t border-r border-border px-3 py-2", props.withBackground && "bg-background")}>
+    <div className={cn("border-t border-r border-border/80 bg-sidebar/95 px-3 py-2", props.withBackground && "backdrop-blur-sm")}>
       <div className="flex items-center gap-1">
         <a
           href="https://docs.paperclip.ing/"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors text-foreground/80 hover:bg-accent/50 hover:text-foreground flex-1 min-w-0"
+          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-sm px-3 py-2 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
         >
           <BookOpen className="h-4 w-4 shrink-0" />
           <span className="truncate">Documentation</span>
         </a>
         <AppVersionBadge version={props.healthVersion} />
-        <Button variant="ghost" size="icon-sm" className="text-muted-foreground shrink-0" asChild>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0 rounded-sm border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground"
+          asChild
+        >
           <Link
             to={props.instanceSettingsTarget}
             aria-label="Instance settings"
@@ -119,7 +124,7 @@ export function SidebarFooterBar(props: {
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="text-muted-foreground shrink-0"
+          className="shrink-0 rounded-sm border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground"
           onClick={props.onToggleTheme}
           aria-label={`Switch to ${props.nextTheme} mode`}
           title={`Switch to ${props.nextTheme} mode`}
@@ -150,25 +155,19 @@ export function StickyLiveRunDock(props: { companyId: string | null; companyPref
   return (
     <div
       data-provider={first.adapterType}
-      className="fixed bottom-4 right-16 z-40 hidden md:flex items-center gap-2.5 rounded-full border px-3 py-1.5 text-xs shadow-lg backdrop-blur-md"
-      style={{
-        backgroundColor: "var(--openbot-bg-glass)",
-        borderColor: "var(--openbot-glass-border)",
-        color: "var(--openbot-text-primary)",
-      }}
+      className="fixed bottom-4 right-16 z-40 hidden md:flex items-center gap-2.5 rounded-full border border-border/80 bg-card/90 px-3 py-1.5 text-xs text-card-foreground shadow-lg backdrop-blur-md"
     >
       <span
         className="h-2 w-2 rounded-full animate-pulse shrink-0"
         style={{ backgroundColor: "var(--openbot-provider-current)" }}
       />
-      <Activity className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--openbot-accent)" }} />
+      <Activity className="h-3.5 w-3.5 shrink-0 text-primary" />
       <span className="font-medium truncate max-w-[180px]">
         {active.length === 1 ? first.agentName : `${active.length} active runs`}
       </span>
       <Link
         to={targetUrl}
-        className="font-mono text-[11px] underline underline-offset-2 hover:opacity-80"
-        style={{ color: "var(--openbot-accent-text)" }}
+        className="rounded-sm border border-border/80 bg-background/70 px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wide text-primary transition-colors hover:border-primary/40 hover:text-foreground"
       >
         Inspect
       </Link>
@@ -185,12 +184,12 @@ export function DesktopHermesAside(props: {
   return (
     <aside
       className={cn(
-        "hidden min-h-0 md:flex shrink-0 overflow-hidden border-l border-border bg-background transition-[width] duration-150 ease-out",
+        "hidden min-h-0 md:flex shrink-0 overflow-hidden border-l border-border/80 bg-sidebar/95 backdrop-blur-sm transition-[width] duration-150 ease-out",
         props.open ? "w-96" : "w-12",
       )}
     >
       {props.open ? (
-        <div className="h-full min-h-0 w-96 min-w-96 overflow-hidden">
+        <div className="h-full min-h-0 w-96 min-w-96 overflow-hidden bg-card/90">
           {props.heavyPanelsReady && (
             <Suspense fallback={null}>
               <LazyHermesChatPanel mode="sidebar" onCollapse={props.onClose} />
@@ -200,7 +199,7 @@ export function DesktopHermesAside(props: {
       ) : (
         <button
           type="button"
-          className="flex h-full w-12 flex-col items-center gap-2 px-2 py-3 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+          className="flex h-full w-12 flex-col items-center gap-2 px-2 py-3 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
           onClick={props.onOpen}
           aria-label="Open Hermes chat"
           title="Open Hermes chat"
