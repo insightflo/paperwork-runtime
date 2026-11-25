@@ -3,8 +3,8 @@
  * and rendering of plugin-contributed UI extensions.
  *
  * Provides:
- * - `usePluginSlots(type, context?)` — React hook that discovers and
- *   filters plugin UI contributions for a given slot type.
+ * - `usePluginSlots(type, context?)` — retired React hook that preserves
+ *   the empty slot result shape without network discovery.
  * - `PluginSlotOutlet` — renders all matching slots inline with error
  *   boundary isolation per plugin.
  * - `PluginBridgeScope` — wraps each plugin's component tree to inject
@@ -36,7 +36,7 @@ import type {
   PluginUiSlotEntityType,
   PluginUiSlotType,
 } from "@paperclipai/shared";
-import { pluginsApi, type PluginUiContribution } from "@/api/plugins";
+import type { PluginUiContribution } from "@/api/plugins";
 import { authApi } from "@/api/auth";
 import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
@@ -100,15 +100,6 @@ const registry = new Map<string, RegisteredPluginComponent>();
 
 function buildRegistryKey(pluginKey: string, exportName: string): string {
   return `${pluginKey}:${exportName}`;
-}
-
-function requiresEntityType(slotType: PluginUiSlotType): boolean {
-  return slotType === "detailTab" || slotType === "taskDetailView" || slotType === "contextMenuItem" || slotType === "commentAnnotation" || slotType === "commentContextMenuItem" || slotType === "projectSidebarItem" || slotType === "toolbarButton";
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message;
-  return "Unknown error";
 }
 
 /**
@@ -470,38 +461,10 @@ function isLauncherComponentTarget(launcher: PluginLauncherDeclaration): boolean
     || launcher.action.type === "openPopover";
 }
 
-/**
- * Load UI modules for a set of plugin contributions.
- *
- * Returns a promise that resolves once all modules have been loaded (or
- * failed). Plugins that are already loaded are skipped.
- */
-async function ensurePluginModulesLoaded(contributions: PluginUiContribution[]): Promise<void> {
-  await Promise.all(
-    contributions.map((c) => loadPluginModule(c)),
-  );
-}
-
 export async function ensurePluginContributionLoaded(
   contribution: PluginUiContribution,
 ): Promise<void> {
   await loadPluginModule(contribution);
-}
-
-/**
- * Returns the aggregate load state across a set of plugin contributions.
- * - If any plugin is still loading → "loading"
- * - If all are loaded (or no contributions) → "loaded"
- * - If all finished but some errored → "loaded" (errors are logged, not fatal)
- */
-function aggregateLoadState(contributions: PluginUiContribution[]): "loading" | "loaded" {
-  for (const c of contributions) {
-    const state = pluginLoadStates.get(buildPluginModuleKey(c));
-    if (state === "loading" || state === "idle" || state === undefined) {
-      return "loading";
-    }
-  }
-  return "loaded";
 }
 
 // ---------------------------------------------------------------------------
@@ -509,119 +472,17 @@ function aggregateLoadState(contributions: PluginUiContribution[]): "loading" | 
 // ---------------------------------------------------------------------------
 
 /**
- * Trigger dynamic loading of plugin UI modules when contributions change.
- *
- * This hook is intentionally decoupled from usePluginSlots so that callers
- * who consume slots via `usePluginSlots()` automatically get module loading
- * without extra wiring.
- */
-function usePluginModuleLoader(contributions: PluginUiContribution[] | undefined) {
-  const [, setTick] = useState(0);
-
-  useEffect(() => {
-    if (!contributions || contributions.length === 0) return;
-
-    // Filter to contributions that haven't been loaded yet.
-    const unloaded = contributions.filter((c) => {
-      const state = pluginLoadStates.get(buildPluginModuleKey(c));
-      return state !== "loaded" && state !== "loading";
-    });
-
-    if (unloaded.length === 0) return;
-
-    let cancelled = false;
-    void ensurePluginModulesLoaded(unloaded).then(() => {
-      // Re-render so the slot mount can resolve the newly-registered components.
-      if (!cancelled) setTick((t) => t + 1);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [contributions]);
-}
-
-/**
- * Resolves and sorts slots across all ready plugin contributions.
- *
- * Filtering rules:
- * - `slotTypes` must match one of the caller-requested host slot types.
- * - Entity-scoped slot types (`detailTab`, `taskDetailView`, `contextMenuItem`)
- *   require `entityType` and must include it in `slot.entityTypes`.
- *
- * Automatically triggers dynamic import of plugin UI modules for any
- * newly-discovered contributions. Components render once loading completes.
+ * Retired plugin slot discovery hook. Plugin UI contribution fetching has been
+ * removed ahead of the plugin API unmount; keep the exported shape stable for
+ * existing host surfaces without issuing network requests.
  */
 export function usePluginSlots(filters: SlotFilters): UsePluginSlotsResult {
-  const queryEnabled = filters.enabled ?? true;
-  const { data, isLoading: isQueryLoading, error } = useQuery({
-    queryKey: queryKeys.plugins.uiContributions,
-    queryFn: () => pluginsApi.listUiContributions(),
-    enabled: queryEnabled,
-  });
-  const excludedPluginKeysKey = useMemo(
-    () => [...(filters.excludePluginKeys ?? [])].sort().join("|"),
-    [filters.excludePluginKeys],
-  );
-  const filteredContributions = useMemo(() => {
-    const excludedPluginKeys = new Set(excludedPluginKeysKey.split("|").filter(Boolean));
-    if (excludedPluginKeys.size === 0) return data;
-    return (data ?? []).filter((contribution) => !excludedPluginKeys.has(contribution.pluginKey));
-  }, [data, excludedPluginKeysKey]);
-
-  const slotTypesKey = useMemo(() => [...filters.slotTypes].sort().join("|"), [filters.slotTypes]);
-  const slotMatchedContributions = useMemo(() => {
-    const allowedTypes = new Set(slotTypesKey.split("|").filter(Boolean) as PluginUiSlotType[]);
-    return (filteredContributions ?? []).filter((contribution) =>
-      contribution.slots.some((slot) => {
-        if (!allowedTypes.has(slot.type)) return false;
-        if (!requiresEntityType(slot.type)) return true;
-        return Boolean(filters.entityType && slot.entityTypes?.includes(filters.entityType));
-      }),
-    );
-  }, [filteredContributions, filters.entityType, slotTypesKey]);
-
-  // Kick off dynamic imports only for plugin contributions that can render in this outlet.
-  usePluginModuleLoader(slotMatchedContributions);
-
-  const slots = useMemo(() => {
-    const allowedTypes = new Set(slotTypesKey.split("|").filter(Boolean) as PluginUiSlotType[]);
-    const rows: ResolvedPluginSlot[] = [];
-    for (const contribution of slotMatchedContributions) {
-      for (const slot of contribution.slots) {
-        if (!allowedTypes.has(slot.type)) continue;
-        if (requiresEntityType(slot.type)) {
-          if (!filters.entityType) continue;
-          if (!slot.entityTypes?.includes(filters.entityType)) continue;
-        }
-        rows.push({
-          ...slot,
-          pluginId: contribution.pluginId,
-          pluginKey: contribution.pluginKey,
-          pluginDisplayName: contribution.displayName,
-          pluginVersion: contribution.version,
-        });
-      }
-    }
-    rows.sort((a, b) => {
-      const ao = a.order ?? Number.MAX_SAFE_INTEGER;
-      const bo = b.order ?? Number.MAX_SAFE_INTEGER;
-      if (ao !== bo) return ao - bo;
-      const pluginCmp = a.pluginDisplayName.localeCompare(b.pluginDisplayName);
-      if (pluginCmp !== 0) return pluginCmp;
-      return a.displayName.localeCompare(b.displayName);
-    });
-    return rows;
-  }, [slotMatchedContributions, filters.entityType, slotTypesKey]);
-
-  // Consider loading until both query and module imports are done.
-  const modulesLoaded = aggregateLoadState(slotMatchedContributions) === "loaded";
-  const isLoading = queryEnabled && (isQueryLoading || !modulesLoaded);
-
+  void filters;
+  const slots = useMemo<ResolvedPluginSlot[]>(() => [], []);
   return {
     slots,
-    isLoading,
-    errorMessage: error ? getErrorMessage(error) : null,
+    isLoading: false,
+    errorMessage: null,
   };
 }
 
