@@ -15,6 +15,8 @@ import { QualityRsiMetrics, QualityRsiPanel } from "../components/QualityRsiPane
 
 type Tab = "rsi" | "verdicts" | "open";
 
+const cockpitRoundedCardOverrides = "[&_.border.rounded-lg]:rounded-md [&_.border.rounded-lg.border-border]:border-border/80 [&_.border.rounded-lg.border-border]:bg-card/60";
+
 export function Quality() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -91,7 +93,7 @@ export function Quality() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 tabular-nums">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-base font-semibold">
@@ -136,7 +138,9 @@ export function Quality() {
         </div>
       )}
 
-      <QualityRsiMetrics stats={overview.stats} language={lang} />
+      <div className={cockpitRoundedCardOverrides}>
+        <QualityRsiMetrics stats={overview.stats} language={lang} />
+      </div>
 
       <div className="flex flex-wrap items-center gap-1 border-b border-border pb-2">
         {tabs.map((t) => (
@@ -155,12 +159,14 @@ export function Quality() {
       </div>
 
       {tab === "rsi" && (
-        <QualityRsiPanel
-          overview={overview}
-          promotingSig={promotingSig}
-          onPromoteCanon={(sig) => promoteMut.mutate(sig)}
-          language={lang}
-        />
+        <div className={cockpitRoundedCardOverrides}>
+          <QualityRsiPanel
+            overview={overview}
+            promotingSig={promotingSig}
+            onPromoteCanon={(sig) => promoteMut.mutate(sig)}
+            language={lang}
+          />
+        </div>
       )}
 
       {tab === "verdicts" && (
@@ -169,7 +175,7 @@ export function Quality() {
         ) : (
           <div className="space-y-2">
             {overview.recentVerdicts.map((v) => (
-              <div key={v.id} className="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-border bg-card px-3 py-2.5">
+              <div key={v.id} className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-border/80 bg-card/60 px-3 py-2.5">
                 <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span
@@ -211,7 +217,7 @@ export function Quality() {
         ) : (
           <div className="space-y-2">
             {overview.openReviewItems.map((item) => (
-              <div key={item.id} className="rounded-lg border border-border bg-card px-3 py-2.5 space-y-1">
+              <div key={item.id} className="rounded-md border border-border/80 bg-card/60 px-3 py-2.5 space-y-1">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-sm font-medium">{item.title}</span>
                   <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
@@ -225,7 +231,7 @@ export function Quality() {
                     </Link>
                   )}
                   {item.failureType && <span>{item.failureType}</span>}
-                  <span>{item.createdAt.slice(0, 10)}</span>
+                  <span className="tabular-nums">{item.createdAt.slice(0, 10)}</span>
                 </div>
               </div>
             ))}

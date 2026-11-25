@@ -88,8 +88,12 @@ export function Companies() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-end">
+    <div className="space-y-6 tabular-nums">
+      <div className="flex items-center justify-between gap-3 rounded-md border border-border/80 bg-card/60 px-3 py-2">
+        <div className="flex items-baseline gap-2">
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Companies</h2>
+          <span className="text-xs font-medium text-muted-foreground tabular-nums">{companies.length}</span>
+        </div>
         <Button size="sm" onClick={() => openOnboarding()}>
           <Plus className="h-3.5 w-3.5 mr-1.5" />
           New Company
@@ -128,10 +132,8 @@ export function Companies() {
                   setSelectedCompanyId(company.id);
                 }
               }}
-              className={`group text-left bg-card border rounded-lg p-5 transition-colors cursor-pointer ${
-                selected
-                  ? "border-primary ring-1 ring-primary"
-                  : "border-border hover:border-muted-foreground/30"
+              className={`group text-left rounded-md border border-border/80 bg-card/60 p-5 transition-colors cursor-pointer ${
+                selected ? "ring-1 ring-primary" : "hover:border-muted-foreground/30"
               }`}
             >
               {/* Header row: name + menu */}
@@ -231,7 +233,7 @@ export function Companies() {
               </div>
 
               {/* Stats row */}
-              <div className="flex items-center gap-3 sm:gap-5 mt-4 text-sm text-muted-foreground flex-wrap">
+              <div className="flex items-center gap-3 sm:gap-5 mt-4 text-sm text-muted-foreground flex-wrap tabular-nums">
                 <div className="flex items-center gap-1.5">
                   <Users className="h-3.5 w-3.5" />
                   <span>
