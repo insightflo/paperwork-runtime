@@ -16,6 +16,15 @@ import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
 
 const DEFAULT_FILE_PATH = "company-common.md";
+const cockpitSectionHeader = "text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
+const cockpitPanel = "rounded-md border border-border/80 bg-card/60";
+const planTemplatesCockpitOverrides =
+  "[&>div]:gap-4 " +
+  "[&>div>aside]:overflow-hidden [&>div>aside]:rounded-md [&>div>aside]:border [&>div>aside]:border-border/80 [&>div>aside]:bg-card/60 " +
+  "[&>div>main]:rounded-md [&>div>main]:border [&>div>main]:border-border/80 [&>div>main]:bg-card/60 [&>div>main]:p-4 " +
+  "[&_h2]:text-[11px] [&_h2]:font-semibold [&_h2]:uppercase [&_h2]:tracking-wider [&_h2]:text-muted-foreground " +
+  "[&_.border-b.border-border]:border-border/80 [&_.rounded-md.border.border-border]:border-border/80 [&_.rounded-md.border.border-border]:bg-card/60 " +
+  "[&_textarea]:border-border/80 [&_textarea]:bg-card/60 [&_textarea]:dark:bg-card/60";
 
 function normalizeDraftPath(value: string) {
   return value.trim().replace(/^\/+/, "");
@@ -157,13 +166,17 @@ export function CompanyInstructions() {
           <TabsTrigger value="plan-templates">Plan templates</TabsTrigger>
         </TabsList>
       </Tabs>
-      {activeTab === "plan-templates" ? <PlanTemplatesPanel companyId={selectedCompanyId} /> : (
-      <div className="grid min-h-[calc(100vh-15rem)] gap-0 xl:grid-cols-[19rem_minmax(0,1fr)]">
-      <aside className="border-r border-border">
-        <div className="border-b border-border px-4 py-3">
+      {activeTab === "plan-templates" ? (
+        <div className={planTemplatesCockpitOverrides}>
+          <PlanTemplatesPanel companyId={selectedCompanyId} />
+        </div>
+      ) : (
+      <div className="grid min-h-[calc(100vh-15rem)] gap-4 xl:grid-cols-[19rem_minmax(0,1fr)]">
+      <aside className={cn("overflow-hidden", cockpitPanel)}>
+        <div className="border-b border-border/80 px-4 py-3">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <h1 className="text-base font-semibold">Instructions</h1>
+              <h1 className={cockpitSectionHeader}>Instructions</h1>
               <p className="text-xs text-muted-foreground">{files.length} company files</p>
             </div>
             <Button
@@ -179,7 +192,7 @@ export function CompanyInstructions() {
           <p className="mt-2 truncate text-xs text-muted-foreground" title={rootPath}>
             {rootPath || selectedCompany?.name}
           </p>
-          <div className="mt-3 flex items-center gap-2 border-b border-border pb-2">
+          <div className="mt-3 flex items-center gap-2 border-b border-border/80 pb-2">
             <Input
               value={newPath}
               onChange={(event) => setNewPath(event.target.value)}
@@ -227,10 +240,10 @@ export function CompanyInstructions() {
         )}
       </aside>
 
-      <main className="min-w-0 pl-6">
+      <main className={cn("min-w-0 p-4", cockpitPanel)}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="truncate text-lg font-semibold">{activePath ?? "Company instructions"}</h2>
+            <h2 className={cn("truncate", cockpitSectionHeader)}>{activePath ?? "Company instructions"}</h2>
             <p className={cn("mt-1 text-xs", dirty ? "text-amber-500" : "text-muted-foreground")}>{statusText}</p>
           </div>
           <div className="flex items-center gap-2">
@@ -257,7 +270,7 @@ export function CompanyInstructions() {
         {fileQuery.isLoading && activePath ? (
           <PageSkeleton variant="detail" />
         ) : fileQuery.error ? (
-          <div className="rounded-md border border-border px-4 py-6 text-sm text-destructive">
+          <div className={cn(cockpitPanel, "px-4 py-6 text-sm text-destructive")}>
             {fileQuery.error.message}
           </div>
         ) : activePath ? (
@@ -268,10 +281,10 @@ export function CompanyInstructions() {
               setDirty(true);
             }}
             spellCheck={false}
-            className="min-h-[calc(100vh-14rem)] resize-none font-mono text-xs leading-5"
+            className="min-h-[calc(100vh-14rem)] resize-none border-border/80 bg-card/60 font-mono text-xs leading-5 dark:bg-card/60"
           />
         ) : (
-          <div className="rounded-md border border-border px-4 py-10 text-sm text-muted-foreground">
+          <div className={cn(cockpitPanel, "px-4 py-10 text-sm text-muted-foreground")}>
             Create or select a company instruction file.
           </div>
         )}
