@@ -886,6 +886,7 @@ dependencies = [
  "paperclip-quota-router",
  "paperclip-redactor-core",
  "paperwork-engine-budget",
+ "paperwork-engine-decision",
  "paperwork-engine-heartbeat",
  "serde",
  "serde_json",

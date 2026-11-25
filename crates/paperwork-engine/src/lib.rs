@@ -3,6 +3,7 @@
 //! One request object per line, one response per line, flushed after every
 //! write. Oversized request lines are rejected through a bounded read path.
 mod budget;
+mod decision;
 mod handlers;
 mod heartbeat;
 mod heartbeat_run;
@@ -20,7 +21,7 @@ pub const MAX_REQUEST_BYTES: usize = 65_536;
 pub const MAX_TEXT_BYTES: usize = 32 * 1024;
 const CAPABILITIES: &[&str] = &["engine.health", "redactor.redact_text", "provider.check_blocklist",
     "provider.auth_probe_all", "provider.auth_plan_login", "quota.route", "heartbeat.validate_transition", "heartbeat.claim_wakeup", "heartbeat.transition_run_fenced", "heartbeat.list_stale_runs", "heartbeat.run_agent",
-    "budget.evaluate_threshold", "budget.utc_month_window", "budget.record_cost_event", "budget.sum_scope_spend", "budget.list_active_policies", "budget.upsert_incident_fenced", "budget.resolve_incident_fenced"];
+    "budget.evaluate_threshold", "budget.utc_month_window", "budget.record_cost_event", "budget.sum_scope_spend", "budget.list_active_policies", "budget.upsert_incident_fenced", "budget.resolve_incident_fenced", "decision.list", "decision.get_by_id", "decision.get_by_request_key", "decision.create", "decision.resolve", "decision.cancel"];
 fn ok(id: Value, result: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "result": result})
 }
@@ -36,9 +37,7 @@ fn write_line<W: Write>(w: &mut W, v: &Value) -> io::Result<()> {
 
 enum Line { Payload, Oversized }
 
-/// Reads one line into `buf` (payload only, terminator stripped); `None` at
-/// EOF. Buffers at most `MAX_REQUEST_BYTES + 1` bytes; the tail of an oversized
-/// line is consumed without allocation before reporting `Oversized`.
+/// Reads one line into `buf` (payload only, terminator stripped); `None` at EOF. Buffers at most `MAX_REQUEST_BYTES + 1` bytes; oversized tails are consumed without allocation.
 fn next_line<R: BufRead>(r: &mut R, buf: &mut Vec<u8>) -> io::Result<Option<Line>> {
     buf.clear();
     let n = io::Read::take(&mut *r, MAX_REQUEST_BYTES as u64 + 1).read_until(b'\n', buf)?;
@@ -107,6 +106,7 @@ fn dispatch_request(id: Value, method: &str, params: Option<&Value>, env: &Probe
         "provider.auth_probe_all" | "provider.auth_plan_login" | "quota.route" => handlers::dispatch_with(id, method, params, env),
         "heartbeat.run_agent" => heartbeat_run::dispatch_with(id, params),
         m if m.starts_with("budget.") => budget::dispatch_with(id, m, params, env),
+        m if m.starts_with("decision.") => decision::dispatch_with(id, m, params, env),
         m if m.starts_with("heartbeat.") => heartbeat::dispatch_with(id, m, params, env),
         "redactor.redact_text" | "provider.check_blocklist" => {
             let Some(p) = params else { return err(id, -32602, "invalid_params") };
@@ -183,7 +183,7 @@ mod tests {
         assert_eq!(r["ok"], true);
         assert_eq!(r["engine"], "paperwork-engine");
         assert_eq!(r["protocol_version"], 1);
-        assert_eq!(r["capabilities"].as_array().unwrap().len(), 18);
+        assert_eq!(r["capabilities"].as_array().unwrap().len(), 24);
         assert_eq!(out[0]["id"], 7);
         let out = call(&json!({"jsonrpc": "2.0", "id": "x1", "method": "nope"}));
         assert_eq!((code(&out[0]), out[0]["id"].as_str().unwrap()), (-32601, "x1"));
