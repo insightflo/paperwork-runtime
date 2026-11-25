@@ -26,9 +26,9 @@ async fn run() -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use paperwork_engine_api::{bridge::ClosureDispatcher, RpcRequest};
+    use paperwork_engine_api::{bridge::ClosureDispatcher, serve_with_config, RpcRequest, ServerConfig};
     use serde_json::{json, Value};
-    use std::{future::Future, net::SocketAddr, sync::Mutex};
+    use std::{future::Future, net::SocketAddr, sync::Mutex, time::Duration};
     use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpStream, task::JoinHandle};
 
     fn echo_dispatcher() -> Arc<dyn RpcDispatcher> {
@@ -269,6 +269,31 @@ mod tests {
                 assert_eq!(json_body(&response)["rpc_code"], json!(code));
             }
             stop_server(tx, task).await;
+        });
+    }
+
+    #[test]
+    fn stalled_non_sse_response_write_times_out_and_closes() {
+        block_on(async {
+            let large = "x".repeat(8 * 1024 * 1024);
+            let response = json!({"jsonrpc":"2.0","id":1,"result":{"large":large}});
+            let expected_len = serde_json::to_vec(&response).unwrap().len();
+            let dispatcher: Arc<dyn RpcDispatcher> = Arc::new(ClosureDispatcher::new(move |_request: RpcRequest| response.clone()));
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let (tx, rx) = watch::channel(false);
+            let task = tokio::spawn(serve_with_config(listener, dispatcher, rx, ServerConfig { write_timeout: Duration::from_millis(20) }));
+            let mut stream = TcpStream::connect(addr).await.unwrap();
+            let body = json!({"jsonrpc":"2.0","id":1,"method":"test.large","params":{}}).to_string();
+            let request = format!("POST /api/rpc HTTP/1.1\r\nHost: localhost\r\ncontent-length: {}\r\n\r\n{body}", body.len());
+            stream.write_all(request.as_bytes()).await.unwrap();
+            let mut first = [0u8; 1]; stream.read_exact(&mut first).await.unwrap();
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            let mut received = Vec::new();
+            tokio::time::timeout(Duration::from_secs(1), stream.read_to_end(&mut received)).await.unwrap().unwrap();
+            assert!(received.len() < expected_len, "stalled peer received a complete response: {} bytes", received.len());
+            tx.send(true).unwrap();
+            task.await.unwrap().unwrap();
         });
     }
 }

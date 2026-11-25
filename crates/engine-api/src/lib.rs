@@ -10,11 +10,17 @@ use http::{read_request, Reject};
 
 use serde_json::{json, Value};
 use std::{future::Future, pin::Pin, sync::Arc, task::Poll, time::{Duration, Instant}};
-use tokio::{io::AsyncWriteExt, net::{TcpListener, TcpStream}, sync::watch, task::JoinSet};
+use tokio::{io::{AsyncWrite, AsyncWriteExt}, net::{TcpListener, TcpStream}, sync::watch, task::JoinSet};
 
 pub const MAX_PARAMS_BYTES: usize = 512 * 1024;
+pub const WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CONNECTIONS: usize = 128;
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(2); const SSE_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
+
+/// Tunable server-side resource bounds. `write_timeout` bounds the complete non-SSE response write plus flush.
+#[derive(Debug, Clone, Copy)]
+pub struct ServerConfig { pub write_timeout: Duration }
+impl Default for ServerConfig { fn default() -> Self { Self { write_timeout: WRITE_TIMEOUT } } }
 
 #[derive(Debug)] pub struct RpcRequest { pub id: Value, pub method: String, pub params: Option<Value> }
 pub type RpcFuture<'a> = Pin<Box<dyn Future<Output = Value> + Send + 'a>>;
@@ -46,20 +52,29 @@ async fn select2<F: Future, G: Future>(first: F, second: G) -> Either<F::Output,
 fn status_reason(status: u16) -> &'static str {
     match status { 200 => "OK", 400 => "Bad Request", 404 => "Not Found", 405 => "Method Not Allowed", 413 => "Payload Too Large", 501 => "Not Implemented", 502 => "Bad Gateway", _ => "Internal Server Error" }
 }
-async fn write_response(stream: &mut TcpStream, status: u16, content_type: &str, body: &[u8], extra_headers: &str) -> tokio::io::Result<()> {
+async fn write_response_with_timeout<S: AsyncWrite + Unpin>(stream: &mut S, status: u16, content_type: &str, body: &[u8], extra_headers: &str, write_timeout: Duration) -> tokio::io::Result<()> {
     let head = format!("HTTP/1.1 {} {}\r\ncontent-length: {}\r\ncontent-type: {}\r\ncache-control: no-store\r\nconnection: close\r\n{}\r\n",
         status, status_reason(status), body.len(), content_type, extra_headers);
-    stream.write_all(head.as_bytes()).await?;
-    stream.write_all(body).await?;
-    stream.flush().await
+    let write = async {
+        stream.write_all(head.as_bytes()).await?;
+        stream.write_all(body).await?;
+        stream.flush().await
+    };
+    match tokio::time::timeout(write_timeout, write).await {
+        Ok(result) => result,
+        Err(_) => Err(tokio::io::Error::new(tokio::io::ErrorKind::TimedOut, "response write timeout")),
+    }
+}
+async fn write_response(stream: &mut TcpStream, status: u16, content_type: &str, body: &[u8], extra_headers: &str, write_timeout: Duration) -> tokio::io::Result<()> {
+    write_response_with_timeout(stream, status, content_type, body, extra_headers, write_timeout).await
 }
 fn drain_available(stream: &mut TcpStream) {
     let (mut chunk, mut remaining) = ([0u8; 2048], 64 * 1024);
     while remaining > 0 { match stream.try_read(&mut chunk) { Ok(0) | Err(_) => break, Ok(n) => remaining -= n.min(remaining) } }
 }
-async fn write_error(stream: &mut TcpStream, reject: Reject, extra_headers: &str) -> tokio::io::Result<()> {
+async fn write_error(stream: &mut TcpStream, reject: Reject, extra_headers: &str, write_timeout: Duration) -> tokio::io::Result<()> {
     let body = json!({"error": reject.error}).to_string();
-    write_response(stream, reject.status, "application/json", body.as_bytes(), extra_headers).await?;
+    write_response(stream, reject.status, "application/json", body.as_bytes(), extra_headers, write_timeout).await?;
     drain_available(stream); Ok(())
 }
 fn uptime_ms(started: Instant) -> u64 { u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX) }
@@ -114,33 +129,33 @@ async fn handle_rpc(body: &[u8], dispatcher: &Arc<dyn RpcDispatcher>) -> Value {
     match parse_rpc(body) { Ok(request) => dispatcher.dispatch(request).await, Err(response) => response }
 }
 
-async fn try_handle_connection(mut stream: TcpStream, dispatcher: Arc<dyn RpcDispatcher>, started: Instant, shutdown: watch::Receiver<bool>) -> tokio::io::Result<()> {
+async fn try_handle_connection(mut stream: TcpStream, dispatcher: Arc<dyn RpcDispatcher>, started: Instant, shutdown: watch::Receiver<bool>, write_timeout: Duration) -> tokio::io::Result<()> {
     let request = match read_request(&mut stream).await {
-        Ok(request) => request, Err(reject) => return write_error(&mut stream, reject, "").await,
+        Ok(request) => request, Err(reject) => return write_error(&mut stream, reject, "", write_timeout).await,
     };
     match routes::handle_rest(&request.method, &request.path, &dispatcher).await {
         routes::RestOutcome::NotMatched => {}
-        routes::RestOutcome::MethodNotAllowed => return write_error(&mut stream, Reject { status: 405, error: "method_not_allowed" }, "allow: GET\r\n").await,
-        routes::RestOutcome::Response { status, body } => return write_response(&mut stream, status, "application/json", &body, "").await,
+        routes::RestOutcome::MethodNotAllowed => return write_error(&mut stream, Reject { status: 405, error: "method_not_allowed" }, "allow: GET\r\n", write_timeout).await,
+        routes::RestOutcome::Response { status, body } => return write_response(&mut stream, status, "application/json", &body, "", write_timeout).await,
     }
     let expected = match request.path.as_str() {
         "/api/health" | "/api/events" => "GET", "/api/rpc" => "POST", _ => "",
     };
-    if expected.is_empty() { return write_error(&mut stream, Reject { status: 404, error: "not_found" }, "").await; }
+    if expected.is_empty() { return write_error(&mut stream, Reject { status: 404, error: "not_found" }, "", write_timeout).await; }
     if request.method != expected {
         let allow = format!("allow: {expected}\r\n");
-        return write_error(&mut stream, Reject { status: 405, error: "method_not_allowed" }, &allow).await;
+        return write_error(&mut stream, Reject { status: 405, error: "method_not_allowed" }, &allow, write_timeout).await;
     }
     match request.path.as_str() {
         "/api/health" => {
             let body = json!({"status": "ok", "engine": "paperwork-engine-api", "version": env!("CARGO_PKG_VERSION"), "uptime_ms": uptime_ms(started)}).to_string();
-            write_response(&mut stream, 200, "application/json", body.as_bytes(), "").await
+            write_response(&mut stream, 200, "application/json", body.as_bytes(), "", write_timeout).await
         }
         "/api/events" => write_sse(&mut stream, started, shutdown).await,
         _ => {
             let response = handle_rpc(&request.body, &dispatcher).await;
             let body = serde_json::to_vec(&response).unwrap_or_else(|_| b"{}".to_vec());
-            write_response(&mut stream, 200, "application/json", &body, "").await
+            write_response(&mut stream, 200, "application/json", &body, "", write_timeout).await
         }
     }
 }
@@ -160,7 +175,11 @@ async fn wait_for_capacity(connections: &mut JoinSet<()>, shutdown: &mut watch::
     true
 }
 
-pub async fn serve(listener: TcpListener, dispatcher: Arc<dyn RpcDispatcher>, mut shutdown: watch::Receiver<bool>) -> tokio::io::Result<()> {
+pub async fn serve(listener: TcpListener, dispatcher: Arc<dyn RpcDispatcher>, shutdown: watch::Receiver<bool>) -> tokio::io::Result<()> {
+    serve_with_config(listener, dispatcher, shutdown, ServerConfig::default()).await
+}
+
+pub async fn serve_with_config(listener: TcpListener, dispatcher: Arc<dyn RpcDispatcher>, mut shutdown: watch::Receiver<bool>, config: ServerConfig) -> tokio::io::Result<()> {
     let started = Instant::now();
     let mut connections = JoinSet::new();
     loop {
@@ -169,7 +188,7 @@ pub async fn serve(listener: TcpListener, dispatcher: Arc<dyn RpcDispatcher>, mu
             Either::First(_) => break,
             Either::Second(Ok((stream, _))) => {
                 let (dispatcher, connection_shutdown) = (Arc::clone(&dispatcher), shutdown.clone());
-                connections.spawn(async move { let _ = try_handle_connection(stream, dispatcher, started, connection_shutdown).await; });
+                connections.spawn(async move { let _ = try_handle_connection(stream, dispatcher, started, connection_shutdown, config.write_timeout).await; });
             }
             Either::Second(Err(err)) => {
                 drain_connections(&mut connections).await;
@@ -181,9 +200,37 @@ pub async fn serve(listener: TcpListener, dispatcher: Arc<dyn RpcDispatcher>, mu
     Ok(())
 }
 
+/// Serves until `shutdown_signal` completes, then performs the same bounded drain as `serve`.
+/// Embedders that enable tokio's `signal` feature can drive this boundary directly with `tokio::signal::ctrl_c()`; any completion or signal-listener error triggers the same conservative drain.
+/// This crate does not enable that feature, so the binary cannot link a ctrl-c hook while its
+/// dependency features remain unchanged; the signal-agnostic boundary is the supported hook here.
+pub async fn serve_until<F>(listener: TcpListener, dispatcher: Arc<dyn RpcDispatcher>, shutdown_signal: F) -> tokio::io::Result<()>
+where F: Future {
+    serve_until_with_config(listener, dispatcher, shutdown_signal, ServerConfig::default()).await
+}
+
+/// Configurable form of `serve_until` for embedders that need non-default resource bounds.
+pub async fn serve_until_with_config<F>(listener: TcpListener, dispatcher: Arc<dyn RpcDispatcher>, shutdown_signal: F, config: ServerConfig) -> tokio::io::Result<()>
+where F: Future {
+    enum Outcome { Shutdown, Exited(tokio::io::Result<()>) }
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let mut shutdown_signal = Box::pin(shutdown_signal);
+    let mut server = Box::pin(serve_with_config(listener, dispatcher, shutdown_rx, config));
+    let outcome = std::future::poll_fn(|cx| {
+        if shutdown_signal.as_mut().poll(cx).is_ready() { return Poll::Ready(Outcome::Shutdown); }
+        if let Poll::Ready(result) = server.as_mut().poll(cx) { return Poll::Ready(Outcome::Exited(result)); }
+        Poll::Pending
+    }).await;
+    match outcome {
+        Outcome::Shutdown => { let _ = shutdown_tx.send(true); server.await }
+        Outcome::Exited(result) => result,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     fn block_on<F: Future>(future: F) -> F::Output { tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(future) }
 
     #[test]
@@ -202,4 +249,39 @@ mod tests {
 
     #[test]
     fn default_dispatcher_returns_method_not_found() { let response = block_on(MethodNotFoundDispatcher.dispatch(RpcRequest { id: json!("id-1"), method: "missing".into(), params: None })); assert_eq!((response["id"].clone(), response["error"]["code"].clone()), (json!("id-1"), json!(-32601))); }
+
+    #[test]
+    fn response_write_timeout_aborts_stalled_non_sse_write() {
+        block_on(async {
+            let (mut peer, mut server) = tokio::io::duplex(64);
+            let body = vec![b'x'; 4096];
+            let started = Instant::now();
+            let result = write_response_with_timeout(&mut server, 200, "application/json", &body, "", Duration::from_millis(20)).await;
+            assert_eq!(result.unwrap_err().kind(), tokio::io::ErrorKind::TimedOut);
+            assert!(started.elapsed() < Duration::from_millis(500));
+            drop(server);
+            let mut received = Vec::new();
+            peer.read_to_end(&mut received).await.unwrap();
+            assert!(!received.is_empty());
+        });
+    }
+
+    #[test]
+    fn serve_until_shutdown_drains_open_sse_and_returns_ok() {
+        block_on(async {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            let server = tokio::spawn(serve_until(listener, default_dispatcher(), rx));
+            let mut stream = TcpStream::connect(addr).await.unwrap();
+            stream.write_all(b"GET /api/events HTTP/1.1\r\nHost: localhost\r\n\r\n").await.unwrap();
+            let mut first = [0u8; 1];
+            stream.read_exact(&mut first).await.unwrap();
+            tx.send(()).unwrap();
+            let result = tokio::time::timeout(Duration::from_secs(1), server).await.unwrap().unwrap();
+            assert!(result.is_ok(), "{result:?}");
+            let mut rest = Vec::new();
+            stream.read_to_end(&mut rest).await.unwrap();
+        });
+    }
 }
