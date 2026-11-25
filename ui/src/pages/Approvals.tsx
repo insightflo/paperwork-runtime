@@ -85,13 +85,13 @@ export function Approvals() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 tabular-nums">
+      <div className="flex items-center justify-between gap-3 rounded-md border border-border/80 bg-card/60 px-3 py-2">
         <Tabs value={statusFilter} onValueChange={(v) => navigate(`/approvals/${v}`)}>
           <PageTabBar items={[
             { value: "pending", label: <>{L(lang, { en: "Pending", ko: "대기 중" })}{pendingCount > 0 && (
               <span className={cn(
-                "ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+                "ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-medium tabular-nums",
                 "bg-yellow-500/20 text-yellow-500"
               )}>
                 {pendingCount}
@@ -100,6 +100,14 @@ export function Approvals() {
             { value: "all", label: L(lang, { en: "All", ko: "전체" }) },
           ]} />
         </Tabs>
+        <div className="flex shrink-0 items-baseline gap-2">
+          <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            {L(lang, { en: "Shown", ko: "표시" })}
+          </span>
+          <span className="font-mono text-lg font-semibold leading-none text-foreground tabular-nums">
+            {filtered.length}
+          </span>
+        </div>
       </div>
 
       {error && <p className="text-sm text-destructive">{error.message}</p>}
@@ -115,7 +123,7 @@ export function Approvals() {
       )}
 
       {filtered.length > 0 && (
-        <div className="grid gap-3">
+        <div className="grid gap-3 [&>div]:rounded-md [&>div]:border [&>div]:border-border/80 [&>div]:bg-card/60">
           {filtered.map((approval) => (
             <ApprovalCard
               key={approval.id}

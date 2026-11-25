@@ -431,7 +431,7 @@ function SkillList({
   }
 
   return (
-    <div>
+    <div className="space-y-2 px-3 py-3">
       {filteredSkills.map((skill) => {
         const expanded = expandedSkillId === skill.id;
         const tree = buildTree(skill.fileInventory);
@@ -439,7 +439,7 @@ function SkillList({
         const SourceIcon = source.icon;
 
         return (
-          <div key={skill.id} className="border-b border-border">
+          <div key={skill.id} className="overflow-hidden rounded-md border border-border/80 bg-card/60">
             <div
               className={cn(
                 "group grid grid-cols-[minmax(0,1fr)_2.25rem] items-center gap-x-1 px-3 py-1.5 hover:bg-accent/30",
@@ -591,7 +591,7 @@ function SkillPane({
         <div className="mt-4 space-y-3 border-t border-border pt-4 text-sm">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Source</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Source</span>
               <span className="flex items-center gap-2">
                 <SourceIcon className="h-3.5 w-3.5 text-muted-foreground" />
                 {detail.sourcePath ? (
@@ -612,7 +612,7 @@ function SkillPane({
             </div>
             {detail.sourceType === "github" && (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Pin</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Pin</span>
                 <span className="font-mono text-xs">{currentPin ?? "untracked"}</span>
                 {updateStatus?.trackingRef && (
                   <span className="text-xs text-muted-foreground">tracking {updateStatus.trackingRef}</span>
@@ -645,16 +645,16 @@ function SkillPane({
               </div>
             )}
             <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Key</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Key</span>
               <span className="font-mono text-xs">{detail.key}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Mode</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Mode</span>
               <span>{detail.editable ? "Editable" : "Read only"}</span>
             </div>
           </div>
           <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
-            <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Used by</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Used by</span>
             {usedBy.length === 0 ? (
               <span className="text-muted-foreground">No agents attached</span>
             ) : (
@@ -1101,8 +1101,8 @@ export function CompanySkills() {
             <>
             <div className="flex items-center justify-between gap-2">
               <div>
-                <h1 className="text-base font-semibold">Skills</h1>
-                <p className="text-xs text-muted-foreground">
+                <h1 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Skills</h1>
+                <p className="text-xs text-muted-foreground tabular-nums">
                   {skillsQuery.data?.length ?? 0} available
                 </p>
               </div>
@@ -1149,7 +1149,7 @@ export function CompanySkills() {
               </Button>
             </div>
             {scanStatusMessage && (
-              <p className="mt-3 text-xs text-muted-foreground">
+              <p className="mt-3 text-xs text-muted-foreground tabular-nums">
                 {scanStatusMessage}
               </p>
             )}
