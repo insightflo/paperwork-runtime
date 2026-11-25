@@ -2,6 +2,9 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createPaperworkEngineClient, type PaperworkEngineClient } from "./paperwork-engine-client.js";
+import { applyUnifiedRustCoreCutoverEnv } from "./rust-cutover-registry.js";
+
+applyUnifiedRustCoreCutoverEnv(process.env);
 
 const DEFAULT_REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
