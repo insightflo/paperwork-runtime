@@ -11,6 +11,9 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import { ChevronRight, GitBranch } from "lucide-react";
 import { cn } from "../lib/utils";
 
+const cockpitSectionHeader = "text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
+const cockpitPanel = "rounded-md border border-border/80 bg-card/60";
+
 function OrgTree({
   nodes,
   depth = 0,
@@ -112,7 +115,17 @@ export function Org() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 tabular-nums">
+      <div className={cn(cockpitPanel, "flex items-center gap-3 px-3 py-2")}>
+        <div className="flex min-w-0 items-center gap-2">
+          <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className={cockpitSectionHeader}>Org Chart</span>
+          <span className="hidden truncate text-xs text-muted-foreground sm:inline">
+            Reporting structure
+          </span>
+        </div>
+      </div>
+
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
       {data && data.length === 0 && (
@@ -123,7 +136,7 @@ export function Org() {
       )}
 
       {data && data.length > 0 && (
-        <div className="border border-border py-1">
+        <div className={cn(cockpitPanel, "overflow-hidden py-1")}>
           <OrgTree nodes={data} hrefFn={(id) => `/agents/${id}`} />
         </div>
       )}
