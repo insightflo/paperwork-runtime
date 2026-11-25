@@ -2,11 +2,7 @@
 //! paperwork-engine: resident fail-closed JSON-RPC 2.0 server over NDJSON stdio.
 //! One request object per line, one response per line, flushed after every
 //! write. Oversized request lines are rejected through a bounded read path.
-mod budget;
-mod handlers;
-mod heartbeat;
-mod heartbeat_run;
-mod secret;
+mod budget; mod company; mod handlers; mod heartbeat; mod heartbeat_run; mod secret;
 
 use paperclip_provider_auth_core::ProbeEnv;
 use paperclip_provider_runtime_core::{validate_name, Blocklist, ProviderId};
@@ -21,7 +17,8 @@ pub const MAX_REQUEST_BYTES: usize = 65_536;
 pub const MAX_TEXT_BYTES: usize = 32 * 1024;
 const CAPABILITIES: &[&str] = &["engine.health", "redactor.redact_text", "provider.check_blocklist",
     "provider.auth_probe_all", "provider.auth_plan_login", "quota.route", "heartbeat.validate_transition", "heartbeat.claim_wakeup", "heartbeat.transition_run_fenced", "heartbeat.list_stale_runs", "heartbeat.run_agent",
-    "budget.evaluate_threshold", "budget.utc_month_window", "budget.record_cost_event", "budget.sum_scope_spend", "budget.list_active_policies", "budget.upsert_incident_fenced", "budget.resolve_incident_fenced", "secret.list", "secret.get_by_id", "secret.get_by_name", "secret.list_versions", "secret.bump_latest_version_fenced"];
+    "budget.evaluate_threshold", "budget.utc_month_window", "budget.record_cost_event", "budget.sum_scope_spend", "budget.list_active_policies", "budget.upsert_incident_fenced", "budget.resolve_incident_fenced", "secret.list", "secret.get_by_id", "secret.get_by_name", "secret.list_versions", "secret.bump_latest_version_fenced",
+    "company.list", "company.get_by_id", "company.get_by_issue_prefix", "company.create", "company.update", "company.pause", "company.resume", "company.next_issue_counter"];
 fn ok(id: Value, result: Value) -> Value {
     json!({"jsonrpc": "2.0", "id": id, "result": result})
 }
@@ -108,6 +105,7 @@ fn dispatch_request(id: Value, method: &str, params: Option<&Value>, env: &Probe
         "provider.auth_probe_all" | "provider.auth_plan_login" | "quota.route" => handlers::dispatch_with(id, method, params, env),
         "heartbeat.run_agent" => heartbeat_run::dispatch_with(id, params),
         m if m.starts_with("budget.") => budget::dispatch_with(id, m, params, env),
+        m if m.starts_with("company.") => company::dispatch_with(id, m, params, env),
         m if m.starts_with("heartbeat.") => heartbeat::dispatch_with(id, m, params, env),
         m if m.starts_with("secret.") => secret::dispatch_with(id, m, params, env),
         "redactor.redact_text" | "provider.check_blocklist" => {
@@ -184,7 +182,7 @@ mod tests {
         assert_eq!(r["ok"], true);
         assert_eq!(r["engine"], "paperwork-engine");
         assert_eq!(r["protocol_version"], 1);
-        assert_eq!(r["capabilities"].as_array().unwrap().len(), 23);
+        assert_eq!(r["capabilities"].as_array().unwrap().len(), 31);
         assert_eq!(out[0]["id"], 7);
         let out = call(&json!({"jsonrpc": "2.0", "id": "x1", "method": "nope"}));
         assert_eq!((code(&out[0]), out[0]["id"].as_str().unwrap()), (-32601, "x1"));
