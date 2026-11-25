@@ -28,7 +28,7 @@ import { toPublicSocialAuthProviders, type PublicSocialAuthProvider } from "./au
 import { loadConfig } from "./config.js";
 import { logger } from "./middleware/logger.js";
 import { setupLiveEventsWebSocketServer } from "./realtime/live-events-ws.js";
-import { heartbeatService, reconcilePersistedAgentStatusOnStartup, reconcilePersistedRuntimeServicesOnStartup, routineService } from "./services/index.js";
+import { heartbeatService, reconcilePersistedAgentStatusOnStartup, reconcilePersistedRuntimeServicesOnStartup } from "./services/index.js";
 import { createHeartbeatScheduler } from "./services/heartbeat-scheduler.js";
 import { closeSharedPaperworkEngineClient, runOrderedShutdownSteps } from "./services/paperwork-engine-runtime.js";
 import { createStorageServiceFromConfig } from "./storage/index.js";
@@ -845,13 +845,10 @@ async function startServerWithRuntime(context: ServerShutdownContext): Promise<S
   const heartbeat = heartbeatService(db);
   context.heartbeat = heartbeat;
   if (config.heartbeatSchedulerEnabled && !runtimeExecutionLifecycle.shutdownState()) {
-    const routines = routineService(db as any);
     context.heartbeatScheduler = createHeartbeatScheduler({
       heartbeat,
-      routines,
       logger,
       timerIntervalMs: config.heartbeatSchedulerIntervalMs,
-      routineIntervalMs: config.heartbeatSchedulerIntervalMs,
     });
     context.heartbeatScheduler.start();
   }
