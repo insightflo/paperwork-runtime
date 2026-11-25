@@ -133,7 +133,7 @@ function GraphCanvasEdges({
 }: GraphCanvasEdgesProps) {
   const markerPrefix = React.useId();
   return (
-    <svg aria-hidden="true" width="100%" height="100%"
+    <svg role="group" aria-label="Workflow connectors" width="100%" height="100%"
       style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "auto" }}>
       <defs>
         {edgeKinds.flatMap((kind) => markerEmphasisOptions.map(([emphasis, options]) => {
@@ -186,7 +186,7 @@ function GraphCanvasEdges({
                 stroke="transparent" strokeWidth="16" pointerEvents="stroke" style={{ cursor: "pointer" }}
                 onClick={(event) => handleEdgeClick(event, edge)}
                 onDoubleClick={(event) => handleEdgeDoubleClick(event, edge)}
-                onContextMenu={(event) => handleEdgeContextMenu(event, edge)} />
+                onContextMenu={(event) => handleEdgeContextMenu(event, edge)}><title>{`Workflow connector: ${source.label} → ${target.label}`}</title></path>
               <path data-graph-edge-glow="true" d={edgePath} fill="none" stroke={color}
                 strokeWidth={glowWidth} strokeLinecap="round" opacity={glowOpacity}
                 strokeDasharray={graphEdgeDashArray(edge.kind)} pointerEvents="none"
