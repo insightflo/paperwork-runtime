@@ -36,7 +36,6 @@ import {
 } from "./routes/workflow-webhooks.js";
 import { requireMaintenanceCompany } from "./middleware/company-kind-gate.js";
 import { executionWorkspaceRoutes } from "./routes/execution-workspaces.js";
-import { goalRoutes } from "./routes/goals.js";
 import { approvalRoutes } from "./routes/approvals.js";
 import { secretRoutes } from "./routes/secrets.js";
 import { companyDataStorageRoutes } from "./routes/company-data-storage.js";
@@ -635,7 +634,6 @@ export async function createApp(
   api.use(worktreeRoutes(db));
   // CRITICAL: single mount for maintenance gate — per-route is forbidden
   api.use("/maintenance", requireMaintenanceCompany(db), worktreeRoutes(db));
-  api.use(goalRoutes(db));
   api.use(approvalRoutes(db));
   api.use(secretRoutes(db));
   api.use(companyDataStorageRoutes(db));
