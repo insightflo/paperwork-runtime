@@ -431,7 +431,7 @@ function SkillList({
   }
 
   return (
-    <div>
+    <div className="space-y-2 px-3 py-3">
       {filteredSkills.map((skill) => {
         const expanded = expandedSkillId === skill.id;
         const tree = buildTree(skill.fileInventory);
@@ -439,7 +439,7 @@ function SkillList({
         const SourceIcon = source.icon;
 
         return (
-          <div key={skill.id} className="border-b border-border">
+          <div key={skill.id} className="overflow-hidden rounded-md border border-border/80 bg-card/60">
             <div
               className={cn(
                 "group grid grid-cols-[minmax(0,1fr)_2.25rem] items-center gap-x-1 px-3 py-1.5 hover:bg-accent/30",
@@ -562,8 +562,8 @@ function SkillPane({
   const latestPin = shortRef(updateStatus?.latestRef);
 
   return (
-    <div className="min-w-0">
-      <div className="border-b border-border px-5 py-4">
+    <div className="min-w-0 rounded-md border border-border/80 bg-card/60">
+      <div className="border-b border-border/80 px-5 py-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="flex items-center gap-2 truncate text-2xl font-semibold">
@@ -588,10 +588,10 @@ function SkillPane({
           )}
         </div>
 
-        <div className="mt-4 space-y-3 border-t border-border pt-4 text-sm">
+        <div className="mt-4 space-y-3 border-t border-border/80 pt-4 text-sm">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Source</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Source</span>
               <span className="flex items-center gap-2">
                 <SourceIcon className="h-3.5 w-3.5 text-muted-foreground" />
                 {detail.sourcePath ? (
@@ -612,7 +612,7 @@ function SkillPane({
             </div>
             {detail.sourceType === "github" && (
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Pin</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Pin</span>
                 <span className="font-mono text-xs">{currentPin ?? "untracked"}</span>
                 {updateStatus?.trackingRef && (
                   <span className="text-xs text-muted-foreground">tracking {updateStatus.trackingRef}</span>
@@ -645,16 +645,16 @@ function SkillPane({
               </div>
             )}
             <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Key</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Key</span>
               <span className="font-mono text-xs">{detail.key}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Mode</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Mode</span>
               <span>{detail.editable ? "Editable" : "Read only"}</span>
             </div>
           </div>
           <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
-            <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Used by</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Used by</span>
             {usedBy.length === 0 ? (
               <span className="text-muted-foreground">No agents attached</span>
             ) : (
@@ -674,14 +674,14 @@ function SkillPane({
         </div>
       </div>
 
-      <div className="border-b border-border px-5 py-3">
+      <div className="border-b border-border/80 px-5 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate font-mono text-sm">{file?.path ?? "SKILL.md"}</div>
           </div>
           <div className="flex items-center gap-2">
             {file?.markdown && !editMode && (
-              <div className="flex items-center border border-border">
+              <div className="flex items-center border border-border/80">
                 <button
                   type="button"
                   className={cn("px-3 py-1.5 text-sm", viewMode === "preview" && "text-foreground", viewMode !== "preview" && "text-muted-foreground")}
@@ -694,7 +694,7 @@ function SkillPane({
                 </button>
                 <button
                   type="button"
-                  className={cn("border-l border-border px-3 py-1.5 text-sm", viewMode === "code" && "text-foreground", viewMode !== "code" && "text-muted-foreground")}
+                  className={cn("border-l border-border/80 px-3 py-1.5 text-sm", viewMode === "code" && "text-foreground", viewMode !== "code" && "text-muted-foreground")}
                   onClick={() => setViewMode("code")}
                 >
                   <span className="flex items-center gap-1.5">
@@ -1036,7 +1036,7 @@ export function CompanySkills() {
               href="https://skills.sh"
               target="_blank"
               rel="noreferrer"
-              className="flex items-start justify-between rounded-md border border-border px-3 py-3 text-foreground no-underline transition-colors hover:bg-accent/40"
+              className="flex items-start justify-between rounded-md border border-border/80 bg-card/60 px-3 py-3 text-foreground no-underline transition-colors hover:bg-accent/40"
             >
               <span>
                 <span className="block font-medium">Browse skills.sh</span>
@@ -1050,7 +1050,7 @@ export function CompanySkills() {
               href="https://github.com/search?q=SKILL.md&type=code"
               target="_blank"
               rel="noreferrer"
-              className="flex items-start justify-between rounded-md border border-border px-3 py-3 text-foreground no-underline transition-colors hover:bg-accent/40"
+              className="flex items-start justify-between rounded-md border border-border/80 bg-card/60 px-3 py-3 text-foreground no-underline transition-colors hover:bg-accent/40"
             >
               <span>
                 <span className="block font-medium">Search GitHub</span>
@@ -1065,7 +1065,7 @@ export function CompanySkills() {
         </DialogContent>
       </Dialog>
 
-      <div className="mb-4 inline-grid grid-cols-2 border border-border text-sm">
+      <div className="mb-4 inline-grid grid-cols-2 overflow-hidden rounded-md border border-border/80 bg-card/60 text-sm">
         <button
           type="button"
           className={cn(
@@ -1081,7 +1081,7 @@ export function CompanySkills() {
         <button
           type="button"
           className={cn(
-            "flex items-center justify-center gap-1.5 border-l border-border px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+            "flex items-center justify-center gap-1.5 border-l border-border/80 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
             surface === "tools" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/40",
           )}
           onClick={() => setSurface("tools")}
@@ -1095,14 +1095,14 @@ export function CompanySkills() {
       {surface === "tools" ? (
         <ToolAdminPanel companyId={selectedCompanyId} />
       ) : (
-      <div className="grid min-h-[calc(100vh-12rem)] gap-0 xl:grid-cols-[19rem_minmax(0,1fr)]">
-        <aside className="border-r border-border">
-          <div className="border-b border-border px-4 py-3">
+      <div className="grid min-h-[calc(100vh-12rem)] gap-0 tabular-nums xl:grid-cols-[19rem_minmax(0,1fr)]">
+        <aside className="border-r border-border/80">
+          <div className="border-b border-border/80 px-4 py-3">
             <>
             <div className="flex items-center justify-between gap-2">
               <div>
-                <h1 className="text-base font-semibold">Skills</h1>
-                <p className="text-xs text-muted-foreground">
+                <h1 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Skills</h1>
+                <p className="text-xs text-muted-foreground tabular-nums">
                   {skillsQuery.data?.length ?? 0} available
                 </p>
               </div>
@@ -1122,7 +1122,7 @@ export function CompanySkills() {
               </div>
             </div>
 
-            <div className="mt-3 flex items-center gap-2 border-b border-border pb-2">
+            <div className="mt-3 flex items-center gap-2 border-b border-border/80 pb-2">
               <Search className="h-4 w-4 text-muted-foreground" />
               <input
                 value={skillFilter}
@@ -1132,7 +1132,7 @@ export function CompanySkills() {
               />
             </div>
 
-            <div className="mt-3 flex items-center gap-2 border-b border-border pb-2">
+            <div className="mt-3 flex items-center gap-2 border-b border-border/80 pb-2">
               <input
                 value={source}
                 onChange={(event) => setSource(event.target.value)}
@@ -1149,7 +1149,7 @@ export function CompanySkills() {
               </Button>
             </div>
             {scanStatusMessage && (
-              <p className="mt-3 text-xs text-muted-foreground">
+              <p className="mt-3 text-xs text-muted-foreground tabular-nums">
                 {scanStatusMessage}
               </p>
             )}

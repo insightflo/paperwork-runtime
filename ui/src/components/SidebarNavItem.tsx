@@ -30,7 +30,7 @@ function renderCompactIndicator(opts: {
     return (
       <span
         className={cn(
-          "absolute -right-1 -top-1 min-w-4 rounded-full px-1 text-center text-[10px] font-semibold leading-4",
+          "absolute -right-1 -top-1 min-w-4 rounded-full px-1 text-center text-[10px] font-semibold leading-4 tabular-nums",
           opts.badgeTone === "danger" ? "bg-red-600/90 text-red-50" : "bg-primary text-primary-foreground",
         )}
       >
@@ -81,20 +81,12 @@ export function SidebarNavItem({
         title={compactTitle}
         aria-label={compactTitle}
         onClick={() => { if (isMobile) setSidebarOpen(false); }}
-        style={({ isActive }) =>
-          isActive
-            ? {
-                borderRadius: 10,
-                backgroundColor: "var(--openbot-nav-active-bg)",
-                borderColor: "var(--openbot-nav-active-border)",
-                color: "var(--openbot-accent-text)",
-              }
-            : { borderRadius: 10, borderColor: "transparent" }
-        }
         className={({ isActive }) =>
           cn(
-            "relative mx-auto flex h-9 w-9 items-center justify-center border transition-colors",
-            isActive ? "font-medium" : "text-foreground/75 hover:bg-accent/50 hover:text-foreground",
+            "relative mx-auto flex h-9 w-9 items-center justify-center rounded-[10px] border border-l-2 transition-colors",
+            isActive
+              ? "border-primary bg-accent/80 font-medium text-foreground"
+              : "border-transparent text-foreground/75 hover:bg-accent/50 hover:text-foreground",
             className,
           )
         }
@@ -110,21 +102,12 @@ export function SidebarNavItem({
       to={to}
       end={end}
       onClick={() => { if (isMobile) setSidebarOpen(false); }}
-      style={({ isActive }) =>
-        isActive
-          ? {
-              borderRadius: 9,
-              backgroundColor: "var(--openbot-nav-active-bg)",
-              borderColor: "var(--openbot-nav-active-border)",
-            }
-          : { borderRadius: 9, borderColor: "transparent" }
-      }
       className={({ isActive }) =>
         cn(
-          "flex items-center gap-2.5 border px-3 py-2 text-[13px] font-medium transition-colors",
+          "flex items-center gap-2.5 rounded-[9px] border border-l-2 px-3 py-2 text-[13px] font-medium transition-colors",
           isActive
-            ? "text-foreground"
-            : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
+            ? "border-primary bg-accent/80 text-foreground"
+            : "border-transparent text-foreground/80 hover:bg-accent/50 hover:text-foreground",
           className,
         )
       }
@@ -154,13 +137,13 @@ export function SidebarNavItem({
             <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
             <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
           </span>
-          <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">{liveCount} live</span>
+          <span className="text-[11px] font-medium text-blue-600 tabular-nums dark:text-blue-400">{liveCount} live</span>
         </span>
       )}
       {badge != null && badge > 0 && (
         <span
           className={cn(
-            "ml-auto rounded-full px-1.5 py-0.5 text-xs leading-none",
+            "ml-auto rounded-full px-1.5 py-0.5 text-xs leading-none tabular-nums",
             badgeTone === "danger"
               ? "bg-red-600/90 text-red-50"
               : "bg-primary text-primary-foreground",

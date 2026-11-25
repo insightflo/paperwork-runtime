@@ -134,7 +134,7 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
 
   if (!plan?.available) {
     return (
-      <div className="border border-border rounded-md p-8 text-center">
+      <div className="rounded-md border border-border/80 bg-card/60 p-8 text-center">
         <Settings className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
         <p className="text-sm text-muted-foreground mb-1">No active mission execution plan yet</p>
         <p className="text-xs text-muted-foreground">
@@ -152,10 +152,10 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
 
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-border p-4">
+      <div className="rounded-md border border-border/80 bg-card/60 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Latest Maintenance Decision</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Latest Maintenance Decision</p>
             <p className="mt-1 text-sm font-medium">Mission plan revision {plan.revision ?? "—"} · {plan.status ?? "active"}</p>
           </div>
           <div className="text-xs text-muted-foreground">
@@ -164,15 +164,15 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
         </div>
         {plan.missionGoal && <p className="mt-3 text-sm text-muted-foreground">{plan.missionGoal}</p>}
         <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          <div className="rounded border border-border/70 p-3">
+          <div className="rounded-md border border-border/80 bg-card/60 p-3">
             <p className="text-xs font-medium text-muted-foreground">Required inputs</p>
             <p className="mt-1 text-sm">{plan.requiredInputsCount ?? openRequiredInputs.length} total · {openRequiredInputs.length} open</p>
           </div>
-          <div className="rounded border border-border/70 p-3">
+          <div className="rounded-md border border-border/80 bg-card/60 p-3">
             <p className="text-xs font-medium text-muted-foreground">Suggested status/action</p>
             <p className="mt-1 text-sm">Owner decision required for retry/replan/escalation</p>
           </div>
-          <div className="rounded border border-border/70 p-3">
+          <div className="rounded-md border border-border/80 bg-card/60 p-3">
             <p className="text-xs font-medium text-muted-foreground">Handoff target</p>
             <p className="mt-1 text-sm">Main executor / operator as required</p>
           </div>
@@ -180,12 +180,12 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section className="rounded-md border border-border p-4">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Plan steps</p>
+        <section className="rounded-md border border-border/80 bg-card/60 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Plan steps</p>
           {stepSummary.length > 0 ? (
             <ol className="mt-3 space-y-2 text-sm">
               {stepSummary.map((step, index) => (
-                <li key={`${step}-${index}`} className="rounded border border-border/70 p-2">
+                <li key={`${step}-${index}`} className="rounded-md border border-border/80 bg-card/60 p-2">
                   <span className="mr-2 text-xs text-muted-foreground">{index + 1}.</span>
                   <span>{step}</span>
                 </li>
@@ -196,15 +196,15 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
           )}
         </section>
 
-        <section className="rounded-md border border-border p-4">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Execution units</p>
+        <section className="rounded-md border border-border/80 bg-card/60 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Execution units</p>
           {executionUnits.length > 0 ? (
             <ul className="mt-3 space-y-2 text-sm">
               {executionUnits.slice(0, 8).map((unit, index) => {
                 const status = textValue(unit.status);
                 const source = sourceRefLabel(unit);
                 return (
-                  <li key={`${source ?? labelForRecord(unit, "Execution unit")}-${index}`} className="rounded border border-border/70 p-2">
+                  <li key={`${source ?? labelForRecord(unit, "Execution unit")}-${index}`} className="rounded-md border border-border/80 bg-card/60 p-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="font-medium">{labelForRecord(unit, `Execution unit ${index + 1}`)}</span>
                       {status && <span className={`text-xs ${statusTone(status)}`}>{status}</span>}
@@ -221,9 +221,9 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
       </div>
 
       {selectedUnitCount > 0 && (
-        <section className="rounded-md border border-border p-4">
+        <section className="rounded-md border border-border/80 bg-card/60 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Selected execution units</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Selected execution units</p>
             <span className="text-xs text-muted-foreground">{selectedUnitCount} total</span>
           </div>
           {selectedStateCounts && (
@@ -235,7 +235,7 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
           {selectedUnitLabels.length > 0 && (
             <ul className="mt-3 flex flex-wrap gap-2 text-sm">
               {selectedUnitLabels.map((label) => (
-                <li key={label} className="rounded-full border border-border px-2 py-1">{label}</li>
+                <li key={label} className="rounded-full border border-border/80 bg-background/60 px-2 py-1">{label}</li>
               ))}
             </ul>
           )}
@@ -243,14 +243,14 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section className="rounded-md border border-border p-4">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Applied Worktree Rules</p>
+        <section className="rounded-md border border-border/80 bg-card/60 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Applied Worktree Rules</p>
           {ruleRefs.length > 0 || ruleNames.length > 0 ? (
             <ul className="mt-3 space-y-2 text-sm">
               {(ruleRefs.length > 0 ? ruleRefs : ruleNames.map<JsonRecord>((name) => ({ name }))).slice(0, 10).map((rule, index) => {
                 const mode = textValue(rule.mode) ?? ruleModes[index] ?? null;
                 return (
-                  <li key={`${labelForRecord(rule, "Rule")}-${index}`} className="rounded border border-border/70 p-2">
+                  <li key={`${labelForRecord(rule, "Rule")}-${index}`} className="rounded-md border border-border/80 bg-card/60 p-2">
                     <span className="font-medium">{labelForRecord(rule, `Rule ${index + 1}`)}</span>
                     {mode && <span className="ml-2 text-xs text-muted-foreground">{mode}</span>}
                   </li>
@@ -262,12 +262,12 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
           )}
         </section>
 
-        <section className="rounded-md border border-border p-4">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Injected KB references/excerpts</p>
+        <section className="rounded-md border border-border/80 bg-card/60 p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Injected KB references/excerpts</p>
           {kbRefs.length > 0 ? (
             <ul className="mt-3 space-y-2 text-sm">
               {kbRefs.slice(0, 5).map((kb, index) => (
-                <li key={`${labelForRecord(kb, "KB")}-${index}`} className="rounded border border-border/70 p-2">
+                <li key={`${labelForRecord(kb, "KB")}-${index}`} className="rounded-md border border-border/80 bg-card/60 p-2">
                   <span className="font-medium">{labelForRecord(kb, `KB ${index + 1}`)}</span>
                   {textValue(kb.excerpt) && <p className="mt-1 text-xs text-muted-foreground">{textValue(kb.excerpt)}</p>}
                 </li>
@@ -279,9 +279,9 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
         </section>
       </div>
 
-      <section className="rounded-md border border-border p-4">
+      <section className="rounded-md border border-border/80 bg-card/60 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Self-improvement candidates</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Self-improvement candidates</p>
           <span className="text-xs text-muted-foreground">{selfImprovementCandidates.length} candidates</span>
         </div>
         {selfImprovementCandidates.length > 0 ? (
@@ -294,7 +294,7 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
               const gateOwner = textValue(candidate.gateOwner);
               const pattern = textValue(candidate.pattern);
               return (
-                <li key={`${assetRef}-${index}`} className="rounded border border-border/70 p-2">
+                <li key={`${assetRef}-${index}`} className="rounded-md border border-border/80 bg-card/60 p-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-medium">{assetRef}</span>
                     {result && <span className={`text-xs ${statusTone(result)}`}>{result}</span>}
@@ -314,25 +314,25 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
         )}
       </section>
 
-      <section className="rounded-md border border-border p-4">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Required inputs</p>
+      <section className="rounded-md border border-border/80 bg-card/60 p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Required inputs</p>
         {openRequiredInputs.length > 0 ? (
           <ul className="mt-3 flex flex-wrap gap-2 text-sm">
-            {openRequiredInputs.map((input) => <li key={input} className="rounded-full border border-border px-2 py-1">{input}</li>)}
+            {openRequiredInputs.map((input) => <li key={input} className="rounded-full border border-border/80 bg-background/60 px-2 py-1">{input}</li>)}
           </ul>
         ) : (
           <p className="mt-3 text-sm text-muted-foreground">No open required inputs reported.</p>
         )}
       </section>
 
-      <section className="rounded-md border border-border p-4">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Audit timeline</p>
+      <section className="rounded-md border border-border/80 bg-card/60 p-4">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Audit timeline</p>
         {auditEvents.length > 0 ? (
           <ul className="mt-3 space-y-2 text-sm">
             {auditEvents.slice(0, 8).map((event) => {
               const summary = formatAuditEventSummary(event);
               return (
-                <li key={event.id} className="rounded border border-border/70 p-2">
+                <li key={event.id} className="rounded-md border border-border/80 bg-card/60 p-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-medium">{event.action}</span>
                     <span className="text-xs text-muted-foreground">{formatDate(event.createdAt)}</span>
@@ -471,11 +471,11 @@ export function MissionDetail() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 tabular-nums">
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <Rocket className="h-5 w-5 text-muted-foreground shrink-0" />
-          <span className="text-xs text-muted-foreground uppercase tracking-wider">Mission</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Mission</span>
         </div>
 
         <InlineEditor
@@ -486,11 +486,11 @@ export function MissionDetail() {
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-md border border-border/80 bg-card/60 px-3 py-2">
         <StatusBadge status={mission.status} />
 
         {mission.project && (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-xs font-medium text-muted-foreground whitespace-nowrap shrink-0">
+          <span className="inline-flex items-center gap-1.5 rounded-md border border-border/80 bg-background/60 px-2.5 py-0.5 text-xs font-medium text-muted-foreground whitespace-nowrap shrink-0">
             <span
               className="shrink-0 h-3 w-3 rounded-sm"
               style={{ backgroundColor: mission.project.color ?? "#6366f1" }}
@@ -547,7 +547,7 @@ export function MissionDetail() {
       <Separator />
 
       <div className="space-y-1.5">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Description</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Description</p>
         <div className="max-h-[32dvh] min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
           <InlineEditor
             value={mission.description ?? ""}
@@ -596,14 +596,14 @@ export function MissionDetail() {
           </Button>
         </div>
 
-        <TabsContent value="overview" className="mt-4">
+        <TabsContent value="overview" className="mt-4 [&>div>div:first-child>div]:rounded-md [&>div>div:first-child>div]:border [&>div>div:first-child>div]:border-border/80 [&>div>div:first-child>div]:bg-card/60 [&>div>div:first-child>div]:tabular-nums">
           <MissionExecutionOverview missionId={missionId} mission={mission} />
         </TabsContent>
 
         <TabsContent value="issues" className="mt-4">
           <div className="grid gap-4 xl:grid-cols-[minmax(320px,1fr)_minmax(420px,1.3fr)]">
             <div className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Mission work items
               </p>
               <MissionIssueTree
@@ -613,7 +613,7 @@ export function MissionDetail() {
               />
             </div>
             <div className="space-y-2">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Selected work item
               </p>
               <MissionIssueInspector issueId={selectedIssueId} />

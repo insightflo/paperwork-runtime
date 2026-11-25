@@ -164,7 +164,7 @@ function HumanOperatorRow({
   // '과거 요청 증거' 블록(원문 요약·메타데이터·미션 링크)은 같은 카드 안 기본 접힘 details 로 보존한다.
   if (card) {
     return (
-      <li data-human-operator-lifecycle={scope.lifecycle} className="border border-border bg-card p-4">
+      <li data-human-operator-lifecycle={scope.lifecycle} className="rounded-md border border-border/80 bg-card/60 p-4 [&>article]:border-0 [&>article]:bg-transparent [&>article]:p-0">
         <details data-human-operator-evidence-fold className="mb-2 border-b border-border pb-2 text-xs">
           <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span data-human-input-card-badge className="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{cardStatusBadge}</span>
@@ -203,7 +203,7 @@ function HumanOperatorRow({
         ? `· ${result.actionId} · ${result.outcome}${result.selectedOptionIds.length > 0 && !(result.selectedOptionIds.length === 1 && result.selectedOptionIds[0] === result.actionId) ? ` (${result.selectedOptionIds.join(", ")})` : ""}`
         : "";
     return (
-      <li data-human-operator-lifecycle={scope.lifecycle} className="border border-border bg-card px-4 py-2.5">
+      <li data-human-operator-lifecycle={scope.lifecycle} className="rounded-md border border-border/80 bg-card/60 px-4 py-2.5">
         <details data-human-operator-history-fold>
           <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-sm">
             <span className="flex flex-wrap items-center gap-2">
@@ -233,7 +233,7 @@ function HumanOperatorRow({
 
   // 상태 C — 카드 미연결·상태 미확인(legacy/malformed/missing/ambiguous/unsupported) 행은 기존 렌더링 유지.
   return (
-    <li data-human-operator-lifecycle={scope.lifecycle} className="border border-border bg-card p-4">
+    <li data-human-operator-lifecycle={scope.lifecycle} className="rounded-md border border-border/80 bg-card/60 p-4 [&>article]:border-0 [&>article]:bg-transparent">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -377,7 +377,7 @@ export function HumanOperator() {
   });
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 tabular-nums">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold">Human Operator</h1>
@@ -412,13 +412,13 @@ export function HumanOperator() {
         const headingId = `human-operator-${lifecycle}-heading`;
         return (
           <section key={lifecycle} aria-labelledby={headingId} className="space-y-2">
-            <h2 id={headingId} className="text-base font-semibold">
-              {title} <span className="text-xs font-normal text-muted-foreground">({sectionCount} displayed)</span>
+            <h2 id={headingId} className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {title} <span className="text-xs font-normal text-muted-foreground tabular-nums">({sectionCount} displayed)</span>
             </h2>
             {note && sectionCount > 0 && <p className="text-sm text-muted-foreground">{note}</p>}
             {data.cards.length > 0 && (
-              <div aria-label={L(lang, { en: "Pending Interactive Cards", ko: "대기 중인 인터랙티브 카드" })} className="space-y-2">
-                <h3 className="text-sm font-medium">{L(lang, { en: "Pending Interactive Cards", ko: "대기 중인 인터랙티브 카드" })}</h3>
+              <div aria-label={L(lang, { en: "Pending Interactive Cards", ko: "대기 중인 인터랙티브 카드" })} className="space-y-2 [&>article]:rounded-md [&>article]:border-border/80 [&>article]:bg-card/60">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{L(lang, { en: "Pending Interactive Cards", ko: "대기 중인 인터랙티브 카드" })}</h3>
                 {data.cards.map(({ decision }) => <OperatorDecisionCard key={decision.id} decision={decision} onResolve={resolveDecision} />)}
               </div>
             )}

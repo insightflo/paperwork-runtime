@@ -3,10 +3,10 @@ import { SidebarNavItem } from "./SidebarNavItem";
 
 export function InstanceSidebar() {
   return (
-    <aside className="w-60 h-full min-h-0 border-r border-border bg-background flex flex-col">
-      <div className="flex items-center gap-2 px-3 h-12 shrink-0">
-        <Settings className="h-4 w-4 text-muted-foreground shrink-0 ml-1" />
-        <span className="flex-1 text-sm font-bold text-foreground truncate">
+    <aside className="w-60 h-full min-h-0 border-r border-sidebar-border bg-sidebar flex flex-col">
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b border-sidebar-border px-3">
+        <Settings className="ml-1 h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="flex-1 truncate text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/80">
           Instance Settings
         </span>
       </div>

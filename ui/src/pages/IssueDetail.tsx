@@ -666,7 +666,7 @@ export function IssueDetail() {
   );
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-2xl space-y-6 tabular-nums">
       {/* Parent chain breadcrumb */}
       {ancestors.length > 0 && (
         <nav className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
@@ -705,7 +705,7 @@ export function IssueDetail() {
             priority={issue.priority}
             onChange={(priority) => updateIssue.mutate({ priority })}
           />
-          <span className="text-sm font-mono text-muted-foreground shrink-0">{issue.identifier ?? issue.id.slice(0, 8)}</span>
+          <span className="text-sm font-mono text-muted-foreground shrink-0 tabular-nums">{issue.identifier ?? issue.id.slice(0, 8)}</span>
 
           {hasLiveRuns && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 text-[10px] font-medium text-cyan-600 dark:text-cyan-400 shrink-0">
@@ -748,7 +748,7 @@ export function IssueDetail() {
                 </span>
               ))}
               {(issue.labels ?? []).length > 4 && (
-                <span className="text-[10px] text-muted-foreground">+{(issue.labels ?? []).length - 4}</span>
+                <span className="text-[10px] text-muted-foreground tabular-nums">+{(issue.labels ?? []).length - 4}</span>
               )}
             </div>
           )}
@@ -855,7 +855,7 @@ export function IssueDetail() {
       {hasAttachments ? (
         <div
         className={cn(
-          "space-y-3 rounded-lg transition-colors",
+          "space-y-3 rounded-md border border-border/80 bg-card/60 p-3 transition-colors",
         )}
         onDragEnter={(evt) => {
           evt.preventDefault();
@@ -872,7 +872,7 @@ export function IssueDetail() {
         onDrop={(evt) => void handleAttachmentDrop(evt)}
       >
         <div className="flex items-center justify-between gap-2">
-          <h3 className="text-sm font-medium text-muted-foreground">Attachments</h3>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Attachments</h3>
           {attachmentUploadButton}
         </div>
 
@@ -882,7 +882,7 @@ export function IssueDetail() {
 
         <div className="space-y-2">
           {attachmentList.map((attachment) => (
-            <div key={attachment.id} className="border border-border rounded-md p-2">
+            <div key={attachment.id} className="rounded-md border border-border/80 bg-card/60 p-2">
               <div className="flex items-center justify-between gap-2">
                 <a
                   href={attachment.contentPath}
@@ -903,7 +903,7 @@ export function IssueDetail() {
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground tabular-nums">
                 {attachment.contentType} · {(attachment.byteSize / 1024).toFixed(1)} KB
               </p>
               {isImageAttachment(attachment) && (
@@ -976,7 +976,7 @@ export function IssueDetail() {
           {childIssues.length === 0 ? (
             <p className="text-xs text-muted-foreground">No sub-items.</p>
           ) : (
-            <div className="border border-border rounded-lg divide-y divide-border">
+            <div className="overflow-hidden rounded-md border border-border/80 bg-card/60 divide-y divide-border/60">
               {childIssues.map((child) => (
                 <Link
                   key={child.id}
@@ -987,7 +987,7 @@ export function IssueDetail() {
                   <div className="flex items-center gap-2 min-w-0">
                     <StatusIcon status={child.status} />
                     <PriorityIcon priority={child.priority} />
-                    <span className="font-mono text-muted-foreground shrink-0">
+                    <span className="font-mono text-muted-foreground shrink-0 tabular-nums">
                       {child.identifier ?? child.id.slice(0, 8)}
                     </span>
                     <span className="truncate">{child.title}</span>
@@ -996,7 +996,7 @@ export function IssueDetail() {
                     const name = agentMap.get(child.assigneeAgentId)?.name;
                     return name
                       ? <Identity name={name} size="sm" />
-                      : <span className="text-muted-foreground font-mono">{child.assigneeAgentId.slice(0, 8)}</span>;
+                      : <span className="text-muted-foreground font-mono tabular-nums">{child.assigneeAgentId.slice(0, 8)}</span>;
                   })()}
                 </Link>
               ))}
@@ -1006,8 +1006,8 @@ export function IssueDetail() {
 
         <TabsContent value="activity">
           {linkedRuns && linkedRuns.length > 0 && (
-            <div className="mb-3 px-3 py-2 rounded-lg border border-border">
-              <div className="text-sm font-medium text-muted-foreground mb-1">Cost Summary</div>
+            <div className="mb-3 rounded-md border border-border/80 bg-card/60 px-3 py-2">
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cost Summary</div>
               {!issueCostSummary.hasCost && !issueCostSummary.hasTokens ? (
                 <div className="text-xs text-muted-foreground">No cost data yet.</div>
               ) : (
@@ -1037,7 +1037,7 @@ export function IssueDetail() {
                 <div key={evt.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   <ActorIdentity evt={evt} agentMap={agentMap} />
                   <span>{formatAction(evt.action, evt.details)}</span>
-                  <span className="ml-auto shrink-0">{relativeTime(evt.createdAt)}</span>
+                  <span className="ml-auto shrink-0 tabular-nums">{relativeTime(evt.createdAt)}</span>
                 </div>
               ))}
             </div>
@@ -1050,15 +1050,15 @@ export function IssueDetail() {
           id="work-products"
           open={secondaryOpen.workProducts}
           onOpenChange={(open) => setSecondaryOpen((prev) => ({ ...prev, workProducts: open }))}
-          className="rounded-lg border border-border"
+          className="rounded-md border border-border/80 bg-card/60"
         >
           <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left">
-            <span className="text-sm font-medium text-muted-foreground">Work Products ({workProducts.length})</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground tabular-nums">Work Products ({workProducts.length})</span>
             <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", secondaryOpen.workProducts && "rotate-180")} />
           </CollapsibleTrigger>
-          <CollapsibleContent><div className="border-t border-border divide-y divide-border">
+          <CollapsibleContent><div className="border-t border-border/80 divide-y divide-border/60">
             {workProducts.map((product) => <div key={product.id} id={`work-product-${product.id}`} className="flex items-start justify-between gap-3 px-3 py-2 text-xs">
-              <div><p className="font-medium">{product.title}</p><p className="text-muted-foreground">{product.summary ?? `${product.provider} · ${product.type}`}</p><p className="mt-1 font-mono text-[11px] text-muted-foreground">{product.id}</p></div>
+              <div><p className="font-medium">{product.title}</p><p className="text-muted-foreground">{product.summary ?? `${product.provider} · ${product.type}`}</p><p className="mt-1 font-mono text-[11px] text-muted-foreground tabular-nums">{product.id}</p></div>
               <Button size="sm" variant="outline" onClick={() => void openWorkProductInBrowser(product.id)}>원본 열기</Button>
             </div>)}
           </div></CollapsibleContent>
@@ -1069,10 +1069,10 @@ export function IssueDetail() {
         <Collapsible
           open={secondaryOpen.approvals}
           onOpenChange={(open) => setSecondaryOpen((prev) => ({ ...prev, approvals: open }))}
-          className="rounded-lg border border-border"
+          className="rounded-md border border-border/80 bg-card/60"
         >
           <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left">
-            <span className="text-sm font-medium text-muted-foreground">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground tabular-nums">
               Linked Approvals ({linkedApprovals.length})
             </span>
             <ChevronDown
@@ -1080,7 +1080,7 @@ export function IssueDetail() {
             />
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="border-t border-border divide-y divide-border">
+            <div className="border-t border-border/80 divide-y divide-border/60">
               {linkedApprovals.map((approval) => (
                 <Link
                   key={approval.id}
@@ -1092,7 +1092,7 @@ export function IssueDetail() {
                     <span className="font-medium">
                       {approval.type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
                     </span>
-                    <span className="font-mono text-muted-foreground">{approval.id.slice(0, 8)}</span>
+                    <span className="font-mono text-muted-foreground tabular-nums">{approval.id.slice(0, 8)}</span>
                   </div>
                   <span className="text-muted-foreground">{relativeTime(approval.createdAt)}</span>
                 </Link>
@@ -1107,7 +1107,7 @@ export function IssueDetail() {
       <Sheet open={mobilePropsOpen} onOpenChange={setMobilePropsOpen}>
         <SheetContent side="bottom" className="max-h-[85dvh] pb-[env(safe-area-inset-bottom)]">
           <SheetHeader>
-            <SheetTitle className="text-sm">Properties</SheetTitle>
+            <SheetTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Properties</SheetTitle>
           </SheetHeader>
           <ScrollArea className="flex-1 overflow-y-auto">
             <div className="px-4 pb-4">

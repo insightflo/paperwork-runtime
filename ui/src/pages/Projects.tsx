@@ -41,8 +41,16 @@ export function Projects() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-end">
+    <div className="space-y-4 tabular-nums">
+      <div className="flex items-center justify-between gap-3 rounded-md border border-border/80 bg-card/60 px-3 py-2">
+        <div className="flex items-baseline gap-2">
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Work Contexts
+          </h2>
+          <span className="text-xs font-medium text-muted-foreground tabular-nums">
+            {projects.length}
+          </span>
+        </div>
         <Button size="sm" variant="outline" onClick={openNewProject}>
           <Plus className="h-4 w-4 mr-1" />
           Add Work Context
@@ -61,17 +69,18 @@ export function Projects() {
       )}
 
       {projects.length > 0 && (
-        <div className="border border-border">
+        <div className="overflow-hidden rounded-md border border-border/80 bg-card/60">
           {projects.map((project) => (
             <EntityRow
               key={project.id}
               title={project.name}
               subtitle={project.description ?? undefined}
               to={projectUrl(project)}
+              className="border-border/60"
               trailing={
                 <div className="flex items-center gap-3">
                   {project.targetDate && (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-xs text-muted-foreground tabular-nums">
                       {formatDate(project.targetDate)}
                     </span>
                   )}

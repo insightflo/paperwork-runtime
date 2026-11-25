@@ -546,7 +546,7 @@ export function Inbox() {
   const canMarkAllRead = unreadIssueIds.length > 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 tabular-nums">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={tab} onValueChange={(value) => navigate(`/inbox/${value}`)}>
@@ -561,7 +561,7 @@ export function Inbox() {
               ]}
             />
           </Tabs>
-
+          {unreadIssueIds.length > 0 && <span className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-card/60 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Unread issues <span className="font-mono text-foreground tabular-nums">{unreadIssueIds.length}</span></span>}
           {canMarkAllRead && (
             <Button
               type="button"
@@ -638,7 +638,8 @@ export function Inbox() {
         <>
           {showSeparatorBefore("work_items") && <Separator />}
           <div>
-            <div className="overflow-hidden rounded-xl border border-border bg-card">
+            <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Work Items</h3>
+            <div className="overflow-hidden rounded-md border border-border/80 bg-card/60 [&>a]:border-border/60 [&>div]:border-border/60">
               {workItemsToRender.map((item) => {
                 if (item.kind === "approval") {
                   return (
@@ -684,7 +685,7 @@ export function Inbox() {
                         <span className="hidden shrink-0 sm:inline-flex">
                           <StatusIcon status={issue.status} />
                         </span>
-                        <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                        <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
                           {issue.identifier ?? issue.id.slice(0, 8)}
                         </span>
                         {liveIssueIds.has(issue.id) && (
@@ -737,12 +738,12 @@ export function Inbox() {
         <>
           {showSeparatorBefore("join_requests") && <Separator />}
           <div>
-            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Join Requests
             </h3>
             <div className="grid gap-3">
               {joinRequests.map((joinRequest) => (
-                <div key={joinRequest.id} id={`join-request-${joinRequest.id}`} className="rounded-xl border border-border bg-card p-4">
+                <div key={joinRequest.id} id={`join-request-${joinRequest.id}`} className="rounded-md border border-border/80 bg-card/60 p-4">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="space-y-1">
                       <p className="text-sm font-medium">
@@ -796,15 +797,14 @@ export function Inbox() {
         </>
       )}
 
-
       {showAlertsSection && (
         <>
           {showSeparatorBefore("alerts") && <Separator />}
           <div>
-            <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Alerts
             </h3>
-            <div className="divide-y divide-border border border-border">
+            <div className="divide-y divide-border/60 overflow-hidden rounded-md border border-border/80 bg-card/60">
               {showAggregateAgentError && (
                 <div className="group/alert relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50">
                   <Link
@@ -813,7 +813,7 @@ export function Inbox() {
                   >
                     <AlertTriangle className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
                     <span className="text-sm">
-                      <span className="font-medium">{dashboard!.agents.error}</span>{" "}
+                      <span className="font-medium tabular-nums">{dashboard!.agents.error}</span>{" "}
                       {dashboard!.agents.error === 1 ? "agent has" : "agents have"} errors
                     </span>
                   </Link>
@@ -836,7 +836,7 @@ export function Inbox() {
                     <AlertTriangle className="h-4 w-4 shrink-0 text-yellow-400" />
                     <span className="text-sm">
                       Budget at{" "}
-                      <span className="font-medium">{dashboard!.costs.monthUtilizationPercent}%</span>{" "}
+                      <span className="font-medium tabular-nums">{dashboard!.costs.monthUtilizationPercent}%</span>{" "}
                       utilization this month
                     </span>
                   </Link>

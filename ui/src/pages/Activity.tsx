@@ -148,8 +148,8 @@ export function Activity() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="inline-flex rounded-lg border border-border p-0.5 bg-muted/40 self-start">
+      <div className="flex flex-col gap-2 rounded-md border border-border/80 bg-card/60 p-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="inline-flex self-start rounded-md bg-muted/50 p-0.5">
           {CATEGORY_PILLS.map((pill) => (
             <button
               key={pill.id}
@@ -185,7 +185,7 @@ export function Activity() {
       )}
 
       {filtered.length > 0 && (
-        <div className="border border-border divide-y divide-border">
+        <div className="divide-y divide-border/60 overflow-hidden rounded-md border border-border/80 bg-card/60">
           {filtered.map((event) => {
             const diff = extractActivityDiff(event.details);
             const row = event.action.startsWith("operator_decision.") ? (

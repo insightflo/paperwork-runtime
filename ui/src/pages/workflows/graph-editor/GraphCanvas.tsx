@@ -26,15 +26,13 @@ import {
 } from "./graphStyles.js";
 import {
   containerColor,
-  graphEdgeColor,
-  graphEdgeDashArray,
   graphEdgeDisplayLabel,
   type GraphContextMenuState,
   type GraphEdgeActionAnchor,
 } from "./graphUiUtils.js";
 import { GraphCanvasEditTools, GraphCanvasViewTools } from "./GraphCanvasControls.js";
 import { GraphCanvasContextMenu } from "./GraphCanvasContextMenu.js";
-import { GraphCanvasStatusStrip } from "./GraphCanvasStatusStrip.js";
+import { GRAPH_CANVAS_CONNECTOR_STATES, GraphCanvasStatusStrip } from "./GraphCanvasStatusStrip.js";
 import { GraphNodeHandles } from "./GraphNodeHandles.js";
 import { GraphConnectionEffects } from "./GraphConnectionEffects.js";
 import {
@@ -95,18 +93,26 @@ export interface GraphCanvasProps {
 type GraphEdgeEmphasis = "highlighted" | "dimmed";
 type GraphEdgeFocus = { type: "node" | "edge"; id: string } | null;
 
-const edgeKinds = ["normal", "conditional", "failure", "early-stop"] as const;
 const markerEmphasisOptions = [
   ["base", {}],
   ["highlighted", { highlighted: true }],
   ["dimmed", { dimmed: true }],
 ] as const;
 
-function connectorStateForEdgeKind(kind: WorkflowGraphEdge["kind"]): ConnectorState {
-  if (kind === "conditional") return "condition_true";
-  if (kind === "failure") return "blocked";
-  if (kind === "early-stop") return "rework";
-  return "default";
+function connectorStateForEdge(edge: WorkflowGraphEdge): ConnectorState {
+  if (edge.kind === "conditional") return edge.when === "condition_false" ? "condition_false" : "condition_true";
+  return edge.kind === "failure" ? "blocked" : edge.kind === "early-stop" ? "rework" : "default";
+}
+
+function graphEdgeAccessibleDescription(edge: WorkflowGraphEdge, sourceLabel: string, targetLabel: string): string {
+  const detail = graphEdgeDisplayLabel(edge);
+  return `Workflow connector: ${sourceLabel} → ${targetLabel}${detail ? ` (${detail})` : ""}`;
+}
+
+function activateEdgeFromKeyboard(event: React.KeyboardEvent<SVGGElement>): void {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault(); event.stopPropagation();
+  event.currentTarget.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 }
 
 function graphEdgeEmphasis(edge: WorkflowGraphEdge, focus: GraphEdgeFocus): GraphEdgeEmphasis | null {
@@ -133,16 +139,14 @@ function GraphCanvasEdges({
 }: GraphCanvasEdgesProps) {
   const markerPrefix = React.useId();
   return (
-    <svg aria-hidden="true" width="100%" height="100%"
+    <svg role="group" aria-label="Workflow connectors" width="100%" height="100%"
       style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "auto" }}>
       <defs>
-        {edgeKinds.flatMap((kind) => markerEmphasisOptions.map(([emphasis, options]) => {
-          const visual = getConnectorVisualStyle(connectorStateForEdgeKind(kind), options);
+        {GRAPH_CANVAS_CONNECTOR_STATES.flatMap((state) => markerEmphasisOptions.map(([emphasis, options]) => {
+          const visual = getConnectorVisualStyle(state, options);
           return (
-            <marker key={`${kind}-${emphasis}`} id={`${markerPrefix}-${kind}-${emphasis}`} markerWidth="8" markerHeight="8"
-              refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
-              <path d="M0,0 L8,4 L0,8 Z" fill={graphEdgeColor(kind)}
-                opacity={emphasis === "base" ? 1 : visual.opacity} />
+            <marker key={`${state}-${emphasis}`} id={`${markerPrefix}-${state}-${emphasis}`} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+              <path d="M0,0 L8,4 L0,8 Z" fill={visual.stroke} opacity={emphasis === "base" ? 1 : visual.opacity} />
             </marker>
           );
         }))}
@@ -159,13 +163,14 @@ function GraphCanvasEdges({
           const midX = startX + Math.max(34, (endX - startX) / 2);
           const edgePath = `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX - 8} ${endY}`;
           const selected = selectedEdgeId === edge.id;
-          const color = graphEdgeColor(edge.kind);
           const emphasis = graphEdgeEmphasis(edge, focus);
-          const connectorState = connectorStateForEdgeKind(edge.kind);
+          const connectorState = connectorStateForEdge(edge);
           const visual = getConnectorVisualStyle(connectorState, {
             highlighted: emphasis === "highlighted",
             dimmed: emphasis === "dimmed",
           });
+          const color = visual.stroke;
+          const accessibleDescription = graphEdgeAccessibleDescription(edge, source.label, target.label);
           const widthBoost = visual.strokeWidth - CONNECTOR_STATE_STYLES[connectorState].strokeWidth;
           const lineWidth = (selected ? 4 : 3) + widthBoost;
           const glowWidth = (selected ? 10 : 8) + widthBoost * 2;
@@ -176,25 +181,20 @@ function GraphCanvasEdges({
           const emphasisKey = emphasis ?? "base";
           const transition = "opacity 150ms ease, stroke-width 150ms ease";
           return (
-            <g key={edge.id}
-              onPointerEnter={() => setHoveredEdgeId(edge.id)}
-              onPointerLeave={() => setHoveredEdgeId(null)}
-              onMouseEnter={() => setHoveredEdgeId(edge.id)}
-              onMouseLeave={() => setHoveredEdgeId(null)}
-            >
+            <g key={edge.id} role="button" tabIndex={0} focusable="true" aria-label={accessibleDescription} data-graph-edge-accessible="true"
+              onClick={(event) => handleEdgeClick(event, edge)} onDoubleClick={(event) => handleEdgeDoubleClick(event, edge)}
+              onContextMenu={(event) => handleEdgeContextMenu(event, edge)} onKeyDown={activateEdgeFromKeyboard}
+              onFocus={() => setHoveredEdgeId(edge.id)} onBlur={() => setHoveredEdgeId(null)}
+              onPointerEnter={() => setHoveredEdgeId(edge.id)} onPointerLeave={() => setHoveredEdgeId(null)}
+              onMouseEnter={() => setHoveredEdgeId(edge.id)} onMouseLeave={() => setHoveredEdgeId(null)}>
+              <title>{accessibleDescription}</title>
               <path data-graph-edge="true" data-edge-id={edge.id} data-edge-emphasis={emphasis ?? undefined} d={edgePath} fill="none"
-                stroke="transparent" strokeWidth="16" pointerEvents="stroke" style={{ cursor: "pointer" }}
-                onClick={(event) => handleEdgeClick(event, edge)}
-                onDoubleClick={(event) => handleEdgeDoubleClick(event, edge)}
-                onContextMenu={(event) => handleEdgeContextMenu(event, edge)} />
-              <path data-graph-edge-glow="true" d={edgePath} fill="none" stroke={color}
-                strokeWidth={glowWidth} strokeLinecap="round" opacity={glowOpacity}
-                strokeDasharray={graphEdgeDashArray(edge.kind)} pointerEvents="none"
-                style={{ filter: "blur(3px)", transition }} />
-              <path data-graph-edge-line="true" d={edgePath} fill="none" stroke={color}
-                strokeWidth={lineWidth} strokeLinecap="round" opacity={lineOpacity}
-                strokeDasharray={graphEdgeDashArray(edge.kind)} markerEnd={`url(#${markerPrefix}-${edge.kind}-${emphasisKey})`}
-                pointerEvents="none" style={{ transition }} />
+                stroke="transparent" strokeWidth="16" pointerEvents="stroke" style={{ cursor: "pointer" }} />
+              <path data-graph-edge-glow="true" d={edgePath} fill="none" stroke={color} strokeWidth={glowWidth} strokeLinecap="round"
+                opacity={glowOpacity} strokeDasharray={visual.strokeDasharray} pointerEvents="none" style={{ filter: "blur(3px)", transition }} />
+              <path data-graph-edge-line="true" data-edge-state={connectorState} d={edgePath} fill="none" stroke={color} strokeWidth={lineWidth}
+                strokeLinecap="round" opacity={lineOpacity} strokeDasharray={visual.strokeDasharray}
+                markerEnd={`url(#${markerPrefix}-${connectorState}-${emphasisKey})`} pointerEvents="none" style={{ transition }} />
               {graphEdgeDisplayLabel(edge) ? (
                 <text x={midX} y={(startY + endY) / 2 - 6} fill={color} fontSize="11" fontWeight="700"
                   opacity={emphasis ? visual.opacity : undefined} textAnchor="middle" pointerEvents="none"
