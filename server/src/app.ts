@@ -116,7 +116,7 @@ import { seedHtmlPreflightTool } from "./services/judgment/html-preflight-tool.j
 import type { BetterAuthSessionResult } from "./auth/better-auth.js";
 
 type UiMode = "none" | "static" | "vite-dev";
-type ApiAliasSurface = "work-items" | "work-contexts" | "execution-contexts" | "recurring-procedures";
+type ApiAliasSurface = "work-items" | "work-contexts" | "execution-contexts";
 
 function isHttpCoreExecuteRequest(req: ExpressRequest): boolean {
   if (req.method.toUpperCase() !== "POST") return false;
@@ -215,15 +215,6 @@ function transformAliasResponse(alias: ApiAliasSurface, body: unknown): unknown 
         ["projectId", "workContextId"],
         ["projectWorkspaceId", "workContextSpaceId"],
         ["sourceIssueId", "sourceWorkItemId"],
-      ]);
-    case "recurring-procedures":
-      return addAliasFields(body, [
-        ["projectId", "workContextId"],
-        ["parentIssueId", "parentWorkItemId"],
-        ["linkedIssueId", "linkedWorkItemId"],
-        ["activeIssue", "activeWorkItem"],
-        ["parentIssue", "parentWorkItem"],
-        ["linkedIssue", "linkedWorkItem"],
       ]);
   }
 }
@@ -592,10 +583,6 @@ export async function createApp(
       { alias: "execution-contexts", pattern: /^\/companies\/([^/]+)\/execution-contexts(?=\?|$)/, replacement: "/companies/$1/execution-workspaces" },
       { alias: "execution-contexts", pattern: /^\/companies\/([^/]+)\/execution-contexts\//, replacement: "/companies/$1/execution-workspaces/" },
       { alias: "execution-contexts", pattern: /^\/execution-contexts\//, replacement: "/execution-workspaces/" },
-      { alias: "recurring-procedures", pattern: /^\/companies\/([^/]+)\/recurring-procedures(?=\?|$)/, replacement: "/companies/$1/routines" },
-      { alias: "recurring-procedures", pattern: /^\/companies\/([^/]+)\/recurring-procedures\//, replacement: "/companies/$1/routines/" },
-      { alias: "recurring-procedures", pattern: /^\/recurring-procedures\//, replacement: "/routines/" },
-      { alias: "recurring-procedures", pattern: /^\/recurring-procedure-triggers(?=\/|\?|$)/, replacement: "/routine-triggers" },
     ];
 
     for (const rule of rewriteRules) {

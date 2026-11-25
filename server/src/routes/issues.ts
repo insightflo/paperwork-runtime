@@ -33,7 +33,6 @@ import {
   documentService,
   logActivity,
   projectService,
-  routineService,
   workflowService,
   workProductService,
 } from "../services/index.js";
@@ -108,7 +107,6 @@ export function issueRoutes(db: Db, storage: StorageService) {
   const executionWorkspacesSvc = executionWorkspaceService(db);
   const workProductsSvc = workProductService(db);
   const documentsSvc = documentService(db);
-  const routinesSvc = routineService(db);
   const workflowsSvc = workflowService;
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -1376,7 +1374,6 @@ export function issueRoutes(db: Db, storage: StorageService) {
           : {}),
       });
     }
-    await routinesSvc.syncRunStatusForIssue(issue.id);
     await workflowsSvc.syncRunStatusForIssue(db, issue.id, "issues_route");
 
     if (actor.runId) {
@@ -2234,7 +2231,6 @@ export function issueRoutes(db: Db, storage: StorageService) {
         linkedRunIds: [issue.checkoutRunId, issue.executionRunId, actor.runId],
       });
     }
-    await routinesSvc.syncRunStatusForIssue(id);
     await workflowsSvc.syncRunStatusForIssue(db, id, "issues_route");
     if (actor.runId) {
       await heartbeat.reportRunActivity(actor.runId).catch((err) =>
