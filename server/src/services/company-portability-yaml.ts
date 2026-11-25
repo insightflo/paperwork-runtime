@@ -1,5 +1,3 @@
-import { buildMarkdownViaRust, buildYamlFileViaRust, stripEmptyValuesViaRust } from "./portability-yaml-client.js";
-
 export function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -48,12 +46,6 @@ function stripEmptyValuesInner(value: unknown, opts?: { preserveEmptyStrings?: b
 }
 
 export function stripEmptyValues(value: unknown, opts?: { preserveEmptyStrings?: boolean }): unknown {
-  // [Rust opt-in] PAPERCLIP_PORTABILITY_YAML_BIN 설정 시 strip-empty-values 서브커맨드를 우선
-  //   실행한다. null(게이트 폐쇄/가드 불량/스폰 실패/non-zero 종료/shape 불량)이면 아래 TS 본문이
-  //   parity 의 최종 출처로 실행된다. Rust 응답의 root null 은 TS 의 undefined(root drop)와
-  //   동일 — 클라이언트가 매핑한다. 재귀는 inner 가 담당해 노드마다 스폰하지 않는다.
-  const viaRust = stripEmptyValuesViaRust(value, opts);
-  if (viaRust !== null) return viaRust.value;
   return stripEmptyValuesInner(value, opts);
 }
 
@@ -180,11 +172,6 @@ function renderFrontmatter(frontmatter: Record<string, unknown>) {
 }
 
 export function buildMarkdown(frontmatter: Record<string, unknown>, body: string) {
-  // [Rust opt-in] PAPERCLIP_PORTABILITY_YAML_BIN 설정 시 build-markdown 서브커맨드를 우선
-  //   실행한다. null(게이트 폐쇄/가드 불량/스폰 실패/non-zero 종료/shape 불량)이면 아래 TS 본문이
-  //   parity 의 최종 출처로 실행된다.
-  const viaRust = buildMarkdownViaRust(frontmatter, body);
-  if (viaRust !== null) return viaRust;
   const cleanBody = body.replace(/\r\n/g, "\n").trim();
   if (!cleanBody) {
     return `${renderFrontmatter(frontmatter)}\n`;
@@ -193,11 +180,6 @@ export function buildMarkdown(frontmatter: Record<string, unknown>, body: string
 }
 
 export function buildYamlFile(value: Record<string, unknown>, opts?: { preserveEmptyStrings?: boolean }) {
-  // [Rust opt-in] PAPERCLIP_PORTABILITY_YAML_BIN 설정 시 build-yaml-file 서브커맨드를 우선
-  //   실행한다. null(게이트 폐쇄/가드 불량/스폰 실패/non-zero 종료/shape 불량)이면 아래 TS 본문이
-  //   parity 의 최종 출처로 실행된다. inner 직행으로 실패한 스폰을 strip 단계에서 반복하지 않는다.
-  const viaRust = buildYamlFileViaRust(value, opts);
-  if (viaRust !== null) return viaRust;
   const cleaned = stripEmptyValuesInner(value, opts);
   if (!isPlainRecord(cleaned)) return "{}\n";
   return renderYamlBlock(cleaned, 0).join("\n") + "\n";
