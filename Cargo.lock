@@ -887,6 +887,7 @@ dependencies = [
  "paperclip-redactor-core",
  "paperwork-engine-budget",
  "paperwork-engine-heartbeat",
+ "paperwork-engine-wiki",
  "serde",
  "serde_json",
  "socket2",
