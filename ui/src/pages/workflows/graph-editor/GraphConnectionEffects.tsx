@@ -3,13 +3,22 @@ import type { GraphCanvasProps } from "./GraphCanvas.js";
 import type { PendingWorkflowConnection } from "../workflow-control-nodes.js";
 import { graphEdgeColor } from "./graphUiUtils.js";
 import { useConnectionGeometry, type Point } from "./useConnectionGeometry.js";
+import { buildTangentBezierPath } from "./connector-styles.js";
 import "./graphConnectionEffects.css";
 
 type Props = Pick<GraphCanvasProps, "graph" | "pendingConnection" | "canvasScale" | "graphCanvasRef">;
 
+function legacyCurveFormat(path: string) {
+  const tokens = path.split(" ");
+  if (tokens.length !== 6 || tokens[0] !== "M" || tokens[2] !== "C") return path;
+  const pairs = [tokens[1], tokens[3], tokens[4], tokens[5]].map((token) => token.split(","));
+  if (pairs.some((pair) => pair.length !== 2)) return path;
+  const [[x1, y1], [c1x, c1y], [c2x, c2y], [x2, y2]] = pairs;
+  return `M ${x1} ${y1} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${x2} ${y2}`;
+}
+
 function curve(start: Point, end: Point) {
-  const bend = Math.max(34, Math.abs(end.x - start.x) / 2);
-  return `M ${start.x} ${start.y} C ${start.x + bend} ${start.y}, ${end.x - bend} ${end.y}, ${end.x} ${end.y}`;
+  return legacyCurveFormat(buildTangentBezierPath(start.x, start.y, end.x, end.y));
 }
 
 /** Decorations only: connection ownership and all input handlers remain in the editor. */

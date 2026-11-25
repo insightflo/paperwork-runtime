@@ -243,7 +243,7 @@ function fallbackPageContext({
     companyName: company?.name ?? null,
     companyPrefix: route.companyPrefix ?? null,
     title: route.parts[0] ? route.parts.join(" / ") : "Dashboard",
-    summary: summary ?? `Current Paperclip route: ${path}`,
+    summary: summary ?? `Current Paperwork route: ${path}`,
     facts,
     loadedAt: new Date().toISOString(),
   };
@@ -658,7 +658,7 @@ export function OperationsAgentSetupNotice({
       : error
         ? "Retry the check before creating a new agent."
         : checking
-          ? "Paperclip is checking whether the local Hermes adapter can run."
+          ? "Paperwork is checking whether the local Hermes adapter can run."
           : blockingEnvironmentCheck
             ? [blockingEnvironmentCheck.message, blockingEnvironmentCheck.hint].filter(Boolean).join(" ")
             : warningEnvironmentCheck

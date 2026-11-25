@@ -16,6 +16,14 @@ import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
 import { queryKeys } from "../lib/queryKeys";
 import { cn, formatDateTime } from "../lib/utils";
 import { openWorkProductInBrowser } from "../lib/workProductOpen";
+import {
+  buildLoopbackLanePath,
+  buildTangentBezierPath,
+  computePortOffsets,
+  getConnectorVisualStyle,
+  type ConnectorState,
+  type ConnectorVisualStyle,
+} from "../pages/workflows/graph-editor/connector-styles";
 import { Button } from "@/components/ui/button";
 import { GitBranch, User, Wrench } from "lucide-react";
 
@@ -543,7 +551,9 @@ const GRAPH_NODE_MIN_WIDTH = 180;
 const GRAPH_NODE_MAX_WIDTH = 240;
 const GRAPH_COLUMN_MIN_GAP = 32;
 // back-edge(rework loop) arc 가 지나갈 상단 여백.
-const GRAPH_BACK_EDGE_HEADROOM = 44;
+const GRAPH_BACK_EDGE_HEADROOM = 56;
+const GRAPH_BACK_EDGE_LANE_STRIDE = 36;
+const GRAPH_PORT_SPAN = 36;
 
 // [목적] step.dependencies 기반 topological level 계산(0 = entry). cycle/미존재 dep 방어.
 // [출력] stepId -> level. dep 없으면 0, 있으면 max(dep level)+1.
@@ -594,26 +604,43 @@ function backEdgeDependencies(step: MissionWorkflowStep): MissionWorkflowConditi
   return (step.conditionalDependencies ?? []).filter((edge) => edge.isBackEdge === true);
 }
 
-// [목적] 조건부 forward edge 의 시각 스타일. 워크플로 편집기 그래프와 동일한 시각 언어 사용.
-//   conditional(true/false/always) = sky 점선, failure = red 점선, rework loop = amber 점선.
-//   when:"success"/undefined 는 legacy dependencies 와 동일 의미이므로 null(기본 실선).
-type DagEdgeStyle = { stroke: string; dash: string | undefined; label: string; markerId: string };
+// [목적] 조건부 forward edge 를 공유 connector vocabulary 상태로 변환.
+//   when:"success"/undefined/unknown 은 legacy dependencies 와 동일 의미이므로 null(소스 step 상태 상속).
+type DagForwardEdge = { sourceStepId: string; targetStepId: string; state: ConnectorState; label: string | null };
 
-function conditionalEdgeStyle(when: string | undefined): DagEdgeStyle | null {
-  switch (when) {
-    case "condition_true":
-      return { stroke: "#38bdf8", dash: "6 4", label: "true", markerId: "wf-dag-arrow-conditional" };
-    case "condition_false":
-      return { stroke: "#38bdf8", dash: "6 4", label: "false", markerId: "wf-dag-arrow-conditional" };
-    case "always":
-      return { stroke: "#38bdf8", dash: "6 4", label: "always", markerId: "wf-dag-arrow-conditional" };
-    case "failure":
-      return { stroke: "#f87171", dash: "3 4", label: "failure", markerId: "wf-dag-arrow-failure" };
-    case "qa_request_changes":
-      return { stroke: "#fbbf24", dash: "8 3 2 3", label: "request changes", markerId: "wf-dag-arrow-loop" };
-    default:
-      return null;
-  }
+const CONDITIONAL_CONNECTOR_STATE: Record<string, ConnectorState> = {
+  condition_true: "condition_true", condition_false: "condition_false",
+  failure: "blocked", qa_request_changes: "rework",
+};
+const CONDITIONAL_EDGE_LABEL: Record<string, string> = {
+  condition_true: "true", condition_false: "false", always: "always",
+  failure: "failure", qa_request_changes: "request changes",
+};
+
+function stepConnectorState(step: MissionWorkflowStep): ConnectorState {
+  if (step.status === "running") return "running";
+  if (step.status === "completed") return "completed";
+  if (step.status === "failed") return "blocked";
+  return "default";
+}
+
+function ConnectorLabel({ x, y, label, stroke }: { x: number; y: number; label: string; stroke: string }) {
+  const width = Math.max(20, label.length * 6 + 8);
+  return (
+    <>
+      <rect data-edge-label-backdrop="true" x={x - width / 2} y={y - 10} width={width} height={13} rx={3}
+        fill="var(--background, #ffffff)" opacity={0.92} />
+      <text x={x} y={y} fill={stroke} fontSize="10" fontWeight="700" textAnchor="middle">{label}</text>
+    </>
+  );
+}
+
+function ConnectorPath({ path, visual }: { path: string; visual: ConnectorVisualStyle }) {
+  return (
+    <path d={path} fill="none" stroke={visual.stroke} strokeWidth={visual.strokeWidth}
+      strokeDasharray={visual.strokeDasharray} strokeLinecap="round" opacity={visual.opacity}
+      className={visual.animationClassName} markerEnd="url(#wf-dag-arrow-context)" />
+  );
 }
 
 // [목적] text 모드/step 상세에서 조건부 의존성을 사람이 읽는 문구로 변환.
@@ -734,72 +761,94 @@ function WorkflowRunGraph({
     ? 0
     : Math.max(GRAPH_COLUMN_MIN_GAP, (graphWidth - nodeWidth * columnCount) / (columnCount - 1));
   const columnStride = nodeWidth + columnGap;
-  // back-edge(rework loop) arc 를 담기 위한 상단 여백. back-edge 가 있으면 노드 전체를 아래로 민다.
+  // back-edge(rework loop) arc 를 담기 위한 상단 여백. lane 수만큼 노드 전체를 아래로 민다.
   const stepBackEdges = run.steps.flatMap((step) =>
     backEdgeDependencies(step).map((edge) => ({ edge, targetStepId: step.stepId })),
   );
-  const backEdgeHeadroom = stepBackEdges.length > 0 ? GRAPH_BACK_EDGE_HEADROOM : 0;
+  const validBackEdges = stepBackEdges.filter(({ edge, targetStepId }) =>
+    positionByKey.has(`${run.id}:${edge.stepId}`) && positionByKey.has(`${run.id}:${targetStepId}`));
+  const backEdgeHeadroom = validBackEdges.length > 0
+    ? GRAPH_BACK_EDGE_HEADROOM + (validBackEdges.length - 1) * GRAPH_BACK_EDGE_LANE_STRIDE : 0;
   const graphHeight = backEdgeHeadroom + numRows * GRAPH_ROW_HEIGHT;
-
+  const stepById = new Map(run.steps.map((step) => [step.stepId, step]));
   const plainEdgeKeys = new Set<string>();
-  const edges: Array<{
-    x1: number;
-    y1: number;
-    x2: number;
-    y2: number;
-    style: DagEdgeStyle | null;
-  }> = [];
+  const forwardEdgeInputs: DagForwardEdge[] = [];
+
   run.steps.forEach((step) => {
-    const target = positionByKey.get(`${run.id}:${step.stepId}`);
-    if (!target) return;
-    const pushForwardEdge = (dependencyId: string, style: DagEdgeStyle | null) => {
-      const source = positionByKey.get(`${run.id}:${dependencyId}`);
-      if (!source) return;
-      edges.push({
-        x1: source.col * columnStride + nodeWidth,
-        y1: backEdgeHeadroom + source.row * GRAPH_ROW_HEIGHT + GRAPH_ROW_HEIGHT / 2,
-        x2: target.col * columnStride,
-        y2: backEdgeHeadroom + target.row * GRAPH_ROW_HEIGHT + GRAPH_ROW_HEIGHT / 2,
-        style,
+    const pushForwardEdge = (dependencyId: string, state: ConnectorState | null, label: string | null) => {
+      const sourceStep = stepById.get(dependencyId);
+      if (!sourceStep || !positionByKey.has(`${run.id}:${dependencyId}`)) return;
+      forwardEdgeInputs.push({
+        sourceStepId: dependencyId,
+        targetStepId: step.stepId,
+        state: state ?? stepConnectorState(sourceStep),
+        label,
       });
     };
     step.dependencies.forEach((dependencyId) => {
       plainEdgeKeys.add(`${dependencyId}->${step.stepId}`);
-      pushForwardEdge(dependencyId, null);
+      pushForwardEdge(dependencyId, null, null);
     });
     forwardConditionalDependencies(step).forEach((edge) => {
-      const style = conditionalEdgeStyle(edge.when);
-      if (!style) {
+      const state = edge.when ? CONDITIONAL_CONNECTOR_STATE[edge.when] ?? null : null;
+      if (!state) {
         // when:"success"/undefined 는 legacy dependencies 와 동일 의미 — 같은 src->tgt 평범 edge 가 이미 있으면 생략(중복 방지)
         if (plainEdgeKeys.has(`${edge.stepId}->${step.stepId}`)) return;
         plainEdgeKeys.add(`${edge.stepId}->${step.stepId}`);
-        pushForwardEdge(edge.stepId, null);
-        return;
       }
-      pushForwardEdge(edge.stepId, style);
+      pushForwardEdge(edge.stepId, state, edge.when ? CONDITIONAL_EDGE_LABEL[edge.when] ?? null : null);
     });
   });
 
-  // back-edge 는 상단 여백을 지나는 arc 로 그린다(레이아웃은 forward-only 유지).
-  const backEdgeArcs = stepBackEdges
-    .map(({ edge, targetStepId }) => {
-      const sourcePos = positionByKey.get(`${run.id}:${edge.stepId}`);
-      const targetPos = positionByKey.get(`${run.id}:${targetStepId}`);
-      if (!sourcePos || !targetPos) return null;
-      const sx = sourcePos.col * columnStride + nodeWidth / 2;
-      const sy = backEdgeHeadroom + sourcePos.row * GRAPH_ROW_HEIGHT;
-      const tx = targetPos.col * columnStride + nodeWidth / 2;
-      const ty = backEdgeHeadroom + targetPos.row * GRAPH_ROW_HEIGHT;
-      const arcControlY = Math.max(8, Math.round(backEdgeHeadroom * 0.45));
-      return {
-        key: `${run.id}:back:${edge.stepId}->${targetStepId}`,
-        path: `M ${sx} ${sy} C ${sx} ${arcControlY}, ${tx} ${arcControlY}, ${tx} ${ty}`,
-        labelX: (sx + tx) / 2,
-        labelY: arcControlY + 3,
-        label: `rework ×${edge.maxIterations ?? "?"}`,
-      };
-    })
-    .filter((arc): arc is NonNullable<typeof arc> => arc !== null);
+  const portIndexes = (keyForEdge: (edge: DagForwardEdge) => string) => {
+    const groups = new Map<string, number[]>();
+    forwardEdgeInputs.forEach((edge, index) => {
+      const key = keyForEdge(edge);
+      groups.set(key, [...(groups.get(key) ?? []), index]);
+    });
+    return new Map<number, number>([...groups.values()].flatMap((indexes) =>
+      computePortOffsets(indexes.length, GRAPH_PORT_SPAN).map((offset, portIndex) =>
+        [indexes[portIndex], offset] as const)));
+  };
+  const outgoingOffsets = portIndexes((edge) => edge.sourceStepId);
+  const incomingOffsets = portIndexes((edge) => edge.targetStepId);
+
+  const edges = forwardEdgeInputs.flatMap((edge, index) => {
+    const source = positionByKey.get(`${run.id}:${edge.sourceStepId}`);
+    const target = positionByKey.get(`${run.id}:${edge.targetStepId}`);
+    if (!source || !target) return [];
+    const x1 = source.col * columnStride + nodeWidth;
+    const x2 = target.col * columnStride;
+    const y1 = backEdgeHeadroom + source.row * GRAPH_ROW_HEIGHT + GRAPH_ROW_HEIGHT / 2 + (outgoingOffsets.get(index) ?? 0);
+    const y2 = backEdgeHeadroom + target.row * GRAPH_ROW_HEIGHT + GRAPH_ROW_HEIGHT / 2 + (incomingOffsets.get(index) ?? 0);
+    return [{
+      key: `${run.id}:forward:${edge.sourceStepId}->${edge.targetStepId}:${index}`,
+      path: buildTangentBezierPath(x1, y1, x2, y2),
+      labelX: (x1 + x2) / 2,
+      labelY: (y1 + y2) / 2 - 8,
+      label: edge.label,
+      state: edge.state,
+      sourceStepId: edge.sourceStepId,
+      targetStepId: edge.targetStepId,
+      visual: getConnectorVisualStyle(edge.state),
+    }];
+  });
+
+  // back-edge 는 상단 여백을 지나는 staggered overhead lane 으로 그린다(레이아웃은 forward-only 유지).
+  const backEdgeArcs = validBackEdges.map(({ edge, targetStepId }, laneIndex) => {
+    const sourcePos = positionByKey.get(`${run.id}:${edge.stepId}`)!;
+    const targetPos = positionByKey.get(`${run.id}:${targetStepId}`)!;
+    const sx = sourcePos.col * columnStride + nodeWidth / 2;
+    const sy = backEdgeHeadroom + sourcePos.row * GRAPH_ROW_HEIGHT;
+    const tx = targetPos.col * columnStride + nodeWidth / 2;
+    const ty = backEdgeHeadroom + targetPos.row * GRAPH_ROW_HEIGHT;
+    return {
+      key: `${run.id}:back:${edge.stepId}->${targetStepId}`,
+      ...buildLoopbackLanePath(sx, sy, tx, ty, laneIndex),
+      label: `rework ×${edge.maxIterations ?? "?"}`,
+      visual: getConnectorVisualStyle("rework"),
+    };
+  });
 
   const selectedStep = selectedStepId ? run.steps.find((step) => step.stepId === selectedStepId) ?? null : null;
 
@@ -886,73 +935,23 @@ function WorkflowRunGraph({
               aria-hidden="true"
             >
               <defs>
-                <marker id="wf-dag-arrow-default" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                  <path d="M0,0 L8,4 L0,8 Z" fill="currentColor" />
-                </marker>
-                <marker id="wf-dag-arrow-conditional" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                  <path d="M0,0 L8,4 L0,8 Z" fill="#38bdf8" />
-                </marker>
-                <marker id="wf-dag-arrow-failure" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                  <path d="M0,0 L8,4 L0,8 Z" fill="#f87171" />
-                </marker>
-                <marker id="wf-dag-arrow-loop" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-                  <path d="M0,0 L8,4 L0,8 Z" fill="#fbbf24" />
+                <marker id="wf-dag-arrow-context" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+                  <path d="M0,0 L8,4 L0,8 Z" fill="context-stroke" />
                 </marker>
               </defs>
-              {edges.map((edge, index) => (
-                <g key={`edge-${index}`}>
-                  <line
-                    x1={edge.x1}
-                    y1={edge.y1}
-                    x2={edge.x2}
-                    y2={edge.y2}
-                    stroke={edge.style ? edge.style.stroke : "currentColor"}
-                    strokeWidth={1.5}
-                    strokeDasharray={edge.style?.dash}
-                    markerEnd={`url(#wf-dag-arrow-${
-                      edge.style ? edge.style.markerId.replace("wf-dag-arrow-", "") : "default"
-                    })`}
-                  />
-                  {edge.style?.label ? (
-                    <text
-                      x={(edge.x1 + edge.x2) / 2}
-                      y={(edge.y1 + edge.y2) / 2 - 5}
-                      fill={edge.style.stroke}
-                      fontSize="10"
-                      fontWeight="700"
-                      textAnchor="middle"
-                      stroke="var(--background, #ffffff)"
-                      strokeWidth={3}
-                      paintOrder="stroke"
-                    >
-                      {edge.style.label}
-                    </text>
+              {edges.map((edge) => (
+                <g key={edge.key} data-connector-state={edge.state}
+                  data-source-step-id={edge.sourceStepId} data-target-step-id={edge.targetStepId}>
+                  <ConnectorPath path={edge.path} visual={edge.visual} />
+                  {edge.label ? (
+                    <ConnectorLabel x={edge.labelX} y={edge.labelY} label={edge.label} stroke={edge.visual.stroke} />
                   ) : null}
                 </g>
               ))}
               {backEdgeArcs.map((arc) => (
-                <g key={arc.key}>
-                  <path
-                    d={arc.path}
-                    fill="none"
-                    stroke="#fbbf24"
-                    strokeWidth={1.5}
-                    strokeDasharray="8 3 2 3"
-                    markerEnd="url(#wf-dag-arrow-loop)"
-                  />
-                  <text
-                    x={arc.labelX}
-                    y={arc.labelY}
-                    fill="#fbbf24"
-                    fontSize="10"
-                    fontWeight="700"
-                    textAnchor="middle"
-                    stroke="var(--background, #ffffff)"
-                    strokeWidth={3}
-                    paintOrder="stroke"
-                  >
-                    {arc.label}
-                  </text>
+                <g key={arc.key} data-connector-state="rework">
+                  <ConnectorPath path={arc.path} visual={arc.visual} />
+                  <ConnectorLabel x={arc.labelX} y={arc.labelY} label={arc.label} stroke={arc.visual.stroke} />
                 </g>
               ))}
             </svg>

@@ -744,15 +744,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "paperclip-portability-yaml"
-version = "0.1.0"
-dependencies = [
- "icu_collator",
- "icu_locale_core",
- "serde_json",
-]
-
-[[package]]
 name = "paperclip-process-supervisor"
 version = "0.1.0"
 dependencies = [

@@ -1,7 +1,7 @@
 export function AppVersionBadge({ version }: { readonly version?: string }) {
   if (!version) return null;
 
-  const label = `Paperclip version v${version}`;
+  const label = `Paperwork version v${version}`;
 
   return (
     <span

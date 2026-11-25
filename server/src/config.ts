@@ -37,6 +37,12 @@ if (!isSameFile && existsSync(CWD_ENV_PATH)) {
   loadDotenv({ path: CWD_ENV_PATH, override: false, quiet: true });
 }
 
+function readAuthEnvironmentValue(paperworkKey: string, paperclipKey: string): string | undefined {
+  const paperworkValue = process.env[paperworkKey];
+  if (paperworkValue !== undefined && paperworkValue.trim() !== "") return paperworkValue;
+  return process.env[paperclipKey];
+}
+
 type DatabaseMode = "embedded-postgres" | "postgres";
 
 export interface Config {
@@ -139,7 +145,10 @@ export function loadConfig(): Config {
     deploymentMode === "local_trusted"
       ? "private"
       : (deploymentExposureFromEnv ?? fileConfig?.server.exposure ?? "private");
-  const authBaseUrlModeFromEnvRaw = process.env.PAPERCLIP_AUTH_BASE_URL_MODE;
+  const authBaseUrlModeFromEnvRaw = readAuthEnvironmentValue(
+    "PAPERWORK_AUTH_BASE_URL_MODE",
+    "PAPERCLIP_AUTH_BASE_URL_MODE",
+  );
   const authBaseUrlModeFromEnv =
     authBaseUrlModeFromEnvRaw &&
     AUTH_BASE_URL_MODES.includes(authBaseUrlModeFromEnvRaw as AuthBaseUrlMode)
@@ -147,7 +156,7 @@ export function loadConfig(): Config {
       : null;
   const publicUrlFromEnv = process.env.PAPERCLIP_PUBLIC_URL;
   const authPublicBaseUrlRaw =
-    process.env.PAPERCLIP_AUTH_PUBLIC_BASE_URL ??
+    readAuthEnvironmentValue("PAPERWORK_AUTH_PUBLIC_BASE_URL", "PAPERCLIP_AUTH_PUBLIC_BASE_URL") ??
     process.env.BETTER_AUTH_URL ??
     process.env.BETTER_AUTH_BASE_URL ??
     publicUrlFromEnv ??
@@ -157,7 +166,10 @@ export function loadConfig(): Config {
     authBaseUrlModeFromEnv ??
     fileConfig?.auth?.baseUrlMode ??
     (authPublicBaseUrl ? "explicit" : "auto");
-  const disableSignUpFromEnv = process.env.PAPERCLIP_AUTH_DISABLE_SIGN_UP;
+  const disableSignUpFromEnv = readAuthEnvironmentValue(
+    "PAPERWORK_AUTH_DISABLE_SIGN_UP",
+    "PAPERCLIP_AUTH_DISABLE_SIGN_UP",
+  );
   const authDisableSignUp: boolean =
     disableSignUpFromEnv !== undefined
       ? disableSignUpFromEnv === "true"

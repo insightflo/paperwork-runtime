@@ -12,6 +12,7 @@ import {
 } from "@paperclipai/db";
 import type { Config } from "../config.js";
 import { buildBetterAuthSocialProviders } from "./social-providers.js";
+import { createPasswordResetSender, PASSWORD_RESET_EXPIRES_IN_SECONDS } from "./password-reset.js";
 
 export type BetterAuthSessionUser = {
   id: string;
@@ -92,17 +93,15 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
       enabled: true,
       requireEmailVerification: false,
       disableSignUp: config.authDisableSignUp,
+      sendResetPassword: createPasswordResetSender(),
+      resetPasswordTokenExpiresIn: PASSWORD_RESET_EXPIRES_IN_SECONDS,
     },
-    account: {
-      encryptOAuthTokens: true,
-    },
+    account: { encryptOAuthTokens: true },
     ...(Object.keys(socialProviders).length > 0 ? { socialProviders } : {}),
     ...(isHttpOnly ? { advanced: { useSecureCookies: false } } : {}),
   };
 
-  if (!baseUrl) {
-    delete (authConfig as { baseURL?: string }).baseURL;
-  }
+  if (!baseUrl) delete (authConfig as { baseURL?: string }).baseURL;
 
   return betterAuth(authConfig);
 }

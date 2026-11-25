@@ -111,13 +111,7 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
   }
 
   return (
-    <aside
-      className="w-full h-full min-h-0 border-r flex flex-col"
-      style={{
-        backgroundColor: "var(--openbot-subnav-bg)",
-        borderColor: "var(--openbot-subnav-border)",
-      }}
-    >
+    <aside className="w-full h-full min-h-0 border-r border-sidebar-border bg-sidebar flex flex-col">
       {/* Top bar: Company name (bold) + Search + Compact mini-bar toggle */}
       {compact ? (
         <div className="flex items-center justify-center gap-1 px-2 h-12 shrink-0">
@@ -235,7 +229,7 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
           />
         </div>
 
-        <div className={compact ? "openbot-compact-section border-t pt-1.5" : undefined} style={compact ? { borderColor: "var(--openbot-subnav-border)" } : undefined}>
+        <div className={compact ? "openbot-compact-section border-t border-sidebar-border pt-1.5" : undefined}>
           <SidebarSection label="Work">
             <SidebarNavItem to="/issues" label="Work" icon={CircleDot} />
             <SidebarNavItem to="/workflows" label="Workflows" icon={Workflow} />
@@ -249,7 +243,7 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
 
         <SidebarAgents />
 
-        <div className={compact ? "openbot-compact-section border-t pt-1.5" : undefined} style={compact ? { borderColor: "var(--openbot-subnav-border)" } : undefined}>
+        <div className={compact ? "openbot-compact-section border-t border-sidebar-border pt-1.5" : undefined}>
           <SidebarSection label="Company">
             <SidebarNavItem to="/dashboard" label="Dashboard" icon={LayoutDashboard} liveCount={liveRunCount} />
             <SidebarNavItem to="/quality" label="Quality" icon={ListChecks} />
