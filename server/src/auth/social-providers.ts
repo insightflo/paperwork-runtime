@@ -1,4 +1,4 @@
-export const SOCIAL_AUTH_PROVIDER_IDS = ["google", "kakao", "naver"] as const;
+export const SOCIAL_AUTH_PROVIDER_IDS = ["google", "github", "microsoft", "kakao", "naver"] as const;
 
 export type SocialAuthProviderId = (typeof SOCIAL_AUTH_PROVIDER_IDS)[number];
 
@@ -7,6 +7,7 @@ export type SocialAuthProvider = {
   label: string;
   clientId: string;
   clientSecret: string;
+  tenantId?: string;
 };
 
 export type PublicSocialAuthProvider = Pick<SocialAuthProvider, "id" | "label">;
@@ -17,6 +18,7 @@ export type BetterAuthSocialProviders = Partial<Record<
     clientId: string;
     clientSecret: string;
     disableSignUp: boolean;
+    tenantId?: string;
   }
 >>;
 
@@ -25,27 +27,12 @@ type SocialAuthEnvironment = Readonly<Record<string, string | undefined>>;
 const PROVIDER_DEFINITIONS: ReadonlyArray<{
   id: SocialAuthProviderId;
   label: string;
-  clientIdEnvironmentKey: string;
-  clientSecretEnvironmentKey: string;
 }> = [
-  {
-    id: "google",
-    label: "Google",
-    clientIdEnvironmentKey: "PAPERCLIP_AUTH_GOOGLE_CLIENT_ID",
-    clientSecretEnvironmentKey: "PAPERCLIP_AUTH_GOOGLE_CLIENT_SECRET",
-  },
-  {
-    id: "kakao",
-    label: "Kakao",
-    clientIdEnvironmentKey: "PAPERCLIP_AUTH_KAKAO_CLIENT_ID",
-    clientSecretEnvironmentKey: "PAPERCLIP_AUTH_KAKAO_CLIENT_SECRET",
-  },
-  {
-    id: "naver",
-    label: "Naver",
-    clientIdEnvironmentKey: "PAPERCLIP_AUTH_NAVER_CLIENT_ID",
-    clientSecretEnvironmentKey: "PAPERCLIP_AUTH_NAVER_CLIENT_SECRET",
-  },
+  { id: "google", label: "Google" },
+  { id: "github", label: "GitHub" },
+  { id: "microsoft", label: "Microsoft Entra ID" },
+  { id: "kakao", label: "Kakao" },
+  { id: "naver", label: "Naver" },
 ];
 
 function readCredential(value: string | undefined): string | null {
@@ -53,19 +40,37 @@ function readCredential(value: string | undefined): string | null {
   return normalized || null;
 }
 
+function readProviderCredential(
+  environment: SocialAuthEnvironment,
+  providerId: SocialAuthProviderId,
+  credential: "CLIENT_ID" | "CLIENT_SECRET" | "TENANT_ID",
+): string | null {
+  const providerKey = providerId.toUpperCase();
+  return (
+    readCredential(environment[`PAPERWORK_AUTH_${providerKey}_${credential}`]) ??
+    readCredential(environment[`PAPERCLIP_AUTH_${providerKey}_${credential}`])
+  );
+}
+
 export function loadSocialAuthProviders(environment: SocialAuthEnvironment = process.env): SocialAuthProvider[] {
   const providers: SocialAuthProvider[] = [];
 
   for (const definition of PROVIDER_DEFINITIONS) {
-    const clientId = readCredential(environment[definition.clientIdEnvironmentKey]);
-    const clientSecret = readCredential(environment[definition.clientSecretEnvironmentKey]);
+    const clientId = readProviderCredential(environment, definition.id, "CLIENT_ID");
+    const clientSecret = readProviderCredential(environment, definition.id, "CLIENT_SECRET");
     if (!clientId || !clientSecret) continue;
+
+    const tenantId =
+      definition.id === "microsoft"
+        ? (readProviderCredential(environment, definition.id, "TENANT_ID") ?? "common")
+        : undefined;
 
     providers.push({
       id: definition.id,
       label: definition.label,
       clientId,
       clientSecret,
+      ...(tenantId ? { tenantId } : {}),
     });
   }
 
@@ -89,6 +94,7 @@ export function buildBetterAuthSocialProviders(
       clientId: provider.clientId,
       clientSecret: provider.clientSecret,
       disableSignUp,
+      ...(provider.tenantId ? { tenantId: provider.tenantId } : {}),
     };
   }
 
