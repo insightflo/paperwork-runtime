@@ -17,13 +17,22 @@ interface ThemeContextValue {
 }
 
 const THEME_STORAGE_KEY = "paperclip.theme";
-const DARK_THEME_COLOR = "#18181b";
+const DARK_THEME_COLOR = "#0b0e14";
 const LIGHT_THEME_COLOR = "#ffffff";
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-function resolveThemeFromDocument(): Theme {
-  if (typeof document === "undefined") return "dark";
-  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+function resolveStoredTheme(): Theme | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return stored === "light" || stored === "dark" ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveInitialTheme(): Theme {
+  return resolveStoredTheme() ?? "dark";
 }
 
 function applyTheme(theme: Theme) {
@@ -39,7 +48,7 @@ function applyTheme(theme: Theme) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => resolveThemeFromDocument());
+  const [theme, setThemeState] = useState<Theme>(() => resolveInitialTheme());
 
   const setTheme = useCallback((nextTheme: Theme) => {
     setThemeState(nextTheme);
@@ -52,7 +61,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     applyTheme(theme);
     try {
-      localStorage.setItem(THEME_STORAGE_KEY, theme);
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
     } catch {
       // Ignore local storage write failures in restricted environments.
     }
