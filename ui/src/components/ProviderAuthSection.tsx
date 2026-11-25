@@ -1,13 +1,16 @@
-import { useRef, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { instanceSettingsApi } from "../api/instanceSettings";
+import { CompanyContext } from "../context/CompanyContext";
 import {
   ProviderAuthPanel,
   type LoginActionPlan,
   type ProviderAuthId,
 } from "./ProviderAuthPanel";
+import { ProviderUsageRings } from "./ProviderUsageRings";
 
 export function ProviderAuthSection() {
+  const companyId = useContext(CompanyContext)?.selectedCompanyId ?? null;
   const query = useQuery({
     queryKey: ["instance-settings", "provider-auth"],
     queryFn: instanceSettingsApi.getProviderAuth,
@@ -39,15 +42,18 @@ export function ProviderAuthSection() {
   };
 
   return (
-    <ProviderAuthPanel
-      providers={query.data?.providers ?? []}
-      loading={query.isLoading}
-      error={query.isError || loginPlanFailed ? "unavailable" : null}
-      loginPlans={loginPlans}
-      selectedLoginProvider={selectedLoginProvider}
-      loginPlanLoadingProvider={loginPlanLoadingProvider}
-      onRefresh={() => void query.refetch()}
-      onRequestLoginPlan={handleRequestLoginPlan}
-    />
+    <>
+      <ProviderAuthPanel
+        providers={query.data?.providers ?? []}
+        loading={query.isLoading}
+        error={query.isError || loginPlanFailed ? "unavailable" : null}
+        loginPlans={loginPlans}
+        selectedLoginProvider={selectedLoginProvider}
+        loginPlanLoadingProvider={loginPlanLoadingProvider}
+        onRefresh={() => void query.refetch()}
+        onRequestLoginPlan={handleRequestLoginPlan}
+      />
+      <ProviderUsageRings companyId={companyId} />
+    </>
   );
 }
