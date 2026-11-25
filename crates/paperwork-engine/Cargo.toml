@@ -10,6 +10,7 @@ paperclip-quota-router = { path = "../quota-router" }
 paperclip-redactor-core = { path = "../redactor-core" }
 paperwork-engine-heartbeat = { path = "../engine-heartbeat" }
 paperwork-engine-budget = { path = "../engine-budget" }
+paperwork-engine-worktree = { path = "../engine-worktree" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
