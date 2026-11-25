@@ -497,9 +497,9 @@ export function OnboardingWizard() {
               step === 1 ? "md:w-1/2" : "md:w-full"
             )}
           >
-            <div className="w-full max-w-md mx-auto my-auto px-8 py-12 shrink-0">
+            <div className="w-full max-w-md mx-auto my-auto px-8 py-12 shrink-0 rounded-md border border-border/80 bg-card/95 backdrop-blur-md">
               {/* Progress tabs */}
-              <div className="flex items-center gap-0 mb-8 border-b border-border">
+              <div className="flex items-center gap-0 mb-8 border-b border-border/80">
                 {(
                   [
                     { step: 1 as Step, label: "Company", icon: Building2 },
@@ -513,14 +513,14 @@ export function OnboardingWizard() {
                     type="button"
                     onClick={() => setStep(s)}
                     className={cn(
-                      "flex items-center gap-1.5 px-3 py-2 text-xs font-medium border-b-2 -mb-px transition-colors cursor-pointer",
+                      "flex items-center gap-1.5 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider tabular-nums border-b-2 -mb-px transition-colors cursor-pointer",
                       s === step
                         ? "border-foreground text-foreground"
                         : "border-transparent text-muted-foreground hover:text-foreground/70 hover:border-border"
                     )}
                   >
                     <Icon className="h-3.5 w-3.5" />
-                    {label}
+                    <span className="inline-flex items-center gap-1"><span className="font-mono text-[10px] opacity-70 tabular-nums">0{s}</span>{label}</span>
                   </button>
                 ))}
               </div>

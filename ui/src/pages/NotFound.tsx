@@ -34,7 +34,11 @@ export function NotFoundPage({ scope = "global", requestedPrefix }: NotFoundPage
 
   return (
     <div className="mx-auto max-w-2xl py-10">
-      <div className="rounded-lg border border-border bg-card p-6">
+      <div className="rounded-md border border-border/80 bg-card/60 p-6">
+        <div className="mb-4 inline-flex items-center gap-2 rounded-sm border border-border/80 bg-background/60 px-2 py-1 font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground tabular-nums">
+          <span className="text-foreground">404</span>
+          <span>route telemetry</span>
+        </div>
         <div className="flex items-center gap-3">
           <div className="rounded-md border border-destructive/20 bg-destructive/10 p-2">
             <AlertTriangle className="h-5 w-5 text-destructive" />
