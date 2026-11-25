@@ -23,7 +23,6 @@ import { missionPlanTemplateRoutes } from "./routes/mission-plan-templates.js";
 import { agentRoutes } from "./routes/agents.js";
 import { projectRoutes } from "./routes/projects.js";
 import { issueRoutes } from "./routes/issues.js";
-import { routineRoutes } from "./routes/routines.js";
 import { schedulerRoutes } from "./routes/scheduler.js";
 import { worktreeRoutes } from "./routes/worktree.js";
 import { missionRoutes } from "./routes/missions.js";
@@ -640,7 +639,6 @@ export async function createApp(
   api.use(missionSearchRoutes(db));
   api.use(assetRoutes(db, opts.storageService));
   api.use(projectRoutes(db));
-  api.use(routineRoutes(db));
   api.use(schedulerRoutes(db));
   api.use(missionRoutes(db));
   api.use(workflowAgentApiRoutes(db));
