@@ -6,6 +6,7 @@ import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import { readPersistedDevServerStatus, toDevServerHealthStatus } from "../dev-server-status.js";
 import { buildRuntimeCompatibility } from "../services/compatibility.js";
 import { instanceSettingsService } from "../services/instance-settings.js";
+import { getRustCoreCutoverStatus } from "../services/rust-cutover-registry.js";
 import { serverVersion } from "../version.js";
 
 export function healthRoutes(
@@ -78,6 +79,8 @@ export function healthRoutes(
       });
     }
 
+    const rustCoreCutoverStatus = getRustCoreCutoverStatus();
+
     res.json({
       status: "ok",
       version: serverVersion,
@@ -90,6 +93,11 @@ export function healthRoutes(
         companyDeletionEnabled: opts.companyDeletionEnabled,
       },
       compatibility: buildRuntimeCompatibility({ serverVersion }),
+      rustCoreCutover: {
+        masterEnabled: rustCoreCutoverStatus.masterEnabled,
+        enabledCount: rustCoreCutoverStatus.enabled.length,
+        total: rustCoreCutoverStatus.total,
+      },
       ...(devServer ? { devServer } : {}),
     });
   });

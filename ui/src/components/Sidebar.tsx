@@ -40,8 +40,6 @@ import { useAfterInitialPaint } from "../hooks/useAfterInitialPaint";
 import { selectHumanOperatorSurface } from "../lib/human-operator-surface";
 import { useSidebarDensity } from "../lib/sidebar-slide-physics";
 import { Button } from "@/components/ui/button";
-import { PluginSlotOutlet } from "@/plugins/slots";
-import { CORE_INTEGRATED_PLUGIN_KEYS } from "@/plugins/core-integrated";
 
 interface SidebarProps {
   onOpenHermes?: () => void;
@@ -111,11 +109,6 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
   function openSearch() {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
   }
-
-  const pluginContext = {
-    companyId: selectedCompanyId,
-    companyPrefix: selectedCompany?.issuePrefix ?? null,
-  };
 
   return (
     <aside
@@ -240,16 +233,6 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
             badgeTone={inboxBadge.failedRuns > 0 ? "danger" : "default"}
             alert={inboxBadge.failedRuns > 0}
           />
-          <div className={compact ? "hidden" : undefined}>
-            <PluginSlotOutlet
-              slotTypes={["sidebar"]}
-              context={pluginContext}
-              excludePluginKeys={CORE_INTEGRATED_PLUGIN_KEYS}
-              className="flex flex-col gap-0.5"
-              itemClassName="text-[13px] font-medium"
-              missingBehavior="placeholder"
-            />
-          </div>
         </div>
 
         <div className={compact ? "openbot-compact-section border-t pt-1.5" : undefined} style={compact ? { borderColor: "var(--openbot-subnav-border)" } : undefined}>
@@ -307,17 +290,6 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
             <SidebarNavItem to="/worktree/proposals" label="Proposals" icon={GitPullRequest} />
             <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
           </SidebarSection>
-        </div>
-
-        <div className={compact ? "hidden" : undefined}>
-          <PluginSlotOutlet
-            slotTypes={["sidebarPanel"]}
-            context={pluginContext}
-            excludePluginKeys={CORE_INTEGRATED_PLUGIN_KEYS}
-            className="flex flex-col gap-3"
-            itemClassName="rounded-lg border border-border p-3"
-            missingBehavior="placeholder"
-          />
         </div>
       </nav>
     </aside>

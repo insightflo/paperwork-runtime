@@ -29,7 +29,6 @@ import { missionRoutes } from "./routes/missions.js";
 import { missionSearchRoutes } from "./routes/mission-search.js";
 import { workflowAgentApiRoutes } from "./routes/workflow-agent-api.js";
 import { workflowRoutes } from "./routes/workflows.js";
-import { srbWebhookRoutes } from "./routes/srb-webhook.js";
 import {
   webhookRawBodyErrorHandler,
   workflowWebhookRoutes,
@@ -62,7 +61,6 @@ import { assetRoutes } from "./routes/assets.js";
 import { accessRoutes } from "./routes/access.js";
 import { assertCompanyAccess } from "./routes/authz.js";
 import { pluginToolExecuteRoutes } from "./routes/plugin-tool-execute.js";
-import { pluginUiStaticRoutes } from "./routes/plugin-ui-static.js";
 import { applyUiBranding } from "./ui-branding.js";
 import { logger } from "./middleware/logger.js";
 import { DEFAULT_LOCAL_PLUGIN_DIR, pluginLoader } from "./services/plugin-loader.js";
@@ -626,7 +624,6 @@ export async function createApp(
   api.use(workflowAgentApiRoutes(db));
   api.use(workflowRoutes(db));
   api.use(workflowWebhookRoutes(db));
-  api.use(srbWebhookRoutes(db));
   api.use(executionWorkspaceRoutes(db));
   api.use(worktreeRoutes(db));
   // CRITICAL: single mount for maintenance gate — per-route is forbidden
@@ -773,10 +770,6 @@ export async function createApp(
     }
     next();
   });
-  app.use(pluginUiStaticRoutes(db, {
-    localPluginDir: opts.localPluginDir ?? DEFAULT_LOCAL_PLUGIN_DIR,
-  }));
-
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   if (opts.uiMode === "static") {
     // Try published location first (server/ui-dist/), then monorepo dev location (../../ui/dist)

@@ -46,8 +46,6 @@ vi.mock("../lib/sidebar-slide-physics", () => ({
 }));
 vi.mock("../hooks/useInboxBadge", () => ({ useInboxBadge: () => ({ inbox: 0, failedRuns: 0 }) }));
 vi.mock("../hooks/useAfterInitialPaint", () => ({ useAfterInitialPaint: () => true }));
-vi.mock("@/plugins/slots", () => ({ PluginSlotOutlet: () => null }));
-vi.mock("@/plugins/core-integrated", () => ({ CORE_INTEGRATED_PLUGIN_KEYS: [] }));
 vi.mock("../components/SidebarProjects", () => ({ SidebarProjects: () => null }));
 vi.mock("../components/SidebarAgents", () => ({ SidebarAgents: () => null }));
 vi.mock("../components/Identity", () => ({ Identity: ({ name }: { name: string }) => <span>{name}</span> }));

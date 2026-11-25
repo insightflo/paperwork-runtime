@@ -29,8 +29,6 @@ import { DashboardCommandHeader } from "../components/DashboardCommandHeader";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { PageSkeleton } from "../components/PageSkeleton";
 import type { Agent, Issue } from "@paperclipai/shared";
-import { CORE_INTEGRATED_PLUGIN_KEYS } from "@/plugins/core-integrated";
-import { PluginSlotOutlet } from "@/plugins/slots";
 
 function getRecentIssues(issues: Issue[]): Issue[] {
   return [...issues]
@@ -342,14 +340,6 @@ export function Dashboard() {
               <SuccessRateChart runs={runStats?.days ?? []} />
             </ChartCard>
           </div>
-
-          <PluginSlotOutlet
-            slotTypes={["dashboardWidget"]}
-            context={{ companyId: selectedCompanyId }}
-            excludePluginKeys={CORE_INTEGRATED_PLUGIN_KEYS}
-            className="grid gap-4 md:grid-cols-2"
-            itemClassName="rounded-lg border bg-card p-4 shadow-sm"
-          />
 
           <div className="grid md:grid-cols-2 gap-4">
             {/* Recent Activity */}

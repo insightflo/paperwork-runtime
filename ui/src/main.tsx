@@ -13,7 +13,6 @@ import { DialogProvider } from "./context/DialogContext";
 import { ToastProvider } from "./context/ToastContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { PluginLauncherProvider } from "./plugins/launchers";
 import "@mdxeditor/editor/style.css";
 import "./index.css";
 import "./styles/openbot-tokens.css";
@@ -62,11 +61,9 @@ createRoot(document.getElementById("root")!).render(
                   <BreadcrumbProvider>
                     <SidebarProvider>
                       <PanelProvider>
-                        <PluginLauncherProvider>
-                          <DialogProvider>
-                            <App />
-                          </DialogProvider>
-                        </PluginLauncherProvider>
+                        <DialogProvider>
+                          <App />
+                        </DialogProvider>
                       </PanelProvider>
                     </SidebarProvider>
                   </BreadcrumbProvider>

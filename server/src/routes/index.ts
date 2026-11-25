@@ -24,4 +24,3 @@ export { worktreeRoutes } from "./worktree.js";
 export { missionRoutes } from "./missions.js";
 export { workflowAgentApiRoutes } from "./workflow-agent-api.js";
 export { workflowRoutes } from "./workflows.js";
-export { srbWebhookRoutes } from "./srb-webhook.js";

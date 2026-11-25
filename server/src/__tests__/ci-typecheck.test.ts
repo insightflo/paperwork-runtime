@@ -80,7 +80,7 @@ describe("planTypecheckTasks on the real repo", () => {
     const sdkBuild = JSON.parse(readFileSync(join(repoRoot, "packages/plugins/sdk/package.json"), "utf8")).scripts.build;
     expect(sdkBuild).toContain("@paperclipai/shared build");
     expect(plan.prebuilds).toEqual(["@paperclipai/plugin-sdk"]);
-    for (const n of ["@paperclipai/server", "@paperclipai/plugin-authoring-smoke-example", "@paperclipai/plugin-file-browser-example", "@paperclipai/plugin-hello-world-example", "@paperclipai/plugin-kitchen-sink-example"]) {
+    for (const n of ["@paperclipai/server"]) {
       expect(task(plan, n).cmd, n).toContain("tsc --noEmit --incremental --tsBuildInfoFile");
     }
     expect(task(plan, "@paperclipai/ui").cmd).toBe("pnpm --filter @paperclipai/ui typecheck");
