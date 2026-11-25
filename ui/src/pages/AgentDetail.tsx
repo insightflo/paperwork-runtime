@@ -386,9 +386,9 @@ export function AgentDetail() {
   const showConfigActionBar = (activeView === "configuration" || activeView === "instructions") && (configDirty || configSaving);
 
   return (
-    <div className={cn("space-y-6", isMobile && showConfigActionBar && "pb-24")}>
+    <div className={cn("space-y-6 tabular-nums", activeView === "dashboard" && "[&_h3]:text-[11px] [&_h3]:font-semibold [&_h3]:uppercase [&_h3]:tracking-wider [&_h3]:text-muted-foreground", "[&_.border.rounded-lg]:rounded-md [&_.border.rounded-lg.border-border]:border-border/80 [&_.border.rounded-lg.border-border]:bg-card/60 [&_a.border.rounded-lg:hover]:bg-muted/50", isMobile && showConfigActionBar && "pb-24")}>
       {/* Header */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-center justify-between gap-2 rounded-md border border-border/80 bg-card/60 px-3 py-2">
         <div className="flex items-center gap-3 min-w-0">
           <AgentIconPicker
             value={agent.icon}
@@ -520,7 +520,7 @@ export function AgentDetail() {
               : "opacity-0 pointer-events-none"
           )}
         >
-          <div className="flex items-center gap-2 bg-background/90 backdrop-blur-sm border border-border rounded-lg px-3 py-1.5 shadow-lg">
+          <div className="flex items-center gap-2 rounded-md border border-border/80 bg-card/60 backdrop-blur-sm px-3 py-1.5 shadow-lg">
             <Button
               variant="ghost"
               size="sm"

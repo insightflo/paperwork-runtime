@@ -52,7 +52,7 @@ function OverviewContent({
   imageUploadHandler?: (file: File) => Promise<string>;
 }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 rounded-md border border-border/80 bg-card/60 p-4 tabular-nums">
       <InlineEditor
         value={project.description ?? ""}
         onSave={(description) => onUpdate({ description })}
@@ -65,14 +65,14 @@ function OverviewContent({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
         <div>
-          <span className="text-muted-foreground">Status</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Status</span>
           <div className="mt-1">
             <StatusBadge status={project.status} />
           </div>
         </div>
         {project.targetDate && (
           <div>
-            <span className="text-muted-foreground">Target Date</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Target Date</span>
             <p>{project.targetDate}</p>
           </div>
         )}
@@ -456,8 +456,8 @@ export function ProjectDetail() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start gap-3">
+    <div className="space-y-6 tabular-nums">
+      <div className="flex items-start gap-3 rounded-md border border-border/80 bg-card/60 px-3 py-2">
         <div className="h-7 flex items-center">
           <ColorPicker
             currentColor={project.color ?? "#6366f1"}
@@ -510,7 +510,7 @@ export function ProjectDetail() {
       )}
 
       {activeTab === "configuration" && (
-        <div className="max-w-4xl">
+        <div className="max-w-4xl tabular-nums [&_.rounded-md.border.p-3]:border-border/80 [&_.rounded-md.border.p-3]:bg-card/60 [&_.rounded-md.border.p-2]:border-border/80 [&_.rounded-md.border.p-2]:bg-card/60">
           <ProjectProperties
             project={project}
             onUpdate={(data) => updateProject.mutate(data)}
