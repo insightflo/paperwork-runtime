@@ -25,9 +25,7 @@ impl RpcDispatcher for MethodNotFoundDispatcher {
     }
 }
 pub fn default_dispatcher() -> Arc<dyn RpcDispatcher> { Arc::new(MethodNotFoundDispatcher) }
-fn rpc_error(id: Value, code: i64, message: &str) -> Value {
-    json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}})
-}
+fn rpc_error(id: Value, code: i64, message: &str) -> Value { json!({"jsonrpc": "2.0", "id": id, "error": {"code": code, "message": message}}) }
 
 #[derive(Debug, Clone, Copy)]
 struct Reject { status: u16, error: &'static str }
@@ -69,27 +67,33 @@ fn parse_request_head(head: &[u8]) -> Result<(String, String, usize), Reject> {
     if target.bytes().any(|byte| byte <= b' ' || byte == 127) { return Err(bad()); }
     let path = target.split_once('?').map_or(target, |(path, _)| path);
     if !is_token(parts[0]) || !path.starts_with('/') { return Err(bad()); }
-    let mut content_length = None;
+    let (mut content_length, mut host_count) = (None, 0usize);
     for line in lines {
         if line.is_empty() { return Err(bad()); }
         let (name, value) = line.split_once(':').ok_or_else(bad)?;
         if !is_token(name) { return Err(bad()); }
         let value = value.trim_matches(|ch| ch == ' ' || ch == '\t');
         if value.bytes().any(|b| (b < 32 && b != b'\t') || b == 127) { return Err(bad()); }
+        if name.eq_ignore_ascii_case("host") { host_count += 1; if value.trim().is_empty() { return Err(bad()); } }
         if name.eq_ignore_ascii_case("content-length") {
             if content_length.is_some() { return Err(bad()); }
             content_length = Some(parse_content_length(value)?);
         } else if name.eq_ignore_ascii_case("transfer-encoding") { return Err(bad()); }
     }
+    if host_count != 1 { return Err(bad()); }
     Ok((parts[0].to_owned(), path.to_owned(), content_length.unwrap_or(0)))
 }
 
 async fn read_request<S: AsyncRead + Unpin>(stream: &mut S) -> Result<Request, Reject> {
+    let deadline = tokio::time::Instant::now() + READ_TIMEOUT;
+    read_request_within(stream, deadline).await
+}
+async fn read_request_within<S: AsyncRead + Unpin>(stream: &mut S, deadline: tokio::time::Instant) -> Result<Request, Reject> {
     let (mut buf, mut chunk) = (Vec::with_capacity(8192), [0u8; 2048]);
     let head_end = loop {
         if let Some(pos) = buf.windows(4).position(|window| window == b"\r\n\r\n") { break pos; }
         if buf.len() >= MAX_HEADER_BYTES { return Err(too_large()); }
-        let n = match tokio::time::timeout(READ_TIMEOUT, stream.read(&mut chunk)).await {
+        let n = match tokio::time::timeout_at(deadline, stream.read(&mut chunk)).await {
             Ok(Ok(0)) => return Err(bad()), Ok(Ok(n)) => n, _ => return Err(bad()),
         };
         buf.extend_from_slice(&chunk[..n]);
@@ -101,7 +105,7 @@ async fn read_request<S: AsyncRead + Unpin>(stream: &mut S) -> Result<Request, R
     if body.len() > content_length { return Err(bad()); }
     if body.len() < content_length {
         let mut tail = vec![0; content_length - body.len()];
-        match tokio::time::timeout(READ_TIMEOUT, stream.read_exact(&mut tail)).await {
+        match tokio::time::timeout_at(deadline, stream.read_exact(&mut tail)).await {
             Ok(Ok(_)) => body.extend_from_slice(&tail), _ => return Err(bad()),
         }
     }
@@ -244,50 +248,52 @@ pub async fn serve(listener: TcpListener, dispatcher: Arc<dyn RpcDispatcher>, mu
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn block_on<F: Future>(future: F) -> F::Output { tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(future) }
 
-    fn block_on<F: Future>(future: F) -> F::Output {
-        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(future)
+    #[test]
+    fn head_parser_enforces_strict_content_length_and_host() {
+        let (method, path, len) = parse_request_head(b"POST /api/rpc HTTP/1.1\r\nHost: localhost\r\nContent-Length: 2").unwrap();
+        assert_eq!((method.as_str(), path.as_str(), len), ("POST", "/api/rpc", 2));
+        let (_, query_path, _) = parse_request_head(b"GET /api/health?x=1 HTTP/1.1\r\nHost: localhost").unwrap();
+        assert_eq!(query_path, "/api/health");
+        for head in [
+            &b"POST /api/rpc HTTP/1.1\r\nHost: localhost\r\nContent-Length: x"[..], b"POST /api/rpc HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1\r\nContent-Length: 1", b"POST /api/rpc HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked",
+            b"POST /api/rpc HTTP/1.0\r\nHost: localhost\r\nContent-Length: 1", b"GET /api/health\tbad HTTP/1.1\r\nHost: localhost", b"POST /api/rpc HTTP/1.1\r\nContent-Length: 1", b"POST /api/rpc HTTP/1.1\r\nHost: localhost\r\nHost: localhost", b"POST /api/rpc HTTP/1.1\r\nHost:  \t \r\nContent-Length: 1",
+        ] { assert_eq!(parse_request_head(head).unwrap_err().status, 400); }
+        assert_eq!(parse_request_head(b"POST /api/rpc HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1048577").unwrap_err().status, 413);
     }
 
     #[test]
-    fn head_parser_enforces_strict_content_length() {
-        let (method, path, len) = parse_request_head(b"POST /api/rpc HTTP/1.1\r\nContent-Length: 2").unwrap();
-        assert_eq!((method.as_str(), path.as_str(), len), ("POST", "/api/rpc", 2));
-        let (_, query_path, _) = parse_request_head(b"GET /api/health?x=1 HTTP/1.1").unwrap();
-        assert_eq!(query_path, "/api/health");
-        for head in [
-            &b"POST /api/rpc HTTP/1.1\r\nContent-Length: x"[..],
-            b"POST /api/rpc HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 1",
-            b"POST /api/rpc HTTP/1.1\r\nTransfer-Encoding: chunked",
-            b"POST /api/rpc HTTP/1.0\r\nContent-Length: 1",
-            b"GET /api/health\tbad HTTP/1.1",
-        ] { assert_eq!(parse_request_head(head).unwrap_err().status, 400); }
-        assert_eq!(parse_request_head(b"POST /api/rpc HTTP/1.1\r\nContent-Length: 1048577").unwrap_err().status, 413);
+    fn request_read_deadline_is_overall_not_per_read() {
+        block_on(async {
+            let (mut writer, mut reader) = tokio::io::duplex(64);
+            tokio::spawn(async move {
+                for byte in b"GET /api/health HTTP/1.1\r\nHost: localhost\r\n" {
+                    if writer.write_all(&[*byte]).await.is_err() { return; }
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+                std::future::pending::<()>().await;
+            });
+            let deadline = tokio::time::Instant::now() + Duration::from_millis(60);
+            let result = tokio::time::timeout(Duration::from_secs(1), read_request_within(&mut reader, deadline)).await;
+            assert!(matches!(result, Ok(Err(reject)) if reject.status == 400));
+        });
     }
 
     #[test]
     fn rpc_envelope_is_fail_closed() {
         assert_eq!(parse_rpc(b"{").unwrap_err()["error"]["code"], json!(-32700));
         for body in [
-            &br#"{"jsonrpc":"2.0","id":1}"#[..],
-            br#"{"jsonrpc":"1.0","id":1,"method":"m"}"#,
-            br#"{"jsonrpc":"2.0","id":1,"method":""}"#,
-            br#"{"jsonrpc":"2.0","id":1,"method":"m","params":1}"#,
-            br#"{"jsonrpc":"2.0","id":null,"method":"m"}"#,
+            &br#"{"jsonrpc":"2.0","id":1}"#[..], br#"{"jsonrpc":"1.0","id":1,"method":"m"}"#, br#"{"jsonrpc":"2.0","id":1,"method":""}"#, br#"{"jsonrpc":"2.0","id":1,"method":"m","params":1}"#, br#"{"jsonrpc":"2.0","id":null,"method":"m"}"#,
         ] { assert_eq!(parse_rpc(body).unwrap_err()["error"]["code"], json!(-32600)); }
         let bad_id = parse_rpc(br#"{"jsonrpc":"2.0","id":{"bad":1},"method":"m"}"#).unwrap_err();
         assert_eq!((bad_id["id"].clone(), bad_id["error"]["code"].clone()), (Value::Null, json!(-32600)));
-        let big = "x".repeat(MAX_PARAMS_BYTES);
-        let body = format!(r#"{{"jsonrpc":"2.0","id":1,"method":"m","params":["{big}"]}}"#);
+        let body = format!(r#"{{"jsonrpc":"2.0","id":1,"method":"m","params":["{big}"]}}"#, big = "x".repeat(MAX_PARAMS_BYTES));
         assert_eq!(parse_rpc(body.as_bytes()).unwrap_err()["error"]["code"], json!(-32600));
         let ok = parse_rpc(br#"{"jsonrpc":"2.0","id":1,"method":"m","params":{"x":1}}"#).unwrap();
         assert_eq!((ok.method.as_str(), ok.params.is_some()), ("m", true));
     }
 
     #[test]
-    fn default_dispatcher_returns_method_not_found() {
-        let request = RpcRequest { id: json!("id-1"), method: "missing".into(), params: None };
-        let response = block_on(MethodNotFoundDispatcher.dispatch(request));
-        assert_eq!((response["id"].clone(), response["error"]["code"].clone()), (json!("id-1"), json!(-32601)));
-    }
+    fn default_dispatcher_returns_method_not_found() { let response = block_on(MethodNotFoundDispatcher.dispatch(RpcRequest { id: json!("id-1"), method: "missing".into(), params: None })); assert_eq!((response["id"].clone(), response["error"]["code"].clone()), (json!("id-1"), json!(-32601))); }
 }
