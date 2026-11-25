@@ -95,7 +95,7 @@ export function SidebarAgents() {
   return (
     <Collapsible open={compact ? true : open} onOpenChange={setOpen}>
       {compact ? (
-        <div className="flex justify-center border-t pt-1.5" style={{ borderColor: "var(--openbot-subnav-border)" }}>
+        <div className="flex justify-center border-t border-sidebar-border pt-1.5">
           <button
             type="button"
             onClick={(e) => {
