@@ -42,7 +42,7 @@ function createApp() {
       userId: "board-user-1",
       companyIds: [COMPANY_ID],
       source: "authenticated",
-      isInstanceAdmin: false,
+      isInstanceAdmin: true,
     };
     next();
   });

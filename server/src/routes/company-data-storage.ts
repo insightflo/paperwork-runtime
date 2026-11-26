@@ -17,7 +17,9 @@ import {
   normalizePrefix,
   type CompanyDataObjectService,
 } from "../services/company-data-objects.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { accessService } from "../services/access.js";
+import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess, getActorInfo } from "./authz.js";
+import { assertCompanyWriteAccess } from "./authz-write.js";
 
 export interface CompanyDataStorageRouteOptions {
   storageService?: CompanyDataStorageService;
@@ -66,6 +68,7 @@ export function companyDataStorageRoutes(
   options: CompanyDataStorageRouteOptions = {},
 ) {
   const router = Router();
+  const access = accessService(db);
   const storageService = options.storageService ?? createCompanyDataStorageService(db);
   const objectService = options.objectService ?? createCompanyDataObjectService(db, {
     storageService,
@@ -87,7 +90,7 @@ export function companyDataStorageRoutes(
     async (req, res) => {
       assertBoard(req);
       const companyId = requireCompanyId(req.params.companyId);
-      assertCompanyAccess(req, companyId);
+      await assertCompanyAdminAccess(access, req, companyId);
       const saved = await storageService.save(companyId, req.body);
       const actor = getActorInfo(req);
       await logActivity(db, {
@@ -108,7 +111,7 @@ export function companyDataStorageRoutes(
   router.post("/companies/:companyId/data-storage/test", async (req, res) => {
     assertBoard(req);
     const companyId = requireCompanyId(req.params.companyId);
-    assertCompanyAccess(req, companyId);
+    await assertCompanyAdminAccess(access, req, companyId);
     if (hasConnectionTestBody(req.body)) {
       throw badRequest("Connection tests do not accept a request body");
     }
@@ -157,7 +160,7 @@ export function companyDataStorageRoutes(
 
   router.put("/companies/:companyId/data/objects", express.raw({ type: "*/*", limit: "50mb" }), async (req, res) => {
     const companyId = requireCompanyId(req.params.companyId);
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const rawKey = typeof req.query.key === "string" ? req.query.key : undefined;
     if (!rawKey) throw badRequest("A ?key= query parameter is required to write an object");
     const key = normalizeObjectKey(rawKey);

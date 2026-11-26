@@ -7,7 +7,9 @@ import { createAssetImageMetadataSchema } from "@paperclipai/shared";
 import type { StorageService } from "../storage/types.js";
 import { assetService, logActivity } from "../services/index.js";
 import { isAllowedContentType, MAX_ATTACHMENT_BYTES } from "../attachment-types.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { accessService } from "../services/access.js";
+import { assertCompanyAccess, assertCompanyAdminAccess, getActorInfo } from "./authz.js";
+import { assertCompanyWriteAccess } from "./authz-write.js";
 const SVG_CONTENT_TYPE = "image/svg+xml";
 const ALLOWED_COMPANY_LOGO_CONTENT_TYPES = new Set([
   "image/png",
@@ -85,6 +87,7 @@ function sanitizeSvgBuffer(input: Buffer): Buffer | null {
 
 export function assetRoutes(db: Db, storage: StorageService) {
   const router = Router();
+  const access = accessService(db);
   const svc = assetService(db);
   const assetUpload = multer({
     storage: multer.memoryStorage(),
@@ -110,7 +113,7 @@ export function assetRoutes(db: Db, storage: StorageService) {
 
   router.post("/companies/:companyId/assets/images", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
 
     try {
       await runSingleFileUpload(assetUpload, req, res);
@@ -213,7 +216,7 @@ export function assetRoutes(db: Db, storage: StorageService) {
 
   router.post("/companies/:companyId/logo", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyAdminAccess(access, req, companyId);
 
     try {
       await runSingleFileUpload(companyLogoUpload, req, res);

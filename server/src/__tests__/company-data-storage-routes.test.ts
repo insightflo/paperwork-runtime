@@ -69,8 +69,8 @@ function createApp(actor: Record<string, unknown>, storage = createFakeStorageSe
   return { app, storage, objects };
 }
 
-function boardActor(companyIds = [companyId]) {
-  return { type: "board", userId: "board-1", companyIds, source: "session", isInstanceAdmin: false };
+function boardActor(companyIds = [companyId], isInstanceAdmin = true) {
+  return { type: "board", userId: "board-1", companyIds, source: "session", isInstanceAdmin };
 }
 
 function agentActor(cid = companyId) {
@@ -130,7 +130,7 @@ describe("company data storage config routes", () => {
 
   it("rejects agents and board users without company access for config", async () => {
     const agent = createApp(agentActor());
-    const outsider = createApp(boardActor([otherCompanyId]));
+    const outsider = createApp(boardActor([otherCompanyId], false));
     const [agentRes, outsiderRes] = await Promise.all([
       request(agent.app).get(`/api/companies/${companyId}/data-storage`),
       request(outsider.app).get(`/api/companies/${companyId}/data-storage`),

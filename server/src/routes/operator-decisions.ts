@@ -20,8 +20,10 @@ import {
   operatorDecisionWriteService,
   type OperatorDecisionActor,
 } from "../services/operator-decisions-write.js";
+import { accessService } from "../services/access.js";
 import { cardSummaryService } from "../services/card-summaries.js";
-import { assertBoard, assertCompanyAccess } from "./authz.js";
+import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess } from "./authz.js";
+import { assertCompanyWriteAccess } from "./authz-write.js";
 
 function requestActor(req: Request): OperatorDecisionActor {
   if (req.actor.type === "agent") {
@@ -39,6 +41,7 @@ function boardUserId(req: Request): string {
 
 export function operatorDecisionRoutes(db: Db) {
   const router = Router();
+  const access = accessService(db);
   const read = operatorDecisionReadService(db);
   const write = operatorDecisionWriteService(db);
   const heartbeat = heartbeatService(db);
@@ -87,7 +90,7 @@ export function operatorDecisionRoutes(db: Db) {
     validate(createOperatorDecisionSchema),
     async (req, res) => {
       const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
+      await assertCompanyWriteAccess(access, req, companyId);
       const result = await write.create(companyId, req.body, requestActor(req));
       res.status(result.replayed ? 200 : 201).json({ data: result.decision, replayed: result.replayed });
     },
@@ -122,7 +125,7 @@ export function operatorDecisionRoutes(db: Db) {
   router.post("/operator-decisions/:id/summary/retranslate", async (req, res) => {
     const decision = await read.getRequired(req.params.id as string);
     assertBoard(req);
-    assertCompanyAccess(req, decision.companyId);
+    await assertCompanyWriteAccess(access, req, decision.companyId);
     const adapterType = typeof req.body?.adapterType === "string" ? req.body.adapterType : undefined;
     const model = typeof req.body?.model === "string" ? req.body.model : undefined;
     const row = await summaries.retranslate(decision.companyId, "operator_decision", decision.id, {
@@ -145,6 +148,7 @@ export function operatorDecisionRoutes(db: Db) {
     async (req, res) => {
       const decision = await read.getRequired(req.params.id as string);
       assertCompanyAccess(req, decision.companyId);
+      await assertCompanyAdminAccess(access, req, decision.companyId);
       const userId = boardUserId(req);
       const result = await write.resolve(decision.id, req.body, userId);
       // 즉시 웨이크업 — 승인 즉시 후속 완료 처리가 이어지도록 한다. 대상은 continuation과
@@ -246,6 +250,9 @@ export function operatorDecisionRoutes(db: Db) {
     async (req, res) => {
       const decision = await read.getRequired(req.params.id as string);
       assertCompanyAccess(req, decision.companyId);
+      if (req.actor.type === "board") {
+        await assertCompanyAdminAccess(access, req, decision.companyId);
+      }
       res.json({ data: await write.cancel(decision.id, requestActor(req)) });
     },
   );
@@ -268,6 +275,7 @@ export function operatorDecisionRoutes(db: Db) {
     async (req, res) => {
       const decision = await read.getRequired(req.params.id as string);
       assertCompanyAccess(req, decision.companyId);
+      await assertCompanyAdminAccess(access, req, decision.companyId);
       const userId = boardUserId(req);
       res.json({ data: await write.retryContinuation(decision.id, userId) });
     },
