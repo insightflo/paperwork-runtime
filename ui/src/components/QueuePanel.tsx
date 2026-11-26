@@ -166,19 +166,19 @@ export function QueuePanel(props: {
   };
 
   return (
-    <div className="rounded-lg border border-border" style={{ backgroundColor: "var(--openbot-surface-25d-bg)", boxShadow: "var(--openbot-surface-25d-shadow)" }}>
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <span className="text-xs font-semibold">대기/큐 ({scopedItems.length})</span>
+    <div className="tactile-card overflow-hidden rounded-[12px] border-slate-200/90 dark:border-white/[0.08] dark:bg-[#0e131d]">
+      <div className="flex items-center justify-between border-b border-slate-200/80 bg-white/70 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#090c12]/85 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-700 tabular-nums dark:text-[#eef2f8]">대기/큐 ({scopedItems.length})</span>
         {props.pendingModel && (
-          <span className="rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ color: "var(--openbot-warning-text)", backgroundColor: "var(--openbot-warning-soft)" }}>
+          <span className="rounded-full border border-[#f59e0b]/40 bg-[#f59e0b]/12 px-2 py-0.5 text-[10px] font-semibold text-[#92400e] tabular-nums dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]">
             {props.pendingModel} · 이번 턴 종료 후 적용
           </span>
         )}
       </div>
 
-      <div className="divide-y divide-border max-h-56 overflow-y-auto">
+      <div className="max-h-56 divide-y divide-slate-200/80 overflow-y-auto overscroll-contain dark:divide-white/[0.06]">
         {scopedItems.length === 0 && (
-          <p className="px-3 py-3 text-xs text-muted-foreground">
+          <p className="px-3 py-3 text-xs text-slate-500 dark:text-[#8f9db3]">
             {query.isError ? "큐 엔드포인트 연결 불가 (백엔드 미배포)" : "대기 중인 항목이 없습니다."}
           </p>
         )}
@@ -187,9 +187,9 @@ export function QueuePanel(props: {
             key={item.id} draggable tabIndex={0} aria-label={`큐 항목 ${index + 1}`}
             onDragStart={(e) => { dragRef.current = index; e.dataTransfer.setData("text/plain", item.id); e.dataTransfer.effectAllowed = "move"; }}
             onDragOver={(e) => e.preventDefault()} onDrop={(e) => onDrop(e, index)} onKeyDown={(e) => onItemKeyDown(e, index)}
-            className="flex items-center gap-1.5 px-2 py-1.5 text-xs group"
+            className="group flex items-center gap-1.5 px-2 py-1.5 text-xs text-slate-700 transition-colors duration-150 hover:bg-[#2563eb]/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2563eb]/45 dark:text-[#eef2f8] dark:hover:bg-[#60a5fa]/[0.06] dark:focus-visible:ring-[#60a5fa]/55"
           >
-            <GripVertical className="h-3.5 w-3.5 text-muted-foreground/50 cursor-grab shrink-0" />
+            <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-slate-400 dark:text-[#607089]" />
             {editingId === item.id ? (
               <input
                 autoFocus value={editText} onChange={(e) => setEditText(e.target.value)}
@@ -199,42 +199,80 @@ export function QueuePanel(props: {
                   if (e.key === "Escape") setEditingId((curr) => (curr === item.id ? null : curr));
                 }}
                 onBlur={() => { if (editingId === item.id && savingRef.current !== item.id) void saveEdit(item.id); }}
-                className="flex-1 min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 text-xs outline-none"
+                className="min-w-0 flex-1 rounded-md border border-[#2563eb]/35 bg-white/85 px-1.5 py-1 text-xs text-slate-800 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] outline-none transition-colors focus:border-[#2563eb]/60 focus:ring-2 focus:ring-[#2563eb]/20 dark:border-[#60a5fa]/35 dark:bg-[#090c12] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] dark:focus:border-[#60a5fa]/60 dark:focus:ring-[#60a5fa]/20"
               />
             ) : (
-              <button type="button" className="flex-1 min-w-0 truncate text-left hover:underline" title="클릭해 프롬프트 수정" onClick={() => { setEditingId(item.id); setEditText(queueItemLabel(item)); }}>
+              <button
+                type="button"
+                className="min-w-0 flex-1 truncate text-left transition-colors hover:text-[#1d4ed8] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563eb]/35 dark:hover:text-[#60a5fa] dark:focus-visible:ring-[#60a5fa]/45"
+                title="클릭해 프롬프트 수정"
+                onClick={() => { setEditingId(item.id); setEditText(queueItemLabel(item)); }}
+              >
                 {queueItemLabel(item)}
               </button>
             )}
-            <span className="hidden group-hover:flex items-center gap-0.5 shrink-0">
-              {props.agentId && <Button variant="ghost" size="sm" className="h-6 px-1.5 text-[10px]" onClick={() => splitAsTask(item)}>태스크로 분리</Button>}
-              <Button variant="ghost" size="icon-xs" aria-label="큐 항목 취소" onClick={() => cancel(item.id)}><X className="h-3.5 w-3.5" /></Button>
+            <span className="hidden shrink-0 items-center gap-0.5 group-focus-within:flex group-hover:flex">
+              {props.agentId && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-1.5 text-[10px] font-semibold text-slate-500 transition-colors hover:bg-[#f59e0b]/10 hover:text-[#92400e] dark:text-[#8f9db3] dark:hover:bg-[#f59e0b]/10 dark:hover:text-[#f59e0b]"
+                  onClick={() => splitAsTask(item)}
+                >
+                  태스크로 분리
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="큐 항목 취소"
+                className="text-slate-400 transition-colors hover:bg-[#f43f5e]/10 hover:text-[#be123c] dark:text-[#607089] dark:hover:bg-[#f43f5e]/10 dark:hover:text-[#f43f5e]"
+                onClick={() => cancel(item.id)}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
             </span>
           </div>
         ))}
       </div>
 
-      {actionError && <p className="px-3 pt-1.5 text-[10px]" style={{ color: "var(--openbot-danger-text)" }}>{actionError}</p>}
+      {actionError && (
+        <p className="border-t border-[#f43f5e]/20 bg-[#f43f5e]/[0.06] px-3 py-1.5 text-[10px] font-medium text-[#be123c] dark:text-[#f43f5e]">
+          {actionError}
+        </p>
+      )}
 
       {props.agentId && (
-        <div className="flex items-center gap-1.5 border-t border-border px-2 py-2">
+        <div className="flex items-center gap-1.5 border-t border-slate-200/80 bg-white/55 px-2 py-2 dark:border-white/[0.08] dark:bg-[#090c12]/70">
           <input
             value={steerText}
             onChange={(e) => setSteerText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") steer(); }}
             placeholder="즉시 개입 메시지…"
-            className="flex-1 min-w-0 rounded-md border border-border bg-transparent px-2 py-1 text-xs outline-none"
+            className="min-w-0 flex-1 rounded-md border border-slate-300/80 bg-white/85 px-2 py-1.5 text-xs text-slate-800 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] outline-none transition-colors placeholder:text-slate-400 focus:border-[#2563eb]/55 focus:ring-2 focus:ring-[#2563eb]/20 dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.35)] dark:placeholder:text-[#607089] dark:focus:border-[#60a5fa]/55 dark:focus:ring-[#60a5fa]/20"
             aria-label="즉시 개입(Steer)"
           />
-          <Button variant="secondary" size="sm" className="h-7 px-2 text-xs" onClick={steer} disabled={!steerText.trim()}>
-            <Send className="h-3 w-3 mr-1" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 border border-[#2563eb]/35 bg-[#2563eb]/[0.07] px-2 text-xs font-semibold text-[#1d4ed8] transition-colors hover:bg-[#2563eb]/[0.12] disabled:opacity-50 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa] dark:hover:bg-[#60a5fa]/15"
+            onClick={steer}
+            disabled={!steerText.trim()}
+          >
+            <Send className="mr-1 h-3 w-3" />
             개입(Steer)
           </Button>
         </div>
       )}
       {(steerApplied || props.steerSupported === false) && (
-        <p className={cn("px-3 pb-2 text-[10px]", props.steerSupported === false ? "text-muted-foreground" : "")}
-           style={props.steerSupported === false ? undefined : { color: "var(--openbot-success-text)" }}>
+        <p
+          className={cn(
+            "px-3 pb-2 text-[10px] font-medium",
+            props.steerSupported === false
+              ? "text-slate-500 dark:text-[#8f9db3]"
+              : "text-[#4d7c0f] dark:text-[#a3e635]",
+          )}
+        >
           {props.steerSupported === false
             ? "이번 턴 종료 후 적용 (Not steered — 미드턴 개입 미지원)"
             : "개입 메시지를 전달했습니다."}

@@ -18,20 +18,23 @@ function formatPct(value: number | null): string {
 function StatusBadge({ status, lang }: { status: QualityRsiCluster["rsiStatus"]; lang: CompanyDefaultLanguage }) {
   if (status === "canon") {
     return (
-      <span className="inline-flex items-center rounded bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#f59e0b]/40 bg-[#f59e0b]/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#92400e] dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]">
+        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[#d97706] dark:bg-[#f59e0b]" />
         {L(lang, { en: "★ Standard Rule (100% injected)", ko: "★ 표준 규약 (100% 주입)" })}
       </span>
     );
   }
   if (status === "auto_injected") {
     return (
-      <span className="inline-flex items-center rounded bg-emerald-500/15 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#a3e635]/45 bg-[#a3e635]/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#3f6212] dark:bg-[#a3e635]/10 dark:text-[#a3e635]">
+        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[#65a30d] dark:bg-[#a3e635]" />
         {L(lang, { en: "Auto-injected to Wiki", ko: "Wiki 자동 주입 중" })}
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-300/80 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-[#8f9db3]">
+      <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-slate-400 dark:bg-[#8f9db3]" />
       {L(lang, { en: "Observing (auto at 2+)", ko: "관측 중 (2회부터 자동 반영)" })}
     </span>
   );
@@ -54,6 +57,8 @@ export function QualityRsiMetrics({
         en: `${stats.pass30d} pass · ${stats.requestChanges30d} rework (all: ${formatPct(stats.passRateAllTime)})`,
         ko: `통과 ${stats.pass30d} · 반려 ${stats.requestChanges30d} (전체 ${formatPct(stats.passRateAllTime)})`,
       }),
+      dot: "bg-[#65a30d] dark:bg-[#a3e635]",
+      valueClass: "text-[#3f6212] dark:text-[#a3e635]",
     },
     {
       label: L(lang, { en: "QA Escaped Defect Rate", ko: "QA 미탐률 (통과 후 실패)" }),
@@ -62,6 +67,8 @@ export function QualityRsiMetrics({
         en: `${stats.escapedMissionsCount} / ${stats.passedMissionsTotal} passed missions`,
         ko: `통과 미션 ${stats.passedMissionsTotal}건 중 ${stats.escapedMissionsCount}건`,
       }),
+      dot: "bg-[#e11d48] dark:bg-[#f43f5e]",
+      valueClass: "text-[#be123c] dark:text-[#f43f5e]",
     },
     {
       label: L(lang, { en: "Auto-Synced RSI Lessons", ko: "자동 반영된 RSI 교훈" }),
@@ -70,6 +77,8 @@ export function QualityRsiMetrics({
         en: `${stats.autoInjectedCount} auto · ${stats.canonCount} ★ canon`,
         ko: `자동 주입 ${stats.autoInjectedCount} · ★ 표준 규약 ${stats.canonCount}`,
       }),
+      dot: "bg-[#2563eb] dark:bg-[#60a5fa]",
+      valueClass: "text-[#1d4ed8] dark:text-[#60a5fa]",
     },
     {
       label: L(lang, { en: "Open Review Items", ko: "진행 중 주의 항목" }),
@@ -81,21 +90,34 @@ export function QualityRsiMetrics({
               ko: `종료 미션 방치 ${stats.staleReviewItemsCount}건 자동 정리 대기`,
             })
           : L(lang, { en: "Active missions only", ko: "진행 중인 미션 기준" }),
+      dot: "bg-[#d97706] dark:bg-[#f59e0b]",
+      valueClass: "text-[#92400e] dark:text-[#f59e0b]",
     },
   ];
 
   return (
     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4" aria-label="Quality RSI metrics">
       {cards.map((c) => (
-        <div key={c.label} className="rounded-lg border border-border bg-card px-3 py-2.5">
-          <div className="text-[11px] text-muted-foreground">{c.label}</div>
-          <div className="mt-1 text-lg font-semibold tabular-nums">{c.value}</div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">{c.sub}</div>
+        <div
+          key={c.label}
+          className="rounded-[12px] border border-slate-200/90 bg-white/85 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_20px_-14px_rgba(0,0,0,0.7)]"
+        >
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.11em] text-slate-500 dark:text-[#8f9db3]">
+            <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${c.dot}`} />
+            <span className="truncate">{c.label}</span>
+          </div>
+          <div className={`mt-1.5 text-xl font-semibold leading-none tabular-nums ${c.valueClass}`}>{c.value}</div>
+          <div className="mt-1.5 text-[11px] leading-4 text-slate-500 tabular-nums dark:text-[#8f9db3]">{c.sub}</div>
         </div>
       ))}
     </div>
   );
 }
+
+const AXIS_ACCENT: Record<QualityRsiCluster["axis"], string> = {
+  qa_self: "border-l-[#60a5fa]",
+  worker: "border-l-[#f59e0b]",
+};
 
 export function QualityRsiPanel({ overview, promotingSig, onPromoteCanon, language }: QualityRsiPanelProps) {
   const ctxLang = useCompanyLanguage();
@@ -105,7 +127,8 @@ export function QualityRsiPanel({ overview, promotingSig, onPromoteCanon, langua
 
   if (overview.clusters.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+      <div className="rounded-[12px] border border-dashed border-slate-300/90 bg-slate-50/80 px-4 py-8 text-center text-sm leading-6 text-slate-500 dark:border-white/[0.08] dark:bg-[#090c12]/70 dark:text-[#8f9db3]">
+        <span aria-hidden className="mx-auto mb-3 block h-2 w-2 rounded-full bg-[#60a5fa] shadow-[0_0_18px_rgba(96,165,250,0.6)]" />
         {L(lang, {
           en: "No recurring Plan QA rejections or QA blind spots detected yet. New patterns will auto-graduate into Wiki lessons at 2+ occurrences.",
           ko: "아직 반복되는 Plan QA 반려나 QA 미탐 패턴이 없습니다. 같은 패턴이 2회 이상 쌓이면 사람 승인 없이 자동으로 Wiki 교훈에 반영됩니다.",
@@ -117,18 +140,26 @@ export function QualityRsiPanel({ overview, promotingSig, onPromoteCanon, langua
   const renderSection = (title: string, subtitle: string, list: QualityRsiCluster[]) => {
     if (list.length === 0) return null;
     return (
-      <section className="space-y-2">
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
-          <p className="text-[12px] text-muted-foreground">{subtitle}</p>
+      <section className="space-y-2.5">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-600 dark:text-[#8f9db3]">{title}</h2>
+            <p className="mt-1 text-[12px] leading-5 text-slate-500 dark:text-[#8f9db3]">{subtitle}</p>
+          </div>
+          <span className="rounded-full border border-slate-300/80 bg-white/75 px-2 py-0.5 font-mono text-[10px] font-semibold text-slate-500 tabular-nums dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-[#8f9db3]">
+            {list.length}
+          </span>
         </div>
         <div className="space-y-2">
           {list.map((c) => (
-            <div key={c.signature} className="rounded-lg border border-border bg-card p-3 space-y-2">
+            <div
+              key={c.signature}
+              className={`space-y-2.5 rounded-[12px] border border-l-[3px] border-slate-200/90 bg-white/88 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_20px_-14px_rgba(0,0,0,0.7)] ${AXIS_ACCENT[c.axis]}`}
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium">{c.title}</span>
-                  <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium tabular-nums">
+                  <span className="text-sm font-semibold tracking-tight text-slate-800 dark:text-[#eef2f8]">{c.title}</span>
+                  <span className="rounded-full border border-slate-300/80 bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 tabular-nums dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-[#8f9db3]">
                     {L(lang, { en: `${c.count}x`, ko: `${c.count}회` })}
                   </span>
                   <StatusBadge status={c.rsiStatus} lang={lang} />
@@ -138,7 +169,7 @@ export function QualityRsiPanel({ overview, promotingSig, onPromoteCanon, langua
                     type="button"
                     disabled={promotingSig === c.signature}
                     onClick={() => onPromoteCanon(c.signature)}
-                    className="rounded border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-500/20 disabled:opacity-50 dark:text-amber-400"
+                    className="rounded-md border border-[#f59e0b]/45 bg-[#f59e0b]/12 px-2.5 py-1 text-[11px] font-semibold text-[#92400e] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] transition-colors duration-150 hover:bg-[#f59e0b]/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b]/45 disabled:opacity-50 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b] dark:hover:bg-[#f59e0b]/15"
                   >
                     {promotingSig === c.signature
                       ? L(lang, { en: "Promoting...", ko: "등록 중..." })
@@ -146,12 +177,12 @@ export function QualityRsiPanel({ overview, promotingSig, onPromoteCanon, langua
                   </button>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">{c.summary}</p>
+              <p className="text-xs leading-5 text-slate-500 dark:text-[#8f9db3]">{c.summary}</p>
               {c.samples.length > 0 && (
-                <div className="space-y-1 border-t border-border/60 pt-2">
+                <div className="space-y-1.5 rounded-[10px] border border-slate-200/80 bg-slate-50/80 px-2.5 py-2 dark:border-white/[0.06] dark:bg-[#090c12]/75">
                   {c.samples.map((s, idx) => (
-                    <div key={`${c.signature}:${idx}`} className="text-[11px] text-muted-foreground">
-                      <span className="font-medium text-foreground">{s.missionTitle}</span>
+                    <div key={`${c.signature}:${idx}`} className="font-mono text-[11px] leading-4 text-slate-500 dark:text-[#8f9db3]">
+                      <span className="font-semibold text-slate-700 dark:text-[#eef2f8]">{s.missionTitle}</span>
                       {" — "}
                       <span>{s.detail}</span>
                     </div>
