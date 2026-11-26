@@ -12,13 +12,11 @@ import { MissionRevisionStart } from "../components/MissionRevisionStart";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
-import { StatusBadge } from "@/components/StatusBadge";
 import { InlineEditor } from "../components/InlineEditor";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
-import { GitBranch, ListTree, RefreshCw, Rocket, Settings, User } from "lucide-react";
+import { GitBranch, ListTree, RefreshCw, Rocket, Settings } from "lucide-react";
 import { MissionIssueTree } from "../components/MissionIssueTree";
 import { MissionIssueInspector } from "../components/MissionIssueInspector";
 import { MissionExecutionOverview } from "../components/MissionExecutionOverview";
@@ -32,6 +30,38 @@ const STATUS_OPTIONS: { value: MissionStatus; label: string }[] = [
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
 ];
+
+// Header primary: the single next-status transition promoted to the deep-cobalt slot (same updateMission mutation).
+const PRIMARY_TRANSITION: Partial<Record<MissionStatus, { to: MissionStatus; label: string }>> = {
+  planning: { to: "active", label: "Activate" },
+  paused: { to: "active", label: "Resume" },
+  active: { to: "completed", label: "Complete" },
+};
+
+// Cockpit status pill tones (approved mockup `.st` semantics: active=cobalt, planning=amber, blocked=crimson, completed=muted).
+const PILL_TONE: Record<string, string> = {
+  active: "text-[#5f8dff]", running: "text-[#5f8dff]", in_progress: "text-[#5f8dff]",
+  planning: "text-[#fbbf24]", paused: "text-[#fbbf24]", pending_approval: "text-[#fbbf24]",
+  failed: "text-[#f87171]", blocked: "text-[#f87171]", cancelled: "text-[#f87171]", canceled: "text-[#f87171]", terminated: "text-[#f87171]",
+};
+
+function StatusPill({ status }: { status: string }) {
+  return (
+    <span className={`inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-[#242d3f] bg-[#0b0e14] px-2 text-[10.5px] font-semibold capitalize ${PILL_TONE[status.toLowerCase()] ?? "text-[#8b97ad]"}`}>
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function formatDuration(start: string | Date | null, end: string | Date | null): string | null {
+  if (!start) return null;
+  const minutes = Math.floor(((end ? new Date(end).getTime() : Date.now()) - new Date(start).getTime()) / 60_000);
+  if (!Number.isFinite(minutes) || minutes < 0) return null;
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 48 ? `${hours}h ${minutes % 60}m` : `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
 
 
 type JsonRecord = Record<string, unknown>;
@@ -134,17 +164,14 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
 
   if (!plan?.available) {
     return (
-      <div className="rounded-md border border-border/80 bg-card/60 p-8 text-center">
+      <div className="rounded-lg border border-[#242d3f] bg-[#111622] p-8 text-center">
         <Settings className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
         <p className="text-sm text-muted-foreground mb-1">No active mission execution plan yet</p>
         <p className="text-xs text-muted-foreground">
-          Worktree Rules, KB excerpts, required inputs, and maintenance decisions appear here once the
-          mission owner substrate creates an active plan.
+          Worktree Rules, KB excerpts, required inputs, and maintenance decisions appear here once the mission owner substrate creates an active plan.
         </p>
         <div className="mt-4">
-          <Button asChild size="sm" variant="outline">
-            <Link to="/worktree/rules">Open global execution rules</Link>
-          </Button>
+          <Button asChild size="sm" variant="outline"><Link to="/worktree/rules">Open global execution rules</Link></Button>
         </div>
       </div>
     );
@@ -152,7 +179,7 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
 
   return (
     <div className="space-y-4">
-      <div className="rounded-md border border-border/80 bg-card/60 p-4">
+      <div className="rounded-lg border border-[#242d3f] bg-[#111622] p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Latest Maintenance Decision</p>
@@ -162,30 +189,28 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
             {plan.executionUnitCount ?? executionUnits.length} execution units · {blockedOrFailed} blocked/failed
           </div>
         </div>
-        {plan.missionGoal && <p className="mt-3 text-sm text-muted-foreground">{plan.missionGoal}</p>}
+        {plan.missionGoal && <p className="mt-3 whitespace-pre-wrap break-words text-sm text-[#c9d3e4]">{plan.missionGoal}</p>}
         <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          <div className="rounded-md border border-border/80 bg-card/60 p-3">
-            <p className="text-xs font-medium text-muted-foreground">Required inputs</p>
-            <p className="mt-1 text-sm">{plan.requiredInputsCount ?? openRequiredInputs.length} total · {openRequiredInputs.length} open</p>
-          </div>
-          <div className="rounded-md border border-border/80 bg-card/60 p-3">
-            <p className="text-xs font-medium text-muted-foreground">Suggested status/action</p>
-            <p className="mt-1 text-sm">Owner decision required for retry/replan/escalation</p>
-          </div>
-          <div className="rounded-md border border-border/80 bg-card/60 p-3">
-            <p className="text-xs font-medium text-muted-foreground">Handoff target</p>
-            <p className="mt-1 text-sm">Main executor / operator as required</p>
-          </div>
+          {[
+            ["Required inputs", `${plan.requiredInputsCount ?? openRequiredInputs.length} total · ${openRequiredInputs.length} open`],
+            ["Suggested status/action", "Owner decision required for retry/replan/escalation"],
+            ["Handoff target", "Main executor / operator as required"],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-lg border border-[#242d3f] bg-[#151b28] p-3">
+              <p className="text-xs font-medium text-muted-foreground">{label}</p>
+              <p className="mt-1 text-sm">{value}</p>
+            </div>
+          ))}
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section className="rounded-md border border-border/80 bg-card/60 p-4">
+        <section className="rounded-lg border border-[#242d3f] bg-[#111622] p-4">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Plan steps</p>
           {stepSummary.length > 0 ? (
             <ol className="mt-3 space-y-2 text-sm">
               {stepSummary.map((step, index) => (
-                <li key={`${step}-${index}`} className="rounded-md border border-border/80 bg-card/60 p-2">
+                <li key={`${step}-${index}`} className="rounded-md border border-[#242d3f] bg-[#151b28] p-2">
                   <span className="mr-2 text-xs text-muted-foreground">{index + 1}.</span>
                   <span>{step}</span>
                 </li>
@@ -196,7 +221,7 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
           )}
         </section>
 
-        <section className="rounded-md border border-border/80 bg-card/60 p-4">
+        <section className="rounded-lg border border-[#242d3f] bg-[#111622] p-4">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Execution units</p>
           {executionUnits.length > 0 ? (
             <ul className="mt-3 space-y-2 text-sm">
@@ -204,12 +229,12 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
                 const status = textValue(unit.status);
                 const source = sourceRefLabel(unit);
                 return (
-                  <li key={`${source ?? labelForRecord(unit, "Execution unit")}-${index}`} className="rounded-md border border-border/80 bg-card/60 p-2">
+                  <li key={`${source ?? labelForRecord(unit, "Execution unit")}-${index}`} className="rounded-md border border-[#242d3f] bg-[#151b28] p-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-medium">{labelForRecord(unit, `Execution unit ${index + 1}`)}</span>
-                      {status && <span className={`text-xs ${statusTone(status)}`}>{status}</span>}
+                      <span className="min-w-0 truncate font-medium">{labelForRecord(unit, `Execution unit ${index + 1}`)}</span>
+                      {status && <span className={`shrink-0 text-xs ${statusTone(status)}`}>{status}</span>}
                     </div>
-                    {source && <p className="mt-1 text-xs text-muted-foreground">{source}</p>}
+                    {source && <p className="mt-1 truncate font-mono text-[11px] text-[#8b97ad]">{source}</p>}
                   </li>
                 );
               })}
@@ -221,7 +246,7 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
       </div>
 
       {selectedUnitCount > 0 && (
-        <section className="rounded-md border border-border/80 bg-card/60 p-4">
+        <section className="rounded-lg border border-[#242d3f] bg-[#111622] p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Selected execution units</p>
             <span className="text-xs text-muted-foreground">{selectedUnitCount} total</span>
@@ -235,7 +260,7 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
           {selectedUnitLabels.length > 0 && (
             <ul className="mt-3 flex flex-wrap gap-2 text-sm">
               {selectedUnitLabels.map((label) => (
-                <li key={label} className="rounded-full border border-border/80 bg-background/60 px-2 py-1">{label}</li>
+                <li key={label} className="rounded-full border border-[#242d3f] bg-[#151b28] px-2 py-1">{label}</li>
               ))}
             </ul>
           )}
@@ -243,15 +268,15 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section className="rounded-md border border-border/80 bg-card/60 p-4">
+        <section className="rounded-lg border border-[#242d3f] bg-[#111622] p-4">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Applied Worktree Rules</p>
           {ruleRefs.length > 0 || ruleNames.length > 0 ? (
             <ul className="mt-3 space-y-2 text-sm">
               {(ruleRefs.length > 0 ? ruleRefs : ruleNames.map<JsonRecord>((name) => ({ name }))).slice(0, 10).map((rule, index) => {
                 const mode = textValue(rule.mode) ?? ruleModes[index] ?? null;
                 return (
-                  <li key={`${labelForRecord(rule, "Rule")}-${index}`} className="rounded-md border border-border/80 bg-card/60 p-2">
-                    <span className="font-medium">{labelForRecord(rule, `Rule ${index + 1}`)}</span>
+                  <li key={`${labelForRecord(rule, "Rule")}-${index}`} className="rounded-md border border-[#242d3f] bg-[#151b28] p-2">
+                    <span className="min-w-0 truncate font-medium">{labelForRecord(rule, `Rule ${index + 1}`)}</span>
                     {mode && <span className="ml-2 text-xs text-muted-foreground">{mode}</span>}
                   </li>
                 );
@@ -262,14 +287,14 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
           )}
         </section>
 
-        <section className="rounded-md border border-border/80 bg-card/60 p-4">
+        <section className="rounded-lg border border-[#242d3f] bg-[#111622] p-4">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Injected KB references/excerpts</p>
           {kbRefs.length > 0 ? (
             <ul className="mt-3 space-y-2 text-sm">
               {kbRefs.slice(0, 5).map((kb, index) => (
-                <li key={`${labelForRecord(kb, "KB")}-${index}`} className="rounded-md border border-border/80 bg-card/60 p-2">
-                  <span className="font-medium">{labelForRecord(kb, `KB ${index + 1}`)}</span>
-                  {textValue(kb.excerpt) && <p className="mt-1 text-xs text-muted-foreground">{textValue(kb.excerpt)}</p>}
+                <li key={`${labelForRecord(kb, "KB")}-${index}`} className="rounded-md border border-[#242d3f] bg-[#151b28] p-2">
+                  <span className="min-w-0 truncate font-medium">{labelForRecord(kb, `KB ${index + 1}`)}</span>
+                  {textValue(kb.excerpt) && <p className="mt-1 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-[#b6c2d6]">{textValue(kb.excerpt)}</p>}
                 </li>
               ))}
             </ul>
@@ -279,7 +304,7 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
         </section>
       </div>
 
-      <section className="rounded-md border border-border/80 bg-card/60 p-4">
+      <section className="rounded-lg border border-[#242d3f] bg-[#111622] p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Self-improvement candidates</p>
           <span className="text-xs text-muted-foreground">{selfImprovementCandidates.length} candidates</span>
@@ -294,17 +319,17 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
               const gateOwner = textValue(candidate.gateOwner);
               const pattern = textValue(candidate.pattern);
               return (
-                <li key={`${assetRef}-${index}`} className="rounded-md border border-border/80 bg-card/60 p-2">
+                <li key={`${assetRef}-${index}`} className="rounded-md border border-[#242d3f] bg-[#151b28] p-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium">{assetRef}</span>
-                    {result && <span className={`text-xs ${statusTone(result)}`}>{result}</span>}
+                    <span className="min-w-0 truncate font-mono text-[13px]">{assetRef}</span>
+                    {result && <span className={`shrink-0 text-xs ${statusTone(result)}`}>{result}</span>}
                   </div>
                   <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
                     {assetType && <span>{assetType}</span>}
                     {edit && <span>{edit}</span>}
                     {gateOwner && <span>gate: {gateOwner}</span>}
                   </div>
-                  {pattern && <p className="mt-2 text-xs text-muted-foreground">{pattern}</p>}
+                  {pattern && <p className="mt-2 whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-[#b6c2d6]">{pattern}</p>}
                 </li>
               );
             })}
@@ -314,33 +339,30 @@ function MissionExecutionRulesPanel({ plan, auditEvents = [] }: { plan?: Mission
         )}
       </section>
 
-      <section className="rounded-md border border-border/80 bg-card/60 p-4">
+      <section className="rounded-lg border border-[#242d3f] bg-[#111622] p-4">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Required inputs</p>
         {openRequiredInputs.length > 0 ? (
           <ul className="mt-3 flex flex-wrap gap-2 text-sm">
-            {openRequiredInputs.map((input) => <li key={input} className="rounded-full border border-border/80 bg-background/60 px-2 py-1">{input}</li>)}
+            {openRequiredInputs.map((input) => <li key={input} className="rounded-full border border-[#242d3f] bg-[#151b28] px-2 py-1">{input}</li>)}
           </ul>
         ) : (
           <p className="mt-3 text-sm text-muted-foreground">No open required inputs reported.</p>
         )}
       </section>
 
-      <section className="rounded-md border border-border/80 bg-card/60 p-4">
+      <section className="rounded-lg border border-[#242d3f] bg-[#111622] p-4">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Audit timeline</p>
         {auditEvents.length > 0 ? (
           <ul className="mt-3 space-y-2 text-sm">
-            {auditEvents.slice(0, 8).map((event) => {
-              const summary = formatAuditEventSummary(event);
-              return (
-                <li key={event.id} className="rounded-md border border-border/80 bg-card/60 p-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium">{event.action}</span>
-                    <span className="text-xs text-muted-foreground">{formatDate(event.createdAt)}</span>
-                  </div>
-                  {summary && <p className="mt-1 text-xs text-muted-foreground">{summary}</p>}
-                </li>
-              );
-            })}
+            {auditEvents.slice(0, 8).map((event) => (
+              <li key={event.id} className="rounded-md border border-[#242d3f] bg-[#151b28] p-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="min-w-0 truncate font-mono text-[12px]">{event.action}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{formatDate(event.createdAt)}</span>
+                </div>
+                {formatAuditEventSummary(event) && <p className="mt-1 text-xs text-muted-foreground">{formatAuditEventSummary(event)}</p>}
+              </li>
+            ))}
           </ul>
         ) : (
           <p className="mt-3 text-sm text-muted-foreground">
@@ -470,85 +492,60 @@ export function MissionDetail() {
     );
   }
 
+  const plan = mission.activeMissionPlan;
+  const primaryTransition = PRIMARY_TRANSITION[mission.status] ?? null;
+  const metricLabel = "text-[10px] uppercase tracking-[0.08em]";
+
   return (
-    <div className="space-y-6 tabular-nums">
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Rocket className="h-5 w-5 text-muted-foreground shrink-0" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Mission</span>
+    <div className="space-y-3 tabular-nums">
+      {/* 48px detail header — full-bleed inside <main> padding, sticky within the desktop scroll container. */}
+      <header className="-mx-4 -mt-4 flex h-12 items-center gap-2 border-b border-[#242d3f] bg-[#0b0e14]/95 px-4 md:sticky md:top-0 md:z-10 md:-mx-6 md:-mt-6 md:px-6">
+        <nav aria-label="Mission breadcrumb" className="flex min-w-0 shrink-0 items-center gap-1.5 text-xs text-[#8b97ad]">
+          <Link to="/missions" className="shrink-0 hover:text-[#e6edf7]">Missions</Link>
+          <span aria-hidden className="shrink-0 text-[#4a5670]">/</span><span className="shrink-0 font-mono tabular-nums">{missionId.slice(0, 8)}</span>
+        </nav>
+        <div className="min-w-0 flex-1 truncate">
+          <InlineEditor value={mission.title} onSave={(title) => updateMission.mutate({ title })}
+            className="text-sm font-semibold leading-tight text-[#e6edf7]" placeholder="Mission title" />
         </div>
-
-        <InlineEditor
-          value={mission.title}
-          onSave={(title) => updateMission.mutate({ title })}
-          className="text-xl font-semibold leading-tight"
-          placeholder="Mission title"
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3 rounded-md border border-border/80 bg-card/60 px-3 py-2">
-        <StatusBadge status={mission.status} />
-
-        {mission.project && (
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-border/80 bg-background/60 px-2.5 py-0.5 text-xs font-medium text-muted-foreground whitespace-nowrap shrink-0">
-            <span
-              className="shrink-0 h-3 w-3 rounded-sm"
-              style={{ backgroundColor: mission.project.color ?? "#6366f1" }}
-            />
-            {mission.project.name}
-          </span>
-        )}
-
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <User className="h-3.5 w-3.5" />
-          <span>Main executor: {agentMap[mission.ownerAgentId] ?? mission.ownerAgentId ?? "—"}</span>
-        </div>
-
-        {mission.startedAt && (
-          <span className="text-sm text-muted-foreground">
-            Started {formatDate(mission.startedAt)}
-          </span>
-        )}
-
-        {mission.completedAt && (
-          <span className="text-sm text-muted-foreground">
-            Completed {formatDate(mission.completedAt)}
-          </span>
-        )}
-
-        <span className="text-sm text-muted-foreground">
-          Created {formatDate(mission.createdAt)}
-        </span>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <MissionRevisionActions
-          companyId={selectedCompanyId}
-          mission={mission}
-          workflowRuns={revisionRunData ?? []}
-          // origin은 클릭 시점에 window.location.origin으로 계약(컴포넌트 기본값) — node SSR 렌더 안전.
-          issuePrefix={selectedCompany?.issuePrefix}
-          onNewMission={openNewMission}
-        />
-        {STATUS_OPTIONS.filter((s) => s.value !== mission.status).map((s) => (
-          <Button
-            key={s.value}
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => updateMission.mutate({ status: s.value })}
-            disabled={updateMission.isPending}
-          >
-            Set {s.label}
+        <StatusPill status={mission.status} />
+        {primaryTransition && (
+          <Button size="sm" className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs font-semibold text-[#f8fafc] hover:bg-[#1d4ed8]"
+            onClick={() => updateMission.mutate({ status: primaryTransition.to })} disabled={updateMission.isPending}>
+            {primaryTransition.label}
           </Button>
-        ))}
+        )}
+        <Button type="button" variant="ghost" size="icon-xs" className="shrink-0 text-[#8b97ad] hover:text-[#e6edf7]"
+          onClick={refreshMissionDetail} disabled={isRefreshingMissionDetail} title="Refresh mission detail" aria-label="Refresh mission detail">
+          <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingMissionDetail ? "animate-spin" : ""}`} />
+          <span className="sr-only">Refresh mission detail</span>
+        </Button>
+      </header>
+
+      {/* 1-row key-metric summary strip (secondary cells fold below sm; the row never wraps or widens the page). */}
+      <div className="cockpit-strip w-full gap-0 overflow-hidden" role="group" aria-label="Mission summary">
+        <span className="cockpit-cell min-w-0">
+          <span className={metricLabel}>Main executor</span>
+          <b className="truncate" title={agentMap[mission.ownerAgentId] ?? mission.ownerAgentId ?? undefined}>{agentMap[mission.ownerAgentId] ?? mission.ownerAgentId ?? "—"}</b>
+        </span>
+        <span className="cockpit-cell"><span className={metricLabel}>Duration</span><b>{formatDuration(mission.startedAt, mission.completedAt) ?? "—"}</b></span>
+        <span className="cockpit-cell"><span className={metricLabel}>Plan</span><b>{plan?.available ? `rev ${plan.revision ?? "—"}` : "none"}</b></span>
+        <span className="cockpit-cell"><span className={metricLabel}>Exec units</span><b>{plan?.executionUnitCount ?? 0}</b>{plan?.blockedOrFailedUnitCount ? <span className="text-[#f87171]">{plan.blockedOrFailedUnitCount} blocked/failed</span> : null}</span>
+        {mission.project && (
+          <span className="cockpit-cell min-w-0">
+            <span className="h-3 w-3 shrink-0 rounded-sm" style={{ backgroundColor: mission.project.color ?? "#6366f1" }} />
+            <span className={metricLabel}>Project</span>
+            <b className="truncate" title={mission.project.name}>{mission.project.name}</b>
+          </span>
+        )}
+        <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Started</span><b>{mission.startedAt ? formatDate(mission.startedAt) : "—"}</b></span>
+        <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Created</span><b>{formatDate(mission.createdAt)}</b></span>
+        {mission.completedAt && <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Completed</span><b>{formatDate(mission.completedAt)}</b></span>}
       </div>
 
-      <Separator />
-
-      <div className="space-y-1.5">
+      <section className="rounded-lg border border-[#242d3f] bg-[#111622] px-3 py-2">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Description</p>
-        <div className="max-h-[32dvh] min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
+        <div className="mt-1.5 max-h-[32dvh] min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
           <InlineEditor
             value={mission.description ?? ""}
             onSave={(description) => updateMission.mutate({ description })}
@@ -557,46 +554,48 @@ export function MissionDetail() {
             multiline
           />
         </div>
-      </div>
-
-      <Separator />
+      </section>
 
       <Tabs defaultValue="overview" className="w-full">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <TabsList className="shrink-0">
-            <TabsTrigger value="overview" className="gap-1.5">
+        {/* 32px cockpit toolbar: tabs left, secondary actions (revision + remaining status setters) right. */}
+        <div className="cockpit-toolbar h-auto min-h-8 flex-wrap py-1">
+          <TabsList variant="line" className="h-7 shrink-0">
+            <TabsTrigger value="overview" className="gap-1.5 text-xs">
               <Rocket className="h-3.5 w-3.5" />
               Overview
             </TabsTrigger>
-            <TabsTrigger value="issues" className="gap-1.5">
+            <TabsTrigger value="issues" className="gap-1.5 text-xs">
               <ListTree className="h-3.5 w-3.5" />
               Work
             </TabsTrigger>
-            <TabsTrigger value="workflow" className="gap-1.5">
+            <TabsTrigger value="workflow" className="gap-1.5 text-xs">
               <GitBranch className="h-3.5 w-3.5" />
               Execution Flow
             </TabsTrigger>
-            <TabsTrigger value="worktree" className="gap-1.5">
+            <TabsTrigger value="worktree" className="gap-1.5 text-xs">
               <Settings className="h-3.5 w-3.5" />
               Execution Rules
             </TabsTrigger>
           </TabsList>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 shrink-0"
-            onClick={refreshMissionDetail}
-            disabled={isRefreshingMissionDetail}
-            title="Refresh mission detail"
-            aria-label="Refresh mission detail"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingMissionDetail ? "animate-spin" : ""}`} />
-            <span className="sr-only">Refresh mission detail</span>
-          </Button>
+          <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1.5">
+            <MissionRevisionActions
+              companyId={selectedCompanyId}
+              mission={mission}
+              workflowRuns={revisionRunData ?? []}
+              // origin은 클릭 시점에 window.location.origin으로 계약(컴포넌트 기본값) — node SSR 렌더 안전.
+              issuePrefix={selectedCompany?.issuePrefix}
+              onNewMission={openNewMission}
+            />
+            {STATUS_OPTIONS.filter((s) => s.value !== mission.status && s.value !== primaryTransition?.to).map((s) => (
+              <Button key={s.value} variant="ghost" size="xs" className="h-6 shrink-0 text-[11px] text-[#8b97ad] hover:text-[#e6edf7]"
+                onClick={() => updateMission.mutate({ status: s.value })} disabled={updateMission.isPending}>
+                Set {s.label}
+              </Button>
+            ))}
+          </div>
         </div>
 
-        <TabsContent value="overview" className="mt-4 [&>div>div:first-child>div]:rounded-md [&>div>div:first-child>div]:border [&>div>div:first-child>div]:border-border/80 [&>div>div:first-child>div]:bg-card/60 [&>div>div:first-child>div]:tabular-nums">
+        <TabsContent value="overview" className="mt-4 [&>div>div:first-child>div]:rounded-lg [&>div>div:first-child>div]:border [&>div>div:first-child>div]:border-[#242d3f] [&>div>div:first-child>div]:bg-[#111622] [&>div>div:first-child>div]:tabular-nums">
           <MissionExecutionOverview missionId={missionId} mission={mission} />
         </TabsContent>
 

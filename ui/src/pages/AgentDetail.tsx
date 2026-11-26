@@ -18,7 +18,6 @@ import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { PageTabBar } from "../components/PageTabBar";
 import { adapterLabels, roleLabels, help } from "../components/agent-config-primitives";
-import { StatusBadge } from "../components/StatusBadge";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { RunButton, PauseResumeButton } from "../components/AgentActionButtons";
 import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
@@ -73,6 +72,24 @@ import { AgentOverview } from "../components/agent-detail/AgentOverview";
 import { AgentConfigurePage } from "../components/agent-detail/ConfigureViews";
 import { AgentSkillsTab } from "../components/agent-detail/AgentSkillsTab";
 import { parseAgentDetailView, runMetrics, setsEqual, type AgentDetailView } from "./agent-detail-view-helpers";
+
+// Cockpit status pill tones (approved mockup `.st` semantics: active=cobalt, planning=amber, blocked=crimson, completed=muted).
+const PILL_TONE: Record<string, string> = {
+  active: "text-[#5f8dff]", running: "text-[#5f8dff]", in_progress: "text-[#5f8dff]",
+  planning: "text-[#fbbf24]", paused: "text-[#fbbf24]", idle: "text-[#fbbf24]", pending_approval: "text-[#fbbf24]",
+  failed: "text-[#f87171]", blocked: "text-[#f87171]", cancelled: "text-[#f87171]", canceled: "text-[#f87171]", terminated: "text-[#f87171]", error: "text-[#f87171]",
+};
+
+function StatusPill({ status }: { status: string }) {
+  return (
+    <span className={`inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-[#242d3f] bg-[#0b0e14] px-2 text-[10.5px] font-semibold capitalize ${PILL_TONE[status.toLowerCase()] ?? "text-[#8b97ad]"}`}>
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 const EMPTY_HEARTBEAT_RUN_SUMMARIES: HeartbeatRunSummary[] = [];
 
@@ -335,30 +352,16 @@ export function AgentDetail() {
   });
 
   useEffect(() => {
-    const crumbs: { label: string; href?: string }[] = [
-      { label: "Agents", href: "/agents" },
-    ];
+    const crumbs: { label: string; href?: string }[] = [{ label: "Agents", href: "/agents" }];
     const agentName = agent?.name ?? routeAgentRef ?? "Agent";
+    // Sub-view crumb label; views absent here (dashboard, skills — TODO: bring back later) fall through to "Dashboard".
+    const viewCrumb: Partial<Record<AgentDetailView, string>> = { instructions: "Instructions", configuration: "Configuration", runs: "Runs", budget: "Budget" };
     if (activeView === "dashboard" && !urlRunId) {
       crumbs.push({ label: agentName });
+    } else if (urlRunId) {
+      crumbs.push({ label: agentName, href: `/agents/${canonicalAgentRef}/dashboard` }, { label: "Runs", href: `/agents/${canonicalAgentRef}/runs` }, { label: `Run ${urlRunId.slice(0, 8)}` });
     } else {
-      crumbs.push({ label: agentName, href: `/agents/${canonicalAgentRef}/dashboard` });
-      if (urlRunId) {
-        crumbs.push({ label: "Runs", href: `/agents/${canonicalAgentRef}/runs` });
-        crumbs.push({ label: `Run ${urlRunId.slice(0, 8)}` });
-      } else if (activeView === "instructions") {
-        crumbs.push({ label: "Instructions" });
-      } else if (activeView === "configuration") {
-        crumbs.push({ label: "Configuration" });
-      // } else if (activeView === "skills") { // TODO: bring back later
-      //   crumbs.push({ label: "Skills" });
-      } else if (activeView === "runs") {
-        crumbs.push({ label: "Runs" });
-      } else if (activeView === "budget") {
-        crumbs.push({ label: "Budget" });
-      } else {
-        crumbs.push({ label: "Dashboard" });
-      }
+      crumbs.push({ label: agentName, href: `/agents/${canonicalAgentRef}/dashboard` }, { label: viewCrumb[activeView] ?? "Dashboard" });
     }
     setBreadcrumbs(crumbs);
   }, [setBreadcrumbs, agent, routeAgentRef, canonicalAgentRef, activeView, urlRunId]);
@@ -384,34 +387,47 @@ export function AgentDetail() {
   }
   const isPendingApproval = agent.status === "pending_approval";
   const showConfigActionBar = (activeView === "configuration" || activeView === "instructions") && (configDirty || configSaving);
+  const metricLabel = "text-[10px] uppercase tracking-[0.08em]";
+  // Visible (non-subscription) cost of the loaded run page; dashboard-only queries render "—" until loaded.
+  const runsCost = (runPage?.items ?? []).reduce((sum, run) => sum + runMetrics(run).cost, 0);
+  const liveRunCount = (mobileLiveRuns ?? []).filter((r) => r.status === "running" || r.status === "queued").length;
+  const budget = agentBudgetSummary;
 
   return (
-    <div className={cn("space-y-6 tabular-nums", activeView === "dashboard" && "[&_h3]:text-[11px] [&_h3]:font-semibold [&_h3]:uppercase [&_h3]:tracking-wider [&_h3]:text-muted-foreground", "[&_.border.rounded-lg]:rounded-md [&_.border.rounded-lg.border-border]:border-border/80 [&_.border.rounded-lg.border-border]:bg-card/60 [&_a.border.rounded-lg:hover]:bg-muted/50", isMobile && showConfigActionBar && "pb-24")}>
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 rounded-md border border-border/80 bg-card/60 px-3 py-2">
-        <div className="flex items-center gap-3 min-w-0">
-          <AgentIconPicker
-            value={agent.icon}
-            onChange={(icon) => updateIcon.mutate(icon)}
-          >
-            <button className="shrink-0 flex items-center justify-center h-12 w-12 rounded-lg bg-accent hover:bg-accent/80 transition-colors">
-              <AgentIcon icon={agent.icon} className="h-6 w-6" />
-            </button>
-          </AgentIconPicker>
-          <div className="min-w-0">
-            <h2 className="text-2xl font-bold truncate">{agent.name}</h2>
-            <p className="text-sm text-muted-foreground truncate">
-              {roleLabels[agent.role] ?? agent.role}
-              {agent.title ? ` - ${agent.title}` : ""}
-            </p>
-          </div>
+    <div className={cn("space-y-3 tabular-nums", activeView === "dashboard" && "[&_h3]:text-[11px] [&_h3]:font-semibold [&_h3]:uppercase [&_h3]:tracking-wider [&_h3]:text-muted-foreground", "[&_.border.rounded-lg]:rounded-lg [&_.border.rounded-lg.border-border]:border-[#242d3f] [&_.border.rounded-lg.border-border]:bg-[#111622] [&_a.border.rounded-lg:hover]:bg-muted/50", isMobile && showConfigActionBar && "pb-24")}>
+      {/* 48px detail header — full-bleed inside <main> padding, sticky within the desktop scroll container. */}
+      <header className="-mx-4 -mt-4 flex h-12 items-center gap-2 border-b border-[#242d3f] bg-[#0b0e14]/95 px-4 md:sticky md:top-0 md:z-10 md:-mx-6 md:-mt-6 md:px-6">
+        <nav aria-label="Agent breadcrumb" className="flex min-w-0 shrink-0 items-center gap-1.5 text-xs text-[#8b97ad]">
+          <Link to="/agents" className="hidden shrink-0 hover:text-[#e6edf7] sm:inline">Agents</Link>
+          <span aria-hidden className="hidden shrink-0 text-[#4a5670] sm:inline">/</span>
+          <span className="shrink-0 font-mono tabular-nums">{agent.id.slice(0, 8)}</span>
+        </nav>
+        <AgentIconPicker value={agent.icon} onChange={(icon) => updateIcon.mutate(icon)}>
+          <button type="button" title="Change agent icon" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#151b28] transition-colors hover:bg-[#1b2433]">
+            <AgentIcon icon={agent.icon} className="h-5 w-5" />
+          </button>
+        </AgentIconPicker>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-sm font-semibold leading-tight text-[#e6edf7]">{agent.name}</h2>
+          <p className="truncate text-[11px] leading-tight text-[#8b97ad]">
+            {roleLabels[agent.role] ?? agent.role}{agent.title ? ` · ${agent.title}` : ""}
+          </p>
         </div>
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => openNewIssue({ assigneeAgentId: agent.id })}
-          >
+        <StatusPill status={agent.status} />
+        {mobileLiveRun && (
+          <Link to={`/agents/${canonicalAgentRef}/runs/${mobileLiveRun.id}`} title="Open live run"
+            className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#5f8dff]/30 bg-[#5f8dff]/10 px-2 py-0.5 no-underline transition-colors hover:bg-[#5f8dff]/20 sm:hidden">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-[#5f8dff] opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#5f8dff]" />
+            </span>
+            <span className="text-[11px] font-semibold text-[#5f8dff]">Live</span>
+          </Link>
+        )}
+        {/* Tight action cluster: every button is 28px so the whole bar stays exactly 48px. */}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 [&_button]:h-7 [&_button]:px-2 [&_button]:text-xs">
+          <Button size="sm" className="shrink-0 bg-[#2563eb] font-semibold text-[#f8fafc] hover:bg-[#1d4ed8]"
+            onClick={() => openNewIssue({ assigneeAgentId: agent.id })}>
             <Plus className="h-3.5 w-3.5 sm:mr-1" />
             <span className="hidden sm:inline">Assign Work</span>
           </Button>
@@ -426,61 +442,41 @@ export function AgentDetail() {
             onResume={() => agentAction.mutate("resume")}
             disabled={agentAction.isPending || isPendingApproval}
           />
-          <span className="hidden sm:inline"><StatusBadge status={agent.status} /></span>
-          {mobileLiveRun && (
-            <Link
-              to={`/agents/${canonicalAgentRef}/runs/${mobileLiveRun.id}`}
-              className="sm:hidden flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-500/10 hover:bg-blue-500/20 transition-colors no-underline"
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
-              </span>
-              <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">Live</span>
-            </Link>
-          )}
-
           {/* Overflow menu */}
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon-xs">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+              <Button variant="ghost" size="icon-xs"><MoreHorizontal className="h-4 w-4" /></Button>
             </PopoverTrigger>
             <PopoverContent className="w-44 p-1" align="end">
-              <button
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50"
-                onClick={() => {
-                  navigator.clipboard.writeText(agent.id);
-                  setMoreOpen(false);
-                }}
-              >
+              <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50"
+                onClick={() => { navigator.clipboard.writeText(agent.id); setMoreOpen(false); }}>
                 <Copy className="h-3 w-3" />
                 Copy Agent ID
               </button>
-              <button
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50"
-                onClick={() => {
-                  resetTaskSession.mutate(null);
-                  setMoreOpen(false);
-                }}
-              >
+              <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50"
+                onClick={() => { resetTaskSession.mutate(null); setMoreOpen(false); }}>
                 <RotateCcw className="h-3 w-3" />
                 Reset Sessions
               </button>
-              <button
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-destructive"
-                onClick={() => {
-                  agentAction.mutate("terminate");
-                  setMoreOpen(false);
-                }}
-              >
+              <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-destructive hover:bg-accent/50"
+                onClick={() => { agentAction.mutate("terminate"); setMoreOpen(false); }}>
                 <Trash2 className="h-3 w-3" />
                 Terminate
               </button>
             </PopoverContent>
           </Popover>
         </div>
+      </header>
+
+      {/* 1-row key-metric summary strip (dashboard-only queries render "—" until loaded; secondary cells fold below sm). */}
+      <div className="cockpit-strip w-full gap-0 overflow-hidden" role="group" aria-label="Agent summary">
+        <span className="cockpit-cell min-w-0"><span className={metricLabel}>Runs 14d</span><b>{runStats?.total ?? "—"}</b></span>
+        <span className="cockpit-cell"><span className={metricLabel}>Cost</span><b>{runPage ? `$${runsCost.toFixed(4)}` : "—"}</b></span>
+        <span className="cockpit-cell"><span className={metricLabel}>Live</span><b className={liveRunCount ? "text-[#5f8dff]" : undefined}>{liveRunCount}</b></span>
+        <span className="cockpit-cell"><span className={metricLabel}>Budget</span><b>{usd(budget.observedAmount)}</b>{budget.amount > 0 ? `${usd(budget.amount)} · ${budget.utilizationPercent}%` : "no cap"}</span>
+        <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Assigned</span><b>{allIssues ? assignedIssues.length : "—"}</b></span>
+        <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Reports</span><b>{allAgents ? directReports.length : "—"}</b></span>
+        {reportsToAgent && <span className="cockpit-cell hidden min-w-0 sm:inline-flex"><span className={metricLabel}>Reports to</span><b className="truncate" title={reportsToAgent.name}>{reportsToAgent.name}</b></span>}
       </div>
 
       {!urlRunId && (
@@ -488,6 +484,8 @@ export function AgentDetail() {
           value={activeView}
           onValueChange={(value) => navigate(`/agents/${canonicalAgentRef}/${value}`)}
         >
+          {/* 32px cockpit toolbar with hairline tabs. */}
+          <div className="cockpit-toolbar h-auto min-h-8 flex-wrap py-1">
           <PageTabBar
             items={[
               { value: "dashboard", label: "Dashboard" },
@@ -500,10 +498,11 @@ export function AgentDetail() {
             value={activeView}
             onValueChange={(value) => navigate(`/agents/${canonicalAgentRef}/${value}`)}
           />
+          </div>
         </Tabs>
       )}
 
-      {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+      {actionError && <p role="alert" className="whitespace-pre-wrap font-mono text-xs text-destructive">{actionError}</p>}
       {isPendingApproval && (
         <p className="text-sm text-amber-500">
           This agent is pending board approval and cannot be invoked yet.
@@ -520,7 +519,7 @@ export function AgentDetail() {
               : "opacity-0 pointer-events-none"
           )}
         >
-          <div className="flex items-center gap-2 rounded-md border border-border/80 bg-card/60 backdrop-blur-sm px-3 py-1.5 shadow-lg">
+          <div className="flex items-center gap-2 rounded-lg border border-[#242d3f] bg-[#111622]/95 px-3 py-1.5 shadow-lg backdrop-blur-sm">
             <Button
               variant="ghost"
               size="sm"
@@ -542,7 +541,7 @@ export function AgentDetail() {
 
       {/* Mobile bottom Save/Cancel bar */}
       {isMobile && showConfigActionBar && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 backdrop-blur-sm">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[#242d3f] bg-[#0b0e14]/95 backdrop-blur-sm">
           <div
             className="flex items-center justify-end gap-2 px-3 py-2"
             style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)" }}
