@@ -9,11 +9,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { AGENT_ROLES } from "@paperclipai/shared";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Shield } from "lucide-react";
 import { cn, agentUrl } from "../lib/utils";
 import { roleLabels } from "../components/agent-config-primitives";
@@ -26,15 +22,26 @@ import {
   DEFAULT_CODEX_LOCAL_MODEL,
 } from "@paperclipai/adapter-codex-local";
 
-const SUPPORTED_ADVANCED_ADAPTER_TYPES = new Set<CreateConfigValues["adapterType"]>([
-  "claude_local",
-  "codex_local",
-  "hermes_local",
-  "commandcode_local",
-  "pi_local",
-]);
+const SUPPORTED_ADVANCED_ADAPTER_TYPES = new Set<CreateConfigValues["adapterType"]>(["claude_local", "codex_local", "hermes_local", "commandcode_local", "pi_local"]);
 
-const cockpitConfigCardOverrides = "[&_.border.rounded-lg]:rounded-md [&_.border.rounded-lg.border-border]:border-border/80 [&_.border.rounded-lg.border-border]:bg-card/60";
+// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
+/** Hairline card: #151b28 body inside a 1px #242d3f border. */
+const HAIRLINE_CARD = "min-w-0 rounded-md border border-[#242d3f] bg-[#151b28]";
+const CTA_PRIMARY = "h-7 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]";
+const CTA_GHOST = "h-7 border-[#242d3f] bg-[#0b0e14] px-2.5 text-xs text-[#e6edf7] hover:bg-[#151b28]";
+/** Descendant override so AgentConfigForm's "cards" sections inherit the hairline card look. */
+const HAIRLINE_DESCENDANTS = "[&_.border.rounded-lg]:rounded-md [&_.border.rounded-lg.border-border]:border-[#242d3f] [&_.border.rounded-lg.border-border]:bg-[#151b28]";
+
+/** One cell of the 1-row cockpit strip: micro status dot (optional) · uppercase label · bold tabular fact. */
+function StripFact({ label, value, dot }: { label: string; value: string; dot?: string }) {
+  return (
+    <span className="cockpit-cell min-w-0 flex-1">
+      {dot && <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />}
+      <span className="truncate uppercase tracking-wide">{label}</span>
+      <b className="truncate normal-case tracking-normal" title={value}>{value}</b>
+    </span>
+  );
+}
 
 function createValuesForAdapterType(
   adapterType: CreateConfigValues["adapterType"],
@@ -131,11 +138,6 @@ export function NewAgent() {
     },
   });
 
-  function buildAdapterConfig() {
-    const adapter = getUIAdapter(configValues.adapterType);
-    return adapter.buildAdapterConfig(configValues);
-  }
-
   function handleSubmit() {
     if (!selectedCompanyId || !name.trim()) return;
     setFormError(null);
@@ -146,7 +148,7 @@ export function NewAgent() {
       ...(reportsTo ? { reportsTo } : {}),
       ...(selectedSkillKeys.length > 0 ? { desiredSkills: selectedSkillKeys } : {}),
       adapterType: configValues.adapterType,
-      adapterConfig: buildAdapterConfig(),
+      adapterConfig: getUIAdapter(configValues.adapterType).buildAdapterConfig(configValues),
       runtimeConfig: {
         heartbeat: {
           enabled: configValues.heartbeatEnabled,
@@ -163,52 +165,60 @@ export function NewAgent() {
   const availableSkills = (companySkills ?? []).filter((skill) => !skill.key.startsWith("paperclipai/paperclip/"));
 
   function toggleSkill(key: string, checked: boolean) {
-    setSelectedSkillKeys((prev) => {
-      if (checked) {
-        return prev.includes(key) ? prev : [...prev, key];
-      }
-      return prev.filter((value) => value !== key);
-    });
+    setSelectedSkillKeys((prev) =>
+      checked ? (prev.includes(key) ? prev : [...prev, key]) : prev.filter((value) => value !== key));
   }
 
+  const reportsToName = reportsTo ? agents?.find((agent) => agent.id === reportsTo)?.name ?? reportsTo : "—";
+
   return (
-    <div className="mx-auto max-w-2xl space-y-4 tabular-nums">
-      <div>
-        <h1 className="text-lg font-semibold">New Agent</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Advanced agent configuration</p>
+    <div className="mx-auto max-w-2xl space-y-2 tabular-nums">
+      {/* 1-row 6-cell cockpit strip: the configuration in progress at a glance */}
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label="New agent summary">
+        <StripFact label="Role" value={roleLabels[effectiveRole] ?? effectiveRole} dot={isFirstAgent ? "bg-[#fbbf24]" : "bg-[#5f8dff]"} />
+        <StripFact label="Reports to" value={reportsToName} />
+        <StripFact label="Adapter" value={configValues.adapterType} />
+        <StripFact label="Model" value={configValues.model || "—"} />
+        <StripFact label="Skills" value={`${selectedSkillKeys.length}/${availableSkills.length}`} />
+        <StripFact label="Heartbeat" value={`${configValues.heartbeatEnabled ? "On" : "Off"} · ${configValues.intervalSec}s`} dot={configValues.heartbeatEnabled ? "bg-[#34d399]" : "bg-[#8b97ad]"} />
       </div>
 
-      <div className="rounded-md border border-border/80 bg-card/60">
+      {/* Tight single-row 40px toolbar: title · scope · CEO notice (actions live in the footer of this long form). */}
+      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] pl-2 pr-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+          <h1 className="shrink-0 text-sm font-semibold text-[#e6edf7]">New Agent</h1>
+          <p className="min-w-0 truncate text-xs text-[#8b97ad]">Advanced agent configuration</p>
+        </div>
+        {isFirstAgent && (
+          <span className="shrink-0 rounded-full border border-[#fbbf24]/40 bg-[#fbbf24]/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#fbbf24]">CEO</span>
+        )}
+      </div>
+
+      <div className={cn(HAIRLINE_CARD, "divide-y divide-[#242d3f]")}>
         {/* Name */}
         <div className="px-4 pb-2 pt-4">
           <input
-            className="w-full bg-transparent text-lg font-semibold outline-none placeholder:text-muted-foreground/50"
-            placeholder="Agent name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            className="w-full bg-transparent text-lg font-semibold text-[#e6edf7] outline-none placeholder:text-[#8b97ad]/50"
+            placeholder="Agent name" value={name} onChange={(e) => setName(e.target.value)}
           />
         </div>
 
         {/* Title */}
-        <div className="px-4 pb-2">
+        <div className="px-4 pb-3">
           <input
-            className="w-full bg-transparent text-sm text-muted-foreground outline-none placeholder:text-muted-foreground/40"
+            className="w-full bg-transparent text-sm text-[#8b97ad] outline-none placeholder:text-[#8b97ad]/40"
             placeholder="Title (e.g. VP of Engineering)"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            aria-label="Title" value={title} onChange={(e) => setTitle(e.target.value)}
           />
         </div>
 
         {/* Property chips: Role + Reports To */}
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-border/80 px-4 py-2">
+        <div className="flex flex-wrap items-center gap-1.5 px-4 py-2">
           <Popover open={roleOpen} onOpenChange={setRoleOpen}>
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs transition-colors hover:bg-accent/50",
-                  isFirstAgent && "cursor-not-allowed opacity-60",
-                )}
+                className={cn("inline-flex h-7 items-center gap-1.5 rounded-md border border-[#242d3f] bg-[#0b0e14] px-2 text-xs text-[#e6edf7] transition-colors hover:bg-[#151b28]", isFirstAgent && "cursor-not-allowed opacity-60")}
                 disabled={isFirstAgent}
               >
                 <Shield className="h-3 w-3 text-muted-foreground" />
@@ -220,10 +230,7 @@ export function NewAgent() {
                 <button
                   type="button"
                   key={r}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50",
-                    r === role && "bg-accent",
-                  )}
+                  className={cn("flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50", r === role && "bg-accent")}
                   onClick={() => { setRole(r); setRoleOpen(false); }}
                 >
                   {roleLabels[r] ?? r}
@@ -236,7 +243,7 @@ export function NewAgent() {
       </div>
 
       {/* Shared config form */}
-      <div className={cockpitConfigCardOverrides}>
+      <div className={HAIRLINE_DESCENDANTS}>
         <AgentConfigForm
           mode="create"
           values={configValues}
@@ -246,49 +253,41 @@ export function NewAgent() {
         />
       </div>
 
-      <section className="rounded-md border border-border/80 bg-card/60 px-4 py-4">
+      <section aria-label="Company skills" className={cn(HAIRLINE_CARD, "px-4 py-4")}>
         <div className="space-y-3">
           <div>
-            <h2 className="text-sm font-medium">Company skills</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <h2 className="text-xs font-semibold text-[#e6edf7]">Company skills</h2>
+            <p className="mt-1 text-xs text-[#8b97ad]">
               Optional skills from the company library. Built-in Paperwork runtime skills are added automatically.
             </p>
           </div>
           {availableSkills.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No optional company skills installed yet.</p>
+            <p className="text-xs text-[#8b97ad]">No optional company skills installed yet.</p>
           ) : (
-            <div className="space-y-3">
-              {availableSkills.map((skill) => {
-                const inputId = `skill-${skill.id}`;
-                const checked = selectedSkillKeys.includes(skill.key);
-                return (
-                  <div key={skill.id} className="flex items-start gap-3">
-                    <Checkbox
-                      id={inputId}
-                      checked={checked}
-                      onCheckedChange={(next) => toggleSkill(skill.key, next === true)}
-                    />
-                    <label htmlFor={inputId} className="grid gap-1 leading-none">
-                      <span className="text-sm font-medium">{skill.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {skill.description ?? skill.key}
-                      </span>
-                    </label>
-                  </div>
-                );
-              })}
+            <div className="divide-y divide-[#242d3f]/70">
+              {availableSkills.map((skill) => (
+                <div key={skill.id} className="flex items-start gap-3">
+                  <Checkbox id={`skill-${skill.id}`} checked={selectedSkillKeys.includes(skill.key)} onCheckedChange={(next) => toggleSkill(skill.key, next === true)} />
+                  <label htmlFor={`skill-${skill.id}`} className="grid min-w-0 flex-1 gap-1 py-2 leading-none">
+                    <span className="min-w-0 truncate text-sm font-medium text-[#e6edf7]">{skill.name}</span>
+                    <span className="min-w-0 break-words font-mono text-xs text-[#8b97ad]">{skill.description ?? skill.key}</span>
+                  </label>
+                </div>
+              ))}
             </div>
           )}
         </div>
       </section>
 
-      {/* Footer */}
-      <div className="rounded-md border border-border/80 bg-card/60 px-4 py-3">
-        {isFirstAgent && <p className="mb-2 text-xs text-muted-foreground">This will be the CEO</p>}
-        {formError && <p className="mb-2 text-xs text-destructive">{formError}</p>}
+      {/* Footer: status notes + actions; the cobalt Create agent is the page's single primary CTA. */}
+      <div className={cn(HAIRLINE_CARD, "flex flex-wrap items-center gap-3 px-4 py-2")}>
+        <div className="min-w-0 flex-1 space-y-1">
+          {isFirstAgent && <p className="text-xs text-[#fbbf24]">This will be the CEO</p>}
+          {formError && <p role="alert" className="whitespace-pre-wrap font-mono text-xs text-[#f87171]">{formError}</p>}
+        </div>
         <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={() => navigate("/agents")}>Cancel</Button>
-          <Button size="sm" disabled={!name.trim() || createAgent.isPending} onClick={handleSubmit}>
+          <Button variant="outline" size="sm" onClick={() => navigate("/agents")} className={CTA_GHOST}>Cancel</Button>
+          <Button size="sm" disabled={!name.trim() || createAgent.isPending} onClick={handleSubmit} className={CTA_PRIMARY}>
             {createAgent.isPending ? "Creating…" : "Create agent"}
           </Button>
         </div>
