@@ -428,6 +428,18 @@ export type {
   DuplicateMissionPlanTemplateRequest,
 } from "./types/index.js";
 
+export type {
+  DashboardTelemetryWindow,
+  DashboardTelemetryBucket,
+  DashboardUsageShare,
+  DashboardLiveSession,
+  DashboardTelemetryResponse,
+  DgateSnapshot,
+  DgateBridgeSource,
+  DgateDashboardBridgeResponse,
+  DgateSnapshotPushResponse,
+} from "./types/dashboard.js";
+
 export {
   toolDefinitionAdapterTypeSchema,
   toolDefinitionSchema,
