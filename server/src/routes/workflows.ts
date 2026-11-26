@@ -1,10 +1,10 @@
 import { Router, type Request, type Response } from "express";
 import type { Db } from "@paperclipai/db";
 import {
-  agents, issues, labels, projects, workflowStepRuns,
+  agents, issues, labels, projects, workflowRuns, workflowStepRuns,
   workflowWebhookConfigs, workflowWebhookDeliveries,
 } from "@paperclipai/db";
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, notInArray, sql } from "drizzle-orm";
 import {
   cancelWorkflowRunSchema,
   createWorkflowDefinitionSchema,
@@ -183,9 +183,10 @@ function workflowDefinitionForUi(
   };
 }
 
+const INACTIVE_WORKFLOW_RUN_STATUSES = ["completed", "succeeded", "done", "failed", "error", "cancelled", "canceled", "aborted"];
+
 function isActiveWorkflowRunStatus(status: string): boolean {
-  const normalized = status.trim().toLowerCase();
-  return !["completed", "succeeded", "done", "failed", "error", "cancelled", "canceled", "aborted"].includes(normalized);
+  return !INACTIVE_WORKFLOW_RUN_STATUSES.includes(status.trim().toLowerCase());
 }
 
 function workflowRunSummaryForUi(
@@ -274,9 +275,17 @@ export function workflowRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
 
+    const runCompany = eq(workflowRuns.companyId, companyId);
+    const canUseBoundedRunQueries = typeof (db as { execute?: unknown }).execute === "function";
+    const runsPromise = canUseBoundedRunQueries
+      ? Promise.all([
+        db.select().from(workflowRuns).where(and(runCompany, notInArray(workflowRuns.status, INACTIVE_WORKFLOW_RUN_STATUSES))).orderBy(desc(workflowRuns.createdAt), desc(workflowRuns.id)).limit(200),
+        db.select().from(workflowRuns).where(and(runCompany, inArray(workflowRuns.status, INACTIVE_WORKFLOW_RUN_STATUSES))).orderBy(desc(workflowRuns.createdAt), desc(workflowRuns.id)).limit(25),
+      ]).then(([activeRunRows, recentRunRows]) => [...activeRunRows, ...recentRunRows])
+      : workflowService.listRuns(db, { companyId });
     const [definitions, runs, projectRows, labelRows, agentNameById] = await Promise.all([
       workflowService.listDefinitions(db, companyId),
-      workflowService.listRuns(db, { companyId }),
+      runsPromise,
       db.select({ id: projects.id, name: projects.name }).from(projects).where(eq(projects.companyId, companyId)),
       db.select({ id: labels.id, name: labels.name, color: labels.color }).from(labels).where(eq(labels.companyId, companyId)),
       listAgentNameById(db, companyId),
@@ -289,16 +298,12 @@ export function workflowRoutes(db: Db) {
         .from(issues)
         .where(and(eq(issues.companyId, companyId), inArray(issues.id, parentIssueIds)))
       : [];
-    const parentIssueIdentifierById = new Map(
-      parentIssueRows
-        .filter((issue) => typeof issue.identifier === "string" && issue.identifier.trim())
-        .map((issue) => [issue.id, issue.identifier as string]),
-    );
-    const parentIssueMissionIdById = new Map(
-      parentIssueRows
-        .filter((issue) => typeof issue.missionId === "string" && issue.missionId.trim())
-        .map((issue) => [issue.id, issue.missionId as string]),
-    );
+    const parentIssueIdentifierById = new Map(parentIssueRows
+      .filter((issue) => typeof issue.identifier === "string" && issue.identifier.trim())
+      .map((issue) => [issue.id, issue.identifier as string]));
+    const parentIssueMissionIdById = new Map(parentIssueRows
+      .filter((issue) => typeof issue.missionId === "string" && issue.missionId.trim())
+      .map((issue) => [issue.id, issue.missionId as string]));
     const definitionNameById = new Map(definitions.map((definition) => [definition.id, definition.name]));
     const runSummaries = runs.map((run) => workflowRunSummaryForUi(run, definitionNameById, parentIssueIdentifierById, parentIssueMissionIdById));
 

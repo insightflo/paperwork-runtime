@@ -2,7 +2,7 @@
 // [외부 연결] ui/src/api/quality.ts, ui/src/components/QualityRsiPanel.tsx, server/src/routes/quality-rsi.ts.
 import { useEffect, useState } from "react";
 import { Link } from "@/lib/router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ListChecks, RefreshCw, AlertTriangle } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -63,7 +63,8 @@ export function Quality() {
   const { data: overview, isLoading, error } = useQuery({
     queryKey,
     queryFn: () => qualityApi.rsiOverview(cid),
-    enabled: !!cid,
+    enabled: Boolean(selectedCompanyId),
+    placeholderData: keepPreviousData,
   });
 
   const syncMut = useMutation({
