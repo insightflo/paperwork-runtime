@@ -471,10 +471,10 @@ export function AgentTelemetryCard({
       data-agent-id={agent.id}
       data-agent-status={agent.status}
       className={cn(
-        "group relative flex min-w-0 flex-col justify-between gap-3 rounded-xl border p-4 tabular-nums transition-all duration-150",
-        "border-border bg-card text-card-foreground shadow-sm hover:border-foreground/20 hover:shadow-md",
-        "dark:border-white/[0.075] dark:bg-[#0e131d] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.095),0_10px_28px_-18px_rgba(0,0,0,0.85)] dark:hover:border-white/[0.16] dark:hover:bg-[#121826]",
-        isLive && "dark:border-[#a3e635]/28",
+        "tactile-card tactile-card-interactive group relative flex min-w-0 flex-col justify-between gap-3 rounded-[12px] border p-4 tabular-nums transition-all duration-150",
+        "border-slate-200/90 bg-white text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] hover:border-slate-300 hover:shadow-md",
+        "dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_10px_28px_-18px_rgba(0,0,0,0.85)] dark:hover:border-white/[0.16] dark:hover:bg-[#121826]",
+        isLive && "border-lime-500/35 dark:border-[#a3e635]/30",
         className,
       )}
     >
@@ -552,7 +552,7 @@ export function AgentTelemetryCard({
       </div>
 
       {/* Telemetry Body: Sparkline + Key Metric (left) & Mini Radial Meter (right) */}
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border/60 bg-muted/25 px-3 py-2.5 dark:border-white/[0.06] dark:bg-[#090c12]/70">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[10px] border border-slate-200/80 bg-slate-50/80 px-3 py-2.5 dark:border-white/[0.06] dark:bg-[#07090d]/85">
         <div className="min-w-0 space-y-1.5">
           <div className="flex items-baseline justify-between gap-2">
             <div className="flex items-baseline gap-1.5 min-w-0">
