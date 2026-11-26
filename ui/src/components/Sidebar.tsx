@@ -21,6 +21,7 @@ import {
   UserRoundCheck,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarSection } from "./SidebarSection";
@@ -46,6 +47,11 @@ interface SidebarProps {
   hermesPanelOpen?: boolean;
   onToggleCompact?: () => void;
 }
+
+/** Creation actions: icon tiles in the mini bar, otherwise one compact "+ Work | + Mission" row instead of two stacked buttons. */
+const CREATE_TILE = "mx-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground";
+const CREATE_BAR = "mb-0.5 grid grid-cols-2 overflow-hidden rounded-[9px] border bg-card dark:border-[#242d3f] dark:bg-[#111622]";
+const CREATE_SEGMENT = "flex h-7 items-center justify-center gap-1 text-xs font-semibold text-foreground transition-colors hover:bg-accent/60";
 
 export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact }: SidebarProps) {
   const { compact: rawCompact } = useSidebarDensity();
@@ -100,11 +106,18 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
       : missionStatusQuery.isFetching || missionStatusQuery.isStale
         ? "status stale"
         : null;
+  // Full description stays in the tooltip; the pill itself shows only a concise count.
   const humanOperatorBadgeLabel = [
     `${humanOperatorSurface.activeCount} active item${humanOperatorSurface.activeCount === 1 ? "" : "s"} displayed`,
     humanOperatorSurface.pendingPageIncomplete ? "more pending cards" : null,
     missionStatusLabel,
   ].filter(Boolean).join(" · ");
+  const humanOperatorBadge = `${humanOperatorSurface.activeCount}${humanOperatorSurface.pendingPageIncomplete ? "+" : ""}`;
+  // `run` is invoked without arguments: the dialog actions take an optional defaults object.
+  const creationActions = [
+    { label: "New Work Item", short: "Work", Icon: SquarePen, run: openNewIssue },
+    { label: "New Mission", short: "Mission", Icon: Rocket, run: openNewMission },
+  ];
 
   function openSearch() {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
@@ -181,41 +194,34 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
 
       <nav className={cn("flex-1 min-h-0 overflow-y-auto scrollbar-auto-hide flex flex-col", compact ? "gap-2.5 px-2 py-2" : "gap-4 px-3 py-2")}>
         <div className="flex flex-col gap-0.5">
-          <button
-            type="button"
-            onClick={() => openNewIssue()}
-            title="New Work Item"
-            aria-label="New Work Item"
-            style={{ borderRadius: compact ? 10 : 9 }}
-            className={cn(
-              "flex items-center text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors",
-              compact ? "mx-auto h-9 w-9 justify-center" : "gap-2.5 px-3 py-2",
-            )}
-          >
-            <SquarePen className="h-4 w-4 shrink-0" />
-            {!compact && <span className="truncate">New Work Item</span>}
-          </button>
-          {/* New Mission button */}
-          <button
-            type="button"
-            onClick={() => openNewMission()}
-            title="New Mission"
-            aria-label="New Mission"
-            style={{ borderRadius: compact ? 10 : 9 }}
-            className={cn(
-              "flex items-center text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors",
-              compact ? "mx-auto h-9 w-9 justify-center" : "gap-2.5 px-3 py-2",
-            )}
-          >
-            <Rocket className="h-4 w-4 shrink-0" />
-            {!compact && <span className="truncate">New Mission</span>}
-          </button>
+          <div className={compact ? "flex flex-col gap-0.5" : CREATE_BAR}>
+            {creationActions.map(({ label, short, Icon, run }, index) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => run()}
+                title={label}
+                aria-label={label}
+                className={compact ? CREATE_TILE : cn(CREATE_SEGMENT, index > 0 && "border-l border-border")}
+              >
+                {compact ? (
+                  <Icon className="h-4 w-4" />
+                ) : (
+                  <>
+                    <Plus className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    {short}
+                  </>
+                )}
+              </button>
+            ))}
+          </div>
           <SidebarNavItem to="/missions" label="Missions" icon={Rocket} />
           <SidebarNavItem
             to="/human-operator"
             label="Human Operator"
             icon={UserRoundCheck}
-            textBadge={humanOperatorBadgeLabel}
+            textBadge={humanOperatorBadge}
+            textBadgeDetail={humanOperatorBadgeLabel}
             textBadgeTone={missionStatusLabel || humanOperatorSurface.pendingPageIncomplete ? "amber" : "default"}
             alert={humanOperatorSurface.activeCount > 0}
           />
@@ -268,7 +274,7 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
               }
               className={cn(
                 "flex items-center border text-[13px] font-medium transition-colors",
-                compact ? "mx-auto h-9 w-9 justify-center" : "gap-2.5 px-3 py-2",
+                compact ? "mx-auto h-9 w-9 justify-center" : "gap-2.5 px-3 py-1.5",
                 hermesPanelOpen
                   ? "text-foreground"
                   : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",

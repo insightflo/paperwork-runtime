@@ -115,8 +115,8 @@ export function CompanyRail() {
   );
 
   return (
-    <div className="flex flex-col items-center w-[72px] shrink-0 h-full bg-sidebar border-r border-sidebar-border">
-      <div className="flex items-center justify-center h-11 w-full shrink-0">
+    <div className="flex flex-col items-center w-[52px] shrink-0 h-full bg-[#0b0e14] border-r border-[#242d3f]">
+      <div className="flex items-center justify-center h-12 w-full shrink-0">
         <PapercompanyLogoIcon className="h-7 w-7" />
       </div>
 
@@ -131,8 +131,10 @@ export function CompanyRail() {
                   data-company-rail-item={company.id}
                   data-active={isSelected ? "true" : undefined}
                   className={cn(
-                    "flex w-full justify-center",
-                    isSelected && "[&_a>div:first-child]:bg-primary",
+                    "relative flex w-full justify-center [&_a>div:first-child]:left-0 [&_a>div:first-child]:w-0.5 [&_a>div:first-child]:rounded-none [&_a>div:first-child]:transition-[height,background-color,box-shadow] [&_a>div:nth-child(2)]:transition-[transform,translate,scale,box-shadow] [&:hover_a>div:nth-child(2)]:-translate-y-0.5 [&:hover_a>div:nth-child(2)]:shadow-[0_8px_16px_-8px_rgba(0,0,0,0.85)]",
+                    isSelected
+                      ? "[&_a>div:first-child]:h-5 [&_a>div:first-child]:bg-[#5f8dff] [&_a>div:first-child]:shadow-[0_0_10px_0_rgba(95,141,255,0.55)]"
+                      : "[&_a>div:first-child]:h-0 [&:hover_a>div:first-child]:h-2 [&:hover_a>div:first-child]:bg-[#5f8dff]/60",
                   )}
                 >
                   <SortableCompanyItem
@@ -154,7 +156,7 @@ export function CompanyRail() {
 
       <ProviderUsageRings companyId={selectedCompanyId} />
 
-      <div className="w-8 h-px bg-border mx-auto shrink-0" />
+      <div className="w-6 h-px bg-[#242d3f] mx-auto shrink-0" />
 
       <div className="flex items-center justify-center py-2 shrink-0">
         <Tooltip delayDuration={300}>
@@ -162,7 +164,7 @@ export function CompanyRail() {
             <button
               type="button"
               onClick={() => openOnboarding()}
-              className="flex items-center justify-center w-11 h-11 rounded-[22px] hover:rounded-[14px] border-2 border-dashed border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground transition-[border-color,color,border-radius] duration-150"
+              className="flex items-center justify-center w-10 h-10 rounded-[20px] hover:rounded-[12px] border border-dashed border-[#242d3f] text-muted-foreground hover:border-[#5f8dff]/70 hover:text-[#5f8dff] transition-[border-color,color,border-radius] duration-150"
               aria-label="Add company"
             >
               <Plus className="h-5 w-5" />
