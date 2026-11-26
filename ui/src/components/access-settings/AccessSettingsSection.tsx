@@ -1,13 +1,18 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { KeyRound, Mail, MonitorSmartphone, ShieldCheck, Users } from "lucide-react";
+import { Check, Copy, KeyRound, Link2, Mail, MonitorSmartphone, ShieldCheck, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { authApi, authErrorMessage } from "../../api/auth";
 import { AccessGroupsView } from "./AccessGroupsView";
 import { AccessUsersView } from "./AccessUsersView";
 import { getErrorMessage, shortId } from "./utils";
-import { useAccessSettingsController, type CompanyInvite } from "./useAccessSettingsController";
+import {
+  useAccessSettingsController,
+  type CompanyInvite,
+  type CreatedHumanInvite,
+  type HumanInviteRole,
+} from "./useAccessSettingsController";
 
 const tabTriggerClass =
   "flex-none gap-1.5 px-2.5 text-xs font-semibold text-slate-500 hover:text-slate-900 data-[state=active]:text-slate-950 data-[state=active]:after:bg-blue-600 dark:text-[#8b97ad] dark:hover:text-[#edf2fb] dark:data-[state=active]:text-[#edf2fb] dark:data-[state=active]:after:bg-[#60a5fa]";
@@ -33,12 +38,128 @@ function inviteIsActive(invite: CompanyInvite) {
   return Number.isNaN(expiry) || expiry > Date.now();
 }
 
-function InvitesPanel({ invites, loading, error, retry, revoking, onRevoke }: {
-  invites: CompanyInvite[]; loading: boolean; error: unknown; retry: () => void; revoking: boolean; onRevoke: (inviteId: string) => void;
+const HUMAN_INVITE_ROLES: HumanInviteRole[] = ["member", "viewer", "admin"];
+
+function InvitesPanel({
+  invites,
+  loading,
+  error,
+  retry,
+  revoking,
+  onRevoke,
+  creating,
+  createdInvite,
+  onCreateHumanInvite,
+  onDismissCreatedInvite,
+}: {
+  invites: CompanyInvite[];
+  loading: boolean;
+  error: unknown;
+  retry: () => void;
+  revoking: boolean;
+  onRevoke: (inviteId: string) => void;
+  creating: boolean;
+  createdInvite: CreatedHumanInvite | null;
+  onCreateHumanInvite: (role: HumanInviteRole) => void;
+  onDismissCreatedInvite: () => void;
 }) {
+  const [inviteRole, setInviteRole] = useState<HumanInviteRole>("member");
+  const [copied, setCopied] = useState(false);
   const activeInvites = invites.filter(inviteIsActive);
+
+  useEffect(() => {
+    setCopied(false);
+  }, [createdInvite?.id]);
+
+  async function copyInviteUrl() {
+    if (!createdInvite) return;
+    try {
+      await navigator.clipboard.writeText(createdInvite.url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
   return (
     <div className="space-y-3 tabular-nums">
+      <div className={panelClass} data-testid="create-human-invite-bar">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="min-w-0">
+            <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-[#edf2fb]">
+              <Link2 className="h-3.5 w-3.5 text-blue-600 dark:text-[#60a5fa]" />
+              새 팀원 초대 생성
+            </h3>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-[#8b97ad]">
+              부여할 기본 역할을 선택해 1회용 팀원 초대 링크를 생성합니다.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="초대 역할"
+              className="h-8 rounded-md border border-slate-200/90 bg-white px-2.5 text-xs font-medium text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-55 dark:border-white/[0.09] dark:bg-[#0e131d] dark:text-[#edf2fb] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25"
+              value={inviteRole}
+              disabled={creating}
+              onChange={(event) => setInviteRole(event.target.value as HumanInviteRole)}
+            >
+              {HUMAN_INVITE_ROLES.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 bg-blue-600 px-3 text-xs text-[#f8fafc] hover:bg-blue-500 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]"
+              disabled={creating}
+              onClick={() => onCreateHumanInvite(inviteRole)}
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              {creating ? "생성 중..." : "초대 링크 생성"}
+            </Button>
+          </div>
+        </div>
+        {createdInvite && (
+          <div
+            data-testid="created-human-invite-banner"
+            className="mt-3 rounded-lg border border-blue-500/35 bg-blue-500/[0.06] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-[#60a5fa]/35 dark:bg-[#2563eb]/12 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-blue-800 dark:text-[#93c5fd]">
+                <span>1회용 초대 링크 (지금 복사하세요)</span>
+                <span className="rounded-full border border-blue-500/30 bg-blue-500/12 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#2563eb]/25 dark:text-[#60a5fa]">
+                  {createdInvite.membershipRole}
+                </span>
+              </div>
+              <button
+                type="button"
+                aria-label="초대 링크 배너 닫기"
+                className="rounded p-0.5 text-slate-400 transition-colors hover:bg-blue-500/10 hover:text-slate-700 dark:text-[#8b97ad] dark:hover:text-[#edf2fb]"
+                onClick={onDismissCreatedInvite}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <code className="min-w-0 flex-1 truncate rounded-md border border-slate-200/90 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-800 select-all dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#edf2fb]">
+                {createdInvite.url}
+              </code>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 shrink-0 border-blue-500/35 bg-white px-2.5 text-xs text-blue-700 hover:bg-blue-50 dark:border-[#60a5fa]/35 dark:bg-[#0e131d] dark:text-[#93c5fd] dark:hover:bg-[#2563eb]/20"
+                onClick={() => void copyInviteUrl()}
+              >
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                {copied ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900 dark:text-[#edf2fb]"><Mail className="h-3.5 w-3.5 text-blue-600 dark:text-[#60a5fa]" />Active invites</h3>
@@ -201,7 +322,8 @@ export function AccessSettingsSection({ selectedCompanyId }: { selectedCompanyId
             </TabsList>
             <TabsContent value="users" className="mt-4">
               <AccessUsersView
-                members={access.userMembers} groupById={access.groupById} disabled={access.updateMemberPermissionsPending || access.addMemberPending}
+                members={access.userMembers} groupById={access.groupById} inheritedPermissionKeysByMemberId={access.inheritedPermissionKeysByMemberId}
+                disabled={access.updateMemberPermissionsPending || access.addMemberPending}
                 onToggleGrant={access.toggleUserGrant} memberSearchQuery={access.memberSearchQuery} onMemberSearchQueryChange={access.setMemberSearchQuery}
                 searchResults={access.memberSearchResults} searchLoading={access.memberSearchLoading} searchError={access.memberSearchError}
                 selectedUserId={access.selectedUserId} onSelectUser={access.setSelectedUserId} addUserPending={access.addMemberPending} onAddSelectedUser={access.addSelectedMember}
@@ -220,7 +342,18 @@ export function AccessSettingsSection({ selectedCompanyId }: { selectedCompanyId
               />
             </TabsContent>
             <TabsContent value="invites" className="mt-4">
-              <InvitesPanel invites={access.companyInvites} loading={access.invitesLoading} error={access.invitesError} retry={access.retryInvites} revoking={access.revokeInvitePending} onRevoke={access.revokeInvite} />
+              <InvitesPanel
+                invites={access.companyInvites}
+                loading={access.invitesLoading}
+                error={access.invitesError}
+                retry={access.retryInvites}
+                revoking={access.revokeInvitePending}
+                onRevoke={access.revokeInvite}
+                creating={access.createHumanInvitePending}
+                createdInvite={access.createdHumanInvite}
+                onCreateHumanInvite={access.createHumanInvite}
+                onDismissCreatedInvite={access.dismissCreatedHumanInvite}
+              />
             </TabsContent>
             <TabsContent value="security" className="mt-4"><SecurityPanel /></TabsContent>
           </Tabs>
