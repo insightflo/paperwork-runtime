@@ -12,13 +12,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { FolderOpen, Heart } from "lucide-react";
 import { cn } from "../lib/utils";
-import {
-  extractModelName,
-  extractProviderId,
-  filterModelsByProvider,
-  listModelProviders,
-  resolveProviderModelSelection,
-} from "../lib/model-utils";
 import { queryKeys } from "../lib/queryKeys";
 import { useCompany } from "../context/CompanyContext";
 import {
@@ -55,7 +48,6 @@ import {
   AdapterEnvironmentResult,
   AdapterTypeDropdown,
   EnvVarEditor,
-  ProviderDropdown,
   ModelDropdown,
   ThinkingEffortDropdown,
 } from "./agent-config-form-fields";
@@ -306,7 +298,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const isLocal =
     adapterType === "claude_local" ||
     adapterType === "codex_local" ||
-    adapterType === "hermes_local" ||
     adapterType === "commandcode_local" ||
     adapterType === "pi_local";
   const supportsAdapterFallback =
@@ -355,7 +346,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const [runPolicyAdvancedOpen, setRunPolicyAdvancedOpen] = useState(false);
   // Popover states
   const [modelOpen, setModelOpen] = useState(false);
-  const [providerOpen, setProviderOpen] = useState(false);
   const [thinkingEffortOpen, setThinkingEffortOpen] = useState(false);
 
   // Create mode helpers
@@ -382,91 +372,18 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       });
     },
   });
-  const showInlineHermesConnectionTest =
-    showAdapterTestEnvironmentButton && adapterType === "hermes_local";
-  const showHeaderAdapterTestEnvironmentButton =
-    showAdapterTestEnvironmentButton && !showInlineHermesConnectionTest;
 
   // Current model for display
   const currentModelId = isCreate
     ? val!.model
-    : adapterType === "hermes_local"
-      ? (() => {
-          const provider = eff("adapterConfig", "provider", String(config.provider ?? ""));
-          const model = eff("adapterConfig", "model", String(config.model ?? ""));
-          return provider && model ? `${provider}/${model}` : model;
-        })()
-      : eff("adapterConfig", "model", String(config.model ?? ""));
-  const currentHermesProvider =
-    adapterType === "hermes_local"
-      ? isCreate
-        ? extractProviderId(currentModelId) ?? ""
-        : String(eff("adapterConfig", "provider", String(config.provider ?? "")) ?? "") ||
-          extractProviderId(currentModelId) ||
-          ""
-      : "";
-  const currentHermesModelName =
-    adapterType === "hermes_local" ? extractModelName(currentModelId) : "";
-  const hermesProviderOptions = useMemo(() => {
-    if (adapterType !== "hermes_local") return [];
-    const options = listModelProviders(models);
-    if (!currentHermesProvider || options.some((option) => option.id === currentHermesProvider)) {
-      return options;
-    }
-    return [
-      ...options,
-      {
-        id: currentHermesProvider,
-        label: currentHermesProvider,
-        modelCount: 0,
-      },
-    ].sort((left, right) => left.id.localeCompare(right.id));
-  }, [adapterType, currentHermesProvider, models]);
-  const hermesModelOptions = useMemo<AdapterModel[]>(() => {
-    if (adapterType !== "hermes_local") return models;
-    if (!currentHermesProvider) return [];
-    return filterModelsByProvider(models, currentHermesProvider).map((model) => ({
-      ...model,
-      label: extractModelName(model.id) || model.label,
-    }));
-  }, [adapterType, currentHermesProvider, models]);
-  const currentModelOptions =
-    adapterType === "hermes_local" ? hermesModelOptions : models;
-
-  function handleHermesProviderChange(provider: string) {
-    const nextModelId = provider
-      ? resolveProviderModelSelection(models, provider, currentModelId)
-      : "";
-    if (isCreate) {
-      set!({ model: nextModelId });
-      return;
-    }
-    mark("adapterConfig", "provider", provider || undefined);
-    mark(
-      "adapterConfig",
-      "model",
-      nextModelId ? extractModelName(nextModelId) : undefined,
-    );
-  }
+    : eff("adapterConfig", "model", String(config.model ?? ""));
 
   function handleModelChange(modelId: string) {
-    if (adapterType !== "hermes_local") {
-      isCreate ? set!({ model: modelId }) : mark("adapterConfig", "model", modelId || undefined);
-      return;
-    }
-    if (!modelId) {
-      isCreate ? set!({ model: "" }) : mark("adapterConfig", "model", undefined);
-      return;
-    }
-    const embeddedProvider = extractProviderId(modelId);
-    const provider = embeddedProvider ?? currentHermesProvider;
-    const storedModelId = embeddedProvider || !provider ? modelId : `${provider}/${modelId}`;
     if (isCreate) {
-      set!({ model: storedModelId });
+      set!({ model: modelId });
       return;
     }
-    mark("adapterConfig", "provider", provider || undefined);
-    mark("adapterConfig", "model", extractModelName(storedModelId) || undefined);
+    mark("adapterConfig", "model", modelId || undefined);
   }
   const currentFallbackConfig = isCreate
     ? {}
@@ -660,7 +577,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             ? <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-700 dark:text-[#eef2f8]">Adapter</h3>
             : <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-[#8f9db3]">Adapter</span>
           }
-          {showHeaderAdapterTestEnvironmentButton && (
+          {showAdapterTestEnvironmentButton && (
             <Button
               type="button"
               variant="outline"
@@ -720,7 +637,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             </Field>
           )}
 
-          {!showInlineHermesConnectionTest && testEnvironment.error && (
+          {testEnvironment.error && (
             <div className="rounded-[10px] border border-red-600/25 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-400/35 dark:bg-red-500/10 dark:text-red-300">
               {testEnvironment.error instanceof Error
                 ? testEnvironment.error.message
@@ -728,7 +645,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             </div>
           )}
 
-          {!showInlineHermesConnectionTest && testEnvironment.data && (
+          {testEnvironment.data && (
             <AdapterEnvironmentResult result={testEnvironment.data} />
           )}
 
@@ -810,13 +727,11 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   placeholder={
                     adapterType === "codex_local"
                       ? "codex"
-                      : adapterType === "hermes_local"
-                        ? "hermes"
-                        : adapterType === "commandcode_local"
-                          ? "cmd"
-                          : adapterType === "pi_local"
-                            ? "pi"
-                            : "claude"
+                      : adapterType === "commandcode_local"
+                        ? "cmd"
+                        : adapterType === "pi_local"
+                          ? "pi"
+                          : "claude"
                   }
                 />
               </Field>
@@ -839,24 +754,14 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 </Field>
               )}
 
-              {adapterType === "hermes_local" && (
-                <ProviderDropdown
-                  providers={hermesProviderOptions}
-                  value={currentHermesProvider}
-                  onChange={handleHermesProviderChange}
-                  open={providerOpen}
-                  onOpenChange={setProviderOpen}
-                />
-              )}
-
               <ModelDropdown
-                models={currentModelOptions}
+                models={models}
                 value={currentModelId}
                 onChange={handleModelChange}
                 open={modelOpen}
                 onOpenChange={setModelOpen}
-                allowDefault={adapterType !== "hermes_local"}
-                required={adapterType === "hermes_local"}
+                allowDefault
+                required={false}
                 groupByProvider={false}
               />
               {fetchedModelsError && (
@@ -865,38 +770,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                     ? fetchedModelsError.message
                     : "Failed to load adapter models."}
                 </p>
-              )}
-
-              {showInlineHermesConnectionTest && (
-                <div className="space-y-2">
-                  <div className="flex justify-end">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-7 rounded-md border-slate-200/90 bg-white px-2.5 text-xs text-slate-700 hover:border-blue-500/40 hover:bg-slate-50 dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#eef2f8] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#141b29]"
-                      onClick={() => testEnvironment.mutate()}
-                      disabled={
-                        testEnvironment.isPending ||
-                        !selectedCompanyId ||
-                        !currentHermesProvider ||
-                        !currentHermesModelName
-                      }
-                    >
-                      {testEnvironment.isPending ? "Testing..." : "Test connection"}
-                    </Button>
-                  </div>
-                  {testEnvironment.error && (
-                    <div className="rounded-[10px] border border-red-600/25 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-400/35 dark:bg-red-500/10 dark:text-red-300">
-                      {testEnvironment.error instanceof Error
-                        ? testEnvironment.error.message
-                        : "Connection test failed"}
-                    </div>
-                  )}
-                  {testEnvironment.data && (
-                    <AdapterEnvironmentResult result={testEnvironment.data} />
-                  )}
-                </div>
               )}
 
               <ThinkingEffortDropdown
@@ -1120,9 +993,9 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   className={tactileInputClass}
                 />
               </Field>
-              {/* [session rotation threshold] runtime-managed adapters only — claude/codex/hermes
+              {/* [session rotation threshold] runtime-managed adapters only — claude/codex
                   manage context natively and the runtime never rotates their sessions. */}
-              {adapterType !== "claude_local" && adapterType !== "codex_local" && adapterType !== "hermes_local" && (
+              {adapterType !== "claude_local" && adapterType !== "codex_local" && (
                 <Field
                   label="Session rotation limit (tokens)"
                   hint="Rotate to a fresh session when the last run's raw input reaches this many tokens. Unset uses the adapter default; 0 disables only the token threshold. Other run, age, and message limits still apply."

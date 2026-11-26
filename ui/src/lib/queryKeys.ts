@@ -166,14 +166,6 @@ export const queryKeys = {
     variant
       ? (["heartbeats", companyId, "attention", variant] as const)
       : (["heartbeats", companyId, "attention"] as const),
-  hermesChat: {
-    operationsAgent: (companyId: string) => ["hermes-chat", companyId, "operations-agent"] as const,
-    sessions: (companyId: string) => ["hermes-chat", companyId, "sessions"] as const,
-    detail: (companyId: string, sessionId: string) =>
-      ["hermes-chat", companyId, "sessions", sessionId] as const,
-    pageContext: (companyId: string, path: string, search: string) =>
-      ["hermes-chat", companyId, "page-context", path, search] as const,
-  },
   runDetail: (runId: string) => ["heartbeat-run", runId] as const,
   runWorkspaceOperations: (runId: string) => ["heartbeat-run", runId, "workspace-operations"] as const,
   liveRuns: (companyId: string, agentId?: string) =>

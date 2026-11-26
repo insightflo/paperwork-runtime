@@ -4,7 +4,6 @@ import { heartbeatsApi } from "../../api/heartbeats";
 import { instanceSettingsApi } from "../../api/instanceSettings";
 import { ApiError } from "../../api/client";
 import { queryKeys } from "../../lib/queryKeys";
-import { HermesOpsRunSummary } from "../HermesOpsRunSummary";
 import { getUIAdapter, buildTranscript } from "../../adapters";
 import { cn } from "../../lib/utils";
 import { Button } from "@/components/ui/button";
@@ -502,8 +501,6 @@ export function LogViewer({ run, adapterType }: { run: HeartbeatRun; adapterType
           )}
         </div>
       )}
-
-      <HermesOpsRunSummary run={run} />
 
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">

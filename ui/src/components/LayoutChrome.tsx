@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, BookOpen, Bot, Moon, Settings, Sun } from "lucide-react";
+import { Activity, BookOpen, Moon, Settings, Sun } from "lucide-react";
 import { Link } from "@/lib/router";
 import { Button } from "@/components/ui/button";
 import { AppVersionBadge } from "./AppVersionBadge";
@@ -12,9 +12,7 @@ import { DEFAULT_INSTANCE_SETTINGS_PATH, normalizeRememberedInstanceSettingsPath
 import { cn } from "../lib/utils";
 
 export const INSTANCE_SETTINGS_MEMORY_KEY = "paperclip.lastInstanceSettingsPath";
-export const HERMES_PANEL_MEMORY_KEY = "paperclip.hermesPanelOpen";
 
-const LazyHermesChatPanel = lazy(async () => ({ default: (await import("./HermesChatPanel")).HermesChatPanel }));
 const LazyNewIssueDialog = lazy(async () => ({ default: (await import("./NewIssueDialog")).NewIssueDialog }));
 const LazyNewProjectDialog = lazy(async () => ({ default: (await import("./NewProjectDialog")).NewProjectDialog }));
 const LazyNewMissionDialog = lazy(async () => ({ default: (await import("./NewMissionDialog")).NewMissionDialog }));
@@ -39,25 +37,6 @@ export function readRememberedInstanceSettingsPath(): string {
     return normalizeRememberedInstanceSettingsPath(window.localStorage.getItem(INSTANCE_SETTINGS_MEMORY_KEY));
   } catch {
     return DEFAULT_INSTANCE_SETTINGS_PATH;
-  }
-}
-
-export function readRememberedHermesPanelOpen(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    const raw = window.localStorage.getItem(HERMES_PANEL_MEMORY_KEY);
-    if (raw !== null) return raw === "true";
-    return false;
-  } catch {
-    return false;
-  }
-}
-
-export function writeHermesPanelPreference(open: boolean) {
-  try {
-    window.localStorage.setItem(HERMES_PANEL_MEMORY_KEY, String(open));
-  } catch {
-    // Ignore storage failures in restricted environments.
   }
 }
 
@@ -111,7 +90,7 @@ export function SidebarFooterBar(props: {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="h-7 w-7 shrink-0 rounded-md border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground dark:hover:border-white/[0.08] dark:hover:bg-white/[0.05]"
+            className="h-6 w-6 shrink-0 rounded-md border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground dark:hover:border-white/[0.08] dark:hover:bg-white/[0.05]"
             asChild
           >
             <a
@@ -127,7 +106,7 @@ export function SidebarFooterBar(props: {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="h-7 w-7 shrink-0 rounded-md border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground dark:hover:border-white/[0.08] dark:hover:bg-white/[0.05]"
+            className="h-6 w-6 shrink-0 rounded-md border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground dark:hover:border-white/[0.08] dark:hover:bg-white/[0.05]"
             asChild
           >
             <Link
@@ -143,7 +122,7 @@ export function SidebarFooterBar(props: {
             type="button"
             variant="ghost"
             size="icon-sm"
-            className="h-7 w-7 shrink-0 rounded-md border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground dark:hover:border-white/[0.08] dark:hover:bg-white/[0.05]"
+            className="h-6 w-6 shrink-0 rounded-md border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground dark:hover:border-white/[0.08] dark:hover:bg-white/[0.05]"
             onClick={props.onToggleTheme}
             aria-label={`Switch to ${props.nextTheme} mode`}
             title={`Switch to ${props.nextTheme} mode`}
@@ -191,59 +170,6 @@ export function StickyLiveRunDock(props: { companyId: string | null; companyPref
       >
         Inspect
       </Link>
-    </div>
-  );
-}
-
-export function DesktopHermesAside(props: {
-  open: boolean;
-  heavyPanelsReady: boolean;
-  onOpen: () => void;
-  onClose: () => void;
-}) {
-  return (
-    <aside
-      className={cn(
-        "hidden min-h-0 md:flex shrink-0 overflow-hidden border-l border-sidebar-border bg-sidebar transition-[width] duration-150 ease-out dark:bg-[#090c12]",
-        props.open ? "w-96" : "w-10",
-      )}
-    >
-      {props.open ? (
-        <div className="h-full min-h-0 w-96 min-w-96 overflow-hidden bg-card/90">
-          {props.heavyPanelsReady && (
-            <Suspense fallback={null}>
-              <LazyHermesChatPanel mode="sidebar" onCollapse={props.onClose} />
-            </Suspense>
-          )}
-        </div>
-      ) : (
-        <button
-          type="button"
-          className="flex h-full w-10 flex-col items-center gap-2 px-1.5 py-3 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground dark:hover:bg-white/[0.04]"
-          onClick={props.onOpen}
-          aria-label="Open Hermes chat"
-          title="Open Hermes chat"
-        >
-          <Bot className="h-4 w-4 text-[#2563eb] dark:text-[#60a5fa]" />
-          <span className="font-mono text-[10px] font-medium uppercase tracking-widest [writing-mode:vertical-rl]">Hermes</span>
-        </button>
-      )}
-    </aside>
-  );
-}
-
-export function MobileHermesDrawer(props: { open: boolean; heavyPanelsReady: boolean; onClose: () => void }) {
-  if (!props.open) return null;
-  return (
-    <div className="fixed inset-0 z-[70] md:hidden">
-      <button type="button" className="absolute inset-0 bg-black/50" onClick={props.onClose} aria-label="Close Hermes chat" />
-      <aside className="absolute inset-y-0 right-0 flex min-h-0 w-[min(100vw,24rem)] flex-col overflow-hidden border-l border-border bg-background shadow-lg">
-        {props.heavyPanelsReady && (
-          <Suspense fallback={null}>
-            <LazyHermesChatPanel mode="sidebar" onCollapse={props.onClose} />
-          </Suspense>
-        )}
-      </aside>
     </div>
   );
 }
