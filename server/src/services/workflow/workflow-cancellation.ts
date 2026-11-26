@@ -7,6 +7,7 @@ import { stopMissionRuntimesForMission } from "../missions/mission-runtime-manag
 import { logActivity } from "../activity-log.js";
 import { cancelDescendantWorkflowRunWithChildFence, cancelWorkflowRunWithChildFence, logWorkflowRunCancellationRefused, type CancelledRunRef } from "./workflow-cancel-bridge.js";
 import { syncStepRunsFromIssueState } from "./workflow-issue-state-sync.js";
+import { closeStaleToolFailureOwnerActions } from "./tool-failure-owner-action-closeout.js";
 
 export async function cancelOutstandingWorkflowIssues(
   db: Db,
@@ -118,6 +119,14 @@ async function cleanupCancelledWorkflowRun(
     run,
     syncStepRunsFromIssueState,
   });
+  // [tool-failure owner action closeout] 취소된 run 의 툴 실패 카드는 회복 대상이 사라졌으므로
+  //   cancelled 로 종결한다(감사 로그 동반). 취소된 run 은 sync 본문을 소유하지 않아 sync 꼬리 훅이
+  //   돌지 않으므로 여기서 호출한다. 실패해도 취소 정리를 깨뜨리지 않는다.
+  try {
+    await closeStaleToolFailureOwnerActions({ db, run: { ...run, status: "cancelled" } });
+  } catch {
+    // swallowed: owner action closeout must never break run cancellation cleanup.
+  }
   // [workflow child step] 자식 run 취소 → 부모 waiting 스텝 child_run_cancelled 마감.
   //   취소 경로의 run 상태는 항상 cancelled 이므로 리터럴로 훅을 발화한다.
   try {

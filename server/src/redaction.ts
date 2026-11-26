@@ -48,7 +48,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
+// Walks values that are not keyed by a secret-looking name: array elements and
+// plain-binding values. Bare JWT strings here must be redacted too, or tokens
+// would leak whenever they sit inside `args`/`items` arrays.
 function sanitizeValue(value: unknown): unknown {
+  if (typeof value === "string") return isJwtLikeValue(value) ? REDACTED_EVENT_VALUE : value;
   if (value === null || value === undefined) return value;
   if (Array.isArray(value)) return value.map(sanitizeValue);
   if (isSecretRefBinding(value)) return value;

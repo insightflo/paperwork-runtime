@@ -51,6 +51,7 @@ import type {
 } from "./types.js";
 import type { WorkflowExecutionMode, WorkflowStep } from "./dag-engine.js";
 import type { WorkflowSyncSource } from "./workflow-sync-source.js";
+import type { WorkflowRunListFilters } from "./workflow-run-list-pagination.js";
 import { loadExecutionDefinition } from "./execution-definition.js";
 import { normalizeWorkflowSteps } from "./normalize-definition-steps.js";
 import { findActiveScheduledWorkflowMissionRun, prepareWorkflowTrigger } from "./trigger-preparation.js";
@@ -481,11 +482,11 @@ async resumeRun(
   },
 
   /**
-   * List workflow runs.
+   * List workflow runs (bounded; see workflow-run-list-pagination.ts for defaults).
    */
   async listRuns(
     db: Db,
-    filters: { companyId?: string; workflowId?: string; missionId?: string },
+    filters: WorkflowRunListFilters,
   ): Promise<WorkflowRun[]> {
     return listWorkflowRuns(db, filters);
   },

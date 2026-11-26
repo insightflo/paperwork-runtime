@@ -41,6 +41,7 @@ import {
 import { PRODUCER_REBIND_ELIGIBLE_DISPATCH_ERRORS, consumerDependsOnProducer, rebindOrPromoteProducerProvenance } from "../services/workflow/producer-provenance-rebind.js";
 import { WorkflowRunInputValidationError } from "../services/workflow/run-input-normalization.js";
 import { enableQaCapAcceptanceForCompany } from "../services/workflow/qa-cap-acceptance-rollout.js";
+import { parseWorkflowRunListQuery } from "../services/workflow/workflow-run-list-pagination.js";
 import { workflowService } from "../services/workflow/engine.js";
 import {
   generateWebhookSecret,
@@ -514,7 +515,9 @@ export function workflowRoutes(db: Db) {
     assertCompanyAccess(req, companyId);
     const workflowId = typeof req.query.workflowId === "string" ? req.query.workflowId : undefined;
     const missionId = typeof req.query.missionId === "string" ? req.query.missionId : undefined;
-    const runs = await workflowService.listRuns(db, { companyId, workflowId, missionId });
+    // ?limit= (default 200, max 500) & ?offset= (default 0) — bounded read; response shape unchanged.
+    const page = parseWorkflowRunListQuery(req.query as Record<string, unknown>);
+    const runs = await workflowService.listRuns(db, { companyId, workflowId, missionId, ...page });
     res.json(runs.map(serializeRun));
   });
 
@@ -524,7 +527,8 @@ export function workflowRoutes(db: Db) {
     if (!definition || !canAccessRecord(req, definition.companyId)) {
       throw notFound("Workflow definition not found");
     }
-    const runs = await workflowService.listRuns(db, { companyId: definition.companyId, workflowId });
+    const page = parseWorkflowRunListQuery(req.query as Record<string, unknown>);
+    const runs = await workflowService.listRuns(db, { companyId: definition.companyId, workflowId, ...page });
     res.json(runs.map(serializeRun));
   });
 

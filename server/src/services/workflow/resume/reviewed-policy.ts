@@ -94,6 +94,9 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
    *   [2026-11-15 stepsHash 추가] scripts/resume-policy-bindings.ts steps-hash --run 8305cef9…
    *   로 계산(34960e17…). 동일 형태 run(예: 실패 6620094a, 2026-11-15)도 이 정책으로 재개된다.
    *   같은 날 verify 로 전 바인딩이 현재 registry 와 일치함을 재확인했다.
+   *   [2026-11-26 바인딩 재채취] showk.ing → insightflo.si 도메인 이전 및 inputSchema PATCH
+   *   반영(사용자 승인): collect-youtube-source-evidence(6090651e)·stage-youtube-video(84d0ca94)
+   *   updatedAt/configHash 갱신(effect 불변).
    */
   {
     schemaVersion: 1,
@@ -105,8 +108,8 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
         effect: "read_only",
         toolBindings: [{
           id: "6090651e-f710-4c53-b874-2706a083bccd",
-          updatedAt: "2026-08-26T02:19:43.611Z",
-          configHash: "d1c9ffa152673df423d43d51100fb911f326ddf9724670c61e536e80daa519fa",
+          updatedAt: "2026-11-26T03:58:10.820Z",
+          configHash: "09e50e670033688ef93ec4c57af18dbda183fca25807866e1e3eb7bffd311482",
         }],
       },
       "summarize-select-scenes": { effect: "none", toolBindings: [] },
@@ -114,8 +117,8 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
         effect: "external",
         toolBindings: [{
           id: "84d0ca94-6b26-4903-995a-4292e62f5dcf",
-          updatedAt: "2026-08-27T02:04:26.319Z",
-          configHash: "243d2070a86fade821379f399a3d2ef2e6e8ff2cd7db0ebf01ebf1daf9790bf1",
+          updatedAt: "2026-11-26T03:58:10.866Z",
+          configHash: "65e3e4ae45fd3a8281a6c92d6b3e086e11dd9278d5c1295efe6225e3e38d012d",
         }],
       },
       "capture-youtube-frames": {
@@ -260,6 +263,8 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
    * [바인딩 채취] 2026-11-15 scripts/resume-policy-bindings.ts collect --company ff3e3efd…
    *   --names … 로 live DB 에서 채취(id/updatedAt/configHash 아래). qa·publish·verify 는
    *   youtube 검토와 동일 행·불변(2026-11-15 verify 재확인).
+   *   [2026-11-26 바인딩 재채취] showk.ing → insightflo.si 도메인 이전 및 inputSchema PATCH
+   *   반영(사용자 승인): scrapling-dynamic-fetch(0bf67156) updatedAt/configHash 갱신(effect 불변).
    */
   {
     schemaVersion: 1,
@@ -271,8 +276,8 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
         effect: "read_only",
         toolBindings: [{
           id: "0bf67156-a04b-4ecb-bc1e-15e33b2cdc3a",
-          updatedAt: "2026-08-26T02:19:43.617Z",
-          configHash: "2acf2195fe76d20d6b73c129c41d0eba51941203a9616dbab7407ff152545ee6",
+          updatedAt: "2026-11-26T00:56:06.348Z",
+          configHash: "1410265ff1d637749e0948cecc57fe5b6dec134c7ca529f86b1b8d010ce6db0d",
         }],
       },
       "collect-repo-meta": {
@@ -367,6 +372,9 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
    *     경로뿐). complete-no-novel-topic 분기는 발행 경로가 아니므로 우회 경로가 아니다.
    * [바인딩 채취] 2026-11-15 scripts/resume-policy-bindings.ts collect 로 live DB 에서 채취.
    *   qa·publish·verify 는 youtube 검토와 동일 행·불변(2026-11-15 verify 재확인).
+   *   [2026-11-26 바인딩 재채취] showk.ing → insightflo.si 도메인 이전 및 inputSchema PATCH
+   *   반영(사용자 승인): collect-ai-research-open-source(169487ee)·normalize-ai-news-ledger(25335ed4)
+   *   updatedAt/configHash 갱신(effect 불변).
    */
   {
     schemaVersion: 1,
@@ -378,16 +386,16 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
         effect: "read_only",
         toolBindings: [{
           id: "169487ee-e55b-4b4f-9fb6-7c2c6663a07c",
-          updatedAt: "2026-08-26T02:20:34.936Z",
-          configHash: "65cd5f06e37194db98b4cca7479496692a3753e337395ae41581733ef9dbcbb3",
+          updatedAt: "2026-11-26T03:51:05.683Z",
+          configHash: "b67feaf36285981122578b43cb67ae165124aa71f93eff82e82aef7439dd5f56",
         }],
       },
       "scout-social-ai-concepts": {
         effect: "read_only",
         toolBindings: [{
           id: "25335ed4-64fa-4538-88a4-001aff9f3901",
-          updatedAt: "2026-08-26T02:19:43.615Z",
-          configHash: "e5a296681d52bb1270432d5583dd8b4caf44a0ff2b96b75f5fa9f8377bd6a935",
+          updatedAt: "2026-11-26T00:19:48.416Z",
+          configHash: "44d1294dab52f58eb64a491f111bca4d420a9a734659623f58102b2827d32f29",
         }],
       },
       "select-novel-concept": { effect: "read_only", toolBindings: [] },
@@ -452,6 +460,9 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
    *   generationStepIds: 2026-10-22 검토와 동일(장면 구성·프레임 추출·보고서 초안).
    * [바인딩 채취] 2026-11-15 scripts/resume-policy-bindings.ts collect 로 live DB 에서 채취
    *   (6개 도구 행 모두 2026-10-22 검토 시점과 불변 — configHash·updatedAt·enabled 일치).
+   *   [2026-11-26 바인딩 재채취] showk.ing → insightflo.si 도메인 이전 및 inputSchema PATCH
+   *   반영(사용자 승인): collect-youtube-source-evidence(6090651e)·stage-youtube-video(84d0ca94)
+   *   updatedAt/configHash 갱신(effect 불변).
    */
   {
     schemaVersion: 1,
@@ -463,8 +474,8 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
         effect: "read_only",
         toolBindings: [{
           id: "6090651e-f710-4c53-b874-2706a083bccd",
-          updatedAt: "2026-08-26T02:19:43.611Z",
-          configHash: "d1c9ffa152673df423d43d51100fb911f326ddf9724670c61e536e80daa519fa",
+          updatedAt: "2026-11-26T03:58:10.820Z",
+          configHash: "09e50e670033688ef93ec4c57af18dbda183fca25807866e1e3eb7bffd311482",
         }],
       },
       "summarize-select-scenes": { effect: "none", toolBindings: [] },
@@ -474,8 +485,8 @@ export const REVIEWED_RESUME_POLICIES: readonly ReviewedResumePolicy[] = [
           // [전사 검증] id 세그먼트는 6b26(2026-11-15 수집·재확인 — 7b26 로 오기하면
           // verify 가 registry 행 없음으로 즉시 잡는다).
           id: "84d0ca94-6b26-4903-995a-4292e62f5dcf",
-          updatedAt: "2026-08-27T02:04:26.319Z",
-          configHash: "243d2070a86fade821379f399a3d2ef2e6e8ff2cd7db0ebf01ebf1daf9790bf1",
+          updatedAt: "2026-11-26T03:58:10.866Z",
+          configHash: "65e3e4ae45fd3a8281a6c92d6b3e086e11dd9278d5c1295efe6225e3e38d012d",
         }],
       },
       "capture-youtube-frames": {
