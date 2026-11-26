@@ -225,7 +225,7 @@ pub struct TerminalCommandRequest {
     pub dangerous: bool,
     #[serde(default)]
     pub terminal_kind: TerminalKind,
-    #[serde(default)]
+    #[serde(default, rename = "terminal_action", alias = "action")]
     pub action: TerminalAction,
     #[serde(default)]
     pub bot_actor: Option<BotActorContext>,
