@@ -27,15 +27,15 @@ function formatDecisionDate(value: string | null | undefined, lang: CompanyDefau
   }).format(new Date(value));
 }
 // Display-only context; decision logs are not execution-control authority.
-const fieldClass = "mt-1 w-full rounded border border-border bg-background px-2 py-1 text-sm";
+const fieldClass = "mt-1 w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20";
 function statusClass(status: MissionDecisionRecord["status"]) {
   switch (status) {
     case "confirmed":
-      return "text-emerald-600";
+      return "text-emerald-600 dark:text-[#a3e635]";
     case "under_review":
-      return "text-amber-600";
+      return "text-amber-600 dark:text-[#f59e0b]";
     case "retired":
-      return "text-muted-foreground line-through";
+      return "text-muted-foreground line-through dark:text-[#8f9db3]";
     default:
       return "text-muted-foreground";
   }
@@ -89,9 +89,9 @@ export function MissionDecisionLogPanel({ missionId }: MissionDecisionLogPanelPr
 
   if (isLoading) {
     return (
-      <section className="rounded-md border border-border p-4" aria-label="Mission Decision Log">
+      <section className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white p-4 text-slate-900 tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.10)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.42)]" aria-label="Mission Decision Log">
         <div className="flex items-center gap-2">
-          <Scale className="h-4 w-4 text-muted-foreground" />
+          <Scale className="h-4 w-4 text-blue-600 dark:text-[#60a5fa]" />
           <h3 className="text-sm font-medium">{L(lang, { en: "Mission Decision Log", ko: "미션 결정 기록" })}</h3>
         </div>
         <p className="mt-3 text-sm text-muted-foreground">{L(lang, { en: "Loading mission decision log…", ko: "미션 결정 기록을 불러오는 중…" })}</p>
@@ -101,7 +101,7 @@ export function MissionDecisionLogPanel({ missionId }: MissionDecisionLogPanelPr
 
   if (error) {
     return (
-      <section className="rounded-md border border-border p-4" aria-label="Mission Decision Log">
+      <section className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white p-4 text-slate-900 tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.10)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.42)]" aria-label="Mission Decision Log">
         <div className="flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-destructive" />
           <h3 className="text-sm font-medium">{L(lang, { en: "Mission Decision Log", ko: "미션 결정 기록" })}</h3>
@@ -118,10 +118,10 @@ export function MissionDecisionLogPanel({ missionId }: MissionDecisionLogPanelPr
   const underReviewCount = decisions.filter((record) => record.status === "under_review").length;
 
   return (
-    <section className="rounded-md border border-border p-4 space-y-4" aria-label="Mission Decision Log">
+    <section className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white p-4 text-slate-900 tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.10)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.42)] space-y-4" aria-label="Mission Decision Log">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-2">
-          <Scale className="h-4 w-4 text-muted-foreground" />
+          <Scale className="h-4 w-4 text-blue-600 dark:text-[#60a5fa]" />
           <div>
             <h3 className="text-sm font-medium">{L(lang, { en: "Mission Decision Log", ko: "미션 결정 기록" })}</h3>
             <p className="text-xs text-muted-foreground">
@@ -129,12 +129,12 @@ export function MissionDecisionLogPanel({ missionId }: MissionDecisionLogPanelPr
             </p>
           </div>
         </div>
-        <span className="rounded-full border border-border px-2 py-1 text-xs text-muted-foreground">
+        <span className="rounded-full border border-blue-500/25 bg-blue-500/10 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]">
           {L(lang, { en: "board-authorable record", ko: "운영자가 작성할 수 있는 기록" })}
         </span>
       </div>
 
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums text-slate-500 dark:text-[#8f9db3]">
         <span>{L(lang, { en: `rev ${log?.revision ?? 0}`, ko: `개정 ${log?.revision ?? 0}` })}</span>
         <span>{L(lang, { en: `${decisions.length} decisions`, ko: `결정 ${decisions.length}개` })}</span>
         <span>{L(lang, { en: `${confirmedCount} confirmed`, ko: `확정 ${confirmedCount}개` })}</span>
@@ -143,16 +143,16 @@ export function MissionDecisionLogPanel({ missionId }: MissionDecisionLogPanelPr
       </div>
 
       {decisions.length === 0 ? (
-        <p className="rounded border border-border/70 p-3 text-sm text-muted-foreground">
+        <p className="rounded-[10px] border border-slate-200/80 bg-slate-50/60 p-3 text-sm text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-white/[0.07] dark:bg-[#07090d] dark:text-[#8f9db3] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
           {L(lang, { en: `No decisions recorded yet. Agents and the board report decisions via POST /api/missions/${missionId}/decision-reports.`, ko: `아직 기록된 결정이 없습니다. 에이전트와 운영자는 POST /api/missions/${missionId}/decision-reports로 결정을 보고합니다.` })}
         </p>
       ) : (
         <ul className="space-y-2">
           {decisions.map((record) => (
-            <li key={record.id} className="rounded border border-border/70 p-3 text-sm">
+            <li key={record.id} className="rounded-[10px] border border-slate-200/80 bg-slate-50/60 p-3 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-medium">
+                  <p className="font-mono text-[13px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
                     {record.id}
                     {record.supersedes ? (
                       <span className="ml-2 text-xs text-muted-foreground">{L(lang, { en: "supersedes", ko: "대체" })} {record.supersedes}</span>
@@ -165,15 +165,15 @@ export function MissionDecisionLogPanel({ missionId }: MissionDecisionLogPanelPr
                 <span className={`text-xs font-medium ${statusClass(record.status)}`} title={record.status}>{humanLabel(lang, "missionDecisionStatus", record.status).label}</span>
                 {record.demotedByEvidence ? (
                   <span
-                    className="rounded-full border border-amber-500/40 px-1.5 text-xs font-medium text-amber-600"
+                    className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-amber-600 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#f59e0b]"
                     title={`Demoted by machine evidence check: ${record.demotedByEvidence.mismatches.map((m) => `${m.type} ${m.id} (${m.current})`).join(", ")}`}
                   >
                     {L(lang, { en: "evidence stale", ko: "근거가 오래됨" })}
                   </span>
                 ) : null}
-                {record.source === "board" ? <span className="rounded-full border border-border px-1.5 text-xs text-muted-foreground">board</span> : null}
+                {record.source === "board" ? <span className="rounded-full border border-slate-300/80 bg-slate-100/70 px-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-[#8f9db3]">board</span> : null}
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums text-slate-500 dark:text-[#8f9db3]">
                 <span>{formatDecisionDate(record.updatedAt, lang)}</span>
                 <span>{provenanceLabel(record, lang)}</span>
                 {record.lastConflictingProposal ? <span>{L(lang, { en: "proposal pending", ko: "제안 대기 중" })} ({record.lastConflictingProposal.from})</span> : null}
@@ -189,7 +189,7 @@ export function MissionDecisionLogPanel({ missionId }: MissionDecisionLogPanelPr
                     onClick={() =>
                       retireMutation.mutate({ updates: [{ id: record.id, status: "retired" }] })
                     }
-                    className="rounded border border-border px-2 py-0.5 hover:bg-muted disabled:opacity-50"
+                    className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-700 transition-colors hover:bg-amber-500/15 disabled:opacity-50 dark:border-[#f59e0b]/30 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b] dark:hover:bg-[#f59e0b]/15"
                   >
                     {L(lang, { en: "Retire", ko: "폐기" })}
                   </button>
@@ -208,8 +208,8 @@ export function MissionDecisionLogPanel({ missionId }: MissionDecisionLogPanelPr
         </p>
       ) : null}
 
-      <section className="rounded border border-border/70 p-3" aria-label="Record a decision">
-        <h4 className="text-sm font-medium">{L(lang, { en: "Record a decision", ko: "결정 기록 추가" })}</h4>
+      <section className="rounded-[10px] border border-slate-200/80 bg-slate-50/60 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]" aria-label="Record a decision">
+        <h4 className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-[#8f9db3]">{L(lang, { en: "Record a decision", ko: "결정 기록 추가" })}</h4>
         <form
           className="mt-2 space-y-2"
           onSubmit={(event) => {
@@ -277,7 +277,7 @@ export function MissionDecisionLogPanel({ missionId }: MissionDecisionLogPanelPr
           <button
             type="submit"
             disabled={reportMutation.isPending}
-            className="rounded bg-primary px-3 py-1 text-sm font-medium text-primary-foreground disabled:opacity-50"
+            className="rounded-md bg-[#4d7c0f] px-3 py-1.5 text-sm font-semibold text-white tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] transition-colors hover:bg-[#3f6212] disabled:opacity-50 dark:bg-[#a3e635] dark:text-[#07090d] dark:hover:bg-[#bef264]"
           >
             {L(lang, { en: "Record decision", ko: "결정 기록" })}
           </button>
@@ -292,9 +292,9 @@ export function MissionDecisionLogPanel({ missionId }: MissionDecisionLogPanelPr
       </section>
 
       {log?.stateMarkdown ? (
-        <details className="rounded border border-border/70 p-3">
-          <summary className="text-sm text-muted-foreground">Mission state (markdown)</summary>
-          <pre className="mt-2 overflow-x-auto text-sm text-muted-foreground">{log.stateMarkdown}</pre>
+        <details className="rounded-[10px] border border-slate-200/80 bg-slate-50/60 p-3 dark:border-white/[0.07] dark:bg-[#07090d]">
+          <summary className="cursor-pointer font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8f9db3]">Mission state (markdown)</summary>
+          <pre className="mt-2 overflow-x-auto overscroll-contain rounded-md bg-white/70 p-2 font-mono text-xs tabular-nums text-slate-600 dark:bg-[#0e131d] dark:text-slate-300">{log.stateMarkdown}</pre>
         </details>
       ) : null}
     </section>

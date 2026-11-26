@@ -46,11 +46,11 @@ const ROLE_ORDER: MissionAgentRole[] = [
 ];
 
 const ROLE_COLORS: Record<MissionAgentRole, string> = {
-  owner: "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
-  executor: "border-yellow-500 bg-yellow-50 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-300",
-  reviewer: "border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300",
-  specialist: "border-cyan-500 bg-cyan-50 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-300",
-  observer: "border-neutral-400 bg-neutral-50 text-neutral-600 dark:bg-neutral-900/40 dark:text-neutral-400",
+  owner: "border-blue-500/40 bg-blue-500/10 text-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
+  executor: "border-lime-600/35 bg-lime-500/10 text-lime-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-[#a3e635]/35 dark:bg-[#a3e635]/12 dark:text-[#a3e635] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
+  reviewer: "border-violet-500/35 bg-violet-500/10 text-violet-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-violet-400/30 dark:bg-violet-400/10 dark:text-violet-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
+  specialist: "border-cyan-500/35 bg-cyan-500/10 text-cyan-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-cyan-400/30 dark:bg-cyan-400/10 dark:text-cyan-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
+  observer: "border-slate-300/80 bg-slate-100/70 text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-[#8f9db3] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
 };
 
 // ---------------------------------------------------------------------------
@@ -85,7 +85,7 @@ export function WorkflowDagPanel({ missionId, defaultMode = "graph" }: WorkflowD
     return (
       <div className="space-y-2 py-2">
         {["mission-a", "mission-b", "mission-c"].map((key) => (
-          <div key={key} className="h-12 bg-muted animate-pulse rounded" />
+          <div key={key} className="h-12 animate-pulse rounded-[10px] border border-slate-200/70 bg-slate-100 dark:border-white/[0.06] dark:bg-[#0e131d]" />
         ))}
       </div>
     );
@@ -93,20 +93,20 @@ export function WorkflowDagPanel({ missionId, defaultMode = "graph" }: WorkflowD
 
   if (workflowRunsError) {
     return (
-      <p className="text-sm text-destructive px-3 py-2">Failed to load workflow runs.</p>
+      <p className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white px-3 py-2 text-sm text-destructive dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-red-300">Failed to load workflow runs.</p>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-1" role="group" aria-label="Execution flow view">
+    <div className="space-y-6 tabular-nums text-slate-900 dark:text-slate-100">
+      <div className="tactile-card inline-flex items-center gap-0.5 rounded-[10px] border-[var(--pw-hairline)] bg-white p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]" role="group" aria-label="Execution flow view">
         <button
           type="button"
           onClick={() => setMode("graph")}
           aria-pressed={mode === "graph"}
           className={cn(
-            "rounded-l-md border border-r-0 px-3 py-1 text-xs font-medium transition-colors",
-            mode === "graph" ? "bg-accent/60 text-foreground" : "bg-background text-muted-foreground hover:bg-accent/30",
+            "rounded-l-[8px] px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors",
+            mode === "graph" ? "bg-blue-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.24)] dark:bg-[#60a5fa]/15 dark:text-[#60a5fa] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-[#8f9db3] dark:hover:bg-white/[0.05] dark:hover:text-slate-100",
           )}
         >
           Graph
@@ -116,8 +116,8 @@ export function WorkflowDagPanel({ missionId, defaultMode = "graph" }: WorkflowD
           onClick={() => setMode("text")}
           aria-pressed={mode === "text"}
           className={cn(
-            "rounded-r-md border px-3 py-1 text-xs font-medium transition-colors",
-            mode === "text" ? "bg-accent/60 text-foreground" : "bg-background text-muted-foreground hover:bg-accent/30",
+            "rounded-r-[8px] px-3 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] transition-colors",
+            mode === "text" ? "bg-blue-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.24)] dark:bg-[#60a5fa]/15 dark:text-[#60a5fa] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-[#8f9db3] dark:hover:bg-white/[0.05] dark:hover:text-slate-100",
           )}
         >
           Text
@@ -137,19 +137,19 @@ export function WorkflowDagPanel({ missionId, defaultMode = "graph" }: WorkflowD
 }
 
 const RUN_STATUS_TONE: Record<string, string> = {
-  pending: "border-neutral-300 text-muted-foreground",
-  running: "border-blue-300 text-blue-700 dark:text-blue-300",
-  completed: "border-emerald-300 text-emerald-700 dark:text-emerald-300",
-  failed: "border-red-300 text-red-700 dark:text-red-300",
-  cancelled: "border-neutral-400 text-muted-foreground",
+  pending: "border-slate-300/80 bg-slate-100/70 text-slate-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-[#8f9db3]",
+  running: "border-blue-500/35 bg-blue-500/10 text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]",
+  completed: "border-lime-600/35 bg-lime-500/10 text-lime-700 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/12 dark:text-[#a3e635]",
+  failed: "border-red-500/40 bg-red-500/10 text-red-700 dark:border-red-400/35 dark:bg-red-500/10 dark:text-red-300",
+  cancelled: "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:border-[#f59e0b]/30 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]",
 };
 
 const STEP_STATUS_TONE: Record<string, string> = {
-  pending: "bg-neutral-400",
-  running: "bg-blue-500",
-  completed: "bg-emerald-500",
-  failed: "bg-red-500",
-  skipped: "bg-amber-500",
+  pending: "bg-slate-400 dark:bg-slate-500",
+  running: "bg-blue-500 shadow-[0_0_8px_rgba(37,99,235,0.35)] dark:bg-[#60a5fa] dark:shadow-[0_0_10px_rgba(96,165,250,0.55)]",
+  completed: "bg-emerald-500 dark:bg-[#a3e635] dark:shadow-[0_0_10px_rgba(163,230,53,0.45)]",
+  failed: "bg-red-500 dark:bg-red-400 dark:shadow-[0_0_10px_rgba(248,113,113,0.42)]",
+  skipped: "bg-amber-500 dark:bg-[#f59e0b] dark:shadow-[0_0_10px_rgba(245,158,11,0.42)]",
 };
 
 function formatStatusLabel(status: string) {
@@ -167,7 +167,7 @@ function WorkflowRunList({
 }) {
   if (runs.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-border p-4 text-center">
+      <div className="tactile-card rounded-[12px] border border-dashed border-slate-300/80 bg-white p-4 text-center text-slate-900 dark:border-white/[0.12] dark:bg-[#0e131d] dark:bg-none dark:text-slate-100">
         <GitBranch className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
         <p className="text-sm font-medium">No workflow runs for this mission yet.</p>
         <p className="text-xs text-muted-foreground mt-1">
@@ -181,24 +181,24 @@ function WorkflowRunList({
     <div className="space-y-3">
       {runs.map((run) => {
         return (
-          <div key={run.id} className="rounded-md border border-border p-4 space-y-2">
+          <div key={run.id} className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white p-4 space-y-2 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.10)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.42)]">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-sm font-medium truncate">
+                <p className="text-sm font-semibold tracking-[-0.01em] text-slate-950 dark:text-slate-50 truncate">
                   {run.workflowName ?? "Unnamed workflow"}
                 </p>
-                <p className="text-xs text-muted-foreground font-mono truncate">{run.id}</p>
+                <p className="font-mono text-xs tabular-nums text-slate-500 dark:text-[#8f9db3] truncate">{run.id}</p>
               </div>
               <span
                 className={cn(
-                  "text-xs rounded border px-2 py-1 uppercase tracking-wide",
+                  "rounded-md border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em]",
                   RUN_STATUS_TONE[run.status] ?? RUN_STATUS_TONE.pending,
                 )}
               >
                 {formatStatusLabel(run.status)}
               </span>
             </div>
-            <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums text-slate-500 dark:text-[#8f9db3]">
               <span>Triggered by: {run.triggeredBy}</span>
               <span>Started: {run.startedAt ? formatDateTime(run.startedAt) : "—"}</span>
               <span>Ended: {run.completedAt ? formatDateTime(run.completedAt) : "—"}</span>
@@ -209,7 +209,7 @@ function WorkflowRunList({
               {run.progress.skippedSteps > 0 ? <span>Skipped: {run.progress.skippedSteps}</span> : null}
             </div>
             {run.steps.length > 0 ? (
-              <div className="space-y-2 border-t border-border pt-3">
+              <div className="space-y-2 border-t border-slate-200/80 pt-3 dark:border-white/[0.07]">
                 {run.steps.map((step) => (
                   <WorkflowStepRow
                     key={`${run.id}-${step.stepId}`}
@@ -253,7 +253,7 @@ function WorkProductCard({
   }
 
   return (
-    <div className="rounded border border-border bg-background px-2 py-1.5">
+    <div className="rounded-[10px] border border-slate-200/80 bg-white px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-white/10 dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 space-y-1">
           {product.url ? (
@@ -269,14 +269,14 @@ function WorkProductCard({
             <p className="truncate text-xs font-medium">{product.title}</p>
           )}
           <div className="flex flex-wrap gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-            <span className="rounded border border-border px-1.5 py-0.5">{product.type}</span>
-            <span className="rounded border border-border px-1.5 py-0.5">{formatStatusLabel(product.status)}</span>
+            <span className="rounded-md border border-slate-200/80 bg-slate-50/70 px-1.5 py-0.5 dark:border-white/[0.08] dark:bg-white/[0.04]">{product.type}</span>
+            <span className="rounded-md border border-slate-200/80 bg-slate-50/70 px-1.5 py-0.5 dark:border-white/[0.08] dark:bg-white/[0.04]">{formatStatusLabel(product.status)}</span>
             {product.isPrimary ? (
-              <span className="rounded border border-emerald-500/60 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300">Primary</span>
+              <span className="rounded-md border border-lime-600/35 bg-lime-500/10 px-1.5 py-0.5 text-lime-700 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/12 dark:text-[#a3e635]">Primary</span>
             ) : null}
           </div>
           {product.summary ? <p className="text-[11px] text-muted-foreground">{product.summary}</p> : null}
-          {openedProductId === product.id ? <p className="text-[11px] text-emerald-600">Opened</p> : null}
+          {openedProductId === product.id ? <p className="text-[11px] text-emerald-600 dark:text-[#a3e635]">Opened</p> : null}
           {openErrorProductId === product.id ? <p className="text-[11px] text-destructive">Open failed</p> : null}
         </div>
         <Button
@@ -346,7 +346,7 @@ function WorkflowStepRow({
   }
 
   return (
-    <div className="rounded border border-border/70 px-3 py-2">
+    <div className="rounded-[10px] border border-slate-200/80 bg-slate-50/50 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-2 min-w-0">
@@ -357,14 +357,14 @@ function WorkflowStepRow({
               )}
             />
             <span className="truncate text-sm font-medium">{step.name}</span>
-            <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+            <span className="shrink-0 rounded-md border border-slate-200/80 bg-white px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-[#8f9db3]">
               {formatStatusLabel(step.status)}
             </span>
             {hasReworkCap ? (
               <span
                 className={cn(
                   "shrink-0 rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
-                  capExhausted ? "border-red-500/60 text-red-600 dark:text-red-400" : "border-border text-muted-foreground",
+                  capExhausted ? "border-red-500/60 bg-red-500/10 text-red-600 dark:border-red-400/40 dark:bg-red-500/10 dark:text-red-300" : "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:border-[#f59e0b]/30 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]",
                 )}
                 title={capExhausted ? "QA rework cap exhausted — automatic rework stopped" : "QA rework budget"}
               >
@@ -378,10 +378,10 @@ function WorkflowStepRow({
               className={cn(
                 "inline-flex items-center gap-1 rounded border px-1.5 py-0.5",
                 assignee.kind === "tool"
-                  ? "border-cyan-500/50 text-cyan-700 dark:text-cyan-300"
+                  ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-700 dark:border-cyan-400/30 dark:bg-cyan-400/10 dark:text-cyan-300"
                   : assignee.kind === "agent"
-                    ? "border-blue-500/50 text-blue-700 dark:text-blue-300"
-                    : "border-border text-muted-foreground",
+                    ? "border-blue-500/40 bg-blue-500/10 text-blue-700 dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa]"
+                    : "border-slate-200/80 bg-slate-50/70 text-slate-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-[#8f9db3]",
               )}
               title={assignee.title}
             >
@@ -400,7 +400,7 @@ function WorkflowStepRow({
               <span>Entry step</span>
             )}
             {backEdgeNames.length > 0 ? (
-              <span className="text-amber-600 dark:text-amber-400">{backEdgeNames.join(", ")}</span>
+              <span className="text-amber-600 dark:text-[#f59e0b]">{backEdgeNames.join(", ")}</span>
             ) : null}
           </div>
           {hasReworkCap && capExhausted && stepRunId ? (
@@ -414,7 +414,7 @@ function WorkflowStepRow({
                 value={boostAmount}
                 onChange={(event) => setBoostAmount(Number(event.target.value) || 1)}
                 aria-label="Boost amount"
-                className="w-16 rounded border border-border bg-background px-1.5 py-0.5 text-xs"
+                className="w-16 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-800 outline-none transition-colors focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-100 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
               />
               <input
                 type="text"
@@ -422,13 +422,13 @@ function WorkflowStepRow({
                 onChange={(event) => setBoostReason(event.target.value)}
                 placeholder="Reason (optional)"
                 aria-label="Boost reason"
-                className="min-w-32 flex-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs"
+                className="min-w-32 flex-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-800 outline-none transition-colors focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-100 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
               />
               <button
                 type="button"
                 disabled={boostState === "busy"}
                 onClick={() => void handleBoost()}
-                className="rounded border border-border px-2 py-0.5 text-xs hover:bg-accent/50 disabled:opacity-60"
+                className="rounded-md border border-lime-600/35 bg-lime-500/10 px-2 py-0.5 text-xs font-semibold text-lime-700 transition-colors hover:bg-lime-500/15 disabled:opacity-60 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/12 dark:text-[#a3e635] dark:hover:bg-[#a3e635]/15"
               >
                 {boostState === "busy" ? "Granting" : "Grant"}
               </button>
@@ -445,7 +445,7 @@ function WorkflowStepRow({
               {step.toolNames.map((toolName) => (
                 <span
                   key={`${step.stepId}-${toolName}`}
-                  className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+                  className="rounded-md border border-slate-200/80 bg-slate-50/70 px-1.5 py-0.5 dark:border-white/[0.08] dark:bg-white/[0.04] text-[10px] uppercase tracking-wide text-muted-foreground"
                 >
                   {toolName}
                 </span>
@@ -457,7 +457,7 @@ function WorkflowStepRow({
               {step.knowledgeBaseIds.map((knowledgeBaseId) => (
                 <span
                   key={`${step.stepId}-${knowledgeBaseId}`}
-                  className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+                  className="rounded-md border border-slate-200/80 bg-slate-50/70 px-1.5 py-0.5 dark:border-white/[0.08] dark:bg-white/[0.04] text-[10px] uppercase tracking-wide text-muted-foreground"
                 >
                   kb:{knowledgeBaseId}
                 </span>
@@ -467,7 +467,7 @@ function WorkflowStepRow({
           {step.description ? <p className="text-xs text-muted-foreground">{step.description}</p> : null}
         </div>
         {workProducts.length > 0 ? (
-          <div className="w-[20rem] shrink-0 space-y-1.5 rounded border border-border/70 bg-muted/20 p-2">
+          <div className="w-[20rem] shrink-0 space-y-1.5 rounded-[10px] border border-slate-200/80 bg-slate-50/60 p-2 dark:border-white/[0.07] dark:bg-[#0e131d]">
             <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               Work products · {workProducts.length}
             </p>
@@ -483,7 +483,7 @@ function WorkflowStepRow({
             <Link
               to={`/issues/${step.issue.identifier ?? step.issue.id}`}
               state={createIssueDetailLocationState("Mission", `/missions/${missionId}`)}
-              className="block rounded border border-border px-2 py-1 text-xs no-underline transition-colors hover:bg-accent/50"
+              className="block rounded-[10px] border border-slate-200/80 bg-white px-2 py-1 text-xs no-underline shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] transition-colors hover:border-blue-500/35 hover:bg-blue-50/60 dark:border-white/[0.08] dark:bg-[#07090d] dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#101827]"
             >
               <span className="block truncate font-mono text-muted-foreground">
                 {step.issue.identifier ?? step.issue.id}
@@ -494,7 +494,7 @@ function WorkflowStepRow({
               </span>
             </Link>
           ) : (
-            <div className="rounded border border-dashed border-border px-2 py-1 text-xs text-muted-foreground">
+            <div className="rounded-[10px] border border-dashed border-slate-300/80 bg-slate-50/50 px-2 py-1 text-xs text-slate-500 dark:border-white/[0.12] dark:bg-white/[0.03] dark:text-[#8f9db3]">
               Issue pending
             </div>
           )}
@@ -708,7 +708,7 @@ function WorkflowRunGraph({
 
   if (runs.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-border p-4 text-center">
+      <div className="tactile-card rounded-[12px] border border-dashed border-slate-300/80 bg-white p-4 text-center text-slate-900 dark:border-white/[0.12] dark:bg-[#0e131d] dark:bg-none dark:text-slate-100">
         <GitBranch className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
         <p className="text-sm font-medium">No workflow runs for this mission yet.</p>
         <p className="text-xs text-muted-foreground mt-1">
@@ -854,16 +854,16 @@ function WorkflowRunGraph({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-md border border-border p-4 space-y-2">
+      <div className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white p-4 space-y-2 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.10)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.42)]">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-sm font-medium truncate">{run.workflowName ?? "Unnamed workflow"}</p>
-            <p className="text-xs text-muted-foreground font-mono truncate">{run.id}</p>
+            <p className="text-sm font-semibold tracking-[-0.01em] text-slate-950 dark:text-slate-50 truncate">{run.workflowName ?? "Unnamed workflow"}</p>
+            <p className="font-mono text-xs tabular-nums text-slate-500 dark:text-[#8f9db3] truncate">{run.id}</p>
           </div>
           <div className="flex items-center gap-2">
             <span
               className={cn(
-                "text-xs rounded border px-2 py-1 uppercase tracking-wide",
+                "rounded-md border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em]",
                 RUN_STATUS_TONE[run.status] ?? RUN_STATUS_TONE.pending,
               )}
             >
@@ -872,14 +872,14 @@ function WorkflowRunGraph({
             <a
               href={missionsApi.workflowRunFlowmapDownloadPath(missionId, run.id)}
               download
-              className="rounded border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent/30"
+              className="rounded-md border border-slate-200/90 bg-white px-2 py-1 text-[11px] font-medium text-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-blue-500/35 hover:bg-blue-50 dark:border-[#60a5fa]/25 dark:bg-[#07090d] dark:text-[#60a5fa] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:bg-[#101827]"
               title="Download this run as a single-file interactive flowmap HTML (IF branches + rework loops included)"
             >
               Export flowmap
             </a>
           </div>
         </div>
-        <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums text-slate-500 dark:text-[#8f9db3]">
           <span>Triggered by: {run.triggeredBy}</span>
           <span>Started: {run.startedAt ? formatDateTime(run.startedAt) : "—"}</span>
           <span>Ended: {run.completedAt ? formatDateTime(run.completedAt) : "—"}</span>
@@ -900,10 +900,10 @@ function WorkflowRunGraph({
                   setSelectedStepId(null);
                 }}
                 className={cn(
-                  "rounded border px-2 py-1 text-[11px] transition-colors",
+                  "rounded-md border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors",
                   candidateRun.id === run.id
-                    ? "border-foreground/30 bg-accent/50 text-foreground"
-                    : "border-border text-muted-foreground hover:bg-accent/30",
+                    ? "border-blue-500/35 bg-blue-500/10 text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]"
+                    : "border-slate-200/80 text-slate-500 hover:bg-slate-100 dark:border-white/[0.08] dark:text-[#8f9db3] dark:hover:bg-white/[0.05]",
                 )}
               >
                 {candidateRun.workflowName ?? candidateRun.id.slice(0, 8)}
@@ -914,11 +914,11 @@ function WorkflowRunGraph({
       </div>
 
       {run.steps.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+        <div className="tactile-card rounded-[12px] border border-dashed border-slate-300/80 bg-white p-4 text-center text-slate-900 dark:border-white/[0.12] dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 text-sm text-muted-foreground">
           No steps in this run.
         </div>
       ) : (
-        <div ref={graphFrameRef} className="overflow-x-auto rounded-md border border-border bg-muted/10 p-3">
+        <div ref={graphFrameRef} className="tactile-card overflow-x-auto overscroll-contain rounded-[12px] border-[var(--pw-hairline)] bg-slate-100/70 p-3 dark:border-white/10 dark:bg-[#07090d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),inset_0_12px_32px_rgba(0,0,0,0.22)]">
           <div
             className="relative"
             style={{
@@ -965,10 +965,10 @@ function WorkflowRunGraph({
               const tone = STEP_STATUS_TONE[step.status] ?? STEP_STATUS_TONE.pending;
               const emphasis =
                 step.status === "failed"
-                  ? "border-red-500/70"
+                  ? "border-red-500/70 dark:border-red-400/60"
                   : step.status === "running"
-                    ? "border-blue-500/70"
-                    : "border-border";
+                    ? "border-blue-500/70 dark:border-[#60a5fa]/60"
+                    : "border-slate-200/90 dark:border-white/[0.09]";
               return (
                 <button
                   key={`${run.id}-${step.stepId}`}
@@ -977,9 +977,9 @@ function WorkflowRunGraph({
                   aria-pressed={isSelected}
                   title={step.name}
                   className={cn(
-                    "absolute text-left rounded-md border bg-background px-2.5 py-2 shadow-sm transition-colors hover:bg-accent/40",
+                    "absolute rounded-[10px] border bg-white px-2.5 py-2 text-left text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_4px_14px_rgba(15,23,42,0.08)] transition-[color,background-color,border-color,box-shadow,transform] hover:border-blue-500/35 hover:bg-blue-50/60 motion-safe:enabled:active:scale-[0.96] dark:bg-[#0e131d] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_8px_22px_rgba(0,0,0,0.34)] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#111827]",
                     emphasis,
-                    isSelected ? "ring-2 ring-foreground/40" : "",
+                    isSelected ? "ring-2 ring-blue-500/35 dark:ring-[#a3e635]/45" : "",
                   )}
                   style={{
                     left: position.col * columnStride,
@@ -993,16 +993,16 @@ function WorkflowRunGraph({
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
                     <span className="uppercase tracking-wide">{formatStatusLabel(step.status)}</span>
-                    {isEntry ? <span className="rounded border border-border px-1">Entry</span> : null}
+                    {isEntry ? <span className="rounded border border-lime-600/35 bg-lime-500/10 px-1 text-lime-700 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/10 dark:text-[#a3e635]">Entry</span> : null}
                     {isBranchPoint ? (
-                      <span className="rounded border border-sky-500/60 px-1 text-sky-700 dark:text-sky-300">IF</span>
+                      <span className="rounded border border-blue-500/40 bg-blue-500/10 px-1 text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa]">IF</span>
                     ) : null}
                     <span className="truncate">{assignee.label}</span>
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
                     {step.issue ? <span className="font-mono">{step.issue.identifier ?? step.issue.id}</span> : null}
                     {step.workProducts.length > 0 ? (
-                      <span className="rounded border border-border px-1">wp·{step.workProducts.length}</span>
+                      <span className="rounded border border-slate-200/80 bg-slate-50/70 px-1 dark:border-white/[0.08] dark:bg-white/[0.04]">wp·{step.workProducts.length}</span>
                     ) : null}
                   </div>
                 </button>
@@ -1014,7 +1014,7 @@ function WorkflowRunGraph({
 
       {selectedStep ? (
         <div className="space-y-1.5">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Selected step</p>
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-[#8f9db3]">Selected step</p>
           <WorkflowStepRow
             missionId={missionId}
             step={selectedStep}
@@ -1076,7 +1076,7 @@ function AgentRoster({ missionId, agentMap }: AgentRosterProps) {
     return (
       <div className="space-y-1">
         {["roster-a", "roster-b"].map((key) => (
-          <div key={key} className="h-10 bg-muted animate-pulse rounded" />
+          <div key={key} className="h-10 animate-pulse rounded-[10px] border border-slate-200/70 bg-slate-100 dark:border-white/[0.06] dark:bg-[#0e131d]" />
         ))}
       </div>
     );
@@ -1086,7 +1086,7 @@ function AgentRoster({ missionId, agentMap }: AgentRosterProps) {
 
   if (rosterData?.endpointAvailable === false) {
     return (
-      <div className="flex flex-col items-center py-6 text-center">
+      <div className="tactile-card flex flex-col items-center rounded-[12px] border-[var(--pw-hairline)] bg-white py-6 text-center text-slate-900 dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100">
         <User className="h-6 w-6 mb-2 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">Mission roster is not available yet.</p>
         <p className="text-xs text-muted-foreground mt-1">
@@ -1098,7 +1098,7 @@ function AgentRoster({ missionId, agentMap }: AgentRosterProps) {
 
   if (entries.length === 0) {
     return (
-      <div className="flex flex-col items-center py-6 text-center">
+      <div className="tactile-card flex flex-col items-center rounded-[12px] border-[var(--pw-hairline)] bg-white py-6 text-center text-slate-900 dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100">
         <User className="h-6 w-6 mb-2 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">No agents assigned to this mission.</p>
       </div>
@@ -1121,7 +1121,7 @@ function AgentRoster({ missionId, agentMap }: AgentRosterProps) {
     <div className="space-y-4">
       {Object.entries(grouped).map(([role, members]) => (
         <div key={role} className="space-y-1.5">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-[#8f9db3]">
             {role}
           </p>
           <div className="flex flex-wrap gap-2">
@@ -1129,7 +1129,7 @@ function AgentRoster({ missionId, agentMap }: AgentRosterProps) {
               <div
                 key={entry.agentId}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium",
+                  "flex items-center gap-1.5 rounded-md border px-3 py-1.5 font-mono text-[11px] font-semibold tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
                   ROLE_COLORS[entry.role as MissionAgentRole] ?? "border-border bg-muted text-muted-foreground",
                 )}
               >

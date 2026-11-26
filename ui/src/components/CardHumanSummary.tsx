@@ -144,28 +144,28 @@ export function CardHumanSummary({
   const compact = asCompactSummary(s); // 신형 3항목 행 판별(구 행은 null → 레거시 렌더)
   const legacy = compact ? null : asLegacySummary(s); // 구 5섹션 행 판별(둘 다 아니면 안내 문구 폴백)
   return (
-    <div className="mt-3 rounded-md border border-blue-200 dark:border-blue-900 bg-blue-50/60 dark:bg-blue-950/30 p-3 text-sm">
+    <div className="tactile-card mt-3 rounded-[12px] border border-blue-200/80 bg-blue-50/70 p-3 text-sm text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_22px_rgba(15,23,42,0.07)] dark:border-[#60a5fa]/25 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_8px_22px_rgba(0,0,0,0.34)]">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 font-medium text-blue-900 dark:text-blue-200">
-          <TriangleAlert className="h-3.5 w-3.5" aria-hidden />
+        <div className="flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-blue-700 dark:text-[#60a5fa]">
+          <TriangleAlert className="h-3.5 w-3.5 text-amber-600 dark:text-[#f59e0b]" aria-hidden />
           {L(lang, { en: "Easy summary (AI)", ko: "쉬운 해석 (AI)" })}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-muted-foreground">
+          <span className="font-mono text-[10px] tabular-nums text-slate-500 dark:text-[#8f9db3]">
             {summary.status === "pending"
               ? L(lang, { en: "summarizing…", ko: "해석 중…" })
               : summary.status === "failed"
                 ? L(lang, { en: "summary failed — see original above", ko: "해석 실패 — 아래 원문으로 판단" })
                 : `${summary.adapterType}${summary.model ? ` · ${summary.model}` : ""}`}
           </span>
-          <Button variant="ghost" size="sm" className="h-6 px-1.5" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+          <Button variant="ghost" size="sm" className="h-6 px-1.5 text-slate-500 hover:bg-blue-100/70 hover:text-blue-800 dark:text-[#8f9db3] dark:hover:bg-white/[0.06] dark:hover:text-slate-100" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
             {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </Button>
         </div>
       </div>
 
       {open && (
-        <div className="mt-2 space-y-1.5 text-blue-950 dark:text-blue-100">
+        <div className="mt-2 space-y-1.5 text-slate-700 dark:text-slate-200">
           {summary.status === "done" && s && (compact ? (
             <>
               <div className="space-y-0.5">
@@ -178,7 +178,7 @@ export function CardHumanSummary({
                 {compact.optionsLine}
               </p>
               <p className="text-[13px] leading-relaxed">{compact.interpretation}</p>
-              <p className="text-[12px] text-muted-foreground">
+              <p className="text-[12px] text-slate-500 dark:text-[#8f9db3]">
                 {L(lang, {
                   en: "Detailed evidence is in the issue linked to this card.",
                   ko: "상세 근거는 이 카드에 연결된 이슈 링크에서 확인하세요.",
@@ -203,7 +203,7 @@ export function CardHumanSummary({
                 </ul>
               ) : null}
               {legacy.cautions.length > 0 ? (
-                <ul className="text-[12px] text-amber-800 dark:text-amber-300 list-disc pl-4">
+                <ul className="text-[12px] text-amber-800 dark:text-[#f59e0b] list-disc pl-4">
                   {legacy.cautions.map((c, i) => <li key={i}>{c}</li>)}
                 </ul>
               ) : null}
@@ -218,14 +218,14 @@ export function CardHumanSummary({
             </p>
           ))}
           {summary.status === "failed" && summary.error && (
-            <p className="text-[11px] text-muted-foreground break-all">{summary.error}</p>
+            <p className="text-[11px] text-slate-500 dark:text-[#8f9db3] break-all">{summary.error}</p>
           )}
 
           {/* 어댑터·모델 선택 + 다시 해석 (표시 전용 — 카드 결정 동작과 무관) */}
-          <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-blue-200 dark:border-blue-900/60">
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-blue-200/80 pt-1.5 dark:border-white/[0.07]">
             <select
               aria-label={L(lang, { en: "adapter", ko: "어댑터" })}
-              className="h-6 rounded border border-border bg-transparent text-[11px] px-1"
+              className="h-6 rounded-md border border-slate-200 bg-white px-1 text-[11px] text-slate-700 outline-none transition-colors focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
               value={adapter}
               onChange={(e) => setAdapter(e.target.value)}
             >
@@ -237,7 +237,7 @@ export function CardHumanSummary({
             </select>
             <select
               aria-label={L(lang, { en: "model", ko: "모델" })}
-              className="h-6 max-w-56 rounded border border-border bg-transparent text-[11px] px-1"
+              className="h-6 max-w-56 rounded-md border border-slate-200 bg-white px-1 text-[11px] text-slate-700 outline-none transition-colors focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
               value={model}
               onChange={(e) => setModel(e.target.value)}
             >
@@ -249,7 +249,7 @@ export function CardHumanSummary({
             <Button
               variant="outline"
               size="sm"
-              className="h-6 text-[11px] px-2"
+              className="h-6 border-slate-200/90 bg-white px-2 text-[11px] font-semibold text-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-blue-500/35 hover:bg-blue-50 dark:border-[#60a5fa]/25 dark:bg-[#07090d] dark:text-[#60a5fa] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:bg-[#101827]"
               disabled={busy}
               onClick={async () => {
                 setBusy(true);

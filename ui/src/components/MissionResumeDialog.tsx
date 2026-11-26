@@ -197,10 +197,10 @@ export function MissionResumeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>이 실행 이어서 진행</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="tactile-card max-h-[85dvh] overflow-y-auto overscroll-contain rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_50px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_18px_50px_rgba(0,0,0,0.48)] sm:max-w-xl">
+        <DialogHeader className="border-b border-slate-200/80 pb-3 dark:border-white/[0.07]">
+          <DialogTitle className="text-slate-950 dark:text-slate-50">이 실행 이어서 진행</DialogTitle>
+          <DialogDescription className="text-slate-600 dark:text-slate-400">
             {missionTitle ? `${missionTitle} — ` : ""}
             기존 워크플로 실행의 단계부터 재개 요청을 만듭니다.
           </DialogDescription>
@@ -209,12 +209,12 @@ export function MissionResumeDialog({
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <label htmlFor="mission-resume-run" className="text-xs font-medium text-muted-foreground">
+              <label htmlFor="mission-resume-run" className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8f9db3]">
                 재개할 실행
               </label>
               <select
                 id="mission-resume-run"
-                className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm disabled:opacity-50"
+                className="h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-800 outline-none transition-colors focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 disabled:opacity-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-100 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
                 value={selectedRunId ?? ""}
                 disabled={busy}
                 onChange={(event) => handleRunChange(event.target.value)}
@@ -228,12 +228,12 @@ export function MissionResumeDialog({
               </select>
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="mission-resume-step" className="text-xs font-medium text-muted-foreground">
+              <label htmlFor="mission-resume-step" className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8f9db3]">
                 시작 단계
               </label>
               <select
                 id="mission-resume-step"
-                className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm disabled:opacity-50"
+                className="h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-800 outline-none transition-colors focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 disabled:opacity-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-100 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
                 value={selectedStepId ?? ""}
                 disabled={busy || !selectedRun}
                 onChange={(event) => handleStepChange(event.target.value)}
@@ -252,21 +252,21 @@ export function MissionResumeDialog({
             <Button
               type="button"
               variant="outline"
-              size="sm"
+              size="sm" className="border-slate-200/90 bg-white text-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-blue-500/35 hover:bg-blue-50 dark:border-[#60a5fa]/25 dark:bg-[#07090d] dark:text-[#60a5fa] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:bg-[#101827]"
               onClick={handlePreview}
               disabled={busy || !selectedRunId || !selectedStepId}
             >
               재개 범위 확인
             </Button>
             {!visiblePreview && (
-              <p className="text-xs text-muted-foreground">실행과 단계를 선택하고 재개 범위를 확인하세요.</p>
+              <p className="text-xs text-slate-500 dark:text-[#8f9db3]">실행과 단계를 선택하고 재개 범위를 확인하세요.</p>
             )}
           </div>
 
-          {visiblePreview && <MissionResumePreviewReport preview={visiblePreview} expired={snapshotExpired} />}
+          {visiblePreview && <div className="[&_[data-testid=mission-resume-preview]]:rounded-[12px] [&_[data-testid=mission-resume-preview]]:border-slate-200/80 [&_[data-testid=mission-resume-preview]]:bg-slate-50/70 [&_[data-testid=mission-resume-preview]]:shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:[&_[data-testid=mission-resume-preview]]:border-white/10 dark:[&_[data-testid=mission-resume-preview]]:bg-[#07090d] dark:[&_[data-testid=mission-resume-preview]]:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"><MissionResumePreviewReport preview={visiblePreview} expired={snapshotExpired} /></div>}
 
           <div className="space-y-1.5">
-            <label htmlFor="mission-resume-reason" className="text-xs font-medium text-muted-foreground">
+            <label htmlFor="mission-resume-reason" className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8f9db3]">
               재개 사유 (필수, 최대 2000자)
             </label>
             <Textarea
@@ -275,11 +275,11 @@ export function MissionResumeDialog({
               maxLength={REASON_MAX_LENGTH}
               disabled={busy}
               onChange={(event) => handleReasonChange(event.target.value)}
-              placeholder="이 지점부터 다시 진행하는 이유를 적어주세요."
+              placeholder="이 지점부터 다시 진행하는 이유를 적어주세요." className="border-slate-200 bg-white text-slate-800 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] placeholder:text-slate-400 focus-visible:border-[#2563eb] focus-visible:ring-[#2563eb]/15 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-[#60a5fa] dark:focus-visible:ring-[#60a5fa]/20"
             />
           </div>
 
-          <p className="text-xs text-muted-foreground">{PRESERVATION_NOTE}</p>
+          <p className="rounded-[10px] border border-blue-500/20 bg-blue-500/5 px-2.5 py-2 text-xs text-blue-700 dark:border-[#60a5fa]/25 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa]">{PRESERVATION_NOTE}</p>
 
           <MissionResumeRequestStatus
             applyError={applyError}
@@ -294,11 +294,11 @@ export function MissionResumeDialog({
 
           <div className="flex justify-end">
             {requestDelivered ? (
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              <Button type="button" variant="outline" className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:bg-[#111827]" onClick={() => onOpenChange(false)}>
                 닫기
               </Button>
             ) : (
-              <Button type="button" onClick={handleConfirm} disabled={!canConfirm}>
+              <Button type="button" className="bg-[#4d7c0f] text-white tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:bg-[#3f6212] dark:bg-[#a3e635] dark:text-[#07090d] dark:hover:bg-[#bef264]" onClick={handleConfirm} disabled={!canConfirm}>
                 {requestInFlight ? "전달 중… 창을 닫지 말아 주세요" : "이 지점부터 재개"}
               </Button>
             )}
