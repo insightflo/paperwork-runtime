@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   BudgetPolicySummary,
+  CostByAgent,
   CostByAgentModel,
   CostByBiller,
   CostByProviderModel,
@@ -93,6 +94,47 @@ function MetricTile({
         </div>
       </div>
     </div>
+  );
+}
+
+/** One cell of the 1-row cost telemetry strip. Any mini bar/sparkline sits in the header row (shrink-0, right) so it never overlaps value/subtext. */
+function TelemetryCell({ label, value, sub, dot, visual }: { label: string; value: string; sub: string; dot: string; visual?: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5 px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-1.5 text-[11px] uppercase tracking-wide text-[#8b97ad]">
+          <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+          <span className="truncate">{label}</span>
+        </span>
+        {visual && <span className="shrink-0">{visual}</span>}
+      </div>
+      <span className="truncate text-xl font-bold leading-tight tabular-nums text-[#e6edf7]">{value}</span>
+      <span className="truncate text-[11px] tabular-nums text-[#8b97ad]">{sub}</span>
+    </div>
+  );
+}
+
+function MiniBar({ percent, tone = "bg-[#5f8dff]" }: { percent: number; tone?: string }) {
+  return (
+    <span className="block h-1.5 w-16 overflow-hidden rounded-sm border border-[#242d3f] bg-[#0b0e14]">
+      <span className={cn("block h-full transition-[width] duration-150", tone)} style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+    </span>
+  );
+}
+
+/** Cockpit breakdown card: #151b28 surface, 1px #242d3f hairlines between header and rows. */
+function CockpitCard({ title, description, action, children }: { title: string; description: string; action?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="flex min-w-0 flex-col overflow-hidden rounded-md border border-[#242d3f] bg-[#151b28]">
+      <header className="flex items-center justify-between gap-3 border-b border-[#242d3f] px-4 py-2">
+        <div className="min-w-0">
+          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]">{title}</h2>
+          <p className="truncate text-[11px] text-[#8b97ad]">{description}</p>
+        </div>
+        {action}
+      </header>
+      <div className="divide-y divide-[#242d3f]">{children}</div>
+    </section>
   );
 }
 
@@ -528,6 +570,39 @@ export function Costs() {
       0,
     );
 
+  const spendCents = spendData?.summary.spendCents ?? 0;
+  const budgetCents = spendData?.summary.budgetCents ?? 0;
+  const utilization = spendData?.summary.utilizationPercent ?? 0;
+
+  // Spend rate: cents per day over the elapsed days of the selected range (unknown for unbounded ranges).
+  const rangeDays = useMemo(() => {
+    if (!from) return null;
+    const start = new Date(from).getTime();
+    const end = Math.min(to ? new Date(to).getTime() : Date.now(), Date.now());
+    return Math.max(1, Math.ceil((end - start) / 86_400_000));
+  }, [from, to]);
+  const dailyCents = rangeDays ? spendCents / rangeDays : 0;
+  const daysInMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+  const projectedMonthCents = dailyCents * daysInMonth;
+
+  // Provider / model totals across all agents, derived from the already-fetched per-agent model rows.
+  const modelTotals = useMemo(() => {
+    const map = new Map<string, { provider: string; model: string; costCents: number; tokens: number }>();
+    for (const row of spendData?.byAgentModel ?? []) {
+      const key = `${row.provider}\u0000${row.model}`;
+      const entry = map.get(key) ?? { provider: row.provider, model: row.model, costCents: 0, tokens: 0 };
+      entry.costCents += row.costCents;
+      entry.tokens += row.inputTokens + row.cachedInputTokens + row.outputTokens;
+      map.set(key, entry);
+    }
+    return Array.from(map.values()).sort((a, b) => b.costCents - a.costCents);
+  }, [spendData?.byAgentModel]);
+
+  const topAgent = useMemo(
+    () => (spendData?.byAgent ?? []).reduce<CostByAgent | null>((top, row) => (!top || row.costCents > top.costCents ? row : top), null),
+    [spendData?.byAgent],
+  );
+
   const topFinanceEvents = (financeData?.events ?? []) as FinanceEvent[];
   const budgetPolicies = budgetData?.policies ?? [];
   const activeBudgetIncidents = budgetData?.activeIncidents ?? [];
@@ -546,22 +621,23 @@ export function Costs() {
   const overviewError = spendError ?? financeError;
 
   return (
-    <div className="space-y-6 tabular-nums">
-      <div className="space-y-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-                <h1 className="text-3xl font-semibold tracking-tight">Costs</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+    <div className="space-y-3 tabular-nums">
+      <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="min-w-0">
+                <h1 className="text-xl font-semibold tracking-tight">Costs</h1>
+                <p className="truncate text-xs text-muted-foreground">
                   Inference spend, platform fees, credits, and live quota windows.
                 </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1">
               {PRESET_KEYS.map((key) => (
                 <Button
                   key={key}
                   variant={preset === key ? "secondary" : "ghost"}
                   size="sm"
+                  className="h-7 px-2 text-xs"
                   onClick={() => setPreset(key)}
                 >
                   {PRESET_LABELS[key]}
@@ -588,42 +664,38 @@ export function Costs() {
             </div>
           ) : null}
 
-          <div className="grid gap-3 lg:grid-cols-4">
-            <MetricTile
-              label="Inference spend"
-              value={formatCents(spendData?.summary.spendCents ?? 0)}
-              subtitle={`${formatTokens(inferenceTokenTotal)} tokens across request-scoped events`}
-              icon={DollarSign}
+          {/* 1-row 4-column cost telemetry strip; mini bars live in each cell's header-right, never over subtext */}
+          <section aria-label="Cost telemetry" className="grid grid-cols-2 divide-x divide-[#242d3f] rounded-md border border-[#242d3f] bg-[#111622] lg:grid-cols-4">
+            <TelemetryCell
+              label={preset === "mtd" ? "MTD spend" : `${PRESET_LABELS[preset]} spend`}
+              value={formatCents(spendCents)}
+              sub={`${formatTokens(inferenceTokenTotal)} tokens · ${rangeDays ? `${rangeDays}d elapsed` : "all time"}`}
+              dot="bg-[#5f8dff]"
             />
-            <MetricTile
-              label="Budget"
-              value={activeBudgetIncidents.length > 0 ? String(activeBudgetIncidents.length) : (
-                spendData?.summary.budgetCents && spendData.summary.budgetCents > 0
-                  ? `${spendData.summary.utilizationPercent}%`
-                  : "Open"
-              )}
-              subtitle={
-                activeBudgetIncidents.length > 0
-                  ? `${budgetData?.pausedAgentCount ?? 0} agents paused · ${budgetData?.pausedProjectCount ?? 0} work contexts paused`
-                  : spendData?.summary.budgetCents && spendData.summary.budgetCents > 0
-                    ? `${formatCents(spendData.summary.spendCents)} of ${formatCents(spendData.summary.budgetCents)}`
-                    : "No monthly cap configured"
-              }
-              icon={Coins}
+            <TelemetryCell
+              label="Budget utilization"
+              value={budgetCents > 0 ? `${utilization}%` : "Open"}
+              sub={activeBudgetIncidents.length > 0
+                ? `${activeBudgetIncidents.length} budget incident${activeBudgetIncidents.length === 1 ? "" : "s"} · ${budgetData?.pausedAgentCount ?? 0} agents paused`
+                : budgetCents > 0 ? `${formatCents(spendCents)} of ${formatCents(budgetCents)} monthly cap` : "No monthly cap configured"}
+              dot={activeBudgetIncidents.length > 0 ? "bg-[#f87171] animate-pulse" : budgetCents <= 0 ? "bg-[#4a5670]" : utilization > 90 ? "bg-[#f87171]" : utilization > 70 ? "bg-[#fbbf24]" : "bg-[#34d399]"}
+              visual={budgetCents > 0 ? <MiniBar percent={utilization} tone={utilization > 90 ? "bg-[#f87171]" : utilization > 70 ? "bg-[#fbbf24]" : "bg-[#34d399]"} /> : undefined}
             />
-            <MetricTile
-              label="Finance net"
-              value={formatCents(financeData?.summary.netCents ?? 0)}
-              subtitle={`${formatCents(financeData?.summary.debitCents ?? 0)} debits · ${formatCents(financeData?.summary.creditCents ?? 0)} credits`}
-              icon={ReceiptText}
+            <TelemetryCell
+              label="Active spend rate"
+              value={rangeDays ? `${formatCents(dailyCents)} / day` : "—"}
+              sub={budgetCents > 0 && preset === "mtd" ? `~${formatCents(projectedMonthCents)} by month end` : `${formatCents(spendCents)} over ${rangeDays ? `${rangeDays}d` : "all time"}`}
+              dot="bg-[#fbbf24]"
+              visual={budgetCents > 0 ? <MiniBar percent={(projectedMonthCents / budgetCents) * 100} tone={projectedMonthCents > budgetCents ? "bg-[#f87171]" : projectedMonthCents > budgetCents * 0.8 ? "bg-[#fbbf24]" : "bg-[#34d399]"} /> : undefined}
             />
-            <MetricTile
-              label="Finance events"
-              value={String(financeData?.summary.eventCount ?? 0)}
-              subtitle={`${formatCents(financeData?.summary.estimatedDebitCents ?? 0)} estimated in range`}
-              icon={ArrowUpRight}
+            <TelemetryCell
+              label="Top cost driver"
+              value={topAgent ? topAgent.agentName ?? topAgent.agentId : "—"}
+              sub={topAgent ? `${formatCents(topAgent.costCents)} · ${spendCents > 0 ? Math.round((topAgent.costCents / spendCents) * 100) : 0}% of spend` : "No cost events yet"}
+              dot="bg-[#a784fd]"
+              visual={topAgent ? <MiniBar percent={spendCents > 0 ? (topAgent.costCents / spendCents) * 100 : 0} tone="bg-[#a784fd]" /> : undefined}
             />
-          </div>
+          </section>
       </div>
 
       <Tabs value={mainTab} onValueChange={(value) => setMainTab(value as typeof mainTab)}>
@@ -663,55 +735,159 @@ export function Costs() {
                 </div>
               ) : null}
 
-              <div className="grid gap-4 xl:grid-cols-[1.3fr,1fr]">
-                <Card className="rounded-md border border-border/80 bg-card/60">
-                  <CardHeader className="px-5 pt-5 pb-2">
-                    <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Inference ledger</CardTitle>
-                    <CardDescription>
-                      Request-scoped inference spend for the selected period.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4 px-5 pb-5 pt-2">
-                    <div className="flex flex-wrap items-end justify-between gap-3">
-                      <div>
-                        <div className="text-3xl font-semibold tabular-nums">
-                          {formatCents(spendData?.summary.spendCents ?? 0)}
+              {/* 2-column cockpit breakdown grid: #151b28 cards, 1px #242d3f hairlines */}
+              <div className="grid gap-3 xl:grid-cols-2">
+                <CockpitCard
+                  title="Spend by agent"
+                  description="What each agent consumed in the selected period."
+                  action={<span className="text-[11px] tabular-nums text-[#8b97ad]">{spendData?.byAgent.length ?? 0} agents</span>}
+                >
+                  {(spendData?.byAgent.length ?? 0) === 0 ? (
+                    <p className="px-4 py-3 text-sm text-muted-foreground">No cost events yet.</p>
+                  ) : (
+                    spendData?.byAgent.map((row) => {
+                      const modelRows = agentModelRows.get(row.agentId) ?? [];
+                      const isExpanded = expandedAgents.has(row.agentId);
+                      const hasBreakdown = modelRows.length > 0;
+                      const sharePct = spendCents > 0 ? Math.round((row.costCents / spendCents) * 100) : 0;
+                      return (
+                        <div key={row.agentId}>
+                          <button
+                            type="button"
+                            disabled={!hasBreakdown}
+                            onClick={() => hasBreakdown && toggleAgent(row.agentId)}
+                            className="grid w-full grid-cols-[minmax(0,1fr)_max-content] items-center gap-x-3 px-4 py-2 text-left disabled:cursor-default"
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
+                              {hasBreakdown ? (
+                                isExpanded
+                                  ? <ChevronDown className="h-3 w-3 shrink-0 text-[#8b97ad]" />
+                                  : <ChevronRight className="h-3 w-3 shrink-0 text-[#8b97ad]" />
+                              ) : (
+                                <span className="h-3 w-3 shrink-0" />
+                              )}
+                              <Identity name={row.agentName ?? row.agentId} size="sm" />
+                              {row.agentStatus === "terminated" ? <StatusBadge status="terminated" /> : null}
+                            </div>
+                            <div className="text-right text-xs tabular-nums">
+                              <div className="text-sm font-semibold text-[#e6edf7]">
+                                {formatCents(row.costCents)}
+                                <span className="ml-1 font-normal text-[#8b97ad]">{sharePct}%</span>
+                              </div>
+                              <div className="text-[#8b97ad]">
+                                in {formatTokens(row.inputTokens + row.cachedInputTokens)} · out {formatTokens(row.outputTokens)}
+                                {(row.apiRunCount > 0 || row.subscriptionRunCount > 0)
+                                  ? ` · ${row.apiRunCount} api · ${row.subscriptionRunCount} sub`
+                                  : ""}
+                              </div>
+                            </div>
+                          </button>
+                          <div className="h-0.5 bg-[#0b0e14]">
+                            <div className="h-full bg-[#5f8dff]" style={{ width: `${sharePct}%` }} />
+                          </div>
+
+                          {isExpanded && modelRows.length > 0 ? (
+                            <div className="space-y-1.5 border-t border-[#242d3f] bg-[#111622] px-4 py-2">
+                              {modelRows.map((modelRow) => {
+                                const modelSharePct = row.costCents > 0 ? Math.round((modelRow.costCents / row.costCents) * 100) : 0;
+                                return (
+                                  <div
+                                    key={`${modelRow.provider}:${modelRow.model}:${modelRow.billingType}`}
+                                    className="grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-x-3 text-xs"
+                                  >
+                                    <div className="min-w-0">
+                                      <div className="truncate font-medium text-[#e6edf7]">
+                                        {providerDisplayName(modelRow.provider)}
+                                        <span className="mx-1 text-[#4a5670]">/</span>
+                                        <span className="font-mono">{modelRow.model}</span>
+                                      </div>
+                                      <div className="truncate text-[#8b97ad]">
+                                        {providerDisplayName(modelRow.biller)} · {billingTypeDisplayName(modelRow.billingType)}
+                                      </div>
+                                    </div>
+                                    <div className="text-right tabular-nums">
+                                      <div className="font-medium text-[#e6edf7]">
+                                        {formatCents(modelRow.costCents)}
+                                        <span className="ml-1 font-normal text-[#8b97ad]">({modelSharePct}%)</span>
+                                      </div>
+                                      <div className="text-[#8b97ad]">
+                                        {formatTokens(modelRow.inputTokens + modelRow.cachedInputTokens + modelRow.outputTokens)} tok
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
                         </div>
-                        <div className="mt-1 text-sm text-muted-foreground">
-                          {spendData?.summary.budgetCents && spendData.summary.budgetCents > 0
-                            ? `Budget ${formatCents(spendData.summary.budgetCents)}`
-                            : "Unlimited budget"}
+                      );
+                    })
+                  )}
+                </CockpitCard>
+
+                <CockpitCard
+                  title="Spend by model"
+                  description="Provider / model totals across all agents in the selected period."
+                  action={<span className="text-[11px] tabular-nums text-[#8b97ad]">{modelTotals.length} models</span>}
+                >
+                  {modelTotals.length === 0 ? (
+                    <p className="px-4 py-3 text-sm text-muted-foreground">No cost events yet.</p>
+                  ) : (
+                    modelTotals.map((row) => {
+                      const sharePct = spendCents > 0 ? Math.round((row.costCents / spendCents) * 100) : 0;
+                      return (
+                        <div
+                          key={`${row.provider}:${row.model}`}
+                          className="grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-x-3 px-4 py-2 text-xs"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate font-medium text-[#e6edf7]">
+                              {providerDisplayName(row.provider)}
+                              <span className="mx-1 text-[#4a5670]">/</span>
+                              <span className="font-mono">{row.model}</span>
+                            </div>
+                            <div className="mt-1 h-1 w-full overflow-hidden rounded-sm border border-[#242d3f] bg-[#0b0e14]">
+                              <div className="h-full bg-[#5f8dff]" style={{ width: `${sharePct}%` }} />
+                            </div>
+                          </div>
+                          <div className="text-right tabular-nums">
+                            <div className="font-semibold text-[#e6edf7]">
+                              {formatCents(row.costCents)}
+                              <span className="ml-1 font-normal text-[#8b97ad]">{sharePct}%</span>
+                            </div>
+                            <div className="text-[#8b97ad]">{formatTokens(row.tokens)} tok</div>
+                          </div>
                         </div>
-                      </div>
-                      <div className="rounded-md border border-border/80 bg-card/60 px-4 py-3 text-right">
-                        <div className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">usage</div>
-                        <div className="mt-1 text-lg font-medium tabular-nums">
-                          {formatTokens(inferenceTokenTotal)}
+                      );
+                    })
+                  )}
+                </CockpitCard>
+              </div>
+
+              <div className="grid gap-3 xl:grid-cols-2">
+                <div className="space-y-3">
+                  <CockpitCard
+                    title="By work context"
+                    description="Run costs attributed through work-context-linked items."
+                    action={<span className="text-[11px] tabular-nums text-[#8b97ad]">{spendData?.byProject.length ?? 0} contexts</span>}
+                  >
+                    {(spendData?.byProject.length ?? 0) === 0 ? (
+                      <p className="px-4 py-3 text-sm text-muted-foreground">No work-context-attributed run costs yet.</p>
+                    ) : (
+                      spendData?.byProject.map((row, index) => (
+                        <div
+                          key={row.projectId ?? `unattributed-${index}`}
+                          className="flex items-center justify-between gap-3 px-4 py-2 text-xs"
+                        >
+                          <span className="truncate">{row.projectName ?? row.projectId ?? "Unattributed"}</span>
+                          <span className="font-medium tabular-nums text-[#e6edf7]">{formatCents(row.costCents)}</span>
                         </div>
-                      </div>
-                    </div>
-                    {spendData?.summary.budgetCents && spendData.summary.budgetCents > 0 ? (
-                      <div className="space-y-2">
-                        <div className="h-2 overflow-hidden bg-muted">
-                          <div
-                            className={cn(
-                              "h-full transition-[width,background-color] duration-150",
-                              spendData.summary.utilizationPercent > 90
-                                ? "bg-red-400"
-                                : spendData.summary.utilizationPercent > 70
-                                  ? "bg-yellow-400"
-                                  : "bg-emerald-400",
-                            )}
-                            style={{ width: `${Math.min(100, spendData.summary.utilizationPercent)}%` }}
-                          />
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {spendData.summary.utilizationPercent}% of monthly budget consumed in this range.
-                        </div>
-                      </div>
-                    ) : null}
-                  </CardContent>
-                </Card>
+                      ))
+                    )}
+                  </CockpitCard>
+
+                  <FinanceTimelineCard rows={topFinanceEvents.slice(0, 6)} emptyMessage="No finance events yet. Add account-level charges once biller invoices or credits land." />
+                </div>
 
                 <FinanceSummaryCard
                   debitCents={financeData?.summary.debitCents ?? 0}
@@ -720,121 +896,6 @@ export function Costs() {
                   estimatedDebitCents={financeData?.summary.estimatedDebitCents ?? 0}
                   eventCount={financeData?.summary.eventCount ?? 0}
                 />
-              </div>
-
-              <div className="grid gap-4 xl:grid-cols-[1.25fr,0.95fr]">
-                <Card className="rounded-md border border-border/80 bg-card/60">
-                  <CardHeader className="px-5 pt-5 pb-2">
-                    <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">By agent</CardTitle>
-                    <CardDescription>What each agent consumed in the selected period.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-2 px-5 pb-5 pt-2">
-                    {(spendData?.byAgent.length ?? 0) === 0 ? (
-                      <p className="text-sm text-muted-foreground">No cost events yet.</p>
-                    ) : (
-                      spendData?.byAgent.map((row) => {
-                        const modelRows = agentModelRows.get(row.agentId) ?? [];
-                        const isExpanded = expandedAgents.has(row.agentId);
-                        const hasBreakdown = modelRows.length > 0;
-                        return (
-                          <div key={row.agentId} className="rounded-md border border-border/80 bg-card/60 px-4 py-3">
-                            <div
-                              className={cn("flex items-start justify-between gap-3", hasBreakdown ? "cursor-pointer select-none" : "")}
-                              onClick={() => hasBreakdown && toggleAgent(row.agentId)}
-                            >
-                              <div className="flex min-w-0 items-center gap-2">
-                                {hasBreakdown ? (
-                                  isExpanded
-                                    ? <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-                                    : <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-                                ) : (
-                                  <span className="h-3 w-3 shrink-0" />
-                                )}
-                                <Identity name={row.agentName ?? row.agentId} size="sm" />
-                                {row.agentStatus === "terminated" ? <StatusBadge status="terminated" /> : null}
-                              </div>
-                              <div className="text-right text-sm tabular-nums">
-                                <div className="font-medium">{formatCents(row.costCents)}</div>
-                                <div className="text-xs text-muted-foreground">
-                                  in {formatTokens(row.inputTokens + row.cachedInputTokens)} · out {formatTokens(row.outputTokens)}
-                                </div>
-                                {(row.apiRunCount > 0 || row.subscriptionRunCount > 0) ? (
-                                  <div className="text-xs text-muted-foreground">
-                                    {row.apiRunCount > 0 ? `${row.apiRunCount} api` : "0 api"}
-                                    {" · "}
-                                    {row.subscriptionRunCount > 0
-                                      ? `${row.subscriptionRunCount} subscription`
-                                      : "0 subscription"}
-                                  </div>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            {isExpanded && modelRows.length > 0 ? (
-                              <div className="mt-3 space-y-2 border-l border-border/80 pl-4">
-                                {modelRows.map((modelRow) => {
-                                  const sharePct = row.costCents > 0 ? Math.round((modelRow.costCents / row.costCents) * 100) : 0;
-                                  return (
-                                    <div
-                                      key={`${modelRow.provider}:${modelRow.model}:${modelRow.billingType}`}
-                                      className="flex items-start justify-between gap-3 text-xs"
-                                    >
-                                      <div className="min-w-0">
-                                        <div className="truncate font-medium text-foreground">
-                                          {providerDisplayName(modelRow.provider)}
-                                          <span className="mx-1 text-border">/</span>
-                                          <span className="font-mono">{modelRow.model}</span>
-                                        </div>
-                                        <div className="truncate text-muted-foreground">
-                                          {providerDisplayName(modelRow.biller)} · {billingTypeDisplayName(modelRow.billingType)}
-                                        </div>
-                                      </div>
-                                      <div className="text-right tabular-nums">
-                                        <div className="font-medium">
-                                          {formatCents(modelRow.costCents)}
-                                          <span className="ml-1 font-normal text-muted-foreground">({sharePct}%)</span>
-                                        </div>
-                                        <div className="text-muted-foreground">
-                                          {formatTokens(modelRow.inputTokens + modelRow.cachedInputTokens + modelRow.outputTokens)} tok
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : null}
-                          </div>
-                        );
-                      })
-                    )}
-                  </CardContent>
-                </Card>
-
-                <div className="space-y-4">
-                  <Card className="rounded-md border border-border/80 bg-card/60">
-                    <CardHeader className="px-5 pt-5 pb-2">
-                      <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">By work context</CardTitle>
-                      <CardDescription>Run costs attributed through work-context-linked items.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-2 px-5 pb-5 pt-2">
-                      {(spendData?.byProject.length ?? 0) === 0 ? (
-                        <p className="text-sm text-muted-foreground">No work-context-attributed run costs yet.</p>
-                      ) : (
-                        spendData?.byProject.map((row, index) => (
-                          <div
-                            key={row.projectId ?? `unattributed-${index}`}
-                            className="flex items-center justify-between gap-3 rounded-md border border-border/80 bg-card/60 px-3 py-2 text-sm"
-                          >
-                            <span className="truncate">{row.projectName ?? row.projectId ?? "Unattributed"}</span>
-                            <span className="font-medium tabular-nums">{formatCents(row.costCents)}</span>
-                          </div>
-                        ))
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <FinanceTimelineCard rows={topFinanceEvents.slice(0, 6)} emptyMessage="No finance events yet. Add account-level charges once biller invoices or credits land." />
-                </div>
               </div>
             </>
           )}
