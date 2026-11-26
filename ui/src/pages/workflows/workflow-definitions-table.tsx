@@ -7,7 +7,6 @@ import { jsonToSteps, stepsToJson, type StepDraft } from "./step-draft.js";
 import { applyStepRunsToGraphSteps, buildWorkflowGraphDefinitionNavigator, buildWorkflowGraphRunDebugSummary, type WorkflowGraphNavigatorFilter } from "./workflow-graph.js";
 import type { CreateParentIssuePolicy } from "./workflow-parent-policy.js";
 import type { StepEditorMode, ProjectOption, LabelOption, WorkflowToolOption, WorkflowToolGrant, WorkflowOverviewData, WorkflowRestoreKind, WorkflowRunSummary } from "./workflow-page-types.js";
-import { mutedTextStyle, noticeStyle } from "./workflow-page-styles.js";
 import { createCompanyLabel, usePluginAction, useWorkflowRunDetail } from "./workflow-page-api.js";
 import { filterRunsForWorkflows } from "./workflow-filters.js";
 import { WorkflowDefinitionList } from "./workflow-definition-list.js";
@@ -19,6 +18,102 @@ import { WorkflowDefinitionEditorShell } from "./workflow-definition-editor-shel
 import { renderWorkflowGraphEditor } from "./graph-editor/WorkflowGraphEditor.js";
 
 export { jsonToSteps, stepsToJson };
+
+const WORKFLOW_DEFINITIONS_COCKPIT_CSS = `
+.workflow-definitions-cockpit {
+  --background: #f8fafc; --card: #ffffff; --border: rgba(15, 23, 42, 0.13);
+  --foreground: #0f172a; --muted-foreground: #64748b; --link: #2563eb;
+}
+.dark .workflow-definitions-cockpit {
+  --background: #090c12; --card: #0e131d; --border: rgba(255, 255, 255, 0.08);
+  --foreground: #eef2f8; --muted-foreground: #8b97ad; --link: #60a5fa;
+}
+.workflow-definitions-cockpit #wf-editor {
+  border: 1px solid var(--border) !important; border-radius: 12px !important;
+  background: var(--card) !important; overflow: hidden;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.88), 0 1px 2px rgba(15,23,42,0.05) !important;
+}
+.dark .workflow-definitions-cockpit #wf-editor {
+  background: linear-gradient(180deg, rgba(17,22,33,0.96), rgba(13,17,24,0.98)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 10px 28px rgba(0,0,0,0.36) !important;
+}
+.workflow-definitions-cockpit #wf-rail {
+  background: #f8fafc !important; border-right-color: var(--border) !important;
+}
+.dark .workflow-definitions-cockpit #wf-rail { background: #090c12 !important; }
+.workflow-definitions-cockpit #wf-rail button:has(strong) {
+  --background: var(--card); border-radius: 10px !important; padding: 10px !important;
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+@media (hover: hover) {
+  .workflow-definitions-cockpit #wf-rail button:has(strong):hover {
+    background: rgba(37, 99, 235, 0.07) !important; border-color: rgba(37, 99, 235, 0.22) !important;
+  }
+  .dark .workflow-definitions-cockpit #wf-rail button:has(strong):hover {
+    background: rgba(96, 165, 250, 0.08) !important; border-color: rgba(96, 165, 250, 0.24) !important;
+  }
+}
+.workflow-definitions-cockpit #wf-rail button[style*="#22c55e"]:has(strong) {
+  background: rgba(37, 99, 235, 0.1) !important; border-color: rgba(37, 99, 235, 0.34) !important;
+  box-shadow: inset 2px 0 0 #2563eb;
+}
+.dark .workflow-definitions-cockpit #wf-rail button[style*="#22c55e"]:has(strong) {
+  background: rgba(96, 165, 250, 0.11) !important; border-color: rgba(96, 165, 250, 0.36) !important;
+  box-shadow: inset 2px 0 0 #60a5fa;
+}
+.workflow-definitions-cockpit #wf-editor input:not([type="checkbox"]):not([type="radio"]),
+.workflow-definitions-cockpit #wf-editor select,
+.workflow-definitions-cockpit #wf-editor textarea {
+  border: 1px solid var(--border) !important; border-radius: 8px !important;
+  background: var(--background) !important; color: var(--foreground) !important;
+  min-height: 28px; font-size: 12px !important;
+}
+.workflow-definitions-cockpit #wf-editor input:not([type="checkbox"]):not([type="radio"]):focus,
+.workflow-definitions-cockpit #wf-editor select:focus,
+.workflow-definitions-cockpit #wf-editor textarea:focus {
+  border-color: #2563eb !important; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.16) !important; outline: none !important;
+}
+.dark .workflow-definitions-cockpit #wf-editor input:not([type="checkbox"]):not([type="radio"]):focus,
+.dark .workflow-definitions-cockpit #wf-editor select:focus,
+.dark .workflow-definitions-cockpit #wf-editor textarea:focus {
+  border-color: #60a5fa !important; box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.18) !important;
+}
+.workflow-definitions-cockpit #wf-editor > div:last-child > div:first-child button {
+  border-radius: 8px !important; min-height: 28px; font-size: 12px !important;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+.workflow-definition-list-cockpit > div { gap: 6px !important; }
+.workflow-definition-list-cockpit > div > div {
+  border: 1px solid var(--border) !important; border-radius: 12px !important;
+  background: var(--card) !important; padding: 10px 12px !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.82), 0 1px 2px rgba(15,23,42,0.04);
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+.dark .workflow-definition-list-cockpit > div > div {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 6px 18px rgba(0,0,0,0.24);
+}
+@media (hover: hover) {
+  .workflow-definition-list-cockpit > div > div:hover {
+    border-color: rgba(37,99,235,0.32) !important; background: rgba(37,99,235,0.045) !important;
+  }
+  .dark .workflow-definition-list-cockpit > div > div:hover {
+    border-color: rgba(96,165,250,0.34) !important; background: rgba(96,165,250,0.055) !important;
+  }
+}
+.workflow-definition-list-cockpit button {
+  border-radius: 8px !important; min-height: 28px; font-size: 12px !important;
+}
+`;
+
+function noticeClass(tone: "error" | "info" | "success"): string {
+  if (tone === "error") {
+    return "rounded-md border border-rose-300/70 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-700 dark:border-[#f43f5e]/25 dark:bg-[#f43f5e]/10 dark:text-[#fda4af]";
+  }
+  if (tone === "success") {
+    return "rounded-md border border-lime-500/25 bg-lime-500/10 px-2.5 py-1.5 text-xs text-lime-700 dark:border-[#a3e635]/25 dark:bg-[#a3e635]/10 dark:text-[#bef264]";
+  }
+  return "rounded-md border border-blue-500/25 bg-blue-500/10 px-2.5 py-1.5 text-xs text-blue-700 dark:border-[#60a5fa]/25 dark:bg-[#60a5fa]/10 dark:text-[#93c5fd]";
+}
 
 export function DefinitionsTable({
   workflows,
@@ -389,7 +484,7 @@ export function DefinitionsTable({
   }
 
   if (workflows.length === 0) {
-    return <p style={mutedTextStyle}>No workflows defined yet.</p>;
+    return <p className="tactile-card rounded-xl border-slate-200/90 bg-white px-3 py-2 text-xs text-slate-600 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:text-[#8b97ad]">No workflows defined yet.</p>;
   }
 
   const editingWorkflow = workflows.find((workflow) => workflow.id === editingWorkflowId) ?? null;
@@ -416,9 +511,10 @@ export function DefinitionsTable({
   });
 
     return (
-      <div style={{ display: "grid", gap: "8px" }}>
-        {tableError ? <p key="table-error" style={noticeStyle("error")}>{tableError}</p> : null}
-        {tableNotice ? <p key="table-notice" style={noticeStyle(tableNotice.tone)}>{tableNotice.message}</p> : null}
+      <div className="workflow-definitions-cockpit grid gap-2 tabular-nums">
+        <style data-workflow-definitions-cockpit="true">{WORKFLOW_DEFINITIONS_COCKPIT_CSS}</style>
+        {tableError ? <p key="table-error" className={noticeClass("error")}>{tableError}</p> : null}
+        {tableNotice ? <p key="table-notice" className={noticeClass(tableNotice.tone)}>{tableNotice.message}</p> : null}
         {runTarget ? <WorkflowRunDialog key={runTarget.id} workflow={runTarget}
           onCancel={() => setRunTarget(null)} onSubmit={submitRun} /> : null}
             {restoreTarget ? (
@@ -488,19 +584,21 @@ export function DefinitionsTable({
       {editingWorkflow ? (
         <Fragment key="definitions-table-hidden-while-editing" />
       ) : (
-        <WorkflowDefinitionList
-          key="definitions-flow-list"
-          workflows={workflows}
-          activeRuns={activeRuns}
-          recentRuns={recentRuns}
-          pendingWorkflowId={pendingWorkflowId}
-          editingWorkflowId={editingWorkflowId}
-          onOpenGraph={beginEdit}
-          onRunWorkflow={(workflow) => { void onRunWorkflow(workflow); }}
-          onRestoreWorkflow={(workflow) => setRestoreTarget(workflow)}
-          onDeleteWorkflow={(workflow) => { void onDeleteWorkflow(workflow); }}
-          onToggleStatus={(workflow) => { void onToggleStatus(workflow); }}
-        />
+        <div key="definitions-flow-list-surface" className="workflow-definition-list-cockpit">
+          <WorkflowDefinitionList
+            key="definitions-flow-list"
+            workflows={workflows}
+            activeRuns={activeRuns}
+            recentRuns={recentRuns}
+            pendingWorkflowId={pendingWorkflowId}
+            editingWorkflowId={editingWorkflowId}
+            onOpenGraph={beginEdit}
+            onRunWorkflow={(workflow) => { void onRunWorkflow(workflow); }}
+            onRestoreWorkflow={(workflow) => setRestoreTarget(workflow)}
+            onDeleteWorkflow={(workflow) => { void onDeleteWorkflow(workflow); }}
+            onToggleStatus={(workflow) => { void onToggleStatus(workflow); }}
+          />
+        </div>
       )}
     </div>
   );
