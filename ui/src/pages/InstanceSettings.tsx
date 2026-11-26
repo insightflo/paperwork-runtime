@@ -1,18 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock3, ExternalLink, Settings } from "lucide-react";
+import { Clock3, ExternalLink, RefreshCw, Settings } from "lucide-react";
 import type { InstanceSchedulerHeartbeatAgent } from "@paperclipai/shared";
 import { Link } from "@/lib/router";
 import { heartbeatsApi } from "../api/heartbeats";
 import { agentsApi } from "../api/agents";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { EmptyState } from "../components/EmptyState";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { queryKeys } from "../lib/queryKeys";
-import { formatDateTime, relativeTime } from "../lib/utils";
+import { cn, formatDateTime, relativeTime } from "../lib/utils";
+
+// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
+const CELL = "cockpit-cell min-w-0 flex-1 justify-center";
+const PILL = "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
+const INTERVAL_INPUT =
+  "h-7 w-20 rounded-md border border-[#242d3f] bg-[#0b0e14] px-2 text-right text-xs text-[#e6edf7] tabular-nums outline-none focus:border-[#5f8dff] aria-invalid:border-[#f87171]";
+const SAVE_CTA = "h-6 bg-[#2563eb] px-2 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]";
+const TOGGLE_CTA = "h-6 border border-[#242d3f] bg-[#111622] px-2 text-xs text-[#8b97ad] hover:bg-[#1a2131] hover:text-[#e6edf7]";
+const MONO_SNIPPET = "whitespace-pre-wrap font-mono";
 
 type HeartbeatPatch = {
   readonly enabled?: boolean;
@@ -128,6 +135,9 @@ export function InstanceSettings() {
     return [...map.values()];
   }, [agents]);
 
+  const intervals = agents.map((agent) => agent.intervalSec);
+  const fastestIntervalSec = intervals.length ? Math.min(...intervals) : null;
+
   if (heartbeatsQuery.isLoading) {
     return <div className="text-sm text-muted-foreground">Loading scheduler heartbeats...</div>;
   }
@@ -143,26 +153,29 @@ export function InstanceSettings() {
   }
 
   return (
-    <div className="max-w-5xl space-y-6">
-      <div className="rounded-md border border-border/80 bg-card/60 px-4 py-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Settings className="h-4 w-4 text-muted-foreground" />
-              <h1 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Scheduler Heartbeats</h1>
-            </div>
-            <p className="text-sm text-muted-foreground">Agents with a timer heartbeat enabled across all of your companies.</p>
-          </div>
-          <div className="flex gap-4 text-sm text-muted-foreground">
-            <span><span className="font-semibold text-foreground tabular-nums">{activeCount}</span> active</span>
-            <span><span className="font-semibold text-foreground tabular-nums">{disabledCount}</span> disabled</span>
-            <span><span className="font-semibold text-foreground tabular-nums">{grouped.length}</span> {grouped.length === 1 ? "company" : "companies"}</span>
-          </div>
-        </div>
+    <div className="max-w-5xl space-y-2">
+      {/* 1-row cockpit strip: roster · active/off split · company groups · fastest cadence */}
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Scheduler heartbeat summary">
+        <div className={CELL}><span className="truncate uppercase tracking-wide">Heartbeats</span><b className="ml-1">{agents.length}</b></div>
+        <div className={CELL}><span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#34d399]" /><span className="truncate uppercase tracking-wide">Active</span><b className="ml-1 text-[#34d399]">{activeCount}</b></div>
+        <div className={CELL}><span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#5c6a84]" /><span className="truncate uppercase tracking-wide">Off</span><b className="ml-1">{disabledCount}</b></div>
+        <div className={CELL}><span className="truncate uppercase tracking-wide">{grouped.length === 1 ? "Company" : "Companies"}</span><b className="ml-1">{grouped.length}</b></div>
+        <div className={cn(CELL, "shrink-0")}><span className="truncate uppercase tracking-wide">Fastest</span><b className="ml-1 font-mono">{fastestIntervalSec === null ? "—" : formatHeartbeatInterval(fastestIntervalSec)}</b></div>
+      </div>
+
+      {/* Tight 40px toolbar: section title · scope note · refresh */}
+      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-3">
+        <Settings className="h-3.5 w-3.5 shrink-0 text-[#8b97ad]" aria-hidden />
+        <h1 className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-[#e6edf7]">Scheduler Heartbeats</h1>
+        <p className="min-w-0 truncate text-xs text-[#8b97ad]">Agents with a timer heartbeat enabled across all of your companies.</p>
+        <Button variant="ghost" size="xs" onClick={() => void heartbeatsQuery.refetch()} disabled={heartbeatsQuery.isFetching}
+          className={cn("ml-auto h-6 shrink-0 border border-[#242d3f] bg-[#0b0e14] px-2 text-xs text-[#8b97ad] hover:text-[#e6edf7]")}>
+          <RefreshCw className={cn("h-3 w-3", heartbeatsQuery.isFetching && "animate-spin")} /> Refresh
+        </Button>
       </div>
 
       {actionError && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+        <div role="alert" className="rounded-md border border-[#f87171]/40 bg-[#f87171]/5 px-3 py-2 text-xs text-[#f87171]">
           {actionError}
         </div>
       )}
@@ -175,12 +188,12 @@ export function InstanceSettings() {
       ) : (
         <div className="space-y-4">
           {grouped.map((group) => (
-            <Card key={group.companyName} className="gap-0 overflow-hidden rounded-md border border-border/80 bg-card/60 py-0 shadow-none">
-              <CardContent className="p-0">
-                <div className="border-b border-border/60 px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  {group.companyName}
+            <section key={group.companyName} aria-label={group.companyName} className="overflow-hidden rounded-md border border-[#242d3f] bg-[#111622]">
+                <div className="flex items-center gap-2 border-b border-[#242d3f] bg-[#151b28] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]">
+                  <span className="min-w-0 flex-1 truncate">{group.companyName}</span>
+                  <b className="font-mono text-[#e6edf7]">{group.agents.length}</b>
                 </div>
-                <div className="divide-y divide-border/60">
+                <div className="divide-y divide-[#242d3f]">
                   {group.agents.map((agent) => {
                     const draftValue = intervalDrafts[agent.id] ?? intervalMinutesValue(agent.intervalSec);
                     const parsedIntervalSec = parseIntervalMinutesToSec(draftValue);
@@ -190,58 +203,46 @@ export function InstanceSettings() {
                     return (
                       <div
                         key={agent.id}
-                        className="flex flex-col gap-2 px-3 py-2 text-sm md:flex-row md:items-center"
+                        className="flex flex-col gap-2 px-3 py-2 text-xs transition-colors hover:bg-[#151b28] md:flex-row md:items-center"
                       >
-                        <div className="flex min-w-0 flex-1 items-center gap-3">
-                          <Badge
-                            variant={agent.schedulerActive ? "default" : "outline"}
-                            className="shrink-0 text-[10px] px-1.5 py-0"
-                          >
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <span className={cn(PILL, agent.schedulerActive ? "bg-[#34d399]/15 text-[#34d399]" : "bg-[#0b0e14] text-[#8b97ad] shadow-[inset_0_0_0_1px_#242d3f]")}>
                             {agent.schedulerActive ? "On" : "Off"}
-                          </Badge>
-                          <Link
-                            to={buildAgentHref(agent)}
-                            className="font-medium truncate hover:underline"
-                          >
+                          </span>
+                          <Link to={buildAgentHref(agent)} className="min-w-0 truncate font-medium text-[#e6edf7] hover:underline">
                             {agent.agentName}
                           </Link>
-                          <span className="hidden sm:inline text-muted-foreground truncate">
+                          <span className="hidden min-w-0 truncate text-[#8b97ad] sm:inline">
                             {humanize(agent.title ?? agent.role)}
                           </span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2 md:ml-auto md:shrink-0">
-                          <span className="text-muted-foreground tabular-nums shrink-0">
-                            {formatHeartbeatInterval(agent.intervalSec)}
-                          </span>
+                          <b className="shrink-0 font-mono font-semibold text-[#e6edf7]">{formatHeartbeatInterval(agent.intervalSec)}</b>
                           <span
-                            className="hidden lg:inline text-muted-foreground truncate"
+                            className="hidden min-w-0 truncate text-[#8b97ad] lg:inline"
                             title={agent.lastHeartbeatAt ? formatDateTime(agent.lastHeartbeatAt) : undefined}
                           >
-                            {agent.lastHeartbeatAt
-                              ? relativeTime(agent.lastHeartbeatAt)
-                              : "never"}
+                            {agent.lastHeartbeatAt ? relativeTime(agent.lastHeartbeatAt) : "never"}
                           </span>
-                          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <label className="flex items-center gap-1.5 text-[#8b97ad]">
                             <span className="hidden lg:inline">Interval</span>
                             <Input
                               aria-label={`${agent.agentName} heartbeat interval minutes`}
                               aria-invalid={intervalInvalid}
-                              className="h-7 w-20 px-2 text-right text-xs tabular-nums"
+                              className={INTERVAL_INPUT}
                               min={1}
                               step={1}
                               type="number"
                               value={draftValue}
                               onChange={(event) =>
-                                setIntervalDrafts((current) => ({
-                                  ...current,
-                                  [agent.id]: event.currentTarget.value,
-                                }))}
+                                setIntervalDrafts((current) => ({ ...current, [agent.id]: event.currentTarget.value }))}
                             />
                             <span>min</span>
                           </label>
                           <Button
                             variant="outline"
                             size="xs"
+                            className={SAVE_CTA}
                             disabled={saving || intervalInvalid || !intervalDirty}
                             onClick={() => {
                               if (parsedIntervalSec === null) {
@@ -256,17 +257,13 @@ export function InstanceSettings() {
                           >
                             Save
                           </Button>
-                          <Link
-                            to={buildAgentHref(agent)}
-                            className="text-muted-foreground hover:text-foreground"
-                            title="Full agent config"
-                          >
+                          <Link to={buildAgentHref(agent)} className="text-[#8b97ad] hover:text-[#e6edf7]" title="Full agent config">
                             <ExternalLink className="h-3.5 w-3.5" />
                           </Link>
                           <Button
                             variant="ghost"
-                            size="sm"
-                            className="h-6 px-2 text-xs"
+                            size="xs"
+                            className={TOGGLE_CTA}
                             disabled={saving}
                             onClick={() =>
                               heartbeatMutation.mutate({
@@ -281,8 +278,7 @@ export function InstanceSettings() {
                     );
                   })}
                 </div>
-              </CardContent>
-            </Card>
+            </section>
           ))}
         </div>
       )}

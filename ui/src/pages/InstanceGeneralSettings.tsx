@@ -93,14 +93,22 @@ export function toLlmStructuredProvidersPatch(rows: ProviderRow[], defaultProvid
   };
 }
 
-const chip = "rounded-md border border-border px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-60";
+// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
+const chip = "rounded-md border border-[#242d3f] bg-[#111622] px-2.5 py-1 text-xs text-[#e6edf7] transition-colors hover:bg-[#1a2131] disabled:opacity-60";
+const chipPrimary = "border-[#2563eb] bg-[#2563eb] text-[#f8fafc] hover:bg-[#1d4fd8]";
+const chipDanger = "border-[#242d3f] bg-[#111622] text-[#f87171] hover:bg-[#f87171]/10";
+const INPUT = "h-8 border-[#242d3f] bg-[#0b0e14] text-[#e6edf7] outline-none focus:border-[#5f8dff]";
+const PILL_OK = "rounded-full bg-[#34d399]/15 px-2 py-0.5 text-xs font-medium text-[#34d399]";
+const PILL_WARN = "rounded-full bg-[#fbbf24]/15 px-2 py-0.5 text-xs font-medium text-[#fbbf24]";
+const CELL = "cockpit-cell min-w-0 flex-1 justify-center";
+const MONO_SNIPPET = "whitespace-pre-wrap break-all font-mono";
 const providerFields = [["name", "공급자 이름 (Name)"], ["baseUrl", "Base URL"], ["model", "Model"], ["apiKey", "API Key"]] as const;
-const cockpitSectionHeader = "text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
-const cockpitPanel = "rounded-md border border-border/80 bg-card/60";
+const cockpitSectionHeader = "text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]";
+const cockpitPanel = "rounded-md border border-[#242d3f] bg-[#151b28]";
 const cockpitSectionOverrides =
-  "[&>section]:rounded-md [&>section]:border [&>section]:border-border/80 [&>section]:bg-card/60 [&>section]:p-4 " +
-  "[&>section_h2]:text-[11px] [&>section_h2]:font-semibold [&>section_h2]:uppercase [&>section_h2]:tracking-wider [&>section_h2]:text-muted-foreground " +
-  "[&>section>ul>li]:rounded-md [&>section>ul>li]:border [&>section>ul>li]:border-border/80 [&>section>ul>li]:bg-card/60";
+  "[&>section]:rounded-md [&>section]:border [&>section]:border-[#242d3f] [&>section]:bg-[#151b28] [&>section]:p-4 " +
+  "[&>section_h2]:text-[11px] [&>section_h2]:font-semibold [&>section_h2]:uppercase [&>section_h2]:tracking-wider [&>section_h2]:text-[#8b97ad] " +
+  "[&>section>ul>li]:rounded-md [&>section>ul>li]:border [&>section>ul>li]:border-[#242d3f] [&>section>ul>li]:bg-[#111622]";
 const PI_CLI_STATUS_QUERY_KEY = ["instance", "pi-cli-status"] as const;
 
 export function piCliVersionLabel(version: string | null | undefined): string {
@@ -138,14 +146,13 @@ function ProviderCard({ row, saved, isDefault, update, selectDefault, remove }: 
   const models = result?.models.filter((model) => model.toLowerCase().includes(filter.trim().toLowerCase())) ?? [];
   return <fieldset disabled={pending} className={cn("grid min-w-0 gap-3 p-4", cockpitPanel)}>
     <div className="flex flex-wrap items-center gap-2">
-      <button type="button" className={cn(chip, isDefault && "bg-primary text-primary-foreground hover:bg-primary/90")}
-        aria-pressed={isDefault} onClick={selectDefault}>기본 공급자</button>
-      <span className="rounded-full bg-muted px-2 py-1 text-xs">{row.apiKeyConfigured ? "키 등록됨" : "키 미등록"}</span>
-      <button type="button" className={cn(chip, "ml-auto text-destructive")} onClick={remove}>삭제</button>
+      <button type="button" className={cn(chip, "font-semibold", isDefault && chipPrimary)} aria-pressed={isDefault} onClick={selectDefault}>기본 공급자</button>
+      <span className={row.apiKeyConfigured ? PILL_OK : "rounded-full bg-[#0b0e14] px-2 py-0.5 text-xs text-[#8b97ad] shadow-[inset_0_0_0_1px_#242d3f]"}>{row.apiKeyConfigured ? "키 등록됨" : "키 미등록"}</span>
+      <button type="button" className={cn(chip, chipDanger, "ml-auto")} onClick={remove}>삭제</button>
     </div>
     {providerFields.map(([field, label]) => <label key={field} className="grid gap-1 text-sm font-medium">
       {label}
-      <Input type={field === "apiKey" ? "password" : "text"} value={row[field]}
+      <Input type={field === "apiKey" ? "password" : "text"} value={row[field]} className={cn(INPUT, "font-mono")}
         autoComplete={field === "apiKey" ? "new-password" : "off"} disabled={field === "apiKey" && row.clearApiKey}
         placeholder={field === "apiKey" ? row.apiKeyConfigured ? "비워두면 기존 키 유지" : "sk-..." : undefined}
         onChange={(event) => {
@@ -153,7 +160,7 @@ function ProviderCard({ row, saved, isDefault, update, selectDefault, remove }: 
           if (field === "baseUrl" || field === "apiKey") setResult(null);
         }} />
     </label>)}
-    {row.apiKeyConfigured && <label className="flex items-center gap-2 text-sm">
+    {row.apiKeyConfigured && <label className="flex items-center gap-2 text-xs text-[#8b97ad]">
       <input type="checkbox" checked={row.clearApiKey} onChange={(event) => {
         update({ clearApiKey: event.target.checked, apiKey: "" });
         setResult(null);
@@ -161,18 +168,18 @@ function ProviderCard({ row, saved, isDefault, update, selectDefault, remove }: 
     </label>}
     <button type="button" className={cn(chip, "w-fit")} onClick={testConnection}
       disabled={!row.baseUrl.trim() || pending || row.clearApiKey}>연결 테스트 · 모델 조회</button>
-    {pending && <p role="status" className="text-sm">연결 확인 중…</p>}
-    {result && (result.ok ? <div className="grid gap-2">
-      <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">{`연결 성공 · ${result.latencyMs}ms · 모델 ${result.models.length}개`}</p>
-      {result.models.length > 12 && <Input aria-label="모델 검색" placeholder="모델 검색" value={filter}
+    {pending && <p role="status" className="text-xs text-[#8b97ad]">연결 확인 중…</p>}
+    {result && (result.ok ? <div className="grid gap-2 rounded-md border border-[#242d3f] bg-[#0b0e14] p-3">
+      <p role="status" className={cn("text-xs text-[#34d399]", MONO_SNIPPET)}>{`연결 성공 · ${result.latencyMs}ms · 모델 ${result.models.length}개`}</p>
+      {result.models.length > 12 && <Input aria-label="모델 검색" placeholder="모델 검색" value={filter} className={INPUT}
         onChange={(event) => setFilter(event.target.value)} />}
-      {models.length > 0 && <select aria-label="조회된 모델" className="min-w-0 rounded-md border bg-background p-2 text-sm" value=""
+      {models.length > 0 && <select aria-label="조회된 모델" className={cn(INPUT, "min-w-0 p-2")} value=""
         onChange={(event) => update({ model: event.target.value })}>
         <option value="" disabled>모델 선택</option>
         {[...new Set(models)].map((model) => <option key={model} value={model}>{model}</option>)}
       </select>}
-      {result.models.length > 0 && models.length === 0 && <p className="text-sm text-muted-foreground">검색 결과가 없습니다.</p>}
-    </div> : <p role="alert" className="text-sm text-destructive">
+      {result.models.length > 0 && models.length === 0 && <p className="text-xs text-[#8b97ad]">검색 결과가 없습니다.</p>}
+    </div> : <p role="alert" className="text-xs text-destructive">
       {result.statusCode ? `연결 실패 (HTTP ${result.statusCode}).` : "연결 실패. Base URL과 API Key를 확인해 주세요."}
     </p>)}
   </fieldset>;
@@ -238,15 +245,13 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
             {`${installedCount} / ${runtimes.length} CLI 설치됨`}
           </span>
         )}
-        <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", status?.installed
-          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-          : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300")}>
+        <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium tabular-nums", status?.installed ? PILL_OK : PILL_WARN)}>
           {status?.installed ? `Pi CLI ${piCliVersionLabel(status.version)}` : "Pi CLI not detected"}
         </span>
-        <span className="text-xs text-muted-foreground tabular-nums">{`총 ${catalogModels.length}개 모델`}</span>
+        <span className="text-xs text-[#8b97ad] tabular-nums">{`총 ${catalogModels.length}개 모델`}</span>
       </div>
-      <p className="mt-1.5 break-all font-mono text-xs text-muted-foreground">{`${status?.executablePath ?? "pi"} · ${status?.agentDir ?? "~/.pi/agent"}`}</p>
-      {status?.error && <p role="alert" className="mt-2 text-xs text-amber-700 dark:text-amber-300">{status.error}</p>}
+      <p className={cn("mt-1.5 text-xs text-[#8b97ad]", MONO_SNIPPET)}>{`${status?.executablePath ?? "pi"} · ${status?.agentDir ?? "~/.pi/agent"}`}</p>
+      {status?.error && <p role="alert" className={cn("mt-2 text-xs text-[#fbbf24]", MONO_SNIPPET)}>{status.error}</p>}
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" className={chip} disabled={busy}
           onClick={() => runAction({ kind: "sync" }, () => instanceSettingsApi.syncPiCli({ direction: "both" }))}>
@@ -261,13 +266,12 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
           onClick={() => void statusQuery.refetch()}>상태 새로고침</button>
       </div>
       {actionMutation.data && (
-        <p role="status" className={cn("mt-3 text-sm",
-          actionMutation.data.ok ? "text-emerald-700 dark:text-emerald-300" : "text-destructive")}>
+        <p role="status" className={cn("mt-3 text-xs", MONO_SNIPPET, actionMutation.data.ok ? "text-[#34d399]" : "text-destructive")}>
           {actionMutation.data.message}
         </p>
       )}
       {actionMutation.error && (
-        <p role="alert" className="mt-3 text-sm text-destructive">
+        <p role="alert" className={cn("mt-3 text-xs text-destructive", MONO_SNIPPET)}>
           {actionMutation.error instanceof Error ? actionMutation.error.message : "CLI 런타임 작업에 실패했습니다."}
         </p>
       )}
@@ -284,35 +288,20 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
               return (
               <li key={rt.id} className={cn("grid gap-1.5 px-3 py-2.5", cockpitPanel)}>
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-sm font-medium">{rt.name}</span>
-                  <span className={cn("rounded-full px-2 py-0.5 text-xs", rt.installed
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                    : "bg-muted text-muted-foreground")}>
+                  <span className="min-w-0 truncate text-sm font-medium text-[#e6edf7]">{rt.name}</span>
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs tabular-nums", rt.installed ? PILL_OK : "bg-[#0b0e14] text-[#8b97ad]")}>
                     {rt.installed ? piCliVersionLabel(rt.version) : "미설치"}
                   </span>
-                  {rt.updateAvailable && (
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                      업데이트 가능
-                    </span>
-                  )}
-                  {canSelfUpdate && !rt.updateAvailable && rt.latestVersion && (
-                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                      최신 버전
-                    </span>
-                  )}
-                  <span className={cn("rounded-full px-2 py-0.5 text-xs", rt.authConfigured
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                    : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300")}>
-                    {rt.authConfigured ? "인증됨" : "미인증"}
-                  </span>
-                  <span className="ml-auto text-xs text-muted-foreground tabular-nums">{`모델 ${rt.modelCount}개`}</span>
+                  {rt.updateAvailable && <span className={PILL_WARN}>업데이트 가능</span>}
+                  {canSelfUpdate && !rt.updateAvailable && rt.latestVersion && <span className={PILL_OK}>최신 버전</span>}
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs", rt.authConfigured ? PILL_OK : PILL_WARN)}>{rt.authConfigured ? "인증됨" : "미인증"}</span>
+                  <span className="ml-auto text-xs text-[#8b97ad] tabular-nums">{`모델 ${rt.modelCount}개`}</span>
                 </div>
-                <p className="break-all font-mono text-xs text-muted-foreground">
-                  {rt.executablePath ?? rt.adapterType}
-                  {rt.authSource ? ` · ${rt.authSource}` : ""}
+                <p className={cn("text-xs text-[#8b97ad]", MONO_SNIPPET)}>
+                  {rt.executablePath ?? rt.adapterType}{rt.authSource ? ` · ${rt.authSource}` : ""}
                 </p>
                 {rt.updateAvailable && rt.latestVersion && (
-                  <p className="font-mono text-xs text-amber-700 dark:text-amber-300">{`${piCliVersionLabel(rt.version)} → v${rt.latestVersion}`}</p>
+                  <p className={cn("text-xs text-[#fbbf24]", MONO_SNIPPET)}>{`${piCliVersionLabel(rt.version)} → v${rt.latestVersion}`}</p>
                 )}
                 <div className="flex flex-wrap gap-1.5">
                   <button type="button" className={cn(chip, "px-2 py-0.5 text-xs")} disabled={busy}
@@ -324,14 +313,12 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
                       {selfPending ? "업데이트 중…" : "CLI 업데이트"}</button>
                   )}
                   {canSelfUpdate && !rt.updateAvailable && (
-                    <button type="button" className={cn(chip, "px-2 py-0.5 text-xs text-muted-foreground")} disabled={checkPending || statusQuery.isFetching}
+                    <button type="button" className={cn(chip, "px-2 py-0.5 text-[#8b97ad]")} disabled={checkPending || statusQuery.isFetching}
                       onClick={() => runUpdateCheck(rt.id)}>
                       {checkPending ? "확인 중…" : "업데이트 확인"}</button>
                   )}
                 </div>
-                {modelsPending && (
-                  <p role="status" className="text-xs text-muted-foreground">모델 목록 새로고침 중…</p>
-                )}
+                {modelsPending && <p role="status" className="text-xs text-[#8b97ad]">모델 목록 새로고침 중…</p>}
               </li>
               );
             })}
@@ -341,21 +328,17 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
 
       <h3 className={cn("mt-5", cockpitSectionHeader)}>Pi CLI Providers</h3>
       {providers.length === 0 ? (
-        <p className="mt-2 text-sm text-muted-foreground">~/.pi/agent/models.json 에 등록된 공급자가 없습니다.</p>
+        <p className={cn("mt-2 text-xs text-[#8b97ad]", MONO_SNIPPET)}>~/.pi/agent/models.json 에 등록된 공급자가 없습니다.</p>
       ) : (
         <ul className="mt-2 grid gap-2">
           {providers.map((p) => (
             <li key={p.id} className={cn("flex flex-wrap items-center gap-2 px-3 py-2", cockpitPanel)}>
-              <span className="font-mono text-sm font-medium">{p.id}</span>
-              <span className={cn("rounded-full px-2 py-0.5 text-xs", p.authConfigured
-                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
-                : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300")}>
-                {p.authConfigured ? "로그인됨 (auth.json)" : "미인증"}
-              </span>
-              <span className="text-xs text-muted-foreground tabular-nums">{`${p.api ?? "api 미지정"} · 모델 ${p.modelCount}개`}</span>
-              {p.baseUrl && <span className="break-all font-mono text-xs text-muted-foreground">{p.baseUrl}</span>}
+              <span className="min-w-0 truncate font-mono text-sm font-semibold text-[#e6edf7]">{p.id}</span>
+              <span className={p.authConfigured ? PILL_OK : PILL_WARN}>{p.authConfigured ? "로그인됨 (auth.json)" : "미인증"}</span>
+              <span className="text-xs text-[#8b97ad] tabular-nums">{`${p.api ?? "api 미지정"} · 모델 ${p.modelCount}개`}</span>
+              {p.baseUrl && <span className={cn("text-xs text-[#8b97ad]", MONO_SNIPPET)}>{p.baseUrl}</span>}
               {p.authConfigured && (
-                <button type="button" className={cn(chip, "ml-auto px-2 py-1 text-xs text-destructive")} disabled={busy}
+                <button type="button" className={cn(chip, chipDanger, "ml-auto py-1")} disabled={busy}
                   onClick={() => runAction({ kind: "logout", runtimeId: p.id }, () => instanceSettingsApi.logoutPiCliProvider({ providerId: p.id }))}>
                   로그아웃</button>
               )}
@@ -366,17 +349,17 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
 
       <h3 className={cn("mt-5", cockpitSectionHeader)}>Live Pi Model Catalog</h3>
       <Input aria-label="pi 모델 카탈로그 검색" placeholder="모델 검색..." value={modelFilter}
-        onChange={(event) => setModelFilter(event.target.value)} className="mt-2 max-w-sm" />
+        onChange={(event) => setModelFilter(event.target.value)} className={cn(INPUT, "mt-2 max-w-sm")} />
       <div className={cn("mt-2 max-h-48 overflow-y-auto", cockpitPanel)}>
         {filteredModels.length === 0 ? (
-          <p className="px-3 py-2 text-sm text-muted-foreground">
+          <p className="px-3 py-2 text-xs text-[#8b97ad]">
             {catalogModels.length === 0 ? "카탈로그가 비어 있습니다." : "검색 결과가 없습니다."}
           </p>
         ) : (
-          <ul className="divide-y divide-border/60">
+          <ul className="divide-y divide-[#242d3f]">
             {filteredModels.map((ref) => (
-              <li key={ref} className="flex items-center gap-2 px-3 py-1.5">
-                <span className="min-w-0 flex-1 break-all font-mono text-xs">{ref}</span>
+              <li key={ref} className="flex items-center gap-2 px-3 py-1.5 hover:bg-[#1a2131]">
+                <span className={cn("min-w-0 flex-1 text-xs text-[#e6edf7]", MONO_SNIPPET)}>{ref}</span>
                 <button type="button" className={cn(chip, "px-2 py-0.5 text-xs")}
                   onClick={() => copyModelRef(ref)}>복사</button>
                 <button type="button" className={cn(chip, "px-2 py-0.5 text-xs")} disabled={!canApplyModel}
@@ -475,28 +458,32 @@ export function InstanceGeneralSettings() {
   }
   const censorUsernameInLogs = generalQuery.data?.censorUsernameInLogs === true;
   return (
-    <div className={cn("max-w-4xl space-y-6 tabular-nums", cockpitSectionOverrides)}>
-      <div className={cn(cockpitPanel, "px-4 py-3")}>
-        <div className="flex items-center gap-2">
-          <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
-          <h1 className={cockpitSectionHeader}>General</h1>
+    <div className={cn("max-w-4xl space-y-3 tabular-nums", cockpitSectionOverrides)}>
+      {/* 1-row cockpit strip: censor state · judgment target · structured providers · default provider */}
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label="General settings summary">
+        <div className={CELL}><span className="truncate uppercase tracking-wide">Censor logs</span><b className={cn("ml-1", censorUsernameInLogs && "text-[#34d399]")}>{censorUsernameInLogs ? "On" : "Off"}</b></div>
+        <div className={cn(CELL, "flex-[2]")} title={judgmentDraft.judgmentBaseUrl || undefined}>
+          <span className="truncate uppercase tracking-wide">Judgment</span><b className="ml-1 truncate font-mono">{judgmentDraft.judgmentModelId || "Definition default"}</b>
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Configure instance-wide defaults that affect how operator-visible logs are displayed.
-        </p>
+        <div className={CELL}><span className="truncate uppercase tracking-wide">Providers</span><b className="ml-1">{settings?.llmStructuredProviders?.length ?? 0}</b></div>
+        <div className={cn(CELL, "shrink-0")} title={defaultId ?? undefined}><span className="truncate uppercase tracking-wide">Default</span><b className="ml-1 truncate font-mono">{defaultId ?? "—"}</b></div>
+      </div>
+      {/* Tight 40px toolbar: section title · scope note */}
+      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-3">
+        <SlidersHorizontal className="h-4 w-4 shrink-0 text-[#8b97ad]" aria-hidden />
+        <h1 className={cockpitSectionHeader}>General</h1>
+        <p className="min-w-0 truncate text-xs text-[#8b97ad]">Configure instance-wide defaults that affect how operator-visible logs are displayed.</p>
       </div>
 
       {actionError && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          {actionError}
-        </div>
+        <div role="alert" className="rounded-md border border-[#f87171]/40 bg-[#f87171]/5 px-3 py-2 text-xs text-[#f87171]">{actionError}</div>
       )}
 
       <section className={cn(cockpitPanel, "p-4")}>
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5">
             <h2 className={cockpitSectionHeader}>Censor username in logs</h2>
-            <p className="max-w-2xl text-sm text-muted-foreground">
+            <p className="max-w-2xl text-xs leading-5 text-[#8b97ad]">
               Hide the username segment in home-directory paths and similar operator-visible log output. Standalone
               username mentions outside of paths are not yet masked in the live transcript view. This is off by
               default.
@@ -508,7 +495,7 @@ export function InstanceGeneralSettings() {
             disabled={toggleMutation.isPending}
             className={cn(
               "relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60",
-              censorUsernameInLogs ? "bg-green-600" : "bg-muted",
+              censorUsernameInLogs ? "bg-[#2563eb]" : "bg-[#242d3f]",
             )}
             onClick={() => toggleMutation.mutate(!censorUsernameInLogs)}
           >
@@ -524,7 +511,7 @@ export function InstanceGeneralSettings() {
 
       <section className={cn(cockpitPanel, "p-4")}>
         <h2 className={cockpitSectionHeader}>Judgment connection</h2>
-        <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+        <p className="mt-1.5 max-w-2xl text-xs leading-5 text-[#8b97ad]">
           TypeSafe 호환 판단 API 주소(비우면 기본값)를 지정합니다. 모델 미설정 시 정의별 모델 사용.
           서버 환경의 기존 판단 API 키가 이 주소로 전송됨.
         </p>
@@ -541,6 +528,7 @@ export function InstanceGeneralSettings() {
               }
               placeholder="https://api.typesafe.ai"
               autoComplete="off"
+              className={cn(INPUT, "font-mono")}
             />
           </div>
           <div className="space-y-1.5">
@@ -555,12 +543,13 @@ export function InstanceGeneralSettings() {
               }
               placeholder="jev-1.13.0"
               autoComplete="off"
+              className={cn(INPUT, "font-mono")}
             />
           </div>
           <button
             type="button"
             disabled={judgmentMutation.isPending}
-            className="inline-flex h-9 w-fit items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-7 w-fit items-center justify-center rounded-md bg-[#2563eb] px-2.5 text-xs font-semibold text-[#f8fafc] transition-colors hover:bg-[#1d4fd8] disabled:cursor-not-allowed disabled:opacity-60"
             onClick={() => judgmentMutation.mutate(judgmentDraft)}
           >
             Save judgment connection
@@ -571,7 +560,7 @@ export function InstanceGeneralSettings() {
       <section className={cn(cockpitPanel, "p-4")}>
         <h2 className={cockpitSectionHeader}>Structured LLM connection (1-shot API)</h2>
         {!savedIds.length && (settings?.llmStructuredBaseUrl || settings?.llmStructuredApiKeyConfigured) &&
-          <p className="mt-2 break-all text-sm text-muted-foreground">
+          <p className={cn("mt-2 text-xs text-[#8b97ad]", MONO_SNIPPET)}>
             기존 연결: {settings.llmStructuredBaseUrl || "주소 미설정"} · {settings.llmStructuredModel || "모델 미설정"}
             {settings.llmStructuredApiKeyConfigured ? " · 키 등록됨" : " · 키 미등록"}. 새 공급자의 키는 별도로 입력해 주세요.
           </p>}
@@ -587,10 +576,10 @@ export function InstanceGeneralSettings() {
             update={(patch) => setProviderEdits({ rows: rows.map((item) => item.id === row.id ? { ...item, ...patch } : item), defaultId })}
             remove={() => setProviderEdits({ rows: rows.filter(({ id }) => id !== row.id), defaultId: defaultId === row.id ? undefined : defaultId })} />)}
           <button type="button" disabled={!providerEdits || rows.some(({ name, baseUrl }) => !name.trim() || !baseUrl.trim())}
-            className={cn(chip, "w-fit bg-primary text-primary-foreground hover:bg-primary/90")}
+            className={cn(chip, chipPrimary, "w-fit font-semibold")}
             onClick={() => structuredMutation.mutate()}>Save structured LLM providers</button>
-          {structuredMutation.error && <p role="alert" className="text-sm text-destructive">{structuredMutation.error.message}</p>}
-          {structuredMutation.isSuccess && !providerEdits && <p role="status" className="text-sm">공급자 설정을 저장했습니다.</p>}
+          {structuredMutation.error && <p role="alert" className="text-xs text-destructive">{structuredMutation.error.message}</p>}
+          {structuredMutation.isSuccess && !providerEdits && <p role="status" className="text-xs text-[#34d399]">공급자 설정을 저장했습니다.</p>}
         </fieldset>
       </section>
 
