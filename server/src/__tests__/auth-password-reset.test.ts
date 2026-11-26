@@ -193,20 +193,27 @@ describe("createPasswordResetSender", () => {
 
 describe("createBetterAuthInstance password reset wiring", () => {
   it("configures sendResetPassword and a one-hour token expiry without changing instance creation", () => {
-    const config = {
-      deploymentMode: "authenticated",
-      allowedHostnames: [],
-      authBaseUrlMode: "explicit",
-      authPublicBaseUrl: "https://auth.example.com",
-      authDisableSignUp: false,
-      authSocialProviders: [],
-    } as unknown as Config;
+    const previousSecret = process.env.BETTER_AUTH_SECRET;
+    process.env.BETTER_AUTH_SECRET = "test-better-auth-secret-for-password-reset";
+    try {
+      const config = {
+        deploymentMode: "authenticated",
+        allowedHostnames: [],
+        authBaseUrlMode: "explicit",
+        authPublicBaseUrl: "https://auth.example.com",
+        authDisableSignUp: false,
+        authSocialProviders: [],
+      } as unknown as Config;
 
-    const auth = createBetterAuthInstance({} as Db, config, ["https://auth.example.com"]);
+      const auth = createBetterAuthInstance({} as Db, config, ["https://auth.example.com"]);
 
-    expect(auth.options.emailAndPassword?.sendResetPassword).toBeTypeOf("function");
-    expect(auth.options.emailAndPassword?.resetPasswordTokenExpiresIn).toBe(3600);
-    expect(auth.options.emailAndPassword?.enabled).toBe(true);
-    expect(auth.options.emailAndPassword?.disableSignUp).toBe(false);
+      expect(auth.options.emailAndPassword?.sendResetPassword).toBeTypeOf("function");
+      expect(auth.options.emailAndPassword?.resetPasswordTokenExpiresIn).toBe(3600);
+      expect(auth.options.emailAndPassword?.enabled).toBe(true);
+      expect(auth.options.emailAndPassword?.disableSignUp).toBe(false);
+    } finally {
+      if (previousSecret === undefined) delete process.env.BETTER_AUTH_SECRET;
+      else process.env.BETTER_AUTH_SECRET = previousSecret;
+    }
   });
 });

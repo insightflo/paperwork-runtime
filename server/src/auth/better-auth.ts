@@ -69,7 +69,14 @@ export function deriveAuthTrustedOrigins(config: Config): string[] {
 
 export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?: string[]): BetterAuthInstance {
   const baseUrl = config.authBaseUrlMode === "explicit" ? config.authPublicBaseUrl : undefined;
-  const secret = process.env.BETTER_AUTH_SECRET ?? process.env.PAPERCLIP_AGENT_JWT_SECRET ?? "paperclip-dev-secret";
+  const configuredSecret =
+    process.env.BETTER_AUTH_SECRET?.trim() || process.env.PAPERCLIP_AGENT_JWT_SECRET?.trim() || "";
+  if (config.deploymentMode === "authenticated" && !configuredSecret) {
+    throw new Error(
+      "BETTER_AUTH_SECRET or PAPERCLIP_AGENT_JWT_SECRET must be set when deploymentMode is 'authenticated'",
+    );
+  }
+  const secret = configuredSecret || "paperclip-dev-secret";
   const effectiveTrustedOrigins = trustedOrigins ?? deriveAuthTrustedOrigins(config);
 
   const publicUrl = process.env.PAPERCLIP_PUBLIC_URL ?? baseUrl;
@@ -89,8 +96,13 @@ export function createBetterAuthInstance(db: Db, config: Config, trustedOrigins?
         verification: authVerifications,
       },
     }),
+    session: {
+      expiresIn: 60 * 60 * 24 * 7,
+      updateAge: 60 * 60 * 24,
+    },
     emailAndPassword: {
       enabled: true,
+      minPasswordLength: 10,
       requireEmailVerification: false,
       disableSignUp: config.authDisableSignUp,
       sendResetPassword: createPasswordResetSender(),

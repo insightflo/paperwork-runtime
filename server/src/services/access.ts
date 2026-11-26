@@ -10,6 +10,7 @@ import {
   principalPermissionGrants,
 } from "@paperclipai/db";
 import type { PermissionKey, PrincipalType } from "@paperclipai/shared";
+import { conflict } from "../errors.js";
 
 type MembershipRow = typeof companyMemberships.$inferSelect;
 type GrantInput = {
@@ -256,6 +257,105 @@ export function accessService(db: Db) {
     return existing ? { membership: existing, change: "unchanged" as const } : null;
   }
 
+  async function getMemberById(companyId: string, memberId: string): Promise<MembershipRow | null> {
+    return db
+      .select()
+      .from(companyMemberships)
+      .where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.id, memberId)))
+      .then((rows) => rows[0] ?? null);
+  }
+
+  async function countActiveCompanyOwners(companyId: string): Promise<number> {
+    const rows = await db
+      .select({ id: companyMemberships.id })
+      .from(companyMemberships)
+      .where(
+        and(
+          eq(companyMemberships.companyId, companyId),
+          eq(companyMemberships.principalType, "user"),
+          eq(companyMemberships.status, "active"),
+          eq(companyMemberships.membershipRole, "owner"),
+        ),
+      );
+    return rows.length;
+  }
+
+  async function updateCompanyMember(
+    companyId: string,
+    memberId: string,
+    patch: { membershipRole?: string; status?: "pending" | "active" | "suspended" },
+  ): Promise<MembershipRow | null> {
+    const member = await getMemberById(companyId, memberId);
+    if (!member) return null;
+
+    const isCurrentlyActiveOwner =
+      member.principalType === "user" &&
+      member.status === "active" &&
+      member.membershipRole === "owner";
+    const nextRole = patch.membershipRole ?? member.membershipRole;
+    const nextStatus = patch.status ?? member.status;
+    if (isCurrentlyActiveOwner && (nextRole !== "owner" || nextStatus !== "active")) {
+      const activeOwners = await countActiveCompanyOwners(companyId);
+      if (activeOwners <= 1) {
+        throw conflict("Cannot demote or suspend the last active company owner");
+      }
+    }
+
+    const changes: Record<string, unknown> = { updatedAt: new Date() };
+    if (patch.membershipRole !== undefined) changes.membershipRole = patch.membershipRole;
+    if (patch.status !== undefined) changes.status = patch.status;
+
+    const [updated] = await db
+      .update(companyMemberships)
+      .set(changes)
+      .where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.id, memberId)))
+      .returning();
+    return updated ?? null;
+  }
+
+  async function removeCompanyMember(companyId: string, memberId: string): Promise<MembershipRow | null> {
+    const member = await getMemberById(companyId, memberId);
+    if (!member) return null;
+
+    const isCurrentlyActiveOwner =
+      member.principalType === "user" &&
+      member.status === "active" &&
+      member.membershipRole === "owner";
+    if (isCurrentlyActiveOwner) {
+      const activeOwners = await countActiveCompanyOwners(companyId);
+      if (activeOwners <= 1) {
+        throw conflict("Cannot remove the last active company owner");
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(principalPermissionGrants)
+        .where(
+          and(
+            eq(principalPermissionGrants.companyId, companyId),
+            eq(principalPermissionGrants.principalType, member.principalType),
+            eq(principalPermissionGrants.principalId, member.principalId),
+          ),
+        );
+      if (member.principalType === "user") {
+        await tx
+          .delete(permissionGroupMembers)
+          .where(
+            and(
+              eq(permissionGroupMembers.companyId, companyId),
+              eq(permissionGroupMembers.userId, member.principalId),
+            ),
+          );
+      }
+      await tx
+        .delete(companyMemberships)
+        .where(and(eq(companyMemberships.companyId, companyId), eq(companyMemberships.id, memberId)));
+    });
+
+    return member;
+  }
+
   async function setMemberPermissions(
     companyId: string,
     memberId: string,
@@ -316,6 +416,15 @@ export function accessService(db: Db) {
   }
 
   async function demoteInstanceAdmin(userId: string) {
+    const admins = await db
+      .select()
+      .from(instanceUserRoles)
+      .where(eq(instanceUserRoles.role, "instance_admin"));
+    const target = admins.find((row) => row.userId === userId);
+    if (!target) return null;
+    if (admins.length <= 1) {
+      throw conflict("Cannot demote the last instance admin");
+    }
     return db
       .delete(instanceUserRoles)
       .where(and(eq(instanceUserRoles.userId, userId), eq(instanceUserRoles.role, "instance_admin")))
@@ -623,10 +732,13 @@ export function accessService(db: Db) {
     canUser,
     hasPermission,
     getMembership,
+    getMemberById,
     ensureMembership,
     listMembers,
     searchAvailableUsers,
     addUserMember,
+    updateCompanyMember,
+    removeCompanyMember,
     listActiveUserMemberships,
     copyActiveUserMemberships,
     setMemberPermissions,

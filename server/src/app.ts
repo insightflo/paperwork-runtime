@@ -2,7 +2,7 @@ import express, { Router, type Request as ExpressRequest } from "express";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
-import { agents, issues, type Db } from "@paperclipai/db";
+import { issues, type Db } from "@paperclipai/db";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { DeploymentExposure, DeploymentMode } from "@paperclipai/shared";
 import type { PublicSocialAuthProvider } from "./auth/social-providers.js";
@@ -10,6 +10,7 @@ import type { StorageService } from "./storage/types.js";
 import { httpLogger, errorHandler } from "./middleware/index.js";
 import { runtimeHttpMetrics } from "./middleware/runtime-http-metrics.js";
 import { actorMiddleware } from "./middleware/auth.js";
+import { createAuthRateLimiter } from "./middleware/auth-rate-limit.js";
 import { boardMutationGuard } from "./middleware/board-mutation-guard.js";
 import { privateHostnameGuard, resolvePrivateHostnameAllowSet } from "./middleware/private-hostname-guard.js";
 import { healthRoutes } from "./routes/health.js";
@@ -45,7 +46,7 @@ import { knowledgeBasesRoutes } from "./routes/knowledge-bases.js";
 import { selfImprovementAdoptionsRoutes } from "./routes/self-improvement-adoptions.js";
 import { channelConfigRoutes } from "./routes/channel-config.js";
 import { strategyPlaybookRoutes } from "./routes/strategy-playbook.js";
-import { hermesChatRoutes } from "./routes/hermes-chat.js";
+import { authAccountRoutes } from "./routes/auth-account.js";
 import { activityRoutes } from "./routes/activity.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { qualityRoutes } from "./routes/quality.js";
@@ -480,19 +481,56 @@ export async function createApp(
     }
     res.json({
       session: {
-        id: `paperclip:${req.actor.source}:${req.actor.userId}`,
+        id: req.actor.sessionId ?? `paperclip:${req.actor.source}:${req.actor.userId}`,
         userId: req.actor.userId,
       },
       user: {
         id: req.actor.userId,
-        email: null,
-        name: req.actor.source === "local_implicit" ? "Local Board" : null,
+        email: req.actor.email ?? null,
+        name: req.actor.name ?? (req.actor.source === "local_implicit" ? "Local Board" : null),
+        isInstanceAdmin: Boolean(req.actor.isInstanceAdmin),
       },
+      isInstanceAdmin: Boolean(req.actor.isInstanceAdmin),
     });
   });
   app.get("/api/auth/providers", (_req, res) => {
     res.json({ providers: opts.socialAuthProviders ?? [] });
   });
+  app.use("/api", authAccountRoutes(db));
+
+  const authSignInLimiter = createAuthRateLimiter({
+    bucketName: "auth-sign-in",
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 15,
+  });
+  const authSignUpLimiter = createAuthRateLimiter({
+    bucketName: "auth-sign-up",
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 10,
+  });
+  const authPasswordResetLimiter = createAuthRateLimiter({
+    bucketName: "auth-password-reset",
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 5,
+  });
+  const authInviteAcceptLimiter = createAuthRateLimiter({
+    bucketName: "auth-invite-accept",
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 15,
+  });
+  const authBoardClaimLimiter = createAuthRateLimiter({
+    bucketName: "auth-board-claim",
+    windowMs: 15 * 60 * 1000,
+    maxRequests: 10,
+  });
+
+  app.use("/api/auth/sign-in", authSignInLimiter);
+  app.use("/api/auth/sign-up", authSignUpLimiter);
+  app.use("/api/auth/request-password-reset", authPasswordResetLimiter);
+  app.use("/api/auth/reset-password", authPasswordResetLimiter);
+  app.post("/api/invites/:token/accept", authInviteAcceptLimiter);
+  app.post("/api/board-claim/:token/claim", authBoardClaimLimiter);
+
   if (opts.betterAuthHandler) {
     app.all("/api/auth/*authPath", opts.betterAuthHandler);
   }
@@ -613,7 +651,6 @@ export async function createApp(
   api.use("/metrics", metricsRoutes(db));
   api.use(issueRoutes(db, opts.storageService));
   api.use("/companies", companyRoutes(db, opts.storageService));
-  api.use(hermesChatRoutes(db));
   api.use(companySkillRoutes(db));
   api.use(companyInstructionRoutes(db));
   api.use(missionPlanTemplateRoutes(db));
@@ -1234,32 +1271,6 @@ export async function createApp(
   if (!stopping) pluginSchedulerInstance.start();
   if (!stopping) jobCoordinatorInstance.start();
 
-  // [서버 시작 점검] Hermes Ops(adapter hermes_local + heartbeat timer 유일)에게 상태 점검 +
-  // 사장에게 telegram 보고 를 지시. wakeOnDemand agent 들은 재부팅/크래시 후 자동 진행을 안 하므로,
-  // 사장이 telegram 지시로 풀도록 Hermes Ops 가 running run / todo·pending step / stuck 을 점검·보고.
-  // 매 interval timer(불필요 토큰) 대신 시작 1회 wake.
-  if (!stopping) {
-    trackStartup((async () => {
-      try {
-        const opsAgents = await db
-          .select({ id: agents.id })
-          .from(agents)
-          .where(and(
-            eq(agents.adapterType, "hermes_local"),
-            sql`${agents.runtimeConfig} -> 'heartbeat' ->> 'enabled' = 'true'`,
-          ));
-        if (stopping) return;
-        await Promise.all(opsAgents.map((agent) => heartbeat.wakeup(agent.id, {
-          source: "automation",
-          triggerDetail: "system",
-          reason: "server_startup_state_check",
-          contextSnapshot: {},
-        }).catch((err) => logger.warn({ err, agentId: agent.id }, "Server startup: Hermes Ops wake failed"))));
-      } catch (err) {
-        logger.warn({ err }, "Server startup: failed to wake Hermes Ops for state check");
-      }
-    })());
-  }
   if (!stopping) {
     trackStartup(toolDispatcherInstance.initialize().catch((err) => {
       logger.error({ err }, "Failed to initialize plugin tool dispatcher");
