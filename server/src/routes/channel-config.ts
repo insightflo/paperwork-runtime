@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { and, eq } from "drizzle-orm";
 import { channelConfigs, type Db } from "@paperclipai/db";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertCompanyAccess, assertCompanyAdminAccess, getActorInfo } from "./authz.js";
 import { logActivity, secretService } from "../services/index.js";
+import { accessService } from "../services/access.js";
 
 type ChannelConfigRow = typeof channelConfigs.$inferSelect;
 
@@ -77,6 +78,7 @@ function serializeChannelConfig(row: ChannelConfigRow) {
 
 export function channelConfigRoutes(db: Db) {
   const router = Router();
+  const access = accessService(db);
 
   router.get("/companies/:companyId/channel/config", async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -93,7 +95,7 @@ export function channelConfigRoutes(db: Db) {
 
   router.put("/companies/:companyId/channel/config", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyAdminAccess(access, req, companyId);
 
     const body = req.body as {
       botUsername?: unknown;
@@ -163,7 +165,7 @@ export function channelConfigRoutes(db: Db) {
 
   router.post("/companies/:companyId/channel/test", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyAdminAccess(access, req, companyId);
 
     const [row] = await db
       .select()
