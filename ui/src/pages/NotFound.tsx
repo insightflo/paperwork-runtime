@@ -64,8 +64,8 @@ export function NotFoundPage({ scope = "global", requestedPrefix }: NotFoundPage
         </div>
 
         <div className={`mt-5 px-3 py-2 text-xs text-slate-500 dark:text-[#8b97ad] ${INSET}`}>
-          <span className="font-semibold uppercase tracking-[0.14em]">Requested path</span>
-          <code className="ml-2 break-all font-mono text-slate-900 dark:text-[#edf2fb]">{currentPath}</code>
+          <span className="font-semibold uppercase tracking-[0.14em]">Requested path: </span>
+          <code className="ml-1 break-all font-mono text-slate-900 dark:text-[#edf2fb]">{currentPath}</code>
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">

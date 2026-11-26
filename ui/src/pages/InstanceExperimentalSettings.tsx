@@ -69,9 +69,9 @@ export function InstanceExperimentalSettings() {
 
   const settings = experimentalQuery.data;
   const enabledCount = Object.values(settings ?? {}).filter((value) => value === true).length;
-  const companyCount = settings?.broadSearchAllowedCompanyIdsV1.length ?? 0;
-  const missionCount = settings?.broadSearchAllowedMissionIdsV1.length ?? 0;
-  const agentCount = settings?.broadSearchAllowedAgentIdsV1.length ?? 0;
+  const companyCount = settings?.broadSearchAllowedCompanyIdsV1?.length ?? 0;
+  const missionCount = settings?.broadSearchAllowedMissionIdsV1?.length ?? 0;
+  const agentCount = settings?.broadSearchAllowedAgentIdsV1?.length ?? 0;
 
   return (
     <div className={`max-w-4xl space-y-3 tabular-nums ${cockpitSectionOverrides}`}>
