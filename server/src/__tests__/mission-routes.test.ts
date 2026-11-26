@@ -31,7 +31,7 @@ function createApp(actor: Record<string, unknown> = {
   userId: "local-board",
   companyIds: ["company-1"],
   source: "authenticated",
-  isInstanceAdmin: false,
+  isInstanceAdmin: true,
 }) {
   const app = express();
   app.use(express.json());
@@ -363,7 +363,15 @@ describe("mission routes subresources", () => {
       status: "active",
     });
 
-    const res = await request(createApp())
+    const nonAdminActor = {
+      type: "board",
+      userId: "local-board",
+      companyIds: ["company-1"],
+      source: "authenticated",
+      isInstanceAdmin: false,
+    };
+
+    const res = await request(createApp(nonAdminActor))
       .post("/api/companies/company-2/missions/mission-2/supervision/run")
       .send({});
 
@@ -378,7 +386,15 @@ describe("mission routes subresources", () => {
       status: "active",
     });
 
-    const res = await request(createApp()).get("/api/missions/mission-2/issues");
+    const nonAdminActor = {
+      type: "board",
+      userId: "local-board",
+      companyIds: ["company-1"],
+      source: "authenticated",
+      isInstanceAdmin: false,
+    };
+
+    const res = await request(createApp(nonAdminActor)).get("/api/missions/mission-2/issues");
 
     expect(res.status).toBe(403);
     expect(mockIssueService.list).not.toHaveBeenCalled();
@@ -392,7 +408,15 @@ describe("mission routes subresources", () => {
       status: "active",
     });
 
-    const res = await request(createApp()).get("/api/missions/mission-2/workflow-runs");
+    const nonAdminActor = {
+      type: "board",
+      userId: "local-board",
+      companyIds: ["company-1"],
+      source: "authenticated",
+      isInstanceAdmin: false,
+    };
+
+    const res = await request(createApp(nonAdminActor)).get("/api/missions/mission-2/workflow-runs");
 
     expect(res.status).toBe(403);
     expect(mockMissionService.listWorkflowRuns).not.toHaveBeenCalled();
