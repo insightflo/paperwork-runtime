@@ -10,6 +10,8 @@ import { heartbeatsApi } from "../api/heartbeats";
 import { assetsApi } from "../api/assets";
 import { usePanel } from "../context/PanelContext";
 import { useCompany } from "../context/CompanyContext";
+import { useDialog } from "../context/DialogContext";
+import { useSidebar } from "../context/SidebarContext";
 import { useToast } from "../context/ToastContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -19,14 +21,42 @@ import { StatusBadge } from "../components/StatusBadge";
 import { BudgetPolicyCard } from "../components/BudgetPolicyCard";
 import { IssuesList } from "../components/IssuesList";
 import { PageSkeleton } from "../components/PageSkeleton";
-import { PageTabBar } from "../components/PageTabBar";
-import { projectRouteRef, cn } from "../lib/utils";
-import { Tabs } from "@/components/ui/tabs";
+import { projectRouteRef, cn, formatCents, formatDate } from "../lib/utils";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
 
 /* ── Top-level tab types ── */
 
 type ProjectBaseTab = "overview" | "list" | "configuration" | "budget";
 type ProjectTab = ProjectBaseTab;
+
+const PROJECT_TABS: { value: ProjectTab; path: string; label: string }[] = [
+  { value: "list", path: "issues", label: "Work" },
+  { value: "overview", path: "overview", label: "Overview" },
+  { value: "configuration", path: "configuration", label: "Configuration" },
+  { value: "budget", path: "budget", label: "Budget" },
+];
+
+// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
+const SEGMENT_ACTIVE = "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_0_0_1px_#242d3f]";
+const SEGMENT_IDLE = "text-[#8b97ad] hover:text-[#e6edf7]";
+/** Hairline card: #151b28 body inside a 1px #242d3f border. */
+const HAIRLINE_CARD = "min-w-0 rounded-md border border-[#242d3f] bg-[#151b28]";
+const HAIRLINE_LABEL = "text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]";
+/** Descendant override so ProjectProperties' inner bordered blocks inherit the hairline card look. */
+const HAIRLINE_DESCENDANTS =
+  "[&_.rounded-md.border.p-3]:border-[#242d3f] [&_.rounded-md.border.p-3]:bg-[#151b28] [&_.rounded-md.border.p-2]:border-[#242d3f] [&_.rounded-md.border.p-2]:bg-[#151b28]";
+
+/** One cell of the 1-row cockpit strip: micro status dot (optional) · uppercase label · bold tabular fact. */
+function StripFact({ label, value, dot }: { label: string; value: string; dot?: string }) {
+  return (
+    <span className="cockpit-cell min-w-0 flex-1">
+      {dot && <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />}
+      <span className="truncate uppercase tracking-wide">{label}</span>
+      <b className="truncate normal-case tracking-normal">{value}</b>
+    </span>
+  );
+}
 
 function resolveProjectTab(pathname: string, projectId: string): ProjectTab | null {
   const segments = pathname.split("/").filter(Boolean);
@@ -52,31 +82,31 @@ function OverviewContent({
   imageUploadHandler?: (file: File) => Promise<string>;
 }) {
   return (
-    <div className="space-y-6 rounded-md border border-border/80 bg-card/60 p-4 tabular-nums">
-      <InlineEditor
-        value={project.description ?? ""}
-        onSave={(description) => onUpdate({ description })}
-        as="p"
-        className="text-sm text-muted-foreground"
-        placeholder="Add a description..."
-        multiline
-        imageUploadHandler={imageUploadHandler}
-      />
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-        <div>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Status</span>
-          <div className="mt-1">
-            <StatusBadge status={project.status} />
-          </div>
-        </div>
-        {project.targetDate && (
-          <div>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Target Date</span>
-            <p>{project.targetDate}</p>
-          </div>
-        )}
+    <div className={cn(HAIRLINE_CARD, "divide-y divide-[#242d3f] tabular-nums")}>
+      <div className="px-4 py-3">
+        <span className={HAIRLINE_LABEL}>Description</span>
+        <InlineEditor
+          value={project.description ?? ""}
+          onSave={(description) => onUpdate({ description })}
+          as="p"
+          className="mt-1 text-sm text-[#c9d3e4]"
+          placeholder="Add a description..."
+          multiline
+          imageUploadHandler={imageUploadHandler}
+        />
       </div>
+      <dl className="grid grid-cols-1 gap-px divide-y divide-[#242d3f] bg-[#242d3f] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+        <div className="bg-[#151b28] px-4 py-3">
+          <dt className={HAIRLINE_LABEL}>Status</dt>
+          <dd className="mt-1.5">
+            <StatusBadge status={project.status} />
+          </dd>
+        </div>
+        <div className="bg-[#151b28] px-4 py-3">
+          <dt className={HAIRLINE_LABEL}>Target Date</dt>
+          <dd className="mt-1.5 text-sm text-[#e6edf7]">{project.targetDate ?? "—"}</dd>
+        </div>
+      </dl>
     </div>
   );
 }
@@ -203,6 +233,8 @@ export function ProjectDetail() {
   }>();
   const { companies, selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { closePanel } = usePanel();
+  const { openNewIssue } = useDialog();
+  const { isMobile } = useSidebar();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
   const queryClient = useQueryClient();
@@ -423,76 +455,102 @@ export function ProjectDetail() {
     if (project?.id) {
       try { cachedTab = localStorage.getItem(`paperclip:project-tab:${project.id}`); } catch {}
     }
-    if (cachedTab === "overview") {
-      return <Navigate to={`/projects/${canonicalProjectRef}/overview`} replace />;
-    }
-    if (cachedTab === "configuration") {
-      return <Navigate to={`/projects/${canonicalProjectRef}/configuration`} replace />;
-    }
-    if (cachedTab === "budget") {
-      return <Navigate to={`/projects/${canonicalProjectRef}/budget`} replace />;
-    }
-    return <Navigate to={`/projects/${canonicalProjectRef}/issues`} replace />;
+    const cachedPath = PROJECT_TABS.find((item) => item.value === cachedTab)?.path ?? "issues";
+    return <Navigate to={`/projects/${canonicalProjectRef}/${cachedPath}`} replace />;
   }
 
   if (isLoading) return <PageSkeleton variant="detail" />;
   if (error) return <p className="text-sm text-destructive">{error.message}</p>;
   if (!project) return null;
+  const budgetActive = projectBudgetSummary.isActive;
 
   const handleTabChange = (tab: ProjectTab) => {
     // Cache the active tab per project
     if (project?.id) {
       try { localStorage.setItem(`paperclip:project-tab:${project.id}`, tab); } catch {}
     }
-    if (tab === "overview") {
-      navigate(`/projects/${canonicalProjectRef}/overview`);
-    } else if (tab === "budget") {
-      navigate(`/projects/${canonicalProjectRef}/budget`);
-    } else if (tab === "configuration") {
-      navigate(`/projects/${canonicalProjectRef}/configuration`);
-    } else {
-      navigate(`/projects/${canonicalProjectRef}/issues`);
-    }
+    const path = PROJECT_TABS.find((item) => item.value === tab)?.path ?? "issues";
+    navigate(`/projects/${canonicalProjectRef}/${path}`);
   };
 
   return (
-    <div className="space-y-6 tabular-nums">
-      <div className="flex items-start gap-3 rounded-md border border-border/80 bg-card/60 px-3 py-2">
-        <div className="h-7 flex items-center">
+    <div className="space-y-2 tabular-nums">
+      {/* 1-row 6-cell cockpit strip: identity + budget facts at a glance */}
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Work context summary">
+        <StripFact
+          label="Status"
+          value={project.status.replace("_", " ")}
+          dot={project.pausedAt ? "bg-[#f87171]" : project.status === "in_progress" ? "bg-[#34d399]" : "bg-[#8b97ad]"}
+        />
+        <StripFact label="Target" value={project.targetDate ? formatDate(project.targetDate) : "—"} />
+        <StripFact label="Spent" value={budgetActive ? formatCents(projectBudgetSummary.observedAmount) : "—"} />
+        <StripFact label="Budget" value={budgetActive ? formatCents(projectBudgetSummary.amount) : "—"} />
+        <StripFact label="Utilization" value={budgetActive ? `${projectBudgetSummary.utilizationPercent}%` : "—"} />
+        <StripFact label="Updated" value={formatDate(project.updatedAt)} />
+      </div>
+
+      {/* Tight single-row 40px toolbar: color · name · pause state · tabs · primary action. */}
+      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] pl-2 pr-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <ColorPicker
             currentColor={project.color ?? "#6366f1"}
             onSelect={(color) => updateProject.mutate({ color })}
           />
-        </div>
-        <div className="min-w-0 space-y-2">
-          <InlineEditor
-            value={project.name}
-            onSave={(name) => updateProject.mutate({ name })}
-            as="h2"
-            className="text-xl font-bold"
-          />
+          <h2 className="min-w-0 truncate text-sm font-semibold text-[#e6edf7]">
+            <InlineEditor
+              value={project.name}
+              onSave={(name) => updateProject.mutate({ name })}
+              as="span"
+              className="text-sm font-semibold text-[#e6edf7]"
+            />
+          </h2>
           {project.pauseReason === "budget" ? (
-            <div className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-red-200">
+            <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-red-200">
               <span className="h-2 w-2 rounded-full bg-red-400" />
               Paused by budget hard stop
             </div>
           ) : null}
         </div>
-      </div>
 
-      <Tabs value={activeTab ?? "list"} onValueChange={(value) => handleTabChange(value as ProjectTab)}>
-        <PageTabBar
-          items={[
-            { value: "list", label: "Work" },
-            { value: "overview", label: "Overview" },
-            { value: "configuration", label: "Configuration" },
-            { value: "budget", label: "Budget" },
-          ]}
-          align="start"
-          value={activeTab ?? "list"}
-          onValueChange={(value) => handleTabChange(value as ProjectTab)}
-        />
-      </Tabs>
+        {isMobile ? (
+          <select
+            aria-label="Work context section"
+            value={activeTab ?? "list"}
+            onChange={(e) => handleTabChange(e.target.value as ProjectTab)}
+            className="h-7 shrink-0 rounded-md border border-[#242d3f] bg-[#0b0e14] px-2 text-xs text-[#e6edf7] outline-none focus:border-[#5f8dff]"
+          >
+            {PROJECT_TABS.map((item) => (
+              <option key={item.value} value={item.value}>{item.label}</option>
+            ))}
+          </select>
+        ) : (
+          <div role="group" aria-label="Work context section" className="flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5">
+            {PROJECT_TABS.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                aria-pressed={(activeTab ?? "list") === item.value}
+                onClick={() => handleTabChange(item.value)}
+                className={cn("h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors", (activeTab ?? "list") === item.value ? SEGMENT_ACTIVE : SEGMENT_IDLE)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {project.id && resolvedCompanyId && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => openNewIssue({ projectId: project.id })}
+            className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add Work Item
+          </Button>
+        )}
+      </div>
 
       {activeTab === "overview" && (
         <OverviewContent
@@ -510,7 +568,7 @@ export function ProjectDetail() {
       )}
 
       {activeTab === "configuration" && (
-        <div className="max-w-4xl tabular-nums [&_.rounded-md.border.p-3]:border-border/80 [&_.rounded-md.border.p-3]:bg-card/60 [&_.rounded-md.border.p-2]:border-border/80 [&_.rounded-md.border.p-2]:bg-card/60">
+        <div className={cn("max-w-4xl", HAIRLINE_CARD, "p-4 tabular-nums", HAIRLINE_DESCENDANTS)}>
           <ProjectProperties
             project={project}
             onUpdate={(data) => updateProject.mutate(data)}
@@ -523,14 +581,20 @@ export function ProjectDetail() {
       )}
 
       {activeTab === "budget" && resolvedCompanyId ? (
-        <div className="max-w-3xl">
-          <BudgetPolicyCard
-            summary={projectBudgetSummary}
-            variant="plain"
-            isSaving={budgetMutation.isPending}
-            onSave={(amount) => budgetMutation.mutate(amount)}
-          />
-        </div>
+        <section aria-label="Work context budget" className={cn("max-w-3xl divide-y divide-[#242d3f]", HAIRLINE_CARD)}>
+          <header className="flex h-9 items-center px-4 text-xs font-semibold text-[#e6edf7]">
+            Budget Policy
+            <span className="ml-auto text-[11px] font-normal text-[#8b97ad]">Lifetime · billed spend</span>
+          </header>
+          <div className="p-4">
+            <BudgetPolicyCard
+              summary={projectBudgetSummary}
+              variant="plain"
+              isSaving={budgetMutation.isPending}
+              onSave={(amount) => budgetMutation.mutate(amount)}
+            />
+          </div>
+        </section>
       ) : null}
     </div>
   );
