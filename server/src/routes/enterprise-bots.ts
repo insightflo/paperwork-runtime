@@ -1,5 +1,7 @@
-import { Router, type Request, type RequestHandler } from "express";
+import { Router, type NextFunction, type Request, type RequestHandler, type Response } from "express";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
+import { companyMemberships, type Db } from "@paperclipai/db";
 import { badRequest, forbidden, unauthorized } from "../errors.js";
 import { validate } from "../middleware/validate.js";
 import type {
@@ -51,6 +53,37 @@ const invokeSchema = z.object({
   }).strict().optional(),
 }).strict();
 
+const callerRoles = new Set<BotActor["role"]>(["owner", "admin", "member", "viewer"]);
+
+function toCallerRole(value: unknown): BotActor["role"] | null {
+  return typeof value === "string" && callerRoles.has(value as BotActor["role"]) ? value as BotActor["role"] : null;
+}
+
+export function resolveEnterpriseBotActor(db: Db): ResolveBotActor {
+  return async (req, companyId) => {
+    if (req.actor.type !== "board" || !req.actor.userId) return null;
+    const userId = req.actor.userId;
+    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
+      return { userId, companyId, teamId: null, role: "owner" };
+    }
+    if (!(req.actor.companyIds ?? []).includes(companyId)) throw forbidden("company_scope_denied");
+    const membership = await db
+      .select({ membershipRole: companyMemberships.membershipRole })
+      .from(companyMemberships)
+      .where(and(
+        eq(companyMemberships.companyId, companyId),
+        eq(companyMemberships.principalType, "user"),
+        eq(companyMemberships.principalId, userId),
+        eq(companyMemberships.status, "active"),
+      ))
+      .limit(1)
+      .then((rows) => rows[0] ?? null);
+    const role = toCallerRole(membership?.membershipRole);
+    if (!role) throw forbidden("company_scope_denied");
+    return { userId, companyId, teamId: null, role };
+  };
+}
+
 export interface PublicBotTerminal extends Omit<BotTerminalRecord, "tokenHash"> {}
 
 export function toPublicBotTerminal(terminal: BotTerminalRecord): PublicBotTerminal {
@@ -65,6 +98,15 @@ function bearerToken(req: Request): string | null {
   if (separator < 0 || header.slice(0, separator).toLowerCase() !== "bearer") return null;
   const token = header.slice(separator + 1).trim();
   return token.length > 0 ? token : null;
+}
+
+export function requireEnterpriseBotsBoardActor(req: Request, _res: Response, next: NextFunction) {
+  const isHeartbeat = /^\/terminals\/[^/]+\/heartbeat\/?$/.test(req.path);
+  if (!isHeartbeat && (req.actor.type !== "board" || !req.actor.userId)) {
+    next(unauthorized());
+    return;
+  }
+  next();
 }
 
 export function createEnterpriseBotsRouter(service: BotTerminalChannelService, resolveActor: ResolveBotActor) {
