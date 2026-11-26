@@ -1,9 +1,23 @@
+import type { ReactNode } from "react";
 import { UserPlus, Lightbulb, ShieldAlert, ShieldCheck, GitBranch } from "lucide-react";
 import { formatCents } from "../lib/utils";
 import { ReplacementApprovalPayload } from "./ReplacementApprovalPayload";
 import { L, useCompanyLanguage } from "../lib/companyLanguage";
 import type { CompanyDefaultLanguage } from "@paperclipai/shared";
 import { humanLabel } from "../lib/humanLabels";
+
+const VIEWER_CLASS =
+  "tactile-card mt-3 space-y-2 rounded-[12px] border-slate-200/90 bg-white/95 p-3 text-sm text-slate-700 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:text-[#cbd5e1] [&>section]:mt-0";
+const LABEL_CLASS = "w-20 shrink-0 text-xs text-slate-500 dark:text-[#8b97ad] sm:w-24";
+const LABEL_START_CLASS = `${LABEL_CLASS} pt-0.5`;
+const VALUE_CHIP =
+  "rounded-md border border-slate-200/80 bg-slate-50 px-1.5 py-0.5 font-mono text-[11px] text-slate-600 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#9fb0c8]";
+const INSET_PANEL =
+  "rounded-[10px] border border-slate-200/80 bg-slate-50/85 px-3 py-2 text-xs text-slate-600 dark:border-white/[0.07] dark:bg-[#090c12] dark:text-[#9fb0c8]";
+
+function PayloadShell({ children }: { children: ReactNode }) {
+  return <div className={VIEWER_CLASS}>{children}</div>;
+}
 
 const typeLabels = {
   hire_agent: { en: "Hire Agent", ko: "에이전트 고용 승인" },
@@ -64,7 +78,7 @@ function PayloadField({ label, value }: { label: string; value: unknown }) {
   if (!value) return null;
   return (
     <div className="flex items-center gap-2">
-      <span className="text-muted-foreground w-20 sm:w-24 shrink-0 text-xs"><FieldLabel label={label} /></span>
+      <span className={LABEL_CLASS}><FieldLabel label={label} /></span>
       <span>{String(value)}</span>
     </div>
   );
@@ -80,12 +94,12 @@ function SkillList({ values }: { values: unknown }) {
 
   return (
     <div className="flex items-start gap-2">
-      <span className="text-muted-foreground w-20 sm:w-24 shrink-0 text-xs pt-0.5"><FieldLabel label="Skills" /></span>
+      <span className={LABEL_START_CLASS}><FieldLabel label="Skills" /></span>
       <div className="flex flex-wrap gap-1.5">
         {items.map((item) => (
           <span
             key={item}
-            className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+            className={VALUE_CHIP}
           >
             {item}
           </span>
@@ -97,9 +111,9 @@ function SkillList({ values }: { values: unknown }) {
 
 export function HireAgentPayload({ payload }: { payload: Record<string, unknown> }) {
   return (
-    <div className="mt-3 space-y-1.5 text-sm">
+    <PayloadShell>
       <div className="flex items-center gap-2">
-        <span className="text-muted-foreground w-20 sm:w-24 shrink-0 text-xs"><FieldLabel label="Name" /></span>
+        <span className={LABEL_CLASS}><FieldLabel label="Name" /></span>
         <span className="font-medium">{String(payload.name ?? "—")}</span>
       </div>
       <PayloadField label="Role" value={payload.role} />
@@ -107,20 +121,20 @@ export function HireAgentPayload({ payload }: { payload: Record<string, unknown>
       <PayloadField label="Icon" value={payload.icon} />
       {!!payload.capabilities && (
         <div className="flex items-start gap-2">
-          <span className="text-muted-foreground w-20 sm:w-24 shrink-0 text-xs pt-0.5"><FieldLabel label="Capabilities" /></span>
-          <span className="text-muted-foreground">{String(payload.capabilities)}</span>
+          <span className={LABEL_START_CLASS}><FieldLabel label="Capabilities" /></span>
+          <span className="text-slate-500 dark:text-[#8b97ad]">{String(payload.capabilities)}</span>
         </div>
       )}
       {!!payload.adapterType && (
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground w-20 sm:w-24 shrink-0 text-xs"><FieldLabel label="Adapter" /></span>
-          <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
+          <span className={LABEL_CLASS}><FieldLabel label="Adapter" /></span>
+          <span className={VALUE_CHIP}>
             {String(payload.adapterType)}
           </span>
         </div>
       )}
       <SkillList values={payload.desiredSkills} />
-    </div>
+    </PayloadShell>
   );
 }
 
@@ -128,19 +142,19 @@ export function CeoStrategyPayload({ payload }: { payload: Record<string, unknow
   const lang = useCompanyLanguage();
   const plan = payload.plan ?? payload.description ?? payload.strategy ?? payload.text;
   return (
-    <div className="mt-3 space-y-1.5 text-sm">
+    <PayloadShell>
       <PayloadField label="Title" value={payload.title} />
       {!!plan && (
-        <div className="mt-2 rounded-md bg-muted/40 px-3 py-2 text-sm text-muted-foreground whitespace-pre-wrap font-mono text-xs max-h-48 overflow-y-auto">
+        <div className={`${INSET_PANEL} mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap font-mono`}>
           {String(plan)}
         </div>
       )}
-      {!plan && (<div><p className="text-xs text-muted-foreground">{L(lang, { en: "Raw data", ko: "원본 데이터" })}</p>
-        <pre className="mt-2 rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground overflow-x-auto max-h-48">
+      {!plan && (<div><p className="text-xs text-slate-500 dark:text-[#8b97ad]">{L(lang, { en: "Raw data", ko: "원본 데이터" })}</p>
+        <pre className={`${INSET_PANEL} mt-2 max-h-48 overflow-x-auto`}>
           {JSON.stringify(payload, null, 2)}
         </pre></div>
       )}
-    </div>
+    </PayloadShell>
   );
 }
 
@@ -148,19 +162,19 @@ export function BudgetOverridePayload({ payload }: { payload: Record<string, unk
   const budgetAmount = typeof payload.budgetAmount === "number" ? payload.budgetAmount : null;
   const observedAmount = typeof payload.observedAmount === "number" ? payload.observedAmount : null;
   return (
-    <div className="mt-3 space-y-1.5 text-sm">
+    <PayloadShell>
       <PayloadField label="Scope" value={payload.scopeName ?? payload.scopeType} />
       <PayloadField label="Window" value={payload.windowKind} />
       <PayloadField label="Metric" value={payload.metric} />
       {(budgetAmount !== null || observedAmount !== null) ? (
-        <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        <div className={INSET_PANEL}>
           <FieldLabel label="Limit" /> {budgetAmount !== null ? formatCents(budgetAmount) : "—"} · <FieldLabel label="Observed" /> {observedAmount !== null ? formatCents(observedAmount) : "—"}
         </div>
       ) : null}
       {!!payload.guidance && (
-        <p className="text-muted-foreground">{String(payload.guidance)}</p>
+        <p className="text-slate-500 dark:text-[#8b97ad]">{String(payload.guidance)}</p>
       )}
-    </div>
+    </PayloadShell>
   );
 }
 
@@ -172,18 +186,18 @@ export function ExternalAutomationPayload({ payload }: { payload: Record<string,
   const lang = useCompanyLanguage();
   const checks = Array.isArray(payload.checks) ? payload.checks : [];
   return (
-    <div className="mt-3 space-y-1.5 text-sm">
+    <PayloadShell>
       <PayloadField label="Repository" value={payload.repository} />
       <PayloadField label="Branch" value={payload.branch} />
       {typeof payload.commit === "string" && payload.commit && (
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground w-20 sm:w-24 shrink-0 text-xs"><FieldLabel label="Commit" /></span>
-          <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{shortSha(payload.commit)}</span>
+          <span className={LABEL_CLASS}><FieldLabel label="Commit" /></span>
+          <span className={VALUE_CHIP}>{shortSha(payload.commit)}</span>
         </div>
       )}
       <PayloadField label="Action" value={payload.intendedAction} />
       {typeof payload.summary === "string" && payload.summary && (
-        <p className="text-muted-foreground">{payload.summary}</p>
+        <p className="text-slate-500 dark:text-[#8b97ad]">{payload.summary}</p>
       )}
       {checks.length > 0 && (
         <div className="flex flex-wrap gap-1.5 pt-1">
@@ -192,19 +206,19 @@ export function ExternalAutomationPayload({ payload }: { payload: Record<string,
             const name = typeof entry.name === "string" ? entry.name : `check ${index + 1}`;
             const conclusion = typeof entry.conclusion === "string" ? entry.conclusion : (typeof entry.status === "string" ? entry.status : "unknown");
             return (
-              <span key={index} className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+              <span key={index} className={VALUE_CHIP}>
                 {name} · <span title={conclusion}>{humanLabel(lang, "ciConclusion", conclusion).label}</span>
               </span>
             );
           })}
         </div>
       )}
-    </div>
+    </PayloadShell>
   );
 }
 
 export function ApprovalPayloadRenderer({ type, payload }: { type: string; payload: Record<string, unknown> }) {
-  if (type === "workflow_replacement") return <ReplacementApprovalPayload payload={payload} />;
+  if (type === "workflow_replacement") return <PayloadShell><ReplacementApprovalPayload payload={payload} /></PayloadShell>;
   if (type === "hire_agent") return <HireAgentPayload payload={payload} />;
   if (type === "budget_override_required") return <BudgetOverridePayload payload={payload} />;
   if (type === "external_automation") return <ExternalAutomationPayload payload={payload} />;

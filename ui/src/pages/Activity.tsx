@@ -39,8 +39,12 @@ const CATEGORY_PILLS: { id: ActivityCategory; label: string; dot: string }[] = [
 const TAB_CLASS =
   "h-7 cursor-pointer rounded-md px-2.5 text-xs whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 dark:focus-visible:ring-[#60a5fa]/30 aria-pressed:bg-white aria-pressed:text-slate-950 aria-pressed:shadow-[inset_0_-2px_0_#65a30d,0_1px_2px_rgba(15,23,42,0.08)] dark:aria-pressed:bg-[#141c2b] dark:aria-pressed:text-[#edf2fb] dark:aria-pressed:shadow-[inset_0_-2px_0_#a3e635,inset_0_1px_0_rgba(255,255,255,0.08)] text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]";
 const STRIP_CELL_CLASS =
-  "flex h-10 min-w-0 items-center justify-center gap-2 px-3 text-[11px] transition-colors text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]";
+  "cockpit-cell min-w-[5.5rem] flex-1 cursor-pointer justify-center transition-colors hover:bg-slate-50 hover:text-slate-950 dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]";
 const STRIP_CELL_ACTIVE_CLASS = "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_#65a30d] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_#a3e635]";
+const STRIP_CLASS = "cockpit-strip tactile-card h-8 w-full gap-0 overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+const TOOLBAR_CLASS = "cockpit-toolbar tactile-card h-10 w-full overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 px-2 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+const FEED_CLASS = "tactile-card space-y-1 overflow-hidden rounded-[12px] border-slate-200/90 bg-slate-50/75 p-1 transition-opacity dark:border-white/[0.08] dark:bg-none dark:bg-[#090c12]";
+const ROW_CARD_CLASS = "tactile-card tactile-card-interactive overflow-hidden rounded-[8px] border-slate-200/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/[0.07] dark:bg-none dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] [&_article]:px-3 [&_article]:py-1.5";
 
 export function categorizeActivityEvent(event: ActivityEvent): Exclude<ActivityCategory, "all"> | null {
   const hay = `${event.entityType} ${event.action}`.toLowerCase();
@@ -200,7 +204,7 @@ export function Activity() {
   return (
     <div className="space-y-2 tabular-nums">
       {/* 1-row 5-cell cockpit strip: event totals per category double as filter shortcuts */}
-      <div className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-3 xl:grid-cols-6" role="group" aria-label="활동 유형별 건수" title="현재 페이지 기준 건수">
+      <div className={STRIP_CLASS} role="group" aria-label="활동 유형별 건수" title="현재 페이지 기준 건수">
         {CATEGORY_PILLS.map((pill) => {
           const active = category === pill.id;
           return (
@@ -224,7 +228,7 @@ export function Activity() {
       </div>
 
       {/* Tight 40px toolbar: category tabs + local search */}
-      <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-xl border border-slate-200/90 bg-slate-50/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+      <div className={TOOLBAR_CLASS}>
         <div role="group" aria-label="활동 유형 필터" className="flex shrink-0 items-center gap-0.5 rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-slate-100 dark:bg-[#090c12] p-0.5">
           {CATEGORY_PILLS.map((pill) => (
             <button
@@ -256,7 +260,7 @@ export function Activity() {
 
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
-      <CompactPagination page={page} count={filtered.length} hasMore={hasMore} loading={isFetching} onPageChange={setPage} className="rounded-xl border-slate-200/90 bg-slate-50/95 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] [&_button]:text-slate-600 dark:[&_button]:text-[#cbd5e1] [&_button:hover]:bg-white dark:[&_button:hover]:bg-[#141b29] [&_span]:text-slate-600 dark:[&_span]:text-[#8b97ad] [&_b]:text-slate-950 dark:[&_b]:text-[#edf2fb] [&_svg]:text-blue-600 dark:[&_svg]:text-[#60a5fa]" />
+      <CompactPagination page={page} count={filtered.length} hasMore={hasMore} loading={isFetching} onPageChange={setPage} className="rounded-[12px] border-slate-200/90 bg-slate-50/95 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] [&_button]:text-slate-600 dark:[&_button]:text-[#cbd5e1] [&_button:hover]:bg-white dark:[&_button:hover]:bg-[#141b29] [&_span]:text-slate-600 dark:[&_span]:text-[#8b97ad] [&_b]:text-slate-950 dark:[&_b]:text-[#edf2fb] [&_svg]:text-blue-600 dark:[&_svg]:text-[#60a5fa]" />
 
       {filtered.length === 0 && !isFetching && (
         <EmptyState icon={History} message={filterActive ? "이 페이지에 조건에 맞는 활동이 없습니다." : "No activity yet."} />
@@ -266,7 +270,7 @@ export function Activity() {
         <div
           ref={listRef}
           aria-busy={isFetching}
-          className={cn("divide-y divide-slate-200/75 dark:divide-white/[0.06] overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-opacity dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] [&>*]:hover:bg-slate-50 dark:[&>*]:hover:bg-[#141b29] [&_article]:px-3 [&_article]:py-1.5", isFetching && "opacity-70")}
+          className={cn(FEED_CLASS, isFetching && "opacity-70")}
         >
           {filtered.map((event) => {
             const diff = extractActivityDiff(event.details);
@@ -281,14 +285,12 @@ export function Activity() {
                 entityTitleMap={entityTitleMap}
               />
             );
-            return diff ? (
-              <div key={event.id} className="relative">
+            return (
+              <div key={event.id} className={ROW_CARD_CLASS}>
                 {row}
-                <div className="px-3 pb-1.5 -mt-1">
-                  <DiffBadge diff={diff} />
-                </div>
+                {diff && <div className="px-3 pb-1.5 -mt-1"><DiffBadge diff={diff} /></div>}
               </div>
-            ) : row;
+            );
           })}
         </div>
       )}
