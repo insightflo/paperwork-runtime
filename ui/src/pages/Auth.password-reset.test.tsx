@@ -119,7 +119,7 @@ describe("AuthPage password reset flow", () => {
     await setInput("auth-password", "short");
     await setInput("auth-confirm-password", "short");
     await clickButton("Reset Password");
-    expect(host.textContent).toContain("New password must be at least 8 characters.");
+    expect(host.textContent).toContain("New password must be at least 10 characters.");
     expect(authApi.resetPassword).not.toHaveBeenCalled();
 
     await setInput("auth-password", "new-secret-1");
