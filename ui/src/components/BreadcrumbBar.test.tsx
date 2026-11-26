@@ -57,6 +57,12 @@ function menuButton(): HTMLButtonElement {
   return button;
 }
 
+function searchButton(): HTMLButtonElement {
+  const button = host.querySelector<HTMLButtonElement>('button[aria-keyshortcuts="Meta+K"]');
+  if (!button) throw new Error("⌘K search button not found");
+  return button;
+}
+
 beforeEach(() => {
   hoisted.crumbs = [];
   host = document.createElement("div");
@@ -70,16 +76,62 @@ afterEach(async () => {
 });
 
 describe("BreadcrumbBar", () => {
-  it("renders an empty high-density header with only the sidebar toggle when no breadcrumbs exist", async () => {
+  it("renders an empty 48px command header with only the sidebar toggle and no crumbs", async () => {
     await renderBar();
 
     const header = host.firstElementChild as HTMLElement;
-    expect(header.className).toContain("h-11");
-    expect(header.className).toContain("bg-background/95");
+    expect(header.className).toContain("h-12");
+    expect(header.className).not.toContain("h-11");
+    expect(header.className).toContain("border-[#242d3f]");
+    expect(header.className).toContain("border-b");
+    expect(header.className).toContain("bg-[#0b0e14]/95");
     expect(header.className).toContain("backdrop-blur-sm");
+    // Legacy semantic token colours must not leak back into the cockpit shell.
+    expect(header.className).not.toContain("bg-background/95");
     expect(host.querySelector("h1")).toBeNull();
     expect(host.querySelector("nav")).toBeNull();
     expect(menuButton().getAttribute("aria-label")).toBe("Collapse sidebar");
+  });
+
+  it("centers the ⌘K search button in the header's middle grid column", async () => {
+    await renderBar();
+
+    const header = host.firstElementChild as HTMLElement;
+    // [left: toggle + crumbs] | search | [right slot] -> the search sits in the center column.
+    expect(header.className).toContain("grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]");
+    expect(header.children).toHaveLength(3);
+
+    const search = header.children[1] as HTMLElement;
+    expect(search.tagName).toBe("BUTTON");
+    expect(search.getAttribute("aria-keyshortcuts")).toBe("Meta+K");
+    expect(search.getAttribute("aria-label")).toBe("Open command palette");
+    expect(search.getAttribute("type")).toBe("button");
+    expect(search.textContent).toContain("Search missions, agents, approvals");
+    expect(search.textContent).toContain("⌘K");
+    expect(search.querySelector("kbd")?.textContent).toBe("⌘K");
+    expect(search.className).toContain("justify-start");
+    expect(search.className).toContain("rounded-lg");
+    expect(search.className).toContain("md:flex");
+  });
+
+  it("opens the command palette by replaying ⌘K on document when the search button is clicked", async () => {
+    await renderBar();
+
+    const seen: KeyboardEvent[] = [];
+    const listener = (event: KeyboardEvent) => seen.push(event);
+    document.addEventListener("keydown", listener);
+    try {
+      await act(async () => {
+        searchButton().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    } finally {
+      document.removeEventListener("keydown", listener);
+    }
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].key).toBe("k");
+    expect(seen[0].metaKey).toBe(true);
+    expect(seen[0].ctrlKey).toBe(false);
   });
 
   it("renders a single breadcrumb as an uppercase tabular page title", async () => {

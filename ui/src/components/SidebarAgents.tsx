@@ -13,13 +13,34 @@ import { useSidebarDensity } from "../lib/sidebar-slide-physics";
 import { cn, agentRouteRef, agentUrl } from "../lib/utils";
 import { AgentIcon } from "./AgentIconPicker";
 import { BudgetSidebarMarker } from "./BudgetSidebarMarker";
-import { SidebarWaitChip, resolveAgentWaitState } from "./SidebarWaitChip";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { SidebarWaitChip, resolveAgentWaitState, type AgentWaitState } from "./SidebarWaitChip";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { Agent } from "@paperclipai/shared";
+
+/** Idle rows fold away by default once there are more than this many. */
+const IDLE_COLLAPSE_THRESHOLD = 3;
+
+/** running = live run · attention = waiting on a human, a budget pause, an approval or an error · idle = the rest. */
+type AgentActivity = "running" | "attention" | "idle";
+type PinnedActivity = Exclude<AgentActivity, "idle">;
+interface AgentEntry {
+  agent: Agent;
+  runCount: number;
+  waitState: AgentWaitState | null;
+  activity: AgentActivity;
+}
+
+const STATUS_DOT: Record<PinnedActivity, { color: string; label: string }> = {
+  running: { color: "var(--pw-emerald, #34d399)", label: "Running" },
+  attention: { color: "var(--pw-amber, #fbbf24)", label: "Needs attention" },
+};
+/** Compact right-aligned pill: never shrinks or wraps, so it cannot collide with the agent name. */
+const COUNT_PILL = "inline-flex h-[18px] shrink-0 tabular-nums items-center gap-1 whitespace-nowrap rounded-full border px-1.5 text-[11px] font-medium leading-none";
+const SUBTLE_PILL = "border-border bg-muted text-muted-foreground dark:border-[#242d3f] dark:bg-[#111622]";
+const AMBER_PILL = "border-amber-500/35 bg-amber-500/15 text-amber-700 dark:text-[var(--pw-amber)]";
+const LIVE_PILL = cn(SUBTLE_PILL, "dark:text-[var(--pw-emerald)]");
+const IDLE_TOGGLE =
+  "mt-0.5 flex w-full items-center rounded-[9px] text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground";
 
 /** BFS sort: roots first (no reportsTo), then their direct reports, etc. */
 function sortByHierarchy(agents: Agent[]): Agent[] {
@@ -42,11 +63,94 @@ function sortByHierarchy(agents: Agent[]): Agent[] {
   return sorted;
 }
 
+function classifyAgentActivity(agent: Agent, waitState: AgentWaitState | null): AgentActivity {
+  if (waitState && waitState.kind !== "live") return "attention";
+  if (agent.pauseReason === "budget" || agent.status === "pending_approval" || agent.status === "error") {
+    return "attention";
+  }
+  return waitState || agent.status === "running" ? "running" : "idle";
+}
+
+function AgentStatusDot({ kind, corner }: { kind: PinnedActivity; corner?: boolean }) {
+  const meta = STATUS_DOT[kind];
+  return (
+    <span title={meta.label} className={cn("relative flex h-2 w-2 shrink-0", corner && "absolute right-0.5 top-0.5")}>
+      <span
+        className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 motion-reduce:animate-none"
+        style={{ backgroundColor: meta.color }}
+      />
+      <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} />
+    </span>
+  );
+}
+
+function AgentRow({ entry, to, active, compact }: { entry: AgentEntry; to: string; active: boolean; compact: boolean }) {
+  const { isMobile, setSidebarOpen } = useSidebar();
+  const { agent, runCount, waitState, activity } = entry;
+  const budgetPaused = agent.pauseReason === "budget";
+  // Expanded rows replace the live-run chip with a concise count pill; the mini bar keeps the chip (and skips the dot).
+  const livePill = !compact && waitState?.kind === "live";
+  const showDot = activity !== "idle" && !(compact && waitState);
+  // Pinned by agent status alone (no pending decision card, no budget pause): surface the reason.
+  const statusPill =
+    !compact && activity === "attention" && !waitState && !budgetPaused
+      ? agent.status === "error" ? "Error" : "Approval"
+      : null;
+  const showTrailing = budgetPaused || waitState != null || statusPill != null;
+
+  return (
+    <NavLink
+      to={to}
+      title={compact ? agent.name : undefined}
+      aria-label={compact ? agent.name : undefined}
+      onClick={() => {
+        if (isMobile) setSidebarOpen(false);
+      }}
+      className={cn(
+        "relative flex items-center text-[13px] font-medium transition-colors",
+        compact ? "justify-center gap-1 px-1.5 py-1.5" : "gap-2 px-3 py-1.5",
+        active
+          ? "bg-accent text-foreground"
+          : activity === "idle"
+            ? "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+            : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
+      )}
+    >
+      {showDot && <AgentStatusDot kind={activity} corner={compact} />}
+      <AgentIcon icon={agent.icon} className="shrink-0 h-3.5 w-3.5 text-muted-foreground" />
+      {!compact && (
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">{agent.name}</span>
+          {agent.title && (
+            <span className="block truncate text-[10px] font-normal text-muted-foreground/60 leading-tight">
+              {agent.title}
+            </span>
+          )}
+        </span>
+      )}
+      {showTrailing && (
+        <span className={cn("flex shrink-0 items-center gap-1.5", !compact && "ml-auto")}>
+          {budgetPaused && <BudgetSidebarMarker title="Agent paused by budget" />}
+          {livePill && (
+            <span title={`${runCount} live run${runCount === 1 ? "" : "s"}`} className={cn(COUNT_PILL, LIVE_PILL)}>
+              {runCount} live
+            </span>
+          )}
+          {waitState && !livePill && <SidebarWaitChip state={waitState} provider={agent.adapterType} compact={compact} />}
+          {statusPill && <span className={cn(COUNT_PILL, AMBER_PILL)}>{statusPill}</span>}
+        </span>
+      )}
+    </NavLink>
+  );
+}
+
 export function SidebarAgents() {
   const [open, setOpen] = useState(true);
+  // null = follow the default (collapse once the idle group grows past the threshold); otherwise the user's last toggle.
+  const [idleOpenOverride, setIdleOpenOverride] = useState<boolean | null>(null);
   const { selectedCompanyId } = useCompany();
   const { openNewAgent } = useDialog();
-  const { isMobile, setSidebarOpen } = useSidebar();
+  const { isMobile } = useSidebar();
   const location = useLocation();
   const { compact: rawCompact } = useSidebarDensity();
   const compact = rawCompact && !isMobile;
@@ -91,6 +195,33 @@ export function SidebarAgents() {
   const activeAgentId = agentMatch?.[1] ?? null;
   const activeTab = agentMatch?.[2] ?? null;
 
+  /** Pinned = running or needs attention; everything else folds into Idle. Both groups keep the hierarchy order. */
+  const { pinned, idle } = useMemo(() => {
+    const groups = { pinned: [] as AgentEntry[], idle: [] as AgentEntry[] };
+    for (const agent of visibleAgents) {
+      const runCount = liveCountByAgent.get(agent.id) ?? 0;
+      const waitState = resolveAgentWaitState({
+        agentId: agent.id,
+        pendingDecisions: pendingDecisions?.data,
+        liveRunCount: runCount,
+      });
+      const entry: AgentEntry = { agent, runCount, waitState, activity: classifyAgentActivity(agent, waitState) };
+      (entry.activity === "idle" ? groups.idle : groups.pinned).push(entry);
+    }
+    return groups;
+  }, [visibleAgents, liveCountByAgent, pendingDecisions]);
+
+  const idleOpen = idleOpenOverride ?? idle.length <= IDLE_COLLAPSE_THRESHOLD;
+  const idleLabel = `Idle (${idle.length})`;
+  const renderRow = (entry: AgentEntry) => (
+    <AgentRow
+      key={entry.agent.id}
+      entry={entry}
+      to={activeTab ? `${agentUrl(entry.agent)}/${activeTab}` : agentUrl(entry.agent)}
+      active={activeAgentId === agentRouteRef(entry.agent)}
+      compact={compact}
+    />
+  );
 
   return (
     <Collapsible open={compact ? true : open} onOpenChange={setOpen}>
@@ -123,6 +254,11 @@ export function SidebarAgents() {
                 Agents
               </span>
             </CollapsibleTrigger>
+            {pinned.length > 0 && (
+              <span title={`${pinned.length} active agent${pinned.length === 1 ? "" : "s"}`} className={cn(COUNT_PILL, SUBTLE_PILL, "mr-1")}>
+                {pinned.length}
+              </span>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -139,53 +275,23 @@ export function SidebarAgents() {
 
       <CollapsibleContent>
         <div className="flex flex-col gap-0.5 mt-0.5">
-          {visibleAgents.map((agent: Agent) => {
-            const runCount = liveCountByAgent.get(agent.id) ?? 0;
-            const waitState = resolveAgentWaitState({
-              agentId: agent.id,
-              pendingDecisions: pendingDecisions?.data,
-              liveRunCount: runCount,
-            });
-            return (
-              <NavLink
-                key={agent.id}
-                to={activeTab ? `${agentUrl(agent)}/${activeTab}` : agentUrl(agent)}
-                title={compact ? agent.name : undefined}
-                aria-label={compact ? agent.name : undefined}
-                onClick={() => {
-                  if (isMobile) setSidebarOpen(false);
-                }}
-                className={cn(
-                  "flex items-center text-[13px] font-medium transition-colors",
-                  compact ? "justify-center gap-1 px-1.5 py-1.5" : "gap-2.5 px-3 py-1.5",
-                  activeAgentId === agentRouteRef(agent)
-                    ? "bg-accent text-foreground"
-                    : "text-foreground/80 hover:bg-accent/50 hover:text-foreground"
-                )}
-              >
-                <AgentIcon icon={agent.icon} className="shrink-0 h-3.5 w-3.5 text-muted-foreground" />
-                {!compact && (
-                  <span className="flex-1 min-w-0">
-                    <span className="block truncate">{agent.name}</span>
-                    {agent.title && (
-                      <span className="block truncate text-[10px] font-normal text-muted-foreground/60 leading-tight">
-                        {agent.title}
-                      </span>
-                    )}
-                  </span>
-                )}
-                {(agent.pauseReason === "budget" || waitState) && (
-                  <span className={cn("flex items-center gap-1.5 shrink-0", !compact && "ml-auto")}>
-                    {agent.pauseReason === "budget" ? (
-                      <BudgetSidebarMarker title="Agent paused by budget" />
-                    ) : null}
-                    <SidebarWaitChip state={waitState} provider={agent.adapterType} compact={compact} />
-                  </span>
-                )}
-              </NavLink>
-            );
-          })}
+          {pinned.map(renderRow)}
         </div>
+        {idle.length > 0 && (
+          <Collapsible open={idleOpen} onOpenChange={setIdleOpenOverride}>
+            <CollapsibleTrigger
+              aria-label={idleLabel}
+              title={idleLabel}
+              className={cn(IDLE_TOGGLE, compact ? "h-7 justify-center" : "h-7 gap-1.5 px-3")}
+            >
+              <ChevronRight className={cn("h-3 w-3 transition-transform", idleOpen && "rotate-90")} />
+              <span className="tabular-nums">{compact ? idle.length : idleLabel}</span>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-0.5 flex flex-col gap-0.5">
+              {idle.map(renderRow)}
+            </CollapsibleContent>
+          </Collapsible>
+        )}
       </CollapsibleContent>
     </Collapsible>
   );
