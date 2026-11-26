@@ -227,7 +227,7 @@ describe("Missions Combo 4 High-Scale Fleet Radar & Split View", () => {
     return host;
   }
 
-  it("renders status filter chips with live fleet counts and a 42-tile visual status mosaic", async () => {
+  it("renders status filter chips with live fleet counts and omits the legacy mission mosaic", async () => {
     const container = await mount();
 
     expect(container.querySelector('[data-radar-status="all"]')?.textContent).toContain("전체42");
@@ -236,8 +236,9 @@ describe("Missions Combo 4 High-Scale Fleet Radar & Split View", () => {
     expect(container.querySelector('[data-radar-status="wait"]')?.textContent).toContain("대기10");
     expect(container.querySelector('[data-radar-status="done"]')?.textContent).toContain("완료5");
 
-    const tiles = container.querySelectorAll("[data-mosaic-tile]");
-    expect(tiles).toHaveLength(42);
+    // Regression guard: legacy 1,900-block visual mosaic must never be rendered.
+    expect(container.querySelector("[data-mission-mosaic]")).toBeNull();
+    expect(container.querySelectorAll("[data-mosaic-tile]")).toHaveLength(0);
   });
 
   it("pins attention-needed missions first in the 58/42 split list and shows permanent Live Inspector", async () => {
@@ -255,7 +256,7 @@ describe("Missions Combo 4 High-Scale Fleet Radar & Split View", () => {
     expect(inspector.textContent).toContain("Open Full Mission →");
   });
 
-  it("filters by status chip, search query, and workflow dropdown, and supports mosaic tile jump", async () => {
+  it("filters by status chip, search query, and workflow dropdown, and updates Live Inspector on row selection", async () => {
     const container = await mount();
 
     // Filter to 개입 필요 (2 missions across the 42-mission fleet)
@@ -268,15 +269,27 @@ describe("Missions Combo 4 High-Scale Fleet Radar & Split View", () => {
     expect(needRows[0]?.getAttribute("data-mission-row")).toBe("mission-10");
     expect(needRows[1]?.getAttribute("data-mission-row")).toBe("mission-30");
 
-    // Clicking mosaic tile M42 clears blocking filter and jumps directly to mission-42 in Live Inspector
-    const tile42 = container.querySelector('[data-mosaic-tile="mission-42"]') as HTMLButtonElement;
+    // Switch to 완료 chip and select mission-42 directly from the mission list to update Live Inspector
+    const doneChip = container.querySelector('[data-radar-status="done"]') as HTMLButtonElement;
     await act(async () => {
-      tile42.click();
+      doneChip.click();
+    });
+    const doneRows = container.querySelectorAll("[data-mission-row]");
+    expect(doneRows).toHaveLength(5);
+
+    const row42 = container.querySelector('[data-mission-row="mission-42"]') as HTMLElement;
+    expect(row42).not.toBeNull();
+    await act(async () => {
+      row42.click();
     });
     const inspector = container.querySelector("[data-mission-preview]") as HTMLElement;
     expect(inspector.textContent).toContain("Mission Alpha 42");
 
-    // Filter by workflow dropdown
+    // Reset radar status to 전체 and filter by workflow dropdown
+    const allChip = container.querySelector('[data-radar-status="all"]') as HTMLButtonElement;
+    await act(async () => {
+      allChip.click();
+    });
     const wfSelect = container.querySelector('select[aria-label="Filter by workflow"]') as HTMLSelectElement;
     await act(async () => {
       wfSelect.value = "tech-blog-radar";

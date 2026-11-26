@@ -269,7 +269,8 @@ describe("Missions", () => {
 
     const html = renderToStaticMarkup(<Missions />);
 
-    expect(html).toContain("grid-cols-2 lg:grid-cols-5 divide-x divide-[#242d3f] bg-[#111622] border border-[#242d3f] rounded-md");
+    expect(html).toContain("tactile-card grid grid-cols-2 overflow-hidden rounded-[12px]");
+    expect(html).toContain("lg:grid-cols-5");
     expect(html.match(/text-xl font-semibold/g)).toHaveLength(5);
     expect(html).toContain("Active agents");
     expect(html).toContain("6 enabled");
