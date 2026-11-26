@@ -17,6 +17,66 @@ export type EnterpriseBotCallableBy = "self_only" | "team" | "company";
 export type EnterpriseBotStatus = "active" | "paused" | "revoked";
 export type BotApprovalDecision = "approved" | "rejected";
 
+export interface TerminalTelemetry {
+  os?: string;
+  arch?: string;
+  daemonVersion?: string;
+  protocolVersion?: number;
+  uptimeSecs?: number;
+  cpuPct?: number;
+  memRssMb?: number;
+  activeChildren?: number;
+  lastRttMs?: number;
+}
+
+export interface HealthSample {
+  ts: string;
+  ok: boolean;
+  rttMs?: number | null;
+  statusCode?: number | null;
+  errorRef?: string | null;
+}
+
+export interface BotCapabilityMatrixEntry {
+  capabilityKey: string;
+  callableBy: EnterpriseBotCallableBy;
+  dataScope: BotCapabilityDataScope;
+  requiresApproval: boolean;
+}
+
+export interface EnterpriseBotsCompatibility {
+  protocol: {
+    minimum: number;
+    maximum: number;
+  };
+  capabilities: string[];
+}
+
+export interface PreviewChannelInvokeResponse {
+  dryRun: true;
+  outcome: "allowed" | "requires_approval" | "denied";
+  reason: string;
+  forcedFilter: Record<string, string> | null;
+  requiresApproval: boolean;
+}
+
+export interface EnterpriseBotAuditEvent {
+  id: string;
+  companyId: string;
+  actorType: string;
+  actorId: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  agentId: string | null;
+  details: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface EnterpriseBotAuditResponse {
+  events: EnterpriseBotAuditEvent[];
+}
+
 export interface EnterpriseBotRecord {
   id: string;
   companyId?: string;
@@ -34,6 +94,7 @@ export interface EnterpriseBotRecord {
   lastPingAt?: string | null;
   lastPingStatus?: string | null;
   lastPingLatencyMs?: number | null;
+  healthHistory?: HealthSample[] | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -127,6 +188,8 @@ export interface BotTerminal {
   status: BotTerminalStatus;
   lastSeenAt: string | null;
   revokedAt: string | null;
+  telemetry?: TerminalTelemetry | null;
+  healthHistory?: HealthSample[] | null;
 }
 
 export interface GovernanceDecision {
@@ -188,15 +251,19 @@ export interface InvokeChannelPayload {
 const BASE = "/enterprise-bots";
 
 export const enterpriseBotsApi = {
+  /** `GET /compatibility` → 200 protocol negotiation & capability flags. */
+  getCompatibility: () =>
+    api.get<EnterpriseBotsCompatibility>(`${BASE}/compatibility`),
+
   /** `POST /terminals/register` → 201 `{ terminal, token }`. */
   registerTerminal: (input: RegisterTerminalInput) =>
     api.post<RegisterTerminalResponse>(`${BASE}/terminals/register`, input),
 
   /** `POST /terminals/:terminalId/heartbeat` → 200 `{ terminal }` (Bearer terminal token). */
-  heartbeatTerminal: (terminalId: string, token: string) =>
+  heartbeatTerminal: (terminalId: string, token: string, telemetry?: TerminalTelemetry) =>
     request<{ terminal: BotTerminal }>(`${BASE}/terminals/${encodeURIComponent(terminalId)}/heartbeat`, {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify(telemetry ? { telemetry } : {}),
       headers: { Authorization: `Bearer ${token}` },
     }),
 
@@ -208,9 +275,35 @@ export const enterpriseBotsApi = {
   invokeChannelMention: (channelId: string, input: InvokeChannelInput) =>
     api.post<InvokeChannelPayload>(`${BASE}/channels/${encodeURIComponent(channelId)}/invoke`, input),
 
+  /** `POST /channels/:channelId/invoke?dryRun=true` → 200 side-effect-free governance preview. */
+  previewChannelInvoke: (channelId: string, body: InvokeChannelInput) =>
+    api.post<PreviewChannelInvokeResponse>(
+      `${BASE}/channels/${encodeURIComponent(channelId)}/invoke?dryRun=true`,
+      body,
+    ),
+
   /** `GET /companies/:companyId/snapshot` → 200 `{ bots, terminals, channels, pendingApprovals, now }`. */
   getSnapshot: (companyId: string) =>
     api.get<EnterpriseBotsSnapshot>(`${BASE}/companies/${encodeURIComponent(companyId)}/snapshot`),
+
+  /** `PATCH /companies/:companyId/bots/:botId/capabilities` → 200 `{ bot, capabilities }`. */
+  updateBotCapabilities: (
+    companyId: string,
+    botId: string,
+    capabilities: BotCapabilityMatrixEntry[],
+  ) =>
+    api.patch<{ bot: EnterpriseBotRecord; capabilities: BotCapabilityMatrixEntry[] }>(
+      `${BASE}/companies/${encodeURIComponent(companyId)}/bots/${encodeURIComponent(botId)}/capabilities`,
+      { capabilities },
+    ),
+
+  /** `GET /companies/:companyId/audit?limit=50` → 200 `{ events }`. */
+  getAudit: (companyId: string, limit?: number) => {
+    const query = limit !== undefined ? `?limit=${encodeURIComponent(String(limit))}` : "";
+    return api.get<EnterpriseBotAuditResponse>(
+      `${BASE}/companies/${encodeURIComponent(companyId)}/audit${query}`,
+    );
+  },
 
   /** `POST /companies/:companyId/bots` → 201 `{ bot, inboundToken? }`. */
   createBot: (companyId: string, body: CreateBotInput) =>

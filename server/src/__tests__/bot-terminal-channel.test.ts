@@ -6,8 +6,9 @@ import { errorHandler } from "../middleware/index.js";
 import { createEnterpriseBotsRouter } from "../routes/enterprise-bots.js";
 import {
   BOT_CHANNEL_OWNER_APPROVAL_TYPE,
+  HEALTH_HISTORY_MAX,
   createBotTerminalChannelService, createTerminalToken, hashTerminalToken,
-  type BotActor, type BotCapabilityRecord, type BotPendingApprovalRecord, type BotTerminalRecord,
+  type BotActor, type BotAuditEventRecord, type BotCapabilityRecord, type BotPendingApprovalRecord, type BotTerminalRecord,
   type BotTerminalChannelServiceOptions, type EnterpriseBotRecord, type EnterpriseBotStore,
   type NewBotTerminal,
 } from "../services/bot-terminal-channel.js";
@@ -26,6 +27,7 @@ const actor = (overrides: Partial<BotActor> = {}): BotActor => ({ userId: SALES,
 interface MemoryStoreSeed {
   approvals?: Array<{ botId: string; channelId: string; botOwnerUserId: string }>;
   pendingApprovals?: BotPendingApprovalRecord[];
+  auditEvents?: BotAuditEventRecord[];
 }
 
 function createMemoryStore(seed: MemoryStoreSeed = {}) {
@@ -53,13 +55,25 @@ function createMemoryStore(seed: MemoryStoreSeed = {}) {
   );
   const store: EnterpriseBotStore = {
     async createTerminal(input: NewBotTerminal) {
-      const record: BotTerminalRecord = { ...input, id: randomUUID(), status: "offline", lastSeenAt: null, revokedAt: null };
+      const record: BotTerminalRecord = {
+        ...input, id: randomUUID(), status: "offline", lastSeenAt: null, revokedAt: null, telemetry: null, healthHistory: null,
+      };
       terminals.set(record.id, record);
       return { ...record };
     },
     getTerminal: async (companyId, id) => { const t = terminals.get(id); return t && t.companyId === companyId ? { ...t } : null; },
     getTerminalById: async (id) => { const t = terminals.get(id); return t ? { ...t } : null; },
-    async markTerminalSeen(id, seenAt) { const t = terminals.get(id); if (t) Object.assign(t, { status: "online", lastSeenAt: seenAt }); },
+    async markTerminalSeen(id, seenAt, update) {
+      const t = terminals.get(id);
+      if (t) {
+        Object.assign(t, {
+          status: "online",
+          lastSeenAt: seenAt,
+          ...(update?.telemetry !== undefined ? { telemetry: update.telemetry } : {}),
+          ...(update?.healthHistory !== undefined ? { healthHistory: update.healthHistory } : {}),
+        });
+      }
+    },
     async revokeTerminal(id, revokedAt) { const t = terminals.get(id); if (t) Object.assign(t, { status: "revoked", revokedAt }); },
     getBot: async (companyId, id) => { const b = bots.get(id); return b && b.companyId === companyId ? { ...b } : null; },
     getBotById: async (id) => { const b = bots.get(id); return b ? { ...b } : null; },
@@ -68,6 +82,10 @@ function createMemoryStore(seed: MemoryStoreSeed = {}) {
     listTerminals: async (companyId) => [...terminals.values()].filter((t) => t.companyId === companyId).map((t) => ({ ...t })),
     listChannels: async (companyId) => companyId === COMPANY ? [{ id: CHANNEL_SHARED, companyId: COMPANY, kind: "shared", name: "Shared", teamId: null }] : [],
     listPendingApprovals: async (companyId) => [...pendingApprovals.values()].filter((a) => a.companyId === companyId && a.status === "pending").map((a) => ({ ...a })),
+    listAuditEvents: async (companyId, limit) => (seed.auditEvents ?? [])
+      .filter((e) => e.companyId === companyId)
+      .slice(0, limit)
+      .map((e) => ({ ...e })),
     async createBot(input, caps) {
       const bot: EnterpriseBotRecord = {
         ...input, id: randomUUID(), lastPingAt: null, lastPingStatus: null, createdAt: NOW, updatedAt: NOW,
@@ -101,9 +119,15 @@ function createMemoryStore(seed: MemoryStoreSeed = {}) {
       bots.delete(botId);
       return true;
     },
-    async recordBotPing(companyId, botId, pingAt, status) {
+    async recordBotPing(companyId, botId, pingAt, status, healthHistory) {
       const bot = bots.get(botId);
-      if (bot && bot.companyId === companyId) Object.assign(bot, { lastPingAt: pingAt, lastPingStatus: status });
+      if (bot && bot.companyId === companyId) {
+        Object.assign(bot, {
+          lastPingAt: pingAt,
+          lastPingStatus: status,
+          ...(healthHistory !== undefined ? { healthHistory } : {}),
+        });
+      }
     },
     async decideApproval(companyId, approvalId, decidedByUserId, status, note, decidedAt) {
       const a = pendingApprovals.get(approvalId);
@@ -482,5 +506,249 @@ describe("enterprise-bots router", () => {
     // Delete bot
     await request(app).delete(`/api/companies/${COMPANY}/bots/${botId}`).set("x-actor", "u-admin").expect(200);
     await request(app).delete(`/api/companies/${COMPANY}/bots/${botId}`).set("x-actor", "u-admin").expect(404);
+  });
+
+  it("exposes /compatibility, persists heartbeat telemetry + 20-sample health ring, and records bot ping healthHistory", async () => {
+    let pingCount = 0;
+    const { app } = createApp(resolveFromHeader(), {}, {
+      fetchFn: (async () => {
+        pingCount += 1;
+        return new Response(JSON.stringify({ ok: true }), { status: pingCount % 2 === 0 ? 503 : 200 });
+      }) as typeof fetch,
+    });
+
+    // Compatibility endpoint (public)
+    const compat = await request(app).get("/api/compatibility").expect(200);
+    expect(compat.body).toEqual({
+      protocol: { minimum: 1, maximum: 2 },
+      capabilities: [
+        "terminal.telemetry.v1",
+        "bot.capabilities_matrix.v1",
+        "channel.invoke_preview.v1",
+        "bot.audit.v1",
+      ],
+    });
+
+    // Register terminal and send 22 heartbeats with telemetry -> ring caps at 20
+    const reg = await request(app).post("/api/terminals/register").set("x-actor", OWNER)
+      .send({ companyId: COMPANY, kind: "personal_terminal", name: "telemetry-laptop" }).expect(201);
+    const terminalId = reg.body.terminal.id as string;
+    const token = reg.body.token as string;
+
+    // Reject unknown telemetry fields strictly
+    await request(app).post(`/api/terminals/${terminalId}/heartbeat`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ telemetry: { os: "darwin", extraUnknown: true } })
+      .expect(400);
+
+    for (let i = 1; i <= 22; i += 1) {
+      const beat = await request(app).post(`/api/terminals/${terminalId}/heartbeat`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          telemetry: {
+            os: "darwin",
+            arch: "arm64",
+            daemonVersion: "0.2.0",
+            protocolVersion: 2,
+            uptimeSecs: i * 10,
+            cpuPct: 12.5,
+            memRssMb: 48.2,
+            activeChildren: 2,
+            lastRttMs: i,
+          },
+        }).expect(200);
+      expect(beat.body.terminal.telemetry).toMatchObject({ os: "darwin", arch: "arm64", lastRttMs: i });
+      expect(beat.body.terminal.healthHistory).toHaveLength(Math.min(i, HEALTH_HISTORY_MAX));
+    }
+
+    const snap = await request(app).get(`/api/companies/${COMPANY}/snapshot`).set("x-actor", SALES).expect(200);
+    const snapTerminal = snap.body.terminals.find((t: { id: string }) => t.id === terminalId);
+    expect(snapTerminal.telemetry).toMatchObject({ daemonVersion: "0.2.0", protocolVersion: 2, lastRttMs: 22 });
+    expect(snapTerminal.healthHistory).toHaveLength(20);
+    expect(snapTerminal.healthHistory[0].rttMs).toBe(3);
+    expect(snapTerminal.healthHistory[19].rttMs).toBe(22);
+
+    // Bot ping appends to bots.healthHistory (capped at 20)
+    const botRes = await request(app).post(`/api/companies/${COMPANY}/bots`).set("x-actor", "u-admin")
+      .send({ kind: "company", name: "Ping Ring Bot", webhookUrl: "https://bot.example.com/ping" }).expect(201);
+    const botId = botRes.body.bot.id as string;
+    for (let i = 0; i < 22; i += 1) {
+      await request(app).post(`/api/companies/${COMPANY}/bots/${botId}/ping`).set("x-actor", "u-admin").expect(200);
+    }
+    const snap2 = await request(app).get(`/api/companies/${COMPANY}/snapshot`).set("x-actor", SALES).expect(200);
+    const snapBot = snap2.body.bots.find((b: { id: string }) => b.id === botId);
+    expect(snapBot.healthHistory).toHaveLength(20);
+    expect(snapBot.healthHistory[19]).toMatchObject({ ok: false, statusCode: 503 });
+    expect(snapBot.healthHistory[18]).toMatchObject({ ok: true, statusCode: 200 });
+  });
+
+  it("supports PATCH /bots/:botId/capabilities, POST /channels/:channelId/invoke?dryRun=true, and GET /audit", async () => {
+    const rawTermToken = "pcp_term_" + "a".repeat(64);
+    const rawBotToken = "pcp_bot_" + "b".repeat(64);
+    const { app } = createApp(resolveFromHeader(), {
+      auditEvents: [
+        {
+          id: randomUUID(),
+          companyId: COMPANY,
+          actorType: "system",
+          actorId: `bot:${BOT_PERSONAL}`,
+          action: "enterprise_bot.inbound",
+          entityType: "bot",
+          entityId: BOT_PERSONAL,
+          agentId: null,
+          details: {
+            event: "alert",
+            token: rawBotToken,
+            note: `leaked ${rawTermToken} in text`,
+          },
+          createdAt: NOW,
+        },
+        {
+          id: randomUUID(),
+          companyId: OTHER_COMPANY,
+          actorType: "system",
+          actorId: "bot:other",
+          action: "enterprise_bot.inbound",
+          entityType: "bot",
+          entityId: randomUUID(),
+          agentId: null,
+          details: { event: "other" },
+          createdAt: NOW,
+        },
+      ],
+    });
+
+    // PATCH capabilities: non-admin rejected (403)
+    await request(app)
+      .patch(`/api/companies/${COMPANY}/bots/${BOT_PERSONAL}/capabilities`)
+      .set("x-actor", SALES)
+      .send({ capabilities: [{ capabilityKey: "ops.run", callableBy: "team", dataScope: "team", requiresApproval: true }] })
+      .expect(403);
+
+    // PATCH capabilities: duplicate key rejected (400)
+    await request(app)
+      .patch(`/api/companies/${COMPANY}/bots/${BOT_PERSONAL}/capabilities`)
+      .set("x-actor", "u-admin")
+      .send({
+        capabilities: [
+          { capabilityKey: "ops.run", callableBy: "team", dataScope: "team", requiresApproval: false },
+          { capabilityKey: "ops.run", callableBy: "company", dataScope: "company", requiresApproval: true },
+        ],
+      })
+      .expect(400);
+
+    // PATCH capabilities: admin batch replace succeeds
+    const updatedCaps = await request(app)
+      .patch(`/api/companies/${COMPANY}/bots/${BOT_PERSONAL}/capabilities`)
+      .set("x-actor", "u-admin")
+      .send({
+        capabilities: [
+          { capabilityKey: "inbox.triage", callableBy: "company", dataScope: "company", requiresApproval: false },
+          { capabilityKey: "hr.salary.read", callableBy: "company", dataScope: "self", requiresApproval: false },
+          { capabilityKey: "hr.salary.export", callableBy: "company", dataScope: "self", requiresApproval: true },
+        ],
+      })
+      .expect(200);
+    expect(updatedCaps.body.capabilities).toHaveLength(3);
+    expect(updatedCaps.body.bot).not.toHaveProperty("inboundTokenHash");
+
+    // dryRun=true: denied personal_terminal without approval -> 200 with dryRun: true
+    const dryDenied = await request(app)
+      .post(`/api/channels/${CHANNEL_SHARED}/invoke?dryRun=true`)
+      .set("x-actor", SALES)
+      .send({
+        companyId: COMPANY,
+        targetBotId: BOT_PERSONAL,
+        executionTarget: "personal_terminal",
+        capabilityKey: "inbox.triage",
+      })
+      .expect(200);
+    expect(dryDenied.body).toEqual({
+      dryRun: true,
+      outcome: "denied",
+      reason: "personal_terminal_requires_owner_approval",
+      forcedFilter: null,
+      requiresApproval: true,
+    });
+
+    // dryRun=true: dataScope self violation -> 200 with dryRun: true, outcome: denied
+    const dryScopeDenied = await request(app)
+      .post(`/api/channels/${CHANNEL_SHARED}/invoke?dryRun=true`)
+      .set("x-actor", SALES)
+      .send({
+        companyId: COMPANY,
+        targetBotId: BOT_PERSONAL,
+        executionTarget: "none",
+        capabilityKey: "hr.salary.read",
+        targetRecord: { ownerUserId: "u-hr", teamId: TEAM_HR, companyId: COMPANY },
+      })
+      .expect(200);
+    expect(dryScopeDenied.body).toEqual({
+      dryRun: true,
+      outcome: "denied",
+      reason: "data_scope_self_violation",
+      forcedFilter: null,
+      requiresApproval: false,
+    });
+
+    // dryRun=true: allowed
+    const dryAllowed = await request(app)
+      .post(`/api/channels/${CHANNEL_SHARED}/invoke?dryRun=true`)
+      .set("x-actor", SALES)
+      .send({
+        companyId: COMPANY,
+        targetBotId: BOT_PERSONAL,
+        executionTarget: "none",
+        capabilityKey: "hr.salary.read",
+        targetRecord: { ownerUserId: SALES, teamId: TEAM_SALES },
+      })
+      .expect(200);
+    expect(dryAllowed.body).toEqual({
+      dryRun: true,
+      outcome: "allowed",
+      reason: "allowed",
+      forcedFilter: { ownerUserId: SALES },
+      requiresApproval: false,
+    });
+
+    // dryRun=true: requires_approval
+    const dryPending = await request(app)
+      .post(`/api/channels/${CHANNEL_SHARED}/invoke?dryRun=true`)
+      .set("x-actor", SALES)
+      .send({
+        companyId: COMPANY,
+        targetBotId: BOT_PERSONAL,
+        executionTarget: "none",
+        capabilityKey: "hr.salary.export",
+        targetRecord: { ownerUserId: SALES, teamId: null },
+      })
+      .expect(200);
+    expect(dryPending.body).toEqual({
+      dryRun: true,
+      outcome: "requires_approval",
+      reason: "requires_approval",
+      forcedFilter: { ownerUserId: SALES },
+      requiresApproval: true,
+    });
+
+    // GET /audit: company-scoped and redacts raw tokens
+    const auditRes = await request(app)
+      .get(`/api/companies/${COMPANY}/audit?limit=50`)
+      .set("x-actor", SALES)
+      .expect(200);
+    expect(auditRes.body.events).toHaveLength(1);
+    expect(JSON.stringify(auditRes.body)).not.toContain(rawBotToken);
+    expect(JSON.stringify(auditRes.body)).not.toContain(rawTermToken);
+    expect(auditRes.body.events[0].details).toEqual({
+      event: "alert",
+      token: "[REDACTED]",
+      note: "leaked [REDACTED] in text",
+    });
+
+    // Invalid limit rejected
+    await request(app)
+      .get(`/api/companies/${COMPANY}/audit?limit=0`)
+      .set("x-actor", SALES)
+      .expect(400);
   });
 });

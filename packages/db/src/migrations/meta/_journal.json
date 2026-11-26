@@ -967,6 +967,13 @@
       "when": 1795384800000,
       "tag": "0138_enterprise_bots",
       "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1795392000000,
+      "tag": "0139_enterprise_bots_telemetry",
+      "breakpoints": true
     }
   ]
 }

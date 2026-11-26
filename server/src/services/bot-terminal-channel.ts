@@ -1,7 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { approvals, botCapabilities, bots, channelMembers, channels, clientTerminals } from "@paperclipai/db";
+import { activityLog, approvals, botCapabilities, bots, channelMembers, channels, clientTerminals } from "@paperclipai/db";
 import { badRequest, forbidden, HttpError, notFound, unauthorized, unprocessable } from "../errors.js";
 import { logActivity } from "./activity-log.js";
 import { heartbeatService } from "./heartbeat.js";
@@ -35,11 +35,75 @@ export type BotPingStatus = "ok" | "error";
 
 export interface BotActor { userId: string; companyId: string; teamId: string | null; role: CallerRole }
 
+export interface TerminalTelemetry {
+  os?: string;
+  arch?: string;
+  daemonVersion?: string;
+  protocolVersion?: number;
+  uptimeSecs?: number;
+  cpuPct?: number;
+  memRssMb?: number;
+  activeChildren?: number;
+  lastRttMs?: number;
+}
+
+export interface HealthSample {
+  ts: string;
+  ok: boolean;
+  rttMs?: number | null;
+  statusCode?: number | null;
+  errorRef?: string | null;
+}
+
+export interface BotAuditEventRecord {
+  id: string;
+  companyId: string;
+  actorType: string;
+  actorId: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  agentId: string | null;
+  details: Record<string, unknown> | null;
+  createdAt: Date;
+}
+
+export interface ChannelInvokePreviewResult {
+  dryRun: true;
+  outcome: "allowed" | "requires_approval" | "denied";
+  reason: string;
+  forcedFilter: Record<string, string> | null;
+  requiresApproval: boolean;
+}
+
+export const HEALTH_HISTORY_MAX = 20;
+
+export const ENTERPRISE_BOTS_COMPATIBILITY = {
+  protocol: { minimum: 1, maximum: 2 },
+  capabilities: [
+    "terminal.telemetry.v1",
+    "bot.capabilities_matrix.v1",
+    "channel.invoke_preview.v1",
+    "bot.audit.v1",
+  ],
+} as const;
+
+export function appendHealthSample(
+  existing: HealthSample[] | null | undefined,
+  sample: HealthSample,
+): HealthSample[] {
+  const list = Array.isArray(existing) ? existing : [];
+  const next = [...list, sample];
+  return next.length > HEALTH_HISTORY_MAX ? next.slice(next.length - HEALTH_HISTORY_MAX) : next;
+}
+
 /** Connectivity state (`status`) is display-only; governance lifecycle = revoked ⇔ `revokedAt !== null`, else active. */
 export interface BotTerminalRecord {
   id: string; companyId: string; kind: TerminalKind; name: string;
   ownerUserId: string | null; teamId: string | null; botId: string | null;
   tokenHash: string; transport: TerminalTransport; status: TerminalStatus; lastSeenAt: Date | null; revokedAt: Date | null;
+  telemetry?: TerminalTelemetry | null;
+  healthHistory?: HealthSample[] | null;
 }
 
 export interface EnterpriseBotRecord {
@@ -48,6 +112,7 @@ export interface EnterpriseBotRecord {
   callableBy: CallableBy; status: string;
   webhookUrl?: string | null; tokenSecretId?: string | null; inboundTokenHash?: string | null;
   lastPingAt?: Date | null; lastPingStatus?: BotPingStatus | null;
+  healthHistory?: HealthSample[] | null;
   createdAt?: Date; updatedAt?: Date;
 }
 
@@ -141,7 +206,11 @@ export interface EnterpriseBotStore {
   getTerminal(companyId: string, terminalId: string): Promise<BotTerminalRecord | null>;
   /** Unscoped lookup for token-authenticated heartbeats only. Callers must verify the token hash. */
   getTerminalById(terminalId: string): Promise<BotTerminalRecord | null>;
-  markTerminalSeen(terminalId: string, seenAt: Date): Promise<void>;
+  markTerminalSeen(
+    terminalId: string,
+    seenAt: Date,
+    update?: { telemetry?: TerminalTelemetry | null; healthHistory?: HealthSample[] },
+  ): Promise<void>;
   revokeTerminal(terminalId: string, revokedAt: Date): Promise<void>;
   getBot(companyId: string, botId: string): Promise<EnterpriseBotRecord | null>;
   /** Unscoped lookup for token-authenticated inbound webhooks only. Callers must verify the token hash. */
@@ -151,6 +220,7 @@ export interface EnterpriseBotStore {
   listTerminals(companyId: string): Promise<BotTerminalRecord[]>;
   listChannels(companyId: string): Promise<EnterpriseChannelRecord[]>;
   listPendingApprovals(companyId: string): Promise<BotPendingApprovalRecord[]>;
+  listAuditEvents?(companyId: string, limit: number): Promise<BotAuditEventRecord[]>;
   createBot(
     input: NewEnterpriseBot,
     capabilities: BotCapabilityInput[],
@@ -162,7 +232,13 @@ export interface EnterpriseBotStore {
     capabilities?: BotCapabilityInput[],
   ): Promise<{ bot: EnterpriseBotRecord; capabilities: BotCapabilityRecord[] } | null>;
   deleteBot(companyId: string, botId: string): Promise<boolean>;
-  recordBotPing(companyId: string, botId: string, pingAt: Date, status: BotPingStatus): Promise<void>;
+  recordBotPing(
+    companyId: string,
+    botId: string,
+    pingAt: Date,
+    status: BotPingStatus,
+    healthHistory?: HealthSample[],
+  ): Promise<void>;
   decideApproval(
     companyId: string,
     approvalId: string,
@@ -275,6 +351,32 @@ function sanitizePingError(err: unknown, secretValue: string | null): string {
   return raw;
 }
 
+const AUDIT_SENSITIVE_KEY_PATTERN = /token|secret|password|authorization|apikey|api_key|credential/i;
+const RAW_TOKEN_VALUE_PATTERN = /\b(?:pcp_term_|pcp_bot_)[0-9a-zA-Z_-]+/g;
+
+function sanitizeAuditValue(value: unknown, depth = 0): unknown {
+  if (depth > 6 || value === null || value === undefined) return value;
+  if (typeof value === "string") {
+    return value.replace(RAW_TOKEN_VALUE_PATTERN, "[REDACTED]");
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeAuditValue(item, depth + 1));
+  }
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = AUDIT_SENSITIVE_KEY_PATTERN.test(k) ? "[REDACTED]" : sanitizeAuditValue(v, depth + 1);
+    }
+    return out;
+  }
+  return value;
+}
+
+export function sanitizeAuditDetails(details: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!details || typeof details !== "object") return null;
+  return sanitizeAuditValue(details) as Record<string, unknown>;
+}
+
 export function createBotTerminalChannelService(
   store: EnterpriseBotStore,
   options: BotTerminalChannelServiceOptions = {},
@@ -318,7 +420,11 @@ export function createBotTerminalChannelService(
   }
 
   /** Token-authenticated. Unknown, revoked, or mismatched terminals fail closed. */
-  async function heartbeatTerminal(terminalId: string, rawToken: unknown): Promise<BotTerminalRecord> {
+  async function heartbeatTerminal(
+    terminalId: string,
+    rawToken: unknown,
+    telemetry?: TerminalTelemetry,
+  ): Promise<BotTerminalRecord> {
     if (typeof rawToken !== "string" || rawToken.length === 0 || rawToken.length > TERMINAL_TOKEN_MAX_LENGTH) {
       throw unauthorized("terminal_token_rejected");
     }
@@ -328,8 +434,24 @@ export function createBotTerminalChannelService(
     }
     if (lifecycleStatus(terminal) === "revoked") throw forbidden("terminal_revoked");
     const seenAt = now();
-    await store.markTerminalSeen(terminal.id, seenAt);
-    return { ...terminal, status: "online", lastSeenAt: seenAt };
+    const nextTelemetry = telemetry !== undefined ? telemetry : (terminal.telemetry ?? null);
+    const sample: HealthSample = {
+      ts: seenAt.toISOString(),
+      ok: true,
+      rttMs: telemetry?.lastRttMs ?? null,
+    };
+    const nextHealthHistory = appendHealthSample(terminal.healthHistory, sample);
+    await store.markTerminalSeen(terminal.id, seenAt, {
+      telemetry: nextTelemetry,
+      healthHistory: nextHealthHistory,
+    });
+    return {
+      ...terminal,
+      status: "online",
+      lastSeenAt: seenAt,
+      telemetry: nextTelemetry,
+      healthHistory: nextHealthHistory,
+    };
   }
 
   async function commandTerminal(actor: BotActor, terminalId: string, action: TerminalAction, botContext?: TerminalBotContext) {
@@ -386,6 +508,87 @@ export function createBotTerminalChannelService(
     });
     if (!scope.allowed) throw governanceError(scope.reason);
     return { channel, bot, capability, forcedFilter: scope.forcedFilter, requiresApproval: scope.requiresApproval };
+  }
+
+  /** Read-only dry-run evaluation of a channel @mention with ZERO side effects. */
+  async function previewChannelInvoke(
+    actor: BotActor,
+    channelId: string,
+    targetBotId: string,
+    executionTarget: ChannelExecutionTarget,
+    capabilityKey: string,
+    targetRecord?: ChannelTargetRecord,
+  ): Promise<ChannelInvokePreviewResult> {
+    const [channel, bot] = await Promise.all([
+      store.getChannel(actor.companyId, channelId),
+      store.getBot(actor.companyId, targetBotId),
+    ]);
+    if (!channel) throw notFound("channel_not_found");
+    if (!bot) throw notFound("bot_not_found");
+    const [channelMemberIds, capability] = await Promise.all([
+      store.listChannelMemberIds(channel.id),
+      store.getBotCapability(bot.id, capabilityKey),
+    ]);
+    if (!capability) throw notFound("capability_not_found");
+    const ownerApproved = await store.hasChannelOwnerApproval(
+      channel.companyId,
+      bot.id,
+      bot.ownerUserId ?? "",
+      channel.id,
+    );
+    const decision = evaluateChannelInvoke({
+      callerUserId: actor.userId,
+      callerTeamId: actor.teamId,
+      callerRole: actor.role,
+      callerCompanyId: actor.companyId,
+      channelCompanyId: channel.companyId,
+      channelMemberIds,
+      botId: bot.id,
+      botCompanyId: bot.companyId,
+      botKind: bot.kind,
+      botOwnerUserId: bot.ownerUserId,
+      botTeamId: bot.teamId,
+      executionTarget,
+      ownerApproved,
+      requestsCrossTeamSecrets: requestsCrossTeamSecrets(bot, capability, actor),
+    });
+    if (!decision.allowed) {
+      return {
+        dryRun: true,
+        outcome: "denied",
+        reason: decision.reason,
+        forcedFilter: null,
+        requiresApproval: decision.requiresOwnerApproval,
+      };
+    }
+    const scope = evaluateCapabilityDataScope({
+      caller: { userId: actor.userId, teamId: actor.teamId, role: actor.role, companyId: actor.companyId },
+      capability: {
+        capabilityKey: capability.capabilityKey,
+        callableBy: capability.callableBy,
+        dataScope: capability.dataScope,
+        requiresApproval: capability.requiresApproval,
+      },
+      targetRecord: targetRecord
+        ? { ownerUserId: targetRecord.ownerUserId, teamId: targetRecord.teamId, companyId: targetRecord.companyId ?? bot.companyId }
+        : { ownerUserId: null, teamId: null, companyId: bot.companyId },
+    });
+    if (!scope.allowed) {
+      return {
+        dryRun: true,
+        outcome: "denied",
+        reason: scope.reason,
+        forcedFilter: null,
+        requiresApproval: scope.requiresApproval,
+      };
+    }
+    return {
+      dryRun: true,
+      outcome: scope.requiresApproval ? "requires_approval" : "allowed",
+      reason: scope.requiresApproval ? "requires_approval" : scope.reason,
+      forcedFilter: scope.forcedFilter,
+      requiresApproval: scope.requiresApproval,
+    };
   }
 
   async function getCompanySnapshot(companyId: string) {
@@ -477,6 +680,31 @@ export function createBotTerminalChannelService(
     return { bot: updated.bot, capabilities: updated.capabilities, inboundToken };
   }
 
+  async function updateBotCapabilities(
+    companyId: string,
+    botId: string,
+    actor: BotActor,
+    capabilities: BotCapabilityInput[],
+  ) {
+    assertCompanyScope(actor, companyId);
+    assertAdminRole(actor);
+    const seen = new Set<string>();
+    for (const cap of capabilities) {
+      if (seen.has(cap.capabilityKey)) throw badRequest("duplicate_capability_key");
+      seen.add(cap.capabilityKey);
+    }
+    const updated = await store.updateBot(companyId, botId, { updatedAt: now() }, capabilities);
+    if (!updated) throw notFound("bot_not_found");
+    return { bot: updated.bot, capabilities: updated.capabilities };
+  }
+
+  async function listCompanyAudit(companyId: string, actor: BotActor, limit = 50): Promise<BotAuditEventRecord[]> {
+    assertCompanyScope(actor, companyId);
+    const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
+    const rows = store.listAuditEvents ? await store.listAuditEvents(companyId, safeLimit) : [];
+    return rows.map((row) => ({ ...row, details: sanitizeAuditDetails(row.details) }));
+  }
+
   async function deleteBot(companyId: string, botId: string, actor: BotActor) {
     assertCompanyScope(actor, companyId);
     assertAdminRole(actor);
@@ -510,14 +738,31 @@ export function createBotTerminalChannelService(
       });
       const latencyMs = Math.max(0, Date.now() - startedAt);
       const ok = response.ok;
-      await store.recordBotPing(companyId, bot.id, pingAt, ok ? "ok" : "error");
+      const sample: HealthSample = {
+        ts: pingAt.toISOString(),
+        ok,
+        rttMs: latencyMs,
+        statusCode: response.status,
+        ...(ok ? {} : { errorRef: `HTTP ${response.status}` }),
+      };
+      const nextHealthHistory = appendHealthSample(bot.healthHistory, sample);
+      await store.recordBotPing(companyId, bot.id, pingAt, ok ? "ok" : "error", nextHealthHistory);
       return ok
         ? { ok: true, statusCode: response.status, latencyMs }
         : { ok: false, statusCode: response.status, latencyMs, error: `HTTP ${response.status}` };
     } catch (err) {
       const latencyMs = Math.max(0, Date.now() - startedAt);
-      await store.recordBotPing(companyId, bot.id, pingAt, "error");
-      return { ok: false, statusCode: null, latencyMs, error: sanitizePingError(err, secretValue) };
+      const errorMsg = sanitizePingError(err, secretValue);
+      const sample: HealthSample = {
+        ts: pingAt.toISOString(),
+        ok: false,
+        rttMs: latencyMs,
+        statusCode: null,
+        errorRef: errorMsg.slice(0, 120),
+      };
+      const nextHealthHistory = appendHealthSample(bot.healthHistory, sample);
+      await store.recordBotPing(companyId, bot.id, pingAt, "error", nextHealthHistory);
+      return { ok: false, statusCode: null, latencyMs, error: errorMsg };
     }
   }
 
@@ -604,13 +849,16 @@ export function createBotTerminalChannelService(
     heartbeatTerminal,
     commandTerminal,
     invokeChannelMention,
+    previewChannelInvoke,
     getCompanySnapshot,
     createBot,
     updateBot,
+    updateBotCapabilities,
     deleteBot,
     pingBot,
     handleBotInbound,
     decideBotApproval,
+    listCompanyAudit,
   };
 }
 
@@ -624,6 +872,7 @@ const t = clientTerminals;
 const terminalColumns = {
   id: t.id, companyId: t.companyId, kind: t.kind, name: t.name, ownerUserId: t.ownerUserId, teamId: t.teamId, botId: t.botId,
   tokenHash: t.tokenHash, transport: t.transport, status: t.status, lastSeenAt: t.lastHeartbeatAt, revokedAt: t.revokedAt,
+  telemetry: t.telemetry, healthHistory: t.healthHistory,
 };
 
 const botColumns = {
@@ -641,8 +890,22 @@ const botColumns = {
   inboundTokenHash: bots.inboundTokenHash,
   lastPingAt: bots.lastPingAt,
   lastPingStatus: bots.lastPingStatus,
+  healthHistory: bots.healthHistory,
   createdAt: bots.createdAt,
   updatedAt: bots.updatedAt,
+};
+
+const auditEventColumns = {
+  id: activityLog.id,
+  companyId: activityLog.companyId,
+  actorType: activityLog.actorType,
+  actorId: activityLog.actorId,
+  action: activityLog.action,
+  entityType: activityLog.entityType,
+  entityId: activityLog.entityId,
+  agentId: activityLog.agentId,
+  details: activityLog.details,
+  createdAt: activityLog.createdAt,
 };
 
 const capabilityColumns = {
@@ -688,8 +951,11 @@ export function createDrizzleEnterpriseBotStore(db: Db): EnterpriseBotStore {
     getTerminal: (companyId, terminalId) => db.select(terminalColumns).from(t)
       .where(and(eq(t.companyId, companyId), eq(t.id, terminalId))).then(firstRow<BotTerminalRecord>),
     getTerminalById: (terminalId) => db.select(terminalColumns).from(t).where(eq(t.id, terminalId)).then(firstRow<BotTerminalRecord>),
-    markTerminalSeen: async (terminalId, seenAt) => {
-      await db.update(t).set({ status: "online", lastHeartbeatAt: seenAt, updatedAt: seenAt }).where(eq(t.id, terminalId));
+    markTerminalSeen: async (terminalId, seenAt, update) => {
+      const patch: Record<string, unknown> = { status: "online", lastHeartbeatAt: seenAt, updatedAt: seenAt };
+      if (update?.telemetry !== undefined) patch.telemetry = update.telemetry;
+      if (update?.healthHistory !== undefined) patch.healthHistory = update.healthHistory;
+      await db.update(t).set(patch).where(eq(t.id, terminalId));
     },
     revokeTerminal: async (terminalId, revokedAt) => {
       await db.update(t).set({ status: "revoked", revokedAt, updatedAt: revokedAt }).where(and(eq(t.id, terminalId), isNull(t.revokedAt)));
@@ -715,6 +981,19 @@ export function createDrizzleEnterpriseBotStore(db: Db): EnterpriseBotStore {
         eq(approvals.status, "pending"),
       ))
       .orderBy(desc(approvals.createdAt)) as Promise<BotPendingApprovalRecord[]>,
+    listAuditEvents: (companyId, limit) => db.select(auditEventColumns).from(activityLog)
+      .where(and(
+        eq(activityLog.companyId, companyId),
+        or(
+          inArray(activityLog.entityType, ["bot", "client_terminal", "terminal", "channel", "bot_approval"]),
+          ilike(activityLog.action, "enterprise_bot.%"),
+          ilike(activityLog.action, "bot.%"),
+          ilike(activityLog.action, "terminal.%"),
+          ilike(activityLog.action, "channel.%"),
+        ),
+      ))
+      .orderBy(desc(activityLog.createdAt))
+      .limit(limit) as Promise<BotAuditEventRecord[]>,
     createBot: async (input, capabilities) => db.transaction(async (tx) => {
       const [bot] = await tx.insert(bots).values({
         companyId: input.companyId,
@@ -787,9 +1066,11 @@ export function createDrizzleEnterpriseBotStore(db: Db): EnterpriseBotStore {
         .returning({ id: bots.id });
       return deleted.length > 0;
     },
-    recordBotPing: async (companyId, botId, pingAt, status) => {
+    recordBotPing: async (companyId, botId, pingAt, status, healthHistory) => {
+      const patch: Record<string, unknown> = { lastPingAt: pingAt, lastPingStatus: status, updatedAt: pingAt };
+      if (healthHistory !== undefined) patch.healthHistory = healthHistory;
       await db.update(bots)
-        .set({ lastPingAt: pingAt, lastPingStatus: status, updatedAt: pingAt })
+        .set(patch)
         .where(and(eq(bots.companyId, companyId), eq(bots.id, botId)));
     },
     decideApproval: async (companyId, approvalId, decidedByUserId, status, note, decidedAt) => {

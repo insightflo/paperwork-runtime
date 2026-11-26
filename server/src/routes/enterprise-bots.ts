@@ -4,13 +4,15 @@ import { z } from "zod";
 import { companyMemberships, type Db } from "@paperclipai/db";
 import { badRequest, forbidden, unauthorized } from "../errors.js";
 import { validate } from "../middleware/validate.js";
-import type {
-  BotActor,
-  BotCapabilityRecord,
-  BotTerminalChannelService,
-  BotTerminalRecord,
-  EnterpriseBotRecord,
-  TerminalTransport,
+import {
+  ENTERPRISE_BOTS_COMPATIBILITY,
+  type BotActor,
+  type BotCapabilityRecord,
+  type BotTerminalChannelService,
+  type BotTerminalRecord,
+  type EnterpriseBotRecord,
+  type TerminalTelemetry,
+  type TerminalTransport,
 } from "../services/bot-terminal-channel.js";
 
 /**
@@ -109,6 +111,26 @@ const approvalDecisionSchema = z.object({
   note: z.string().max(2000).nullable().optional(),
 }).strict();
 
+const terminalTelemetrySchema = z.object({
+  os: z.string().trim().min(1).max(64).optional(),
+  arch: z.string().trim().min(1).max(64).optional(),
+  daemonVersion: z.string().trim().min(1).max(64).optional(),
+  protocolVersion: z.number().int().min(1).max(100).optional(),
+  uptimeSecs: z.number().finite().nonnegative().max(1e12).optional(),
+  cpuPct: z.number().finite().min(0).max(10_000).optional(),
+  memRssMb: z.number().finite().nonnegative().max(1e9).optional(),
+  activeChildren: z.number().int().nonnegative().max(100_000).optional(),
+  lastRttMs: z.number().finite().nonnegative().max(600_000).optional(),
+}).strict();
+
+const heartbeatBodySchema = z.object({
+  telemetry: terminalTelemetrySchema.optional(),
+}).strict();
+
+const updateBotCapabilitiesSchema = z.object({
+  capabilities: z.array(botCapabilitySchema).max(50),
+}).strict();
+
 const callerRoles = new Set<BotActor["role"]>(["owner", "admin", "member", "viewer"]);
 
 function toCallerRole(value: unknown): BotActor["role"] | null {
@@ -169,10 +191,12 @@ function bearerToken(req: Request): string | null {
 }
 
 export function requireEnterpriseBotsBoardActor(req: Request, _res: Response, next: NextFunction) {
+  const isPublicCompatibility =
+    req.method === "GET" && /^\/compatibility\/?$/.test(req.path);
   const isTokenAuthed =
     /^\/terminals\/[^/]+\/heartbeat\/?$/.test(req.path) ||
     /^\/bots\/[^/]+\/inbound\/?$/.test(req.path);
-  if (!isTokenAuthed && (req.actor.type !== "board" || !req.actor.userId)) {
+  if (!isPublicCompatibility && !isTokenAuthed && (req.actor.type !== "board" || !req.actor.userId)) {
     next(unauthorized());
     return;
   }
@@ -202,6 +226,10 @@ export function createEnterpriseBotsRouter(service: BotTerminalChannelService, r
     return value;
   }
 
+  const compatibility: RequestHandler = (_req, res) => {
+    res.json(ENTERPRISE_BOTS_COMPATIBILITY);
+  };
+
   const register: RequestHandler = async (req, res) => {
     const body = req.body as z.infer<typeof registerSchema>;
     const actor = await requireActor(req, body.companyId);
@@ -212,7 +240,16 @@ export function createEnterpriseBotsRouter(service: BotTerminalChannelService, r
   const heartbeat: RequestHandler = async (req, res) => {
     const token = bearerToken(req);
     if (!token) throw unauthorized("terminal_token_rejected");
-    const terminal = await service.heartbeatTerminal(idParam(req, "terminalId"), token);
+    const parsed = heartbeatBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: "Validation error", details: parsed.error.errors });
+      return;
+    }
+    const terminal = await service.heartbeatTerminal(
+      idParam(req, "terminalId"),
+      token,
+      parsed.data.telemetry as TerminalTelemetry | undefined,
+    );
     res.json({ terminal: toPublicBotTerminal(terminal) });
   };
 
@@ -228,6 +265,18 @@ export function createEnterpriseBotsRouter(service: BotTerminalChannelService, r
     const body = req.body as z.infer<typeof invokeSchema>;
     const actor = await requireActor(req, body.companyId);
     const channelId = idParam(req, "channelId");
+    if (req.query.dryRun === "true") {
+      const preview = await service.previewChannelInvoke(
+        actor,
+        channelId,
+        body.targetBotId,
+        body.executionTarget,
+        body.capabilityKey,
+        body.targetRecord,
+      );
+      res.json(preview);
+      return;
+    }
     const result = await service.invokeChannelMention(actor, channelId, body.targetBotId, body.executionTarget, body.capabilityKey, body.targetRecord);
     const payload = {
       channel: { id: result.channel.id, kind: result.channel.kind },
@@ -312,14 +361,47 @@ export function createEnterpriseBotsRouter(service: BotTerminalChannelService, r
     res.json({ approval });
   };
 
+  const updateBotCapabilities: RequestHandler = async (req, res) => {
+    const companyId = idParam(req, "companyId");
+    const botId = idParam(req, "botId");
+    const actor = await requireAdminActor(req, companyId);
+    const body = req.body as z.infer<typeof updateBotCapabilitiesSchema>;
+    const result = await service.updateBotCapabilities(companyId, botId, actor, body.capabilities);
+    res.json({
+      bot: toPublicEnterpriseBot({ ...result.bot, capabilities: result.capabilities }),
+      capabilities: result.capabilities,
+    });
+  };
+
+  const audit: RequestHandler = async (req, res) => {
+    const companyId = idParam(req, "companyId");
+    const actor = await requireActor(req, companyId);
+    let limit = 50;
+    if (req.query.limit !== undefined) {
+      const raw = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+      const parsed = Number(raw);
+      if (!Number.isInteger(parsed) || parsed < 1) throw badRequest("invalid_limit");
+      limit = Math.min(200, parsed);
+    }
+    const events = await service.listCompanyAudit(companyId, actor, limit);
+    res.json({ events });
+  };
+
+  router.get("/compatibility", compatibility);
   router.post("/terminals/register", validate(registerSchema), register);
   router.post("/terminals/:terminalId/heartbeat", heartbeat);
   router.post("/terminals/:terminalId/commands", validate(commandSchema), command);
   router.post("/channels/:channelId/invoke", validate(invokeSchema), invoke);
 
   router.get("/companies/:companyId/snapshot", snapshot);
+  router.get("/companies/:companyId/audit", audit);
   router.post("/companies/:companyId/bots", validate(createBotSchema), createBot);
   router.patch("/companies/:companyId/bots/:botId", validate(updateBotSchema), updateBot);
+  router.patch(
+    "/companies/:companyId/bots/:botId/capabilities",
+    validate(updateBotCapabilitiesSchema),
+    updateBotCapabilities,
+  );
   router.delete("/companies/:companyId/bots/:botId", deleteBot);
   router.post("/companies/:companyId/bots/:botId/ping", pingBot);
   router.post("/bots/:botId/inbound", validate(inboundSchema), inbound);

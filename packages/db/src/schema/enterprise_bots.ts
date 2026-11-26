@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   index,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -12,6 +13,26 @@ import {
 import { agents } from "./agents.js";
 import { companies } from "./companies.js";
 import { companySecrets } from "./company_secrets.js";
+
+export interface TerminalTelemetry {
+  os?: string;
+  arch?: string;
+  daemonVersion?: string;
+  protocolVersion?: number;
+  uptimeSecs?: number;
+  cpuPct?: number;
+  memRssMb?: number;
+  activeChildren?: number;
+  lastRttMs?: number;
+}
+
+export interface HealthSample {
+  ts: string;
+  ok: boolean;
+  rttMs?: number | null;
+  statusCode?: number | null;
+  errorRef?: string | null;
+}
 
 export const teams = pgTable(
   "teams",
@@ -45,6 +66,7 @@ export const bots = pgTable(
     inboundTokenHash: text("inbound_token_hash"),
     lastPingAt: timestamp("last_ping_at", { withTimezone: true }),
     lastPingStatus: text("last_ping_status"),
+    healthHistory: jsonb("health_history").$type<HealthSample[]>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -110,6 +132,8 @@ export const clientTerminals = pgTable(
     transport: text("transport").notNull().default("outbound_wss"),
     status: text("status").notNull().default("offline"),
     lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
+    telemetry: jsonb("telemetry").$type<TerminalTelemetry>(),
+    healthHistory: jsonb("health_history").$type<HealthSample[]>(),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
