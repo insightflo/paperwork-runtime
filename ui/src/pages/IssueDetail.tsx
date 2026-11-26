@@ -16,7 +16,7 @@ import { assigneeValueFromSelection, suggestedCommentAssigneeValue } from "../li
 import { queryKeys } from "../lib/queryKeys";
 import { readIssueDetailBreadcrumb } from "../lib/issueDetailBreadcrumb";
 import { useProjectOrder } from "../hooks/useProjectOrder";
-import { relativeTime, cn, formatTokens, visibleRunCostUsd } from "../lib/utils";
+import { relativeTime, cn, formatDate, formatTokens, visibleRunCostUsd } from "../lib/utils";
 import { InlineEditor } from "../components/InlineEditor";
 import { CommentThread } from "../components/CommentThread";
 import { IssueDocumentsSection } from "../components/IssueDocumentsSection";
@@ -29,7 +29,6 @@ import { StatusIcon } from "../components/StatusIcon";
 import { PriorityIcon } from "../components/PriorityIcon";
 import { StatusBadge } from "../components/StatusBadge";
 import { Identity } from "../components/Identity";
-import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -191,6 +190,22 @@ function ActorIdentity({ evt, agentMap }: { evt: ActivityEvent; agentMap: Map<st
   if (evt.actorType === "system") return <Identity name="System" size="sm" />;
   if (evt.actorType === "user") return <Identity name="Board" size="sm" />;
   return <Identity name={id || "Unknown"} size="sm" />;
+}
+
+// Cockpit status pill tones (approved mockup `.st` semantics: active=cobalt, planning=amber, blocked=crimson, completed=muted).
+const PILL_TONE: Record<string, string> = {
+  active: "text-[#5f8dff]", running: "text-[#5f8dff]", in_progress: "text-[#5f8dff]", in_review: "text-[#5f8dff]", todo: "text-[#5f8dff]",
+  planning: "text-[#fbbf24]", paused: "text-[#fbbf24]", pending_approval: "text-[#fbbf24]",
+  failed: "text-[#f87171]", blocked: "text-[#f87171]", cancelled: "text-[#f87171]", canceled: "text-[#f87171]", terminated: "text-[#f87171]",
+};
+
+function StatusPill({ status }: { status: string }) {
+  return (
+    <span className={`inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-[#242d3f] bg-[#0b0e14] px-2 text-[10.5px] font-semibold capitalize ${PILL_TONE[status.toLowerCase()] ?? "text-[#8b97ad]"}`}>
+      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+      {status.replace(/_/g, " ")}
+    </span>
+  );
 }
 
 export function IssueDetail() {
@@ -607,33 +622,21 @@ export function IssueDetail() {
 
   // Ancestors are returned oldest-first from the server (root at end, immediate parent at start)
   const ancestors = issue.ancestors ?? [];
+  // Markdown files become documents; everything else uploads as an attachment (sequential, picked order preserved).
+  const importOrUpload = async (files: FileList | null) => {
+    for (const file of Array.from(files ?? [])) {
+      await (isMarkdownFile(file) ? importMarkdownDocument.mutateAsync(file) : uploadAttachment.mutateAsync(file));
+    }
+  };
   const handleFilePicked = async (evt: ChangeEvent<HTMLInputElement>) => {
-    const files = evt.target.files;
-    if (!files || files.length === 0) return;
-    for (const file of Array.from(files)) {
-      if (isMarkdownFile(file)) {
-        await importMarkdownDocument.mutateAsync(file);
-      } else {
-        await uploadAttachment.mutateAsync(file);
-      }
-    }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    await importOrUpload(evt.target.files);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleAttachmentDrop = async (evt: DragEvent<HTMLDivElement>) => {
     evt.preventDefault();
     setAttachmentDragActive(false);
-    const files = evt.dataTransfer.files;
-    if (!files || files.length === 0) return;
-    for (const file of Array.from(files)) {
-      if (isMarkdownFile(file)) {
-        await importMarkdownDocument.mutateAsync(file);
-      } else {
-        await uploadAttachment.mutateAsync(file);
-      }
-    }
+    await importOrUpload(evt.dataTransfer.files);
   };
 
   const isImageAttachment = (attachment: IssueAttachment) => attachment.contentType.startsWith("image/");
@@ -665,172 +668,118 @@ export function IssueDetail() {
     </>
   );
 
+  const metricLabel = "text-[10px] uppercase tracking-[0.08em]";
+  const projectName = (projects ?? []).find((p) => p.id === issue.projectId)?.name ?? issue.projectId?.slice(0, 8) ?? "none";
+
   return (
-    <div className="max-w-2xl space-y-6 tabular-nums">
-      {/* Parent chain breadcrumb */}
-      {ancestors.length > 0 && (
-        <nav className="flex items-center gap-1 text-xs text-muted-foreground flex-wrap">
-          {[...ancestors].reverse().map((ancestor, i) => (
-            <span key={ancestor.id} className="flex items-center gap-1">
-              {i > 0 && <ChevronRight className="h-3 w-3 shrink-0" />}
-              <Link
-                to={`/issues/${ancestor.identifier ?? ancestor.id}`}
-                state={location.state}
-                className="hover:text-foreground transition-colors truncate max-w-[200px]"
-                title={ancestor.title}
-              >
-                {ancestor.title}
-              </Link>
-            </span>
-          ))}
-          <ChevronRight className="h-3 w-3 shrink-0" />
-          <span className="text-foreground/60 truncate max-w-[200px]">{issue.title}</span>
+    <div className="space-y-3 tabular-nums">
+      {/* 48px detail header — full-bleed inside <main> padding, sticky within the desktop scroll container. */}
+      <header className="-mx-4 -mt-4 flex h-12 items-center gap-2 border-b border-[#242d3f] bg-[#0b0e14]/95 px-4 md:sticky md:top-0 md:z-10 md:-mx-6 md:-mt-6 md:px-6">
+        <nav aria-label="Work item breadcrumb" className="flex min-w-0 shrink-0 items-center gap-1.5 text-xs text-[#8b97ad]">
+          <Link to={sourceBreadcrumb.href} state={location.state} className="shrink-0 hover:text-[#e6edf7]">{sourceBreadcrumb.label}</Link>
+          <span aria-hidden className="shrink-0 text-[#4a5670]">/</span>
+          <span className="shrink-0 font-mono tabular-nums">{issue.identifier ?? issue.id.slice(0, 8)}</span>
         </nav>
-      )}
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <StatusIcon status={issue.status} onChange={(status) => updateIssue.mutate({ status })} />
+          <PriorityIcon priority={issue.priority} onChange={(priority) => updateIssue.mutate({ priority })} />
+          <div className="min-w-0 flex-1 truncate">
+            <InlineEditor value={issue.title} onSave={(title) => updateIssue.mutateAsync({ title })} as="h2"
+              className="inline text-sm font-semibold text-[#e6edf7]" />
+          </div>
+        </div>
+        <StatusPill status={issue.status} />
+        {hasLiveRuns && (
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#5f8dff]/30 bg-[#5f8dff]/10 px-2 py-0.5 text-[10px] font-semibold text-[#5f8dff]">
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-[#5f8dff] opacity-75" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#5f8dff]" />
+            </span>
+            Live
+          </span>
+        )}
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {/* Single deep-cobalt primary for this screen; reuses the existing new-issue dialog with this item as parent. */}
+          <Button size="sm" className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs font-semibold text-[#f8fafc] hover:bg-[#1d4ed8]"
+            onClick={() => openNewIssue({ parentId: issue.id, projectId: issue.projectId ?? undefined })}>
+            <Plus className="h-3.5 w-3.5 sm:mr-1" />
+            <span className="hidden sm:inline">Sub-item</span>
+          </Button>
+          <Button variant="ghost" size="icon-xs" onClick={copyIssueToClipboard} title="Copy work item as markdown">
+            {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+          </Button>
+          <Button variant="ghost" size="icon-xs" className="md:hidden" onClick={() => setMobilePropsOpen(true)} title="Properties">
+            <SlidersHorizontal className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon-xs"
+            className={cn("hidden shrink-0 transition-opacity duration-200 md:inline-flex", panelVisible ? "pointer-events-none w-0 overflow-hidden opacity-0" : "opacity-100")}
+            onClick={() => setPanelVisible(true)} title="Show properties">
+            <SlidersHorizontal className="h-4 w-4" />
+          </Button>
+          <Popover open={moreOpen} onOpenChange={setMoreOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon-xs" className="hidden shrink-0 md:inline-flex"><MoreHorizontal className="h-4 w-4" /></Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-44 p-1" align="end">
+              <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-destructive hover:bg-accent/50"
+                onClick={() => { updateIssue.mutate({ hiddenAt: new Date().toISOString() }, { onSuccess: () => navigate("/issues/all") }); setMoreOpen(false); }}>
+                <EyeOff className="h-3 w-3" />
+                Hide this Work Item
+              </button>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </header>
 
       {issue.hiddenAt && (
-        <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div className="flex items-center gap-2 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-3 py-2 text-sm text-[#f87171]">
           <EyeOff className="h-4 w-4 shrink-0" />
           This work item is hidden
         </div>
       )}
 
-      <div className="space-y-3">
-        <div className="flex items-center gap-2 min-w-0 flex-wrap">
-          <StatusIcon
-            status={issue.status}
-            onChange={(status) => updateIssue.mutate({ status })}
-          />
-          <PriorityIcon
-            priority={issue.priority}
-            onChange={(priority) => updateIssue.mutate({ priority })}
-          />
-          <span className="text-sm font-mono text-muted-foreground shrink-0 tabular-nums">{issue.identifier ?? issue.id.slice(0, 8)}</span>
-
-          {hasLiveRuns && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 px-2 py-0.5 text-[10px] font-medium text-cyan-600 dark:text-cyan-400 shrink-0">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-cyan-400" />
-              </span>
-              Live
+      {/* Parent chain (oldest → immediate parent); the current item is the header title. */}
+      {ancestors.length > 0 && (
+        <nav aria-label="Parent work items" className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-xs text-[#8b97ad]">
+          {[...ancestors].reverse().map((ancestor) => (
+            <span key={ancestor.id} className="flex min-w-0 items-center gap-1">
+              <ChevronRight className="h-3 w-3 shrink-0 text-[#4a5670]" />
+              <Link to={`/issues/${ancestor.identifier ?? ancestor.id}`} state={location.state} title={ancestor.title} className="truncate hover:text-[#e6edf7]">{ancestor.title}</Link>
             </span>
-          )}
+          ))}
+        </nav>
+      )}
 
-          {issue.projectId ? (
-            <Link
-              to={`/projects/${issue.projectId}`}
-              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors rounded px-1 -mx-1 py-0.5 min-w-0"
-            >
-              <Hexagon className="h-3 w-3 shrink-0" />
-              <span className="truncate">{(projects ?? []).find((p) => p.id === issue.projectId)?.name ?? issue.projectId.slice(0, 8)}</span>
-            </Link>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground opacity-50 px-1 -mx-1 py-0.5">
-              <Hexagon className="h-3 w-3 shrink-0" />
-              No work context
-            </span>
-          )}
+      {/* 1-row key-metric summary strip (secondary cells fold below sm; the row never wraps or widens the page). */}
+      <div className="cockpit-strip w-full gap-0 overflow-hidden" role="group" aria-label="Work item summary">
+        {issue.projectId ? (
+          <Link to={`/projects/${issue.projectId}`} className="cockpit-cell min-w-0 hover:text-[#e6edf7]">
+            <Hexagon className="h-3 w-3 shrink-0" /><span className={metricLabel}>Project</span><b className="truncate" title={projectName}>{projectName}</b>
+          </Link>
+        ) : (
+          <span className="cockpit-cell"><Hexagon className="h-3 w-3 shrink-0" /><span className={metricLabel}>Project</span><b>none</b></span>
+        )}
+        {(issue.labels ?? []).slice(0, 4).map((label) => (
+          <span key={label.id} className="cockpit-cell hidden sm:inline-flex">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: label.color }} /><b>{label.name}</b>
+          </span>
+        ))}
+        {(issue.labels ?? []).length > 4 && <span className="cockpit-cell hidden sm:inline-flex">+{(issue.labels ?? []).length - 4}</span>}
+        <span className="cockpit-cell"><span className={metricLabel}>Runs</span><b>{(linkedRuns ?? []).length}</b></span>
+        <span className="cockpit-cell"><span className={metricLabel}>Cost</span><b>{issueCostSummary.hasCost ? `$${issueCostSummary.cost.toFixed(4)}` : "—"}</b></span>
+        <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Tokens</span><b>{issueCostSummary.hasTokens ? formatTokens(issueCostSummary.totalTokens) : "—"}</b></span>
+        <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Comments</span><b>{(comments ?? []).length}</b></span>
+        <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Sub-items</span><b>{childIssues.length}</b></span>
+        <span className="cockpit-cell"><span className={metricLabel}>Updated</span><b>{relativeTime(issue.updatedAt)}</b></span>
+        <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Created</span><b>{formatDate(issue.createdAt)}</b></span>
+      </div>
 
-          {(issue.labels ?? []).length > 0 && (
-            <div className="hidden sm:flex items-center gap-1">
-              {(issue.labels ?? []).slice(0, 4).map((label) => (
-                <span
-                  key={label.id}
-                  className="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium"
-                  style={{
-                    borderColor: label.color,
-                    color: label.color,
-                    backgroundColor: `${label.color}1f`,
-                  }}
-                >
-                  {label.name}
-                </span>
-              ))}
-              {(issue.labels ?? []).length > 4 && (
-                <span className="text-[10px] text-muted-foreground tabular-nums">+{(issue.labels ?? []).length - 4}</span>
-              )}
-            </div>
-          )}
-
-          <div className="ml-auto flex items-center gap-0.5 md:hidden shrink-0">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={copyIssueToClipboard}
-              title="Copy work item as markdown"
-            >
-              {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setMobilePropsOpen(true)}
-              title="Properties"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </Button>
-          </div>
-
-          <div className="hidden md:flex items-center md:ml-auto shrink-0">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={copyIssueToClipboard}
-              title="Copy work item as markdown"
-            >
-              {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className={cn(
-                "shrink-0 transition-opacity duration-200",
-                panelVisible ? "opacity-0 pointer-events-none w-0 overflow-hidden" : "opacity-100",
-              )}
-              onClick={() => setPanelVisible(true)}
-              title="Show properties"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </Button>
-
-            <Popover open={moreOpen} onOpenChange={setMoreOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon-xs" className="shrink-0">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-            <PopoverContent className="w-44 p-1" align="end">
-              <button
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-destructive"
-                onClick={() => {
-                  updateIssue.mutate(
-                    { hiddenAt: new Date().toISOString() },
-                    { onSuccess: () => navigate("/issues/all") },
-                  );
-                  setMoreOpen(false);
-                }}
-              >
-                <EyeOff className="h-3 w-3" />
-                Hide this Work Item
-              </button>
-            </PopoverContent>
-            </Popover>
-          </div>
-        </div>
-
-        <InlineEditor
-          value={issue.title}
-          onSave={(title) => updateIssue.mutateAsync({ title })}
-          as="h2"
-          className="text-xl font-bold"
-        />
-
+      <section className="rounded-lg border border-[#242d3f] bg-[#111622] px-3 py-2">
         <InlineEditor
           value={issue.description ?? ""}
           onSave={(description) => updateIssue.mutateAsync({ description })}
           as="p"
-          className="text-[15px] leading-7 text-foreground"
+          className="whitespace-pre-wrap break-words text-[15px] leading-7 text-foreground"
           placeholder="Add a description..."
           multiline
           mentions={mentionOptions}
@@ -839,7 +788,7 @@ export function IssueDetail() {
             return attachment.contentPath;
           }}
         />
-      </div>
+      </section>
 
       <IssueDocumentsSection
         issue={issue}
@@ -855,7 +804,7 @@ export function IssueDetail() {
       {hasAttachments ? (
         <div
         className={cn(
-          "space-y-3 rounded-md border border-border/80 bg-card/60 p-3 transition-colors",
+          "space-y-3 rounded-lg border border-[#242d3f] bg-[#111622] p-3 transition-colors",
         )}
         onDragEnter={(evt) => {
           evt.preventDefault();
@@ -877,12 +826,12 @@ export function IssueDetail() {
         </div>
 
         {attachmentError && (
-          <p className="text-xs text-destructive">{attachmentError}</p>
+          <p className="whitespace-pre-wrap font-mono text-xs text-destructive">{attachmentError}</p>
         )}
 
         <div className="space-y-2">
           {attachmentList.map((attachment) => (
-            <div key={attachment.id} className="rounded-md border border-border/80 bg-card/60 p-2">
+            <div key={attachment.id} className="rounded-md border border-[#242d3f] bg-[#151b28] p-2">
               <div className="flex items-center justify-between gap-2">
                 <a
                   href={attachment.contentPath}
@@ -903,7 +852,7 @@ export function IssueDetail() {
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <p className="text-[11px] text-muted-foreground tabular-nums">
+              <p className="font-mono text-[11px] text-[#8b97ad]">
                 {attachment.contentType} · {(attachment.byteSize / 1024).toFixed(1)} KB
               </p>
               {isImageAttachment(attachment) && (
@@ -922,23 +871,24 @@ export function IssueDetail() {
         </div>
       ) : null}
 
-      <Separator />
-
       <Tabs value={detailTab} onValueChange={setDetailTab} className="space-y-3">
-        <TabsList variant="line" className="w-full justify-start gap-1">
-          <TabsTrigger value="comments" className="gap-1.5">
+        {/* 32px cockpit toolbar with hairline tabs. */}
+        <div className="cockpit-toolbar h-auto min-h-8 flex-wrap py-1">
+        <TabsList variant="line" className="h-7 shrink-0">
+          <TabsTrigger value="comments" className="gap-1.5 text-xs">
             <MessageSquare className="h-3.5 w-3.5" />
             Comments
           </TabsTrigger>
-          <TabsTrigger value="subissues" className="gap-1.5">
+          <TabsTrigger value="subissues" className="gap-1.5 text-xs">
             <ListTree className="h-3.5 w-3.5" />
             Sub-items
           </TabsTrigger>
-          <TabsTrigger value="activity" className="gap-1.5">
+          <TabsTrigger value="activity" className="gap-1.5 text-xs">
             <ActivityIcon className="h-3.5 w-3.5" />
             Activity
           </TabsTrigger>
         </TabsList>
+        </div>
 
         <TabsContent value="comments">
           <CommentThread
@@ -976,7 +926,7 @@ export function IssueDetail() {
           {childIssues.length === 0 ? (
             <p className="text-xs text-muted-foreground">No sub-items.</p>
           ) : (
-            <div className="overflow-hidden rounded-md border border-border/80 bg-card/60 divide-y divide-border/60">
+            <div className="overflow-hidden rounded-lg border border-[#242d3f] bg-[#111622] divide-y divide-[#242d3f]">
               {childIssues.map((child) => (
                 <Link
                   key={child.id}
@@ -1006,7 +956,7 @@ export function IssueDetail() {
 
         <TabsContent value="activity">
           {linkedRuns && linkedRuns.length > 0 && (
-            <div className="mb-3 rounded-md border border-border/80 bg-card/60 px-3 py-2">
+            <div className="mb-3 rounded-lg border border-[#242d3f] bg-[#111622] px-3 py-2">
               <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cost Summary</div>
               {!issueCostSummary.hasCost && !issueCostSummary.hasTokens ? (
                 <div className="text-xs text-muted-foreground">No cost data yet.</div>
@@ -1050,13 +1000,13 @@ export function IssueDetail() {
           id="work-products"
           open={secondaryOpen.workProducts}
           onOpenChange={(open) => setSecondaryOpen((prev) => ({ ...prev, workProducts: open }))}
-          className="rounded-md border border-border/80 bg-card/60"
+          className="rounded-lg border border-[#242d3f] bg-[#111622]"
         >
           <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground tabular-nums">Work Products ({workProducts.length})</span>
             <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", secondaryOpen.workProducts && "rotate-180")} />
           </CollapsibleTrigger>
-          <CollapsibleContent><div className="border-t border-border/80 divide-y divide-border/60">
+          <CollapsibleContent><div className="border-t border-[#242d3f] divide-y divide-[#242d3f]">
             {workProducts.map((product) => <div key={product.id} id={`work-product-${product.id}`} className="flex items-start justify-between gap-3 px-3 py-2 text-xs">
               <div><p className="font-medium">{product.title}</p><p className="text-muted-foreground">{product.summary ?? `${product.provider} · ${product.type}`}</p><p className="mt-1 font-mono text-[11px] text-muted-foreground tabular-nums">{product.id}</p></div>
               <Button size="sm" variant="outline" onClick={() => void openWorkProductInBrowser(product.id)}>원본 열기</Button>
@@ -1069,7 +1019,7 @@ export function IssueDetail() {
         <Collapsible
           open={secondaryOpen.approvals}
           onOpenChange={(open) => setSecondaryOpen((prev) => ({ ...prev, approvals: open }))}
-          className="rounded-md border border-border/80 bg-card/60"
+          className="rounded-lg border border-[#242d3f] bg-[#111622]"
         >
           <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground tabular-nums">
@@ -1080,7 +1030,7 @@ export function IssueDetail() {
             />
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="border-t border-border/80 divide-y divide-border/60">
+            <div className="border-t border-[#242d3f] divide-y divide-[#242d3f]">
               {linkedApprovals.map((approval) => (
                 <Link
                   key={approval.id}
