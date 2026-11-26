@@ -29,6 +29,7 @@ import { createWorkflowRunWithDefinition } from "./workflow-run-create.js";
 import { stepTimeoutSignalsFromStep } from "../heartbeat-stability.js";
 import { validateWorkflowDefinitionSteps } from './definition-step-validation.js';
 import { validateWorkflowDefinitionStepsWithNodeFallback } from './workflow-core-client-s8c.js';
+import { resolveWorkflowRunListPage, type WorkflowRunListFilters } from "./workflow-run-list-pagination.js";
 
 /** [S8/F4] 서브프로세스 스폰은 열린 tx 안에서 금지 — PgTransaction 입력은 순수 TS 검증으로 보전한다(S5 dag-engine 선례). */
 async function validateWorkflowDefinitionStepsForDb(
@@ -388,21 +389,25 @@ export async function getWorkflowRunById(
 
 /**
  * List workflow runs for a company or workflow.
+ * Bounded: LIMIT/OFFSET (defaults 200/0) with a deterministic (createdAt desc, id desc) order.
  */
 export async function listWorkflowRuns(
   db: Db,
-  filters: { companyId?: string; workflowId?: string; missionId?: string },
+  filters: WorkflowRunListFilters,
 ): Promise<WorkflowRun[]> {
   const conditions = [];
   if (filters.companyId) conditions.push(eq(workflowRuns.companyId, filters.companyId));
   if (filters.workflowId) conditions.push(eq(workflowRuns.workflowId, filters.workflowId));
   if (filters.missionId) conditions.push(eq(workflowRuns.missionId, filters.missionId));
+  const page = resolveWorkflowRunListPage(filters);
 
   const results = await db
     .select()
     .from(workflowRuns)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(desc(workflowRuns.createdAt));
+    .orderBy(desc(workflowRuns.createdAt), desc(workflowRuns.id))
+    .limit(page.limit)
+    .offset(page.offset);
   return results.map(mapWorkflowRun);
 }
 
