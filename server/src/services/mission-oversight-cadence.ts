@@ -28,6 +28,8 @@ export interface CadenceVerdict {
   triggerKind: CadenceTrigger;
   reasonCode: string;
   failureEntities?: Array<{ kind: "run" | "step" | "heartbeat"; id: string; status: string; version: number | null }>;
+  /** Ghost identity for the liveness lane's durable no-progress chain. Present only with triggerKind "liveness_ghost". */
+  ghostEntities?: Array<{ kind: "heartbeat" | "step"; id: string }>;
   computedTimestamps: { last_event_at: string | null; last_progress_at: string | null;
     last_observed_at: string | null; oldest_running_heartbeat_at: string | null };
   inputGeneration: { schemaVersion: 1; fingerprint: string; runs: Array<{ id: string; version: number }>;
@@ -96,10 +98,13 @@ export function evaluateMissionOversightCadence(s: CadenceSnapshot, now: Date): 
     return { ...verdict("FAILURE_OR_RECOVERY_NEEDED", "immediate_failure", "failure_event_present"), failureEntities };
   }
   if (live.length || runningSteps.length) {
-    const ghost = live.some((hb) => !(hb.allowedIntervalMs > 0) || now.getTime() - hb.observedAt.getTime() >= hb.allowedIntervalMs)
-      || runningSteps.some((step) => !live.some((hb) => hb.stepId === step.id));
-    return verdict("RUNNING", ghost ? "liveness_ghost" : "none",
-      ghost ? "heartbeat_stale_while_running" : "running_with_fresh_heartbeat");
+    const stale = live.filter((hb) => !(hb.allowedIntervalMs > 0) || now.getTime() - hb.observedAt.getTime() >= hb.allowedIntervalMs);
+    const orphaned = runningSteps.filter((step) => !live.some((hb) => hb.stepId === step.id));
+    if (!stale.length && !orphaned.length) return verdict("RUNNING", "none", "running_with_fresh_heartbeat");
+    const ghostEntities: NonNullable<CadenceVerdict["ghostEntities"]> = [
+      ...stale.map((hb) => ({ kind: "heartbeat" as const, id: hb.id })), ...orphaned.map((step) => ({ kind: "step" as const, id: step.id }))];
+    ghostEntities.sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
+    return { ...verdict("RUNNING", "liveness_ghost", "heartbeat_stale_while_running"), ghostEntities };
   }
   const ready = s.steps.filter((step) => step.current && !step.waiting && step.readySince !== null);
   const queued = s.heartbeats.filter((hb) => hb.current && hb.status === "queued" && !hb.waiting);
