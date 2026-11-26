@@ -16,7 +16,6 @@ import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -44,11 +43,14 @@ import { HermitGateAndOpsPanel } from "../components/HermitGateAndOpsPanel";
 
 const SEVERITIES: RuleSeverity[] = ["MUST", "SHOULD", "MAY"];
 
+// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
 const SEVERITY_COLORS: Record<RuleSeverity, string> = {
-  MUST: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
-  SHOULD: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300",
-  MAY: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  MUST: "bg-[#f87171]/15 text-[#f87171]",
+  SHOULD: "bg-[#fbbf24]/15 text-[#fbbf24]",
+  MAY: "bg-[#5f8dff]/15 text-[#5f8dff]",
 };
+
+const SEVERITY_DOTS: Record<RuleSeverity, string> = { MUST: "bg-[#f87171]", SHOULD: "bg-[#fbbf24]", MAY: "bg-[#5f8dff]" };
 
 const RULE_ACTIONS: RuleAction[] = [
   "tool_call",
@@ -130,8 +132,7 @@ interface PredicateFormBuilderProps {
 
 function PredicateFormBuilder({ clauses, onChange }: PredicateFormBuilderProps) {
   function update(i: number, partial: Partial<PredicateClause>) {
-    const next = clauses.map((c, idx) => (idx === i ? { ...c, ...partial } : c));
-    onChange(next);
+    onChange(clauses.map((c, idx) => (idx === i ? { ...c, ...partial } : c)));
   }
 
   function addClause() {
@@ -240,13 +241,7 @@ function defaultFormValues(rule?: WorktreeRule): RuleFormValues {
   };
 }
 
-interface RuleFormProps {
-  initial?: WorktreeRule;
-  onSubmit: (input: CreateRuleInput) => void;
-  onCancel: () => void;
-  isPending: boolean;
-  error: string | null;
-}
+interface RuleFormProps { initial?: WorktreeRule; onSubmit: (input: CreateRuleInput) => void; onCancel: () => void; isPending: boolean; error: string | null }
 
 function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormProps) {
   const [values, setValues] = useState<RuleFormValues>(() => defaultFormValues(initial));
@@ -306,12 +301,21 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 rounded-md border border-border/80 bg-card/60 p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{initial ? "Edit Rule" : "New Rule"}</p>
-
+    <form onSubmit={handleSubmit} className="space-y-3 rounded-md border border-[#242d3f] bg-[#151b28] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]">{initial ? "Edit Rule" : "New Rule"}</p>
+        <div className="flex shrink-0 gap-2">
+          <Button type="submit" size="sm" variant="outline" className="h-7 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]" disabled={isPending}>
+            {isPending ? "Saving..." : initial ? "Save" : "Create"}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+      </div>
       {/* Name */}
       <div className="space-y-1.5">
-        <label className="text-xs text-muted-foreground">Name</label>
+        <label className="text-xs text-[#8b97ad]">Name</label>
         <Input
           className="h-8 text-sm"
           value={values.name}
@@ -320,11 +324,10 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
           required
         />
       </div>
-
       {/* Severity + Action row */}
       <div className="flex gap-3">
         <div className="space-y-1.5 w-32 shrink-0">
-          <label className="text-xs text-muted-foreground">Severity</label>
+          <label className="text-xs text-[#8b97ad]">Severity</label>
           <Select value={values.severity} onValueChange={(v) => set("severity", v as RuleSeverity)}>
             <SelectTrigger className="h-8 text-sm">
               <SelectValue />
@@ -336,9 +339,8 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
             </SelectContent>
           </Select>
         </div>
-
         <div className="space-y-1.5 flex-1">
-          <label className="text-xs text-muted-foreground">Action</label>
+          <label className="text-xs text-[#8b97ad]">Action</label>
           <Select value={values.action} onValueChange={(v) => set("action", v)}>
             <SelectTrigger className="h-8 text-sm">
               <SelectValue />
@@ -351,18 +353,13 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
             </SelectContent>
           </Select>
           {values.action === "__custom__" && (
-            <Input
-              className="h-8 text-sm mt-1"
-              placeholder="custom action name"
-              onChange={(e) => set("action", e.target.value)}
-            />
+            <Input className="h-8 text-sm mt-1" placeholder="custom action name" onChange={(e) => set("action", e.target.value)} />
           )}
         </div>
       </div>
-
       {/* Message */}
       <div className="space-y-1.5">
-        <label className="text-xs text-muted-foreground">Violation message</label>
+        <label className="text-xs text-[#8b97ad]">Violation message</label>
         <Input
           className="h-8 text-sm"
           value={values.message}
@@ -370,11 +367,10 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
           placeholder="e.g. File writes outside workspace are not allowed"
         />
       </div>
-
       {/* Predicate section */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-xs text-muted-foreground">Predicate</label>
+          <label className="text-xs text-[#8b97ad]">Predicate</label>
           <Button
             type="button"
             variant="ghost"
@@ -387,37 +383,28 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
               : <><Code2 className="h-3 w-3" /> JSON</>}
           </Button>
         </div>
-
         {values.useRawJson ? (
           <textarea
-            className={cn(
-              "w-full h-32 text-xs font-mono rounded-md border border-input bg-background px-3 py-2 resize-y focus:outline-none focus:ring-1 focus:ring-ring",
-              jsonError && "border-destructive",
-            )}
+            className={cn("h-32 w-full resize-y rounded-md border bg-[#0b0e14] px-3 py-2 font-mono text-xs whitespace-pre-wrap focus:outline-none focus:ring-1 focus:ring-ring", jsonError ? "border-destructive" : "border-input")}
             value={values.predicateJson}
             onChange={(e) => { set("predicateJson", e.target.value); setJsonError(null); }}
             spellCheck={false}
           />
         ) : (
-          <PredicateFormBuilder
-            clauses={values.clauses}
-            onChange={(c) => set("clauses", c)}
-          />
+          <PredicateFormBuilder clauses={values.clauses} onChange={(c) => set("clauses", c)} />
         )}
-
         {jsonError && <p className="text-xs text-destructive">{jsonError}</p>}
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-[#8b97ad]">
           Operators: $eq $ne $contains $startsWith $endsWith $in $notIn $matches $gt $lt
         </p>
       </div>
-
       {/* Enabled */}
       <div className="flex items-center gap-2">
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          className={cn(values.enabled ? "text-green-600" : "text-muted-foreground")}
+          className={cn(values.enabled ? "text-[#34d399]" : "text-[#8b97ad]")}
           onClick={() => set("enabled", !values.enabled)}
           title={values.enabled ? "Enabled — click to disable" : "Disabled — click to enable"}
         >
@@ -425,19 +412,9 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
             ? <ToggleRight className="h-4 w-4" />
             : <ToggleLeft className="h-4 w-4" />}
         </Button>
-        <span className="text-xs text-muted-foreground">{values.enabled ? "Enabled" : "Disabled"}</span>
+        <span className="text-xs text-[#8b97ad]">{values.enabled ? "Enabled" : "Disabled"}</span>
       </div>
-
       {error && <p className="text-xs text-destructive">{error}</p>}
-
-      <div className="flex gap-2 pt-1">
-        <Button type="submit" size="sm" className="h-7 text-xs" disabled={isPending}>
-          {isPending ? "Saving..." : initial ? "Save" : "Create"}
-        </Button>
-        <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onCancel}>
-          Cancel
-        </Button>
-      </div>
     </form>
   );
 }
@@ -446,10 +423,11 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
 // RuleRow
 // ---------------------------------------------------------------------------
 
-interface RuleRowProps {
-  rule: WorktreeRule;
-  companyId: string;
-}
+interface RuleRowProps { rule: WorktreeRule; companyId: string }
+
+/** Fixed column tracks: name (flexes, truncates) | severity | action | controls (never wraps). */
+const RULE_ROW_TRACKS =
+  "grid grid-cols-[minmax(0,1fr)_max-content_max-content] items-center gap-3 px-3 sm:grid-cols-[minmax(0,1fr)_4rem_10rem_max-content]";
 
 function RuleRow({ rule, companyId }: RuleRowProps) {
   const queryClient = useQueryClient();
@@ -457,18 +435,14 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
   const [editing, setEditing] = useState(false);
   const [mutError, setMutError] = useState<string | null>(null);
 
-  const invalidate = () =>
-    queryClient.invalidateQueries({ queryKey: queryKeys.worktree.rules(companyId) });
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: queryKeys.worktree.rules(companyId) });
 
   const toggleMutation = useMutation({
     mutationFn: (enabled: boolean) => worktreeApi.updateRule(rule.id, { enabled }),
     onSuccess: invalidate,
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: () => worktreeApi.deleteRule(rule.id),
-    onSuccess: invalidate,
-  });
+  const deleteMutation = useMutation({ mutationFn: () => worktreeApi.deleteRule(rule.id), onSuccess: invalidate });
 
   const updateMutation = useMutation({
     mutationFn: (data: UpdateRuleInput) => worktreeApi.updateRule(rule.id, data),
@@ -478,7 +452,7 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
 
   if (editing) {
     return (
-      <div className="px-4 py-3 border-b border-border/80 last:border-b-0">
+      <div className="border-b border-[#242d3f] p-3 last:border-b-0">
         <RuleForm
           initial={rule}
           onSubmit={(input) => updateMutation.mutate(input)}
@@ -491,80 +465,76 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
   }
 
   return (
-    <div className={cn("border-b border-border/80 last:border-b-0", !rule.enabled && "opacity-60")}>
+    <div className={cn("border-b border-[#242d3f] transition-colors last:border-b-0 hover:bg-[#151b28]", !rule.enabled && "opacity-60")}>
       {/* Row header */}
-      <div className="flex items-center gap-3 px-4 py-3 text-sm">
-        <button
-          className="p-0.5 shrink-0 text-muted-foreground hover:text-foreground"
-          onClick={() => setExpanded((v) => !v)}
-        >
-          {expanded
-            ? <ChevronDown className="h-3.5 w-3.5" />
-            : <ChevronRight className="h-3.5 w-3.5" />}
-        </button>
-
-        <ShieldCheck className="h-4 w-4 shrink-0 text-muted-foreground" />
-
-        <span className="flex-1 truncate font-medium">{rule.name}</span>
-
-        <SeverityBadge severity={rule.severity as RuleSeverity} />
-
-        <span className="text-xs text-muted-foreground shrink-0 hidden sm:block font-mono">
-          {rule.action}
+      <div className={cn(RULE_ROW_TRACKS, "h-10 text-sm")}>
+        <span className="flex min-w-0 items-center gap-3">
+          <button
+            className="shrink-0 p-0.5 text-[#8b97ad] hover:text-[#e6edf7]"
+            onClick={() => setExpanded((v) => !v)}
+            aria-label={expanded ? "Collapse rule" : "Expand rule"}
+          >
+            {expanded
+              ? <ChevronDown className="h-3.5 w-3.5" />
+              : <ChevronRight className="h-3.5 w-3.5" />}
+          </button>
+          <ShieldCheck className="h-4 w-4 shrink-0 text-[#8b97ad]" />
+          <span className="min-w-0 flex-1 truncate font-medium text-[#e6edf7]">{rule.name}</span>
         </span>
-
-        {/* Toggle enabled */}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className={cn("shrink-0", rule.enabled ? "text-green-600" : "text-muted-foreground")}
-          onClick={() => toggleMutation.mutate(!rule.enabled)}
-          disabled={toggleMutation.isPending}
-          title={rule.enabled ? "Disable" : "Enable"}
-        >
-          {rule.enabled
-            ? <ToggleRight className="h-4 w-4" />
-            : <ToggleLeft className="h-4 w-4" />}
-        </Button>
-
-        {/* Edit */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 text-xs shrink-0"
-          onClick={() => setEditing(true)}
-        >
-          Edit
-        </Button>
-
-        {/* Delete */}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0 text-muted-foreground hover:text-destructive"
-          onClick={() => deleteMutation.mutate()}
-          disabled={deleteMutation.isPending}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        <SeverityBadge severity={rule.severity as RuleSeverity} />
+        <span className="hidden min-w-0 truncate font-mono text-xs text-[#8b97ad] sm:block">{rule.action}</span>
+        {/* Toggle enabled · Edit · Delete */}
+        <span className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={cn("shrink-0", rule.enabled ? "text-[#34d399]" : "text-[#8b97ad]")}
+            onClick={() => toggleMutation.mutate(!rule.enabled)}
+            disabled={toggleMutation.isPending}
+            title={rule.enabled ? "Disable" : "Enable"}
+            aria-label={rule.enabled ? "Disable rule" : "Enable rule"}
+          >
+            {rule.enabled
+              ? <ToggleRight className="h-4 w-4" />
+              : <ToggleLeft className="h-4 w-4" />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-xs text-[#8b97ad] hover:text-[#e6edf7]"
+            onClick={() => setEditing(true)}
+          >
+            Edit
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0 text-[#8b97ad] hover:text-destructive"
+            onClick={() => deleteMutation.mutate()}
+            disabled={deleteMutation.isPending}
+            aria-label="Delete rule"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </span>
       </div>
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="px-10 pb-3 space-y-2 text-xs text-muted-foreground">
+        <div className="space-y-2 px-10 pb-3 text-xs text-[#8b97ad]">
           {rule.message && (
-            <p><span className="font-medium text-foreground">Message:</span> {rule.message}</p>
+            <p><span className="font-medium text-[#e6edf7]">Message:</span> {rule.message}</p>
           )}
           <div>
-            <p className="font-medium text-foreground mb-1">Predicate:</p>
-            <pre className="rounded-md border border-border/80 bg-background/60 p-2 overflow-x-auto text-xs font-mono whitespace-pre-wrap break-all">
+            <p className="mb-1 font-medium text-[#e6edf7]">Predicate:</p>
+            <pre className="overflow-x-auto rounded-md border border-[#242d3f] bg-[#0b0e14] p-2 font-mono text-xs whitespace-pre-wrap break-all">
               {JSON.stringify(rule.predicate, null, 2)}
             </pre>
           </div>
           <p>
-            <span className="font-medium text-foreground">Version:</span> {rule.version}
+            <span className="font-medium text-[#e6edf7]">Version:</span> {rule.version}
             {" · "}
-            <span className="font-medium text-foreground">Created by:</span> {rule.createdBy}
+            <span className="font-medium text-[#e6edf7]">Created by:</span> {rule.createdBy}
           </p>
         </div>
       )}
@@ -576,32 +546,55 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
 // WorktreeRules page
 // ---------------------------------------------------------------------------
 
+type MainTab = "rules" | "ops";
+type SeverityFilter = RuleSeverity | "all";
+
+const MAIN_TABS: { id: MainTab; label: string }[] = [
+  { id: "rules", label: "승인 가드레일 (Approval Gates)" }, { id: "ops", label: "Hermit Gate & 리소스 콘솔" },
+];
+
+// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
+const SEGMENT = "flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5";
+const SEGMENT_ACTIVE = "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_0_0_1px_#242d3f]";
+const SEGMENT_IDLE = "text-[#8b97ad] hover:text-[#e6edf7]";
+
+/** One toolbar segment: 24px tall, never wraps. */
+function Segment({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onClick}
+      className={cn("h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors", pressed ? SEGMENT_ACTIVE : SEGMENT_IDLE)}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function WorktreeRules() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
 
-  const [severityFilter, setSeverityFilter] = useState<RuleSeverity | "all">("all");
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [mainTab, setMainTab] = useState<"rules" | "ops">("rules");
+  const [mainTab, setMainTab] = useState<MainTab>("rules");
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Approval Gates" }]);
   }, [setBreadcrumbs]);
 
+  // Listed unfiltered so strip counts stay complete; severity tabs filter client-side on the cached data.
   const { data: rules, isLoading, error } = useQuery({
     queryKey: queryKeys.worktree.rules(selectedCompanyId!),
-    queryFn: () =>
-      worktreeApi.listRules(selectedCompanyId!, {
-        severity: severityFilter !== "all" ? severityFilter : undefined,
-      }),
+    queryFn: () => worktreeApi.listRules(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: CreateRuleInput) =>
-      worktreeApi.createRule(selectedCompanyId!, data),
+    mutationFn: (data: CreateRuleInput) => worktreeApi.createRule(selectedCompanyId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.worktree.rules(selectedCompanyId!) });
       setShowCreateForm(false);
@@ -618,114 +611,117 @@ export function WorktreeRules() {
     return <PageSkeleton variant="list" />;
   }
 
-  // Client-side filter (the API also supports server-side, but filter tabs reuse cached data)
-  const filtered =
-    rules && severityFilter !== "all"
-      ? rules.filter((r) => r.severity === severityFilter)
-      : rules ?? [];
+  const all = rules ?? [];
+  const filtered = severityFilter === "all" ? all : all.filter((r) => r.severity === severityFilter);
+  const countBySeverity = (s: RuleSeverity) => all.filter((r) => r.severity === s).length;
+  const enabledCount = all.filter((r) => r.enabled).length;
+
+  const selectSeverity = (next: SeverityFilter) => {
+    setSeverityFilter((current) => (current === next ? "all" : next));
+    setMainTab("rules");
+  };
 
   return (
-    <div className="space-y-4 tabular-nums">
-      {error && (
-        <p className="text-sm text-destructive">
-          {error instanceof Error ? error.message : String(error)}
-        </p>
-      )}
+    <div className="space-y-2 tabular-nums">
+      {error && <p className="text-sm text-destructive">{error instanceof Error ? error.message : String(error)}</p>}
 
-      {/* Segmented main tabs */}
-      <div className="inline-flex rounded-md border border-border/80 bg-card/60 p-0.5">
-        {([
-          { id: "rules", label: "승인 가드레일 (Approval Gates)" },
-          { id: "ops", label: "Hermit Gate & 리소스 콘솔" },
-        ] as const).map((tab) => (
+      {/* 1-row cockpit strip: rule counts double as severity-filter shortcuts */}
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Approval gates by severity">
+        <span className="cockpit-cell shrink-0">
+          <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span className="uppercase tracking-wide">Approval Gates</span>
+        </span>
+        <span className="cockpit-cell min-w-0 flex-1 justify-center" title="All rules">
+          Total <b className="ml-1">{all.length}</b>
+        </span>
+        {SEVERITIES.map((s) => (
           <button
-            key={tab.id}
+            key={s}
             type="button"
-            onClick={() => setMainTab(tab.id)}
+            aria-pressed={mainTab === "rules" && severityFilter === s}
+            title={`Show ${s} rules`}
+            onClick={() => selectSeverity(s)}
             className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-              mainTab === tab.id
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
+              "cockpit-cell min-w-0 flex-1 cursor-pointer justify-center transition-colors",
+              mainTab === "rules" && severityFilter === s ? "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_-1px_0_#5f8dff]" : "hover:bg-[#151b28] hover:text-[#e6edf7]",
             )}
           >
-            {tab.label}
+            <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", SEVERITY_DOTS[s])} />
+            <span className="truncate uppercase tracking-wide">{s}</span>
+            <b className="ml-1">{countBySeverity(s)}</b>
           </button>
         ))}
+        <span className="cockpit-cell min-w-0 flex-1 justify-center" title="Rules currently enforcing">
+          Enabled <b className="ml-1">{enabledCount}</b>
+        </span>
+      </div>
+
+      {/* Tight single-row 40px toolbar: sections · severity tabs · visible count · primary action. */}
+      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] pl-1.5 pr-1.5">
+        <div role="group" aria-label="Sections" className={SEGMENT}>
+          {MAIN_TABS.map((tab) => (
+            <Segment key={tab.id} pressed={mainTab === tab.id} onClick={() => setMainTab(tab.id)}>{tab.label}</Segment>
+          ))}
+        </div>
+        {mainTab === "rules" && (
+          <>
+            <div role="group" aria-label="Filter rules by severity" className={SEGMENT}>
+              {(["all", ...SEVERITIES] as const).map((s) => (
+                <Segment key={s} pressed={severityFilter === s} onClick={() => setSeverityFilter(s)}>{s === "all" ? "All" : s}</Segment>
+              ))}
+            </div>
+            <span className="ml-auto hidden shrink-0 text-[11px] text-[#8b97ad] sm:block">
+              <span className="font-mono text-[#e6edf7]">{filtered.length}</span> of {all.length}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              aria-pressed={showCreateForm}
+              className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]"
+              onClick={() => { setShowCreateForm((v) => !v); setCreateError(null); }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New Rule
+            </Button>
+          </>
+        )}
       </div>
 
       {mainTab === "ops" && <HermitGateAndOpsPanel companyId={selectedCompanyId} />}
 
       {mainTab === "rules" && (
-      <>
-      <p className="text-xs text-muted-foreground">외부 발행·배포·신고·결제 등 자유 미션에서도 반드시 사람 승인이 필요한 하드 가드레일을 설정합니다. 일반 업무 규정·플레이북은 Wiki → KB 트리에 등록하세요.</p>
-      <div className="flex flex-col gap-3 rounded-md border border-border/80 bg-card/60 p-2 sm:flex-row sm:items-center sm:justify-between">
-        {/* Severity filter tabs */}
-        <div className="flex items-center gap-1 flex-wrap">
-          {(["all", ...SEVERITIES] as const).map((s) => (
-            <Button
-              key={s}
-              size="sm"
-              variant={severityFilter === s ? "default" : "ghost"}
-              className="h-7 text-xs"
-              onClick={() => setSeverityFilter(s)}
-            >
-              {s === "all" ? "All" : s}
-              {s !== "all" && rules && (
-                <span className="ml-1 text-[10px] opacity-70 tabular-nums">
-                  {rules.filter((r) => r.severity === s).length}
-                </span>
-              )}
-            </Button>
-          ))}
-        </div>
+        <>
+          <p className="px-0.5 text-xs text-[#8b97ad]">외부 발행·배포·신고·결제 등 자유 미션에서도 반드시 사람 승인이 필요한 하드 가드레일을 설정합니다. 일반 업무 규정·플레이북은 Wiki → KB 트리에 등록하세요.</p>
 
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs"
-          onClick={() => { setShowCreateForm((v) => !v); setCreateError(null); }}
-        >
-          <Plus className="h-3.5 w-3.5 mr-1.5" />
-          New Rule
-        </Button>
-      </div>
+          {/* Create form */}
+          {showCreateForm && (
+            <RuleForm
+              onSubmit={(input) => createMutation.mutate(input)}
+              onCancel={() => { setShowCreateForm(false); setCreateError(null); }}
+              isPending={createMutation.isPending}
+              error={createError}
+            />
+          )}
 
-      {/* Create form */}
-      {showCreateForm && (
-        <RuleForm
-          onSubmit={(input) => createMutation.mutate(input)}
-          onCancel={() => { setShowCreateForm(false); setCreateError(null); }}
-          isPending={createMutation.isPending}
-          error={createError}
-        />
-      )}
+          {/* Empty state */}
+          {filtered.length === 0 && !showCreateForm && (
+            <EmptyState
+              icon={ShieldCheck}
+              message={severityFilter === "all" ? "No worktree rules yet." : `No ${severityFilter} rules.`}
+              action={severityFilter === "all" ? "New Rule" : undefined}
+              onAction={severityFilter === "all" ? () => setShowCreateForm(true) : undefined}
+            />
+          )}
 
-      <Separator />
-
-      {/* Empty state */}
-      {filtered.length === 0 && !showCreateForm && (
-        <EmptyState
-          icon={ShieldCheck}
-          message={
-            severityFilter === "all"
-              ? "No worktree rules yet."
-              : `No ${severityFilter} rules.`
-          }
-          action={severityFilter === "all" ? "New Rule" : undefined}
-          onAction={severityFilter === "all" ? () => setShowCreateForm(true) : undefined}
-        />
-      )}
-
-      {/* Rule list */}
-      {filtered.length > 0 && (
-        <div className="overflow-hidden rounded-md border border-border/80 bg-card/60">
-          {filtered.map((rule) => (
-            <RuleRow key={rule.id} rule={rule} companyId={selectedCompanyId} />
-          ))}
-        </div>
-      )}
-      </>
+          {/* Rule list */}
+          {filtered.length > 0 && (
+            <div aria-label="Worktree rules" className="overflow-hidden rounded-md border border-[#242d3f] bg-[#111622]">
+              {filtered.map((rule) => (
+                <RuleRow key={rule.id} rule={rule} companyId={selectedCompanyId} />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

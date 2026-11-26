@@ -28,6 +28,7 @@ interface LayoutNode {
   status: string;
   x: number;
   y: number;
+  depth: number;
   children: LayoutNode[];
 }
 
@@ -42,7 +43,7 @@ function subtreeWidth(node: OrgNode): number {
 }
 
 /** Recursively assign x,y positions. */
-function layoutTree(node: OrgNode, x: number, y: number): LayoutNode {
+function layoutTree(node: OrgNode, x: number, y: number, depth: number): LayoutNode {
   const totalW = subtreeWidth(node);
   const layoutChildren: LayoutNode[] = [];
 
@@ -53,7 +54,7 @@ function layoutTree(node: OrgNode, x: number, y: number): LayoutNode {
 
     for (const child of node.reports) {
       const cw = subtreeWidth(child);
-      layoutChildren.push(layoutTree(child, cx, y + CARD_H + GAP_Y));
+      layoutChildren.push(layoutTree(child, cx, y + CARD_H + GAP_Y, depth + 1));
       cx += cw + GAP_X;
     }
   }
@@ -65,6 +66,7 @@ function layoutTree(node: OrgNode, x: number, y: number): LayoutNode {
     status: node.status,
     x: x + (totalW - CARD_W) / 2,
     y,
+    depth,
     children: layoutChildren,
   };
 }
@@ -73,19 +75,15 @@ function layoutTree(node: OrgNode, x: number, y: number): LayoutNode {
 function layoutForest(roots: OrgNode[]): LayoutNode[] {
   if (roots.length === 0) return [];
 
-  const totalW = roots.reduce((sum, r) => sum + subtreeWidth(r), 0);
-  const gaps = (roots.length - 1) * GAP_X;
   let x = PADDING;
   const y = PADDING;
 
   const result: LayoutNode[] = [];
   for (const root of roots) {
     const w = subtreeWidth(root);
-    result.push(layoutTree(root, x, y));
+    result.push(layoutTree(root, x, y, 0));
     x += w + GAP_X;
   }
-
-  // Compute bounds and return
   return result;
 }
 
@@ -240,14 +238,10 @@ export function OrgChart() {
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!dragging) return;
-    const dx = e.clientX - dragStart.current.x;
-    const dy = e.clientY - dragStart.current.y;
-    setPan({ x: dragStart.current.panX + dx, y: dragStart.current.panY + dy });
+    setPan({ x: dragStart.current.panX + e.clientX - dragStart.current.x, y: dragStart.current.panY + e.clientY - dragStart.current.y });
   }, [dragging]);
 
-  const handleMouseUp = useCallback(() => {
-    setDragging(false);
-  }, []);
+  const handleMouseUp = useCallback(() => setDragging(false), []);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
@@ -270,6 +264,8 @@ export function OrgChart() {
     setZoom(newZoom);
   }, [zoom, pan]);
 
+  const depth = useMemo(() => allNodes.reduce((max, n) => Math.max(max, n.depth), 0) + 1, [allNodes]);
+
   if (!selectedCompanyId) {
     return <EmptyState icon={Network} message="Select a company to view the org chart." />;
   }
@@ -283,10 +279,22 @@ export function OrgChart() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col gap-2 tabular-nums">
+    {/* 1-row cockpit strip: reporting-structure telemetry for the canvas below */}
+    <div className="cockpit-strip w-full shrink-0 gap-0" role="group" aria-label="Org chart summary">
+      <span className="cockpit-cell shrink-0">
+        <Network className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <span className="uppercase tracking-wide">Org Chart</span>
+      </span>
+      <span className="cockpit-cell min-w-0 flex-1 justify-center" title="Cards on the canvas">Agents <b className="ml-1">{allNodes.length}</b></span>
+      <span className="cockpit-cell min-w-0 flex-1 justify-center" title="Top-level agents">Roots <b className="ml-1">{layout.length}</b></span>
+      <span className="cockpit-cell min-w-0 flex-1 justify-center" title="Reporting lines">Reports <b className="ml-1">{edges.length}</b></span>
+      <span className="cockpit-cell min-w-0 flex-1 justify-center" title="Deepest reporting level">Depth <b className="ml-1">{depth}</b></span>
+      <span className="cockpit-cell min-w-0 flex-1 justify-center" title="Current canvas zoom">Zoom <b className="ml-1">{Math.round(zoom * 100)}%</b></span>
+    </div>
     <div
       ref={containerRef}
-      className="w-full flex-1 min-h-0 overflow-hidden relative rounded-md border border-border/80 bg-muted/20"
+      className="w-full flex-1 min-h-0 overflow-hidden relative rounded-md border border-[#242d3f] bg-[#0b0e14]"
       style={{ cursor: dragging ? "grabbing" : "grab" }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -295,29 +303,29 @@ export function OrgChart() {
       onWheel={handleWheel}
     >
       {/* Zoom controls */}
-      <div className="absolute top-3 right-3 z-10 w-12 overflow-hidden rounded-md border border-border/80 bg-card/80 backdrop-blur-sm">
-        <div className="border-b border-border/60 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="absolute top-3 right-3 z-10 w-12 overflow-hidden rounded-md border border-[#242d3f] bg-[#111622]">
+        <div className="border-b border-[#242d3f] px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-wider text-[#8b97ad]">
           Zoom
         </div>
         <button
-          className="flex h-7 w-full items-center justify-center text-sm transition-colors hover:bg-accent"
+          className="flex h-7 w-full items-center justify-center text-sm text-[#e6edf7] transition-colors hover:bg-[#151b28]"
           onClick={() => applyCenterZoom(Math.min(zoom * 1.2, 2))}
           aria-label="Zoom in"
         >
           +
         </button>
         <button
-          className="flex h-7 w-full items-center justify-center border-t border-border/60 text-sm transition-colors hover:bg-accent"
+          className="flex h-7 w-full items-center justify-center border-t border-[#242d3f] text-sm text-[#e6edf7] transition-colors hover:bg-[#151b28]"
           onClick={() => applyCenterZoom(Math.max(zoom * 0.8, 0.2))}
           aria-label="Zoom out"
         >
           &minus;
         </button>
-        <div className="border-t border-border/60 px-1 py-1 text-center font-mono text-[10px] text-muted-foreground tabular-nums">
+        <div className="border-t border-[#242d3f] px-1 py-1 text-center font-mono text-[10px] text-[#8b97ad] tabular-nums">
           {Math.round(zoom * 100)}%
         </div>
         <button
-          className="flex h-7 w-full items-center justify-center border-t border-border/60 text-[10px] font-semibold uppercase tracking-wider transition-colors hover:bg-accent"
+          className="flex h-7 w-full items-center justify-center border-t border-[#242d3f] bg-[#2563eb] text-[10px] font-semibold uppercase tracking-wider text-[#f8fafc] transition-colors hover:bg-[#1d4fd8]"
           onClick={fitChartToScreen}
           title="Fit to screen"
           aria-label="Fit chart to screen"
@@ -329,10 +337,7 @@ export function OrgChart() {
       {/* SVG layer for edges */}
       <svg
         className="absolute inset-0 pointer-events-none"
-        style={{
-          width: "100%",
-          height: "100%",
-        }}
+        style={{ width: "100%", height: "100%" }}
       >
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
           {edges.map(({ parent, child }) => {
@@ -347,7 +352,7 @@ export function OrgChart() {
                 key={`${parent.id}-${child.id}`}
                 d={`M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`}
                 fill="none"
-                stroke="var(--border)"
+                stroke="#242d3f"
                 strokeWidth={1.5}
               />
             );
@@ -371,7 +376,7 @@ export function OrgChart() {
             <div
               key={node.id}
               data-org-card
-              className="absolute cursor-pointer select-none rounded-md border border-border/80 bg-card/80 transition-colors duration-150 hover:border-foreground/30 hover:bg-accent/20"
+              className="absolute cursor-pointer select-none rounded-md border border-[#242d3f] bg-[#151b28] transition-colors duration-150 hover:border-[#5f8dff]"
               style={{
                 left: node.x,
                 top: node.y,
@@ -383,24 +388,24 @@ export function OrgChart() {
               <div className="flex items-center px-4 py-3 gap-3">
                 {/* Agent icon + status dot */}
                 <div className="relative shrink-0">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-background/70">
-                    <AgentIcon icon={agent?.icon} className="h-4.5 w-4.5 text-foreground/70" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-[#242d3f] bg-[#0b0e14]">
+                    <AgentIcon icon={agent?.icon} className="h-4.5 w-4.5 text-[#e6edf7]/70" />
                   </div>
                   <span
-                    className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-card"
+                    className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-[#151b28]"
                     style={{ backgroundColor: dotColor }}
                   />
                 </div>
                 {/* Name + role + adapter type */}
-                <div className="flex flex-col items-start min-w-0 flex-1">
-                  <span className="text-sm font-semibold text-foreground leading-tight">
+                <div className="flex min-w-0 flex-1 flex-col items-start">
+                  <span className="w-full truncate text-sm font-semibold leading-tight text-[#e6edf7]">
                     {node.name}
                   </span>
-                  <span className="mt-0.5 text-[10px] font-semibold uppercase leading-tight tracking-wider text-muted-foreground">
-                    {agent?.title ?? roleLabel(node.role)}
+                  <span className="mt-0.5 w-full truncate text-[10px] font-semibold uppercase leading-tight tracking-wider text-[#8b97ad]">
+                    {agent?.title ?? ((AGENT_ROLE_LABELS as Record<string, string>)[node.role] ?? node.role)}
                   </span>
                   {agent && (
-                    <span className="mt-1 font-mono text-[10px] uppercase leading-tight text-muted-foreground/60">
+                    <span className="mt-1 w-full truncate font-mono text-[10px] uppercase leading-tight text-[#8b97ad]/70">
                       {adapterLabels[agent.adapterType] ?? agent.adapterType}
                     </span>
                   )}
@@ -413,10 +418,4 @@ export function OrgChart() {
     </div>
     </div>
   );
-}
-
-const roleLabels: Record<string, string> = AGENT_ROLE_LABELS;
-
-function roleLabel(role: string): string {
-  return roleLabels[role] ?? role;
 }
