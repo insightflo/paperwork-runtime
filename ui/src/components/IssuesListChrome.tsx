@@ -14,65 +14,80 @@ import { queryKeys } from "../lib/queryKeys";
  * toolbar and rows. Tailwind only emits candidates that appear verbatim in
  * source, so every selector is spelled out here rather than composed. */
 export const ISSUES_TOOLBAR_CLASS = [
-  // 40px single-row cockpit toolbar
+  // 40px single-row tactile cockpit toolbar
   "[&>div>div:first-child]:h-auto",
   "[&>div>div:first-child]:sm:h-10",
-  "[&>div>div:first-child]:rounded-md",
+  "[&>div>div:first-child]:rounded-[10px]",
   "[&>div>div:first-child]:border",
-  "[&>div>div:first-child]:border-[#242d3f]",
-  "[&>div>div:first-child]:bg-[#111622]",
+  "[&>div>div:first-child]:border-slate-200/90",
+  "dark:[&>div>div:first-child]:border-white/[0.08]",
+  "[&>div>div:first-child]:bg-white/95",
+  "dark:[&>div>div:first-child]:bg-[#0e131d]",
   "[&>div>div:first-child]:py-0",
   "[&>div>div:first-child]:pl-2",
   "[&>div>div:first-child]:pr-1.5",
-  // Deep-cobalt "+ New" CTA
+  "[&>div>div:first-child]:shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]",
+  "dark:[&>div>div:first-child]:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+  // Cobalt "+ New" CTA
   "[&>div>div:first-child>div:first-child>button:first-child]:h-7",
   "[&>div>div:first-child>div:first-child>button:first-child]:rounded-md",
-  "[&>div>div:first-child>div:first-child>button:first-child]:border-[#5f8dff]/50",
-  "[&>div>div:first-child>div:first-child>button:first-child]:bg-[#2563eb]",
+  "[&>div>div:first-child>div:first-child>button:first-child]:border-blue-600/20",
+  "[&>div>div:first-child>div:first-child>button:first-child]:bg-blue-600",
   "[&>div>div:first-child>div:first-child>button:first-child]:font-semibold",
-  "[&>div>div:first-child>div:first-child>button:first-child]:text-[#f8fafc]",
-  "[&>div>div:first-child>div:first-child>button:first-child]:shadow-[inset_0_0_0_1px_rgba(95,141,255,0.45)]",
-  "[&>div>div:first-child>div:first-child>button:first-child]:hover:bg-[#1d4ed8]",
+  "[&>div>div:first-child>div:first-child>button:first-child]:text-white",
+  "[&>div>div:first-child>div:first-child>button:first-child]:shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]",
+  "[&>div>div:first-child>div:first-child>button:first-child]:hover:bg-blue-500",
+  "dark:[&>div>div:first-child>div:first-child>button:first-child]:border-[#60a5fa]/50",
+  "dark:[&>div>div:first-child>div:first-child>button:first-child]:bg-[#2563eb]",
+  "dark:[&>div>div:first-child>div:first-child>button:first-child]:text-[#f8fafc]",
+  "dark:[&>div>div:first-child>div:first-child>button:first-child]:shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]",
+  "dark:[&>div>div:first-child>div:first-child>button:first-child]:hover:bg-[#3b82f6]",
   // Search field
-  "[&>div>div:first-child>div:first-child_input]:h-7",
-  "[&>div>div:first-child>div:first-child_input]:rounded-md",
-  "[&>div>div:first-child>div:first-child_input]:border-[#242d3f]",
-  "[&>div>div:first-child>div:first-child_input]:bg-[#0b0e14]",
-  "[&>div>div:first-child>div:first-child_input]:text-[#e6edf7]",
-  "[&>div>div:first-child>div:first-child_input]:placeholder:text-[#8b97ad]",
-  "[&>div>div:first-child>div:first-child_input]:focus-visible:border-[#5f8dff]",
-  "[&>div>div:first-child>div:first-child_input]:focus-visible:ring-[#5f8dff]/40",
+  "[&>div>div:first-child_input]:h-7",
+  "[&>div>div:first-child_input]:rounded-md",
+  "[&>div>div:first-child_input]:border-slate-200/90",
+  "[&>div>div:first-child_input]:bg-white",
+  "[&>div>div:first-child_input]:text-slate-900",
+  "[&>div>div:first-child_input]:placeholder:text-slate-400",
+  "[&>div>div:first-child_input]:shadow-[inset_0_1px_0_rgba(255,255,255,0.85)]",
+  "[&>div>div:first-child_input]:focus-visible:border-blue-500",
+  "[&>div>div:first-child_input]:focus-visible:ring-2",
+  "[&>div>div:first-child_input]:focus-visible:ring-blue-500/20",
+  "dark:[&>div>div:first-child_input]:border-white/[0.1]",
+  "dark:[&>div>div:first-child_input]:bg-[#090c12]",
+  "dark:[&>div>div:first-child_input]:text-[#eef2f8]",
+  "dark:[&>div>div:first-child_input]:placeholder:text-[#627089]",
+  "dark:[&>div>div:first-child_input]:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
+  "dark:[&>div>div:first-child_input]:focus-visible:border-[#60a5fa]",
+  "dark:[&>div>div:first-child_input]:focus-visible:ring-[#60a5fa]/25",
   // View-mode toggle (list / board) styled as status tabs
-  "[&>div>div:first-child>div:last-child>div:first-child]:rounded-md",
-  "[&>div>div:first-child>div:last-child>div:first-child]:border-[#242d3f]",
-  "[&>div>div:first-child>div:last-child>div:first-child]:bg-[#0b0e14]",
+  "[&>div>div:first-child>div:last-child>div:first-child]:rounded-[10px]",
+  "[&>div>div:first-child>div:last-child>div:first-child]:border-slate-200/90",
+  "[&>div>div:first-child>div:last-child>div:first-child]:bg-slate-100/90",
+  "dark:[&>div>div:first-child>div:last-child>div:first-child]:border-white/[0.08]",
+  "dark:[&>div>div:first-child>div:last-child>div:first-child]:bg-[#090c12]",
   "[&>div>div:first-child>div:last-child>div:first-child>button]:h-6",
   "[&>div>div:first-child>div:last-child>div:first-child>button]:w-7",
   "[&>div>div:first-child>div:last-child>div:first-child>button]:p-0",
-  "[&>div>div:first-child>div:last-child>div:first-child>button]:text-[#8b97ad]",
-  "[&>div>div:first-child>div:last-child>div:first-child>button]:hover:text-[#e6edf7]",
-  "[&>div>div:first-child>div:last-child>div:first-child>button.bg-accent]:bg-[#151b28]",
-  "[&>div>div:first-child>div:last-child>div:first-child>button.bg-accent]:text-[#e6edf7]",
-  "[&>div>div:first-child>div:last-child>div:first-child>button.bg-accent]:shadow-[inset_0_0_0_1px_#242d3f]",
   // Filter / Sort / Group
   "[&>div>div:first-child>div:last-child>button]:h-7",
   "[&>div>div:first-child>div:last-child>button]:rounded-md",
   "[&>div>div:first-child>div:last-child>button]:text-xs",
-  "[&>div>div:first-child>div:last-child>button]:text-[#8b97ad]",
-  "[&>div>div:first-child>div:last-child>button]:hover:bg-[#151b28]",
-  "[&>div>div:first-child>div:last-child>button]:hover:text-[#e6edf7]",
-  "[&>div>div:first-child>div:last-child>button.text-blue-600]:text-[#5f8dff]",
   // Group headers
   "[&_button[data-state]]:text-[11px]",
   "[&_button[data-state]]:uppercase",
-  "[&_button[data-state]]:tracking-[0.08em]",
-  "[&_button[data-state]]:text-[#8b97ad]",
+  "[&_button[data-state]]:tracking-[0.12em]",
+  "[&_button[data-state]]:text-slate-500",
+  "dark:[&_button[data-state]]:text-[#8f9db3]",
   // High-density rows with crisp hairlines
-  "[&_[data-state=open]>a[href^='/issues']]:border-[#242d3f]",
+  "[&_[data-state=open]>a[href^='/issues']]:border-slate-200/80",
+  "dark:[&_[data-state=open]>a[href^='/issues']]:border-white/[0.06]",
   "[&_[data-state=open]>a[href^='/issues']]:sm:py-1.5",
   // j/k selection highlight
-  "[&_[data-state=open]>a[data-pw-selected=true]]:bg-[#151b28]",
-  "[&_[data-state=open]>a[data-pw-selected=true]]:shadow-[inset_2px_0_0_#5f8dff]",
+  "[&_[data-state=open]>a[data-pw-selected=true]]:bg-blue-50",
+  "[&_[data-state=open]>a[data-pw-selected=true]]:shadow-[inset_2px_0_0_#2563eb]",
+  "dark:[&_[data-state=open]>a[data-pw-selected=true]]:bg-[#151d2b]",
+  "dark:[&_[data-state=open]>a[data-pw-selected=true]]:shadow-[inset_2px_0_0_#60a5fa]",
 ].join(" ");
 
 /* ── Server-backed paging ── */
@@ -141,9 +156,9 @@ export type IssuePaging = ReturnType<typeof useIssuePaging>;
 
 const PAGER_BUTTON_CLASS = [
   "inline-flex h-6 cursor-pointer items-center gap-1 rounded-md px-2 text-xs font-medium",
-  "text-[#8b97ad] hover:bg-[#151b28] hover:text-[#e6edf7]",
-  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#5f8dff]",
-  "disabled:cursor-default disabled:bg-transparent disabled:text-[#8b97ad]/50 disabled:hover:bg-transparent",
+  "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-[#9aa7bd] dark:hover:bg-[#151d2b] dark:hover:text-[#eef2f8]",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:focus-visible:ring-[#60a5fa]/35",
+  "disabled:cursor-default disabled:bg-transparent disabled:text-slate-400 disabled:hover:bg-transparent dark:disabled:text-[#59667c]",
 ].join(" ");
 
 interface IssuesPaginationProps {
@@ -178,7 +193,7 @@ export function IssuesPagination({
       aria-label="Work items pages"
       aria-busy={busy}
       data-fetching={busy}
-      className="cockpit-strip w-full justify-between"
+      className="cockpit-strip h-8 w-full justify-between rounded-[10px] border-slate-200/90 bg-white/95 px-2 text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)]"
     >
       <button type="button" className={PAGER_BUTTON_CLASS} disabled={page <= 1 || isFetching} onClick={onPrev}>
         <ChevronLeft className="h-3 w-3" aria-hidden />
@@ -186,16 +201,16 @@ export function IssuesPagination({
       </button>
       <span className="cockpit-cell gap-2" role="status" aria-live="polite">
         <span
-          className="inline-flex h-3 w-3 items-center justify-center text-[#5f8dff]"
+          className="inline-flex h-3 w-3 items-center justify-center text-blue-600 dark:text-[#60a5fa]"
           data-spinner={busy || undefined}
           aria-hidden
         >
           {isFetching ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
         </span>
         <span>
-          Page <b>{page}</b>
+          Page <b className="font-mono tabular-nums">{page}</b>
         </span>
-        <span className="text-[#8b97ad]">
+        <span className="font-mono text-slate-500 tabular-nums dark:text-[#8f9db3]">
           Showing {from}–{to}
         </span>
       </span>
