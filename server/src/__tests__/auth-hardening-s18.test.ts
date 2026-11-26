@@ -347,7 +347,7 @@ describe("Stage 18 Active Session Management Routes", () => {
       };
       next();
     });
-    app.use("/api", authAccountRoutes(db));
+    app.use("/api/auth", authAccountRoutes(db));
     app.use(errorHandler);
 
     const listRes = await request(app).get("/api/auth/sessions");

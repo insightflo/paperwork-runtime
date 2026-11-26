@@ -14,7 +14,7 @@ function requireAuthenticatedBoardUser(req: Request): string {
 export function authAccountRoutes(db: Db) {
   const router = Router();
 
-  router.get("/auth/sessions", async (req, res) => {
+  router.get("/sessions", async (req, res) => {
     const userId = requireAuthenticatedBoardUser(req);
     const now = new Date();
     const rows = await db
@@ -41,7 +41,7 @@ export function authAccountRoutes(db: Db) {
     );
   });
 
-  router.delete("/auth/sessions/:sessionId", async (req, res) => {
+  router.delete("/sessions/:sessionId", async (req, res) => {
     const userId = requireAuthenticatedBoardUser(req);
     const sessionId = (req.params.sessionId as string).trim();
     if (!sessionId) throw notFound("Session not found");
@@ -56,7 +56,7 @@ export function authAccountRoutes(db: Db) {
     res.json({ ok: true, id: deleted.id });
   });
 
-  router.post("/auth/sessions/revoke-others", async (req, res) => {
+  router.post("/sessions/revoke-others", async (req, res) => {
     const userId = requireAuthenticatedBoardUser(req);
     const condition = req.actor.sessionId
       ? and(eq(authSessions.userId, userId), ne(authSessions.id, req.actor.sessionId))

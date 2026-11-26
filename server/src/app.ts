@@ -496,7 +496,7 @@ export async function createApp(
   app.get("/api/auth/providers", (_req, res) => {
     res.json({ providers: opts.socialAuthProviders ?? [] });
   });
-  app.use("/api", authAccountRoutes(db));
+  app.use("/api/auth", authAccountRoutes(db));
 
   const authSignInLimiter = createAuthRateLimiter({
     bucketName: "auth-sign-in",
