@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   worktreeApi,
@@ -13,7 +13,6 @@ import { queryKeys } from "../lib/queryKeys";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import {
   GitPullRequest,
   ChevronDown,
@@ -29,89 +28,72 @@ import { L, useCompanyLanguage } from "../lib/companyLanguage";
 import { humanLabel } from "../lib/humanLabels";
 
 const MAX_PROPOSALS_PER_AGENT_PER_DAY = 3;
+const DATE_FORMAT: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" };
 
-const STATUS_TABS: { label: string; value: ProposalStatus | "all" }[] = [
-  { label: "All", value: "all" },
-  { label: "Pending", value: "proposed" },
-  { label: "Approved", value: "approved" },
-  { label: "Rejected", value: "rejected" },
+type StatusFilter = ProposalStatus | "all";
+
+// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
+/** One table drives the strip cells (filter shortcuts) and the per-row status styling. */
+const STATUS_TABLE: { value: ProposalStatus; label: string; color: string; icon: React.ElementType }[] = [
+  { value: "proposed", label: "Pending", color: "#fbbf24", icon: Clock },
+  { value: "approved", label: "Approved", color: "#34d399", icon: CheckCircle2 },
+  { value: "rejected", label: "Rejected", color: "#f87171", icon: XCircle },
 ];
 
-const STATUS_STYLES: Record<ProposalStatus, { icon: React.ElementType; classes: string; label: string }> = {
-  proposed: { icon: Clock, classes: "text-yellow-600 dark:text-yellow-400", label: "Pending" },
-  approved: { icon: CheckCircle2, classes: "text-green-600 dark:text-green-400", label: "Approved" },
-  rejected: { icon: XCircle, classes: "text-red-600 dark:text-red-400", label: "Rejected" },
-};
-
 const SEVERITY_COLORS: Record<string, string> = {
-  MUST: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
-  SHOULD: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300",
-  MAY: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  MUST: "bg-[#f87171]/15 text-[#f87171]",
+  SHOULD: "bg-[#fbbf24]/15 text-[#fbbf24]",
+  MAY: "bg-[#5f8dff]/15 text-[#5f8dff]",
 };
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+/** Fixed column tracks: name (flexes, truncates) | severity | agent | date | status | action (never wrap). */
+const ROW_TRACKS =
+  "grid grid-cols-[minmax(0,1fr)_max-content_max-content] items-center gap-3 px-3 sm:grid-cols-[minmax(0,1fr)_4rem_max-content_max-content] lg:grid-cols-[minmax(0,1fr)_4rem_10rem_9.5rem_max-content_max-content]";
+const STRIP_CELL_ACTIVE = "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_-1px_0_#5f8dff]";
+const STRIP_CELL_IDLE = "hover:bg-[#151b28] hover:text-[#e6edf7]";
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatDate(date: string | null | undefined): string {
   if (!date) return "—";
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(date));
+  return new Intl.DateTimeFormat("en-US", DATE_FORMAT).format(new Date(date));
 }
 
-// ---------------------------------------------------------------------------
-// DiffView — shows proposed change fields
-// ---------------------------------------------------------------------------
+// ── DiffView — shows proposed change fields ───────────────────────────────────
 
 function DiffView({ change }: { change: ProposedRuleChange }) {
   return (
-    <div className="space-y-3 rounded-md border border-border/80 bg-card/60 p-3 text-xs">
-      <div className="grid grid-cols-[80px_1fr] gap-x-3 gap-y-1.5 items-start">
-        <span className="text-muted-foreground font-medium pt-0.5">Name</span>
-        <span className="font-medium">{change.name}</span>
-
-        <span className="text-muted-foreground font-medium pt-0.5">Severity</span>
-        <span>
-          <span className={cn("px-1.5 py-0.5 rounded font-mono font-medium text-xs", SEVERITY_COLORS[change.severity] ?? "bg-muted text-muted-foreground")}>
-            {change.severity}
-          </span>
-        </span>
-
-        <span className="text-muted-foreground font-medium pt-0.5">Action</span>
-        <span className="font-mono">{change.action}</span>
-
-        {change.message && (
-          <>
-            <span className="text-muted-foreground font-medium pt-0.5">Message</span>
-            <span className="text-muted-foreground">{change.message}</span>
-          </>
-        )}
-
-        <span className="text-muted-foreground font-medium pt-0.5 self-start">Predicate</span>
-        <pre className="rounded-md border border-border/80 bg-background/60 p-2 overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs leading-relaxed">
-          {JSON.stringify(change.predicate, null, 2)}
-        </pre>
-      </div>
+    <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-md border border-[#242d3f] bg-[#151b28] p-3 text-xs">
+      <span className="pt-0.5 font-medium text-[#8b97ad]">Name</span>
+      <span className="min-w-0 truncate font-medium text-[#e6edf7]">{change.name}</span>
+      <span className="pt-0.5 font-medium text-[#8b97ad]">Severity</span>
+      <span className={cn("justify-self-start rounded px-1.5 py-0.5 font-mono font-medium text-xs", SEVERITY_COLORS[change.severity] ?? "bg-[#151b28] text-[#8b97ad]")}>
+        {change.severity}
+      </span>
+      <span className="pt-0.5 font-medium text-[#8b97ad]">Action</span>
+      <span className="min-w-0 truncate font-mono text-[#e6edf7]">{change.action}</span>
+      {change.message && (
+        <>
+          <span className="pt-0.5 font-medium text-[#8b97ad]">Message</span>
+          <span className="whitespace-pre-wrap break-words text-[#8b97ad]">{change.message}</span>
+        </>
+      )}
+      <span className="self-start pt-0.5 font-medium text-[#8b97ad]">Predicate</span>
+      <pre className="overflow-x-auto rounded-md border border-[#242d3f] bg-[#0b0e14] p-2 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">
+        {JSON.stringify(change.predicate, null, 2)}
+      </pre>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// ReviewForm
-// ---------------------------------------------------------------------------
+// ── ReviewForm ────────────────────────────────────────────────────────────────
 
 interface ReviewFormProps {
   proposal: WorktreeProposal;
-  agentMap: Record<string, string>;
   onDone: () => void;
 }
 
-function ReviewForm({ proposal, agentMap, onDone }: ReviewFormProps) {
+function ReviewForm({ proposal, onDone }: ReviewFormProps) {
   const lang = useCompanyLanguage();
   const queryClient = useQueryClient();
   const [reviewNote, setReviewNote] = useState("");
@@ -123,21 +105,13 @@ function ReviewForm({ proposal, agentMap, onDone }: ReviewFormProps) {
 
   const mutation = useMutation({
     mutationFn: (status: "approved" | "rejected") =>
-      worktreeApi.reviewProposal(proposal.id, {
-        status,
-        reviewedByAgentId: REVIEWER_ID,
-        reviewNote: reviewNote.trim() || undefined,
-        reviewAcknowledged,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.worktree.proposals(proposal.companyId) });
-      onDone();
-    },
+      worktreeApi.reviewProposal(proposal.id, { status, reviewedByAgentId: REVIEWER_ID, reviewNote: reviewNote.trim() || undefined, reviewAcknowledged }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: queryKeys.worktree.proposals(proposal.companyId) }); onDone(); },
     onError: (err) => setReviewError(err instanceof Error ? err.message : "Review failed"),
   });
 
   return (
-    <div className="mt-3 space-y-2 border-t border-border pt-3">
+    <div className="mt-3 space-y-2 border-t border-[#242d3f] pt-3">
       <HumanReviewPacket packet={{
         schemaVersion: "human-review-v1", decisionSubject: `${proposal.proposedChange.name} 운영 규칙 변경을 적용할까요?`,
         evidence: [{ label: "규칙 변경 제안 원본", href: `/worktree/proposals#proposal-${proposal.id}`, location: `제안 ${proposal.id} > Proposed rule`, description: proposal.rationale }],
@@ -148,39 +122,23 @@ function ReviewForm({ proposal, agentMap, onDone }: ReviewFormProps) {
       }} />
       <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={reviewAcknowledged} onChange={(event) => setReviewAcknowledged(event.target.checked)} /><span>원본 규칙, 적용 영향과 오판 위험을 확인했습니다.</span></label>
       <textarea
-        className="w-full h-16 text-xs rounded-md border border-input bg-background px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+        className="h-16 w-full resize-none rounded-md border border-input bg-[#0b0e14] px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
         placeholder={L(lang, { en: "Review note (optional)", ko: "검토 메모(선택)" })}
         value={reviewNote}
         onChange={(e) => setReviewNote(e.target.value)}
       />
       {reviewError && <p className="text-xs text-destructive">{reviewError}</p>}
       <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          className="h-7 text-xs bg-green-600 hover:bg-green-700 text-white"
-          onClick={() => mutation.mutate("approved")}
-          disabled={mutation.isPending || !reviewAcknowledged}
-        >
-          <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-          {L(lang, { en: "Approve", ko: "승인" })}
+        {/* Deep-cobalt primary: the one governing action of this page */}
+        <Button size="sm" variant="outline" className="h-7 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]"
+          onClick={() => mutation.mutate("approved")} disabled={mutation.isPending || !reviewAcknowledged}>
+          <CheckCircle2 className="h-3.5 w-3.5" />{L(lang, { en: "Approve", ko: "승인" })}
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs border-destructive text-destructive hover:bg-destructive/10"
-          onClick={() => mutation.mutate("rejected")}
-          disabled={mutation.isPending}
-        >
-          <XCircle className="h-3.5 w-3.5 mr-1.5" />
-          {L(lang, { en: "Reject", ko: "거절" })}
+        <Button size="sm" variant="outline" className="h-7 border-[#f87171]/50 text-xs text-[#f87171] hover:bg-[#f87171]/10 hover:text-[#f87171]"
+          onClick={() => mutation.mutate("rejected")} disabled={mutation.isPending}>
+          <XCircle className="h-3.5 w-3.5" />{L(lang, { en: "Reject", ko: "거절" })}
         </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 text-xs"
-          onClick={onDone}
-          disabled={mutation.isPending}
-        >
+        <Button size="sm" variant="ghost" className="h-7 text-xs text-[#8b97ad] hover:text-[#e6edf7]" onClick={onDone} disabled={mutation.isPending}>
           {L(lang, { en: "Cancel", ko: "취소" })}
         </Button>
       </div>
@@ -188,141 +146,127 @@ function ReviewForm({ proposal, agentMap, onDone }: ReviewFormProps) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// ProposalRow
-// ---------------------------------------------------------------------------
+// ── ProposalRow ───────────────────────────────────────────────────────────────
 
 interface ProposalRowProps {
   proposal: WorktreeProposal;
   agentMap: Record<string, string>;
+  /** 0 = untouched; each "Review next" click bumps the sequence so exactly the requested row opens. */
+  reviewSeq: number;
 }
 
-function ProposalRow({ proposal, agentMap }: ProposalRowProps) {
+function ProposalRow({ proposal, agentMap, reviewSeq }: ProposalRowProps) {
   const lang = useCompanyLanguage();
   const [expanded, setExpanded] = useState(false);
   const [reviewing, setReviewing] = useState(false);
 
   const status = proposal.status as ProposalStatus;
-  const { icon: StatusIcon, classes: statusClasses, label: statusLabel } = STATUS_STYLES[status];
-  const change = proposal.proposedChange;
   const isPending = status === "proposed";
 
+  // Toolbar CTA expands this row's review form without stealing the row's own toggle state.
+  useEffect(() => {
+    if (reviewSeq === 0) return;
+    setExpanded(true);
+    setReviewing(isPending);
+    document.getElementById(`proposal-${proposal.id}`)?.scrollIntoView({ block: "nearest" });
+  }, [reviewSeq, isPending, proposal.id]);
+
+  const statusInfo = STATUS_TABLE.find((s) => s.value === status);
+  const StatusIcon = statusInfo?.icon ?? Clock;
+  const change = proposal.proposedChange;
+
   return (
-    <div id={`proposal-${proposal.id}`} className="border-b border-border/80 last:border-b-0">
+    <div id={`proposal-${proposal.id}`} className="border-b border-[#242d3f] transition-colors last:border-b-0 hover:bg-[#151b28]">
       {/* Row header */}
-      <div className="flex items-center gap-3 px-4 py-3 text-sm">
-        <button
-          className="p-0.5 shrink-0 text-muted-foreground hover:text-foreground"
-          onClick={() => { setExpanded((v) => !v); if (reviewing) setReviewing(false); }}
-        >
-          {expanded
-            ? <ChevronDown className="h-3.5 w-3.5" />
-            : <ChevronRight className="h-3.5 w-3.5" />}
-        </button>
-
-        <GitPullRequest className="h-4 w-4 shrink-0 text-muted-foreground" />
-
-        {/* Proposed change name */}
-        <span className="flex-1 truncate font-medium">{change.name}</span>
+      <div className={cn(ROW_TRACKS, "h-10 text-sm")}>
+        <span className="flex min-w-0 items-center gap-3">
+          <button
+            className="shrink-0 p-0.5 text-[#8b97ad] hover:text-[#e6edf7]"
+            onClick={() => { setExpanded((v) => !v); if (reviewing) setReviewing(false); }}
+            aria-label={expanded ? "Collapse proposal" : "Expand proposal"}
+          >
+            {expanded
+              ? <ChevronDown className="h-3.5 w-3.5" />
+              : <ChevronRight className="h-3.5 w-3.5" />}
+          </button>
+          <GitPullRequest className="h-4 w-4 shrink-0 text-[#8b97ad]" />
+          <span className="min-w-0 flex-1 truncate font-medium text-[#e6edf7]">{change.name}</span>
+        </span>
 
         {/* Severity badge */}
         <span className={cn(
-          "shrink-0 text-xs px-1.5 py-0.5 rounded font-mono font-medium hidden sm:inline",
-          SEVERITY_COLORS[change.severity] ?? "bg-muted text-muted-foreground",
+          "justify-self-start rounded px-1.5 py-0.5 font-mono font-medium text-xs",
+          SEVERITY_COLORS[change.severity] ?? "bg-[#151b28] text-[#8b97ad]",
         )}>
           {change.severity}
         </span>
 
         {/* Agent */}
-        <div className="shrink-0 flex items-center gap-1 text-xs text-muted-foreground hidden md:flex">
-          <Bot className="h-3.5 w-3.5" />
-          <span>{agentMap[proposal.proposedBy] ?? proposal.proposedBy}</span>
-        </div>
-
-        {/* Date */}
-        <span className="shrink-0 text-xs text-muted-foreground hidden lg:block">
-          {formatDate(proposal.createdAt)}
+        <span className="hidden min-w-0 items-center gap-1 text-xs text-[#8b97ad] sm:flex">
+          <Bot className="h-3.5 w-3.5 shrink-0" />
+          <span className="truncate">{agentMap[proposal.proposedBy] ?? proposal.proposedBy}</span>
         </span>
 
+        {/* Date */}
+        <span className="hidden min-w-0 truncate text-xs text-[#8b97ad] lg:block">{formatDate(proposal.createdAt)}</span>
+
         {/* Status */}
-        <div className={cn("shrink-0 flex items-center gap-1 text-xs", statusClasses)}>
+        <span className="hidden shrink-0 items-center gap-1 text-xs lg:flex" style={{ color: statusInfo?.color }}>
           <StatusIcon className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline" title={status}>{humanLabel(lang, "approvalStatus", status === "proposed" ? "pending" : status).label}</span>
-        </div>
+          <span title={status}>{humanLabel(lang, "approvalStatus", status === "proposed" ? "pending" : status).label}</span>
+        </span>
 
         {/* Review button — only for pending */}
-        {isPending && (
+        {isPending ? (
           <Button
             size="sm"
             variant="outline"
-            className="h-6 text-xs shrink-0"
+            aria-pressed={reviewing}
+            className="h-6 shrink-0 text-xs"
             onClick={() => { setExpanded(true); setReviewing((v) => !v); }}
           >
             Review
           </Button>
+        ) : (
+          <span className="h-6 w-16" aria-hidden />
         )}
       </div>
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="px-10 pb-4 space-y-3">
-          {/* Rationale */}
+        <div className="space-y-3 px-10 pb-4">
           <div>
-            <p className="text-xs font-medium text-muted-foreground mb-1">Rationale</p>
-            <p className="text-xs">{proposal.rationale}</p>
+            <p className="mb-1 text-xs font-medium text-[#8b97ad]">Rationale</p>
+            <p className="whitespace-pre-wrap break-words text-xs text-[#e6edf7]">{proposal.rationale}</p>
           </div>
-
-          {/* Proposed change diff */}
           <div>
-            <p className="text-xs font-medium text-muted-foreground mb-2">Proposed rule</p>
+            <p className="mb-2 text-xs font-medium text-[#8b97ad]">Proposed rule</p>
             <DiffView change={change} />
           </div>
 
           {/* Review info if already decided */}
           {!isPending && proposal.reviewedBy && (
-            <div className="text-xs text-muted-foreground space-y-0.5 border-t border-border pt-2">
-              <p>
-                <span className="font-medium text-foreground">Reviewed by:</span>{" "}
-                {agentMap[proposal.reviewedBy] ?? proposal.reviewedBy}
-              </p>
-              <p>
-                <span className="font-medium text-foreground">Reviewed at:</span>{" "}
-                {formatDate(proposal.reviewedAt)}
-              </p>
+            <div className="space-y-0.5 border-t border-[#242d3f] pt-2 text-xs text-[#8b97ad]">
+              <p><span className="font-medium text-[#e6edf7]">Reviewed by:</span> {agentMap[proposal.reviewedBy] ?? proposal.reviewedBy}</p>
+              <p><span className="font-medium text-[#e6edf7]">Reviewed at:</span> {formatDate(proposal.reviewedAt)}</p>
               {proposal.ruleId && (
-                <p>
-                  <span className="font-medium text-foreground">Rule ID:</span>{" "}
-                  <span className="font-mono">{proposal.ruleId}</span>
-                </p>
+                <p><span className="font-medium text-[#e6edf7]">Rule ID:</span> <span className="font-mono">{proposal.ruleId}</span></p>
               )}
             </div>
           )}
 
           {/* Review form */}
-          {reviewing && isPending && (
-            <ReviewForm
-              proposal={proposal}
-              agentMap={agentMap}
-              onDone={() => setReviewing(false)}
-            />
-          )}
+          {reviewing && isPending && <ReviewForm proposal={proposal} onDone={() => setReviewing(false)} />}
         </div>
       )}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// AgentRateLimitBar — shows proposals used today per agent
-// ---------------------------------------------------------------------------
+// ── AgentRateLimitBar — shows proposals used today per agent ──────────────────
 
-interface AgentRateLimitBarProps {
-  proposals: WorktreeProposal[];
-  agentMap: Record<string, string>;
-}
-
-function AgentRateLimitBar({ proposals, agentMap }: AgentRateLimitBarProps) {
-  // Count today's proposals per agent (client-side approximate — server is authoritative)
+/** One #111622 hairline card; one line per agent that proposed today (client-side approximate — server is authoritative). */
+function AgentRateLimitBar({ proposals, agentMap }: { proposals: WorktreeProposal[]; agentMap: Record<string, string> }) {
   const today = new Date().toDateString();
   const countByAgent: Record<string, number> = {};
   for (const p of proposals) {
@@ -335,47 +279,40 @@ function AgentRateLimitBar({ proposals, agentMap }: AgentRateLimitBarProps) {
   if (agents.length === 0) return null;
 
   return (
-    <div className="rounded-md border border-border/80 bg-card/60 p-3 space-y-2">
-      <p className="text-xs font-medium text-muted-foreground">Today's proposal usage</p>
-      {agents.map(([agentId, count]) => (
-        <div key={agentId} className="space-y-1">
-          <div className="flex items-center justify-between text-xs">
-            <span className="flex items-center gap-1.5">
-              <Bot className="h-3 w-3 text-muted-foreground" />
-              {agentMap[agentId] ?? agentId}
+    <div className="space-y-1.5 rounded-md border border-[#242d3f] bg-[#111622] px-3 py-2">
+      <p className="text-[10.5px] uppercase tracking-[0.08em] text-[#8b97ad]">Today's proposal usage</p>
+      {agents.map(([agentId, count]) => {
+        const capped = count >= MAX_PROPOSALS_PER_AGENT_PER_DAY;
+        return (
+          <div key={agentId} className="flex items-center gap-3 text-xs">
+            <span className="flex min-w-0 w-48 items-center gap-1.5 text-[#8b97ad]">
+              <Bot className="h-3 w-3 shrink-0" />
+              <span className="truncate">{agentMap[agentId] ?? agentId}</span>
             </span>
-            <span className={cn(
-              "font-mono",
-              count >= MAX_PROPOSALS_PER_AGENT_PER_DAY
-                ? "text-destructive font-medium"
-                : "text-muted-foreground",
-            )}>
+            <span className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-[#151b28]">
+              <span
+                className={cn("block h-full rounded-full transition-all", capped ? "bg-[#f87171]" : "bg-[#2563eb]")}
+                style={{ width: `${Math.min((count / MAX_PROPOSALS_PER_AGENT_PER_DAY) * 100, 100)}%` }}
+              />
+            </span>
+            <span className={cn("shrink-0 font-mono", capped ? "font-medium text-[#f87171]" : "text-[#8b97ad]")}>
               {count}/{MAX_PROPOSALS_PER_AGENT_PER_DAY}
             </span>
           </div>
-          <div className="h-1 rounded-full bg-muted overflow-hidden">
-            <div
-              className={cn(
-                "h-full rounded-full transition-all",
-                count >= MAX_PROPOSALS_PER_AGENT_PER_DAY ? "bg-destructive" : "bg-primary",
-              )}
-              style={{ width: `${Math.min((count / MAX_PROPOSALS_PER_AGENT_PER_DAY) * 100, 100)}%` }}
-            />
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// WorktreeProposals page
-// ---------------------------------------------------------------------------
+// ── WorktreeProposals page ────────────────────────────────────────────────────
 
 export function WorktreeProposals() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
-  const [statusFilter, setStatusFilter] = useState<ProposalStatus | "all">("proposed");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("proposed");
+  const [reviewSeq, setReviewSeq] = useState(0);
+  const [reviewTarget, setReviewTarget] = useState<string | null>(null);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Worktree Proposals" }]);
@@ -398,6 +335,30 @@ export function WorktreeProposals() {
     ? Object.fromEntries(agents.map((a) => [a.id, a.name]))
     : {};
 
+  const allProposals = proposals ?? [];
+  const counts = useMemo(() => {
+    const byStatus = Object.fromEntries(STATUS_TABLE.map((s) => [s.value, 0])) as Record<ProposalStatus, number>;
+    const today = new Date().toDateString();
+    let todayCount = 0;
+    for (const p of allProposals) {
+      byStatus[p.status as ProposalStatus] = (byStatus[p.status as ProposalStatus] ?? 0) + 1;
+      if (new Date(p.createdAt).toDateString() === today) todayCount += 1;
+    }
+    return { ...byStatus, today: todayCount };
+  }, [allProposals]);
+
+  const filtered = statusFilter === "all" ? allProposals : allProposals.filter((p) => p.status === statusFilter);
+  const nextPending = allProposals.find((p) => p.status === "proposed");
+
+  /** Opens the review form of the oldest pending proposal (or the one already targeted) without new API calls. */
+  const reviewNext = () => {
+    const target = (reviewTarget && allProposals.find((p) => p.id === reviewTarget && p.status === "proposed")) || nextPending;
+    if (!target) return;
+    setReviewTarget(target.id);
+    setStatusFilter(target.status);
+    setReviewSeq((n) => n + 1);
+  };
+
   if (!selectedCompanyId) {
     return <EmptyState icon={GitPullRequest} message="Select a company to view proposals." />;
   }
@@ -406,51 +367,67 @@ export function WorktreeProposals() {
     return <PageSkeleton variant="list" />;
   }
 
-  const allProposals = proposals ?? [];
-
-  const filtered =
-    statusFilter === "all"
-      ? allProposals
-      : allProposals.filter((p) => p.status === statusFilter);
-
-  const countByStatus = (s: ProposalStatus) => allProposals.filter((p) => p.status === s).length;
-
   return (
-    <div className="space-y-4">
-      {error && (
-        <p className="text-sm text-destructive">
-          {error instanceof Error ? error.message : String(error)}
-        </p>
-      )}
+    <div className="space-y-2 tabular-nums">
+      {error && <p className="text-sm text-destructive">{error instanceof Error ? error.message : String(error)}</p>}
 
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-1 flex-wrap">
-          {STATUS_TABS.map((tab) => (
-            <Button
-              key={tab.value}
-              size="sm"
-              variant={statusFilter === tab.value ? "default" : "ghost"}
-              className="h-7 text-xs"
-              onClick={() => setStatusFilter(tab.value)}
-            >
-              {tab.label}
-              {tab.value !== "all" && (
-                <span className="ml-1 text-[10px] opacity-70">
-                  {countByStatus(tab.value)}
-                </span>
-              )}
-            </Button>
-          ))}
-        </div>
+      {/* 1-row cockpit strip: proposal counts double as status-filter shortcuts */}
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Rule-change proposals by status">
+        <span className="cockpit-cell shrink-0">
+          <GitPullRequest className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span className="uppercase tracking-wide">Proposals</span>
+        </span>
+        <button
+          type="button"
+          aria-pressed={statusFilter === "all"}
+          title="Show all proposals"
+          onClick={() => setStatusFilter("all")}
+          className={cn("cockpit-cell min-w-0 flex-1 cursor-pointer justify-center transition-colors", statusFilter === "all" ? STRIP_CELL_ACTIVE : STRIP_CELL_IDLE)}
+        >
+          <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#5f8dff]" />
+          <span className="truncate uppercase tracking-wide">Total</span>
+          <b className="ml-1">{allProposals.length}</b>
+        </button>
+        {STATUS_TABLE.map((s) => (
+          <button
+            key={s.value}
+            type="button"
+            aria-pressed={statusFilter === s.value}
+            title={`Show ${s.label.toLowerCase()} proposals`}
+            onClick={() => setStatusFilter(s.value)}
+            className={cn("cockpit-cell min-w-0 flex-1 cursor-pointer justify-center transition-colors", statusFilter === s.value ? STRIP_CELL_ACTIVE : STRIP_CELL_IDLE)}
+          >
+            <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
+            <span className="truncate uppercase tracking-wide">{s.label}</span>
+            <b className="ml-1">{counts[s.value]}</b>
+          </button>
+        ))}
+        <span className="cockpit-cell min-w-0 flex-1 justify-center" title="Proposals created today (3 per agent per day)">
+          Today <b className="ml-1">{counts.today}</b>
+        </span>
+      </div>
+
+      {/* Tight single-row 40px toolbar: visible/total readout · deep-cobalt review CTA. */}
+      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] pl-1.5 pr-1.5">
+        <span className="shrink-0 text-[11px] text-[#8b97ad]">
+          <b className="font-mono text-[#e6edf7]">{filtered.length}</b> of {allProposals.length} shown
+        </span>
+        <span className="hidden shrink-0 text-[11px] text-[#8b97ad] sm:block">
+          · <b className="font-mono text-[#e6edf7]">{counts.proposed}</b> awaiting review
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!nextPending}
+          onClick={reviewNext}
+          className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8] disabled:opacity-45"
+        >
+          Review next
+        </Button>
       </div>
 
       {/* Rate limit bar */}
-      {allProposals.length > 0 && (
-        <AgentRateLimitBar proposals={allProposals} agentMap={agentMap} />
-      )}
-
-      <Separator />
+      {allProposals.length > 0 && <AgentRateLimitBar proposals={allProposals} agentMap={agentMap} />}
 
       {/* Empty state */}
       {filtered.length === 0 && (
@@ -468,12 +445,21 @@ export function WorktreeProposals() {
 
       {/* Proposal list */}
       {filtered.length > 0 && (
-        <div className="overflow-hidden rounded-md border border-border/80 bg-card/60">
+        <div aria-label="Rule-change proposals" className="overflow-hidden rounded-md border border-[#242d3f] bg-[#111622]">
+          <div className={cn(ROW_TRACKS, "h-7 text-[10.5px] uppercase tracking-[0.08em] text-[#8b97ad]")}>
+            <span>Proposed rule</span>
+            <span>Sev.</span>
+            <span className="hidden sm:block">Agent</span>
+            <span className="hidden lg:block">Created</span>
+            <span className="hidden lg:block">Status</span>
+            <span className="text-right">Action</span>
+          </div>
           {filtered.map((proposal) => (
             <ProposalRow
               key={proposal.id}
               proposal={proposal}
               agentMap={agentMap}
+              reviewSeq={reviewTarget === proposal.id ? reviewSeq : 0}
             />
           ))}
         </div>

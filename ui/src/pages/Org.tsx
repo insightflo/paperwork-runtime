@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
@@ -11,8 +11,40 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import { ChevronRight, GitBranch } from "lucide-react";
 import { cn } from "../lib/utils";
 
-const cockpitSectionHeader = "text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
-const cockpitPanel = "rounded-md border border-border/80 bg-card/60";
+// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
+const PANEL = "rounded-md border border-[#242d3f] bg-[#111622]";
+/** Deep-cobalt primary CTA — the single governing action of this page. */
+const PRIMARY_CTA =
+  "ml-auto inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-[#2563eb] px-2.5 text-xs font-medium text-[#f8fafc] no-underline transition-colors hover:bg-[#1d4fd8]";
+/** Fixed column tracks: name (flexes, truncates) | role (truncates) | status pill (never wraps). */
+const ROW_TRACKS = "grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_max-content]";
+
+type StatusFilter = "all" | "active" | "paused" | "pending_approval" | "error";
+
+const STATUS_FILTERS: { value: StatusFilter; label: string; dot: string }[] = [
+  { value: "all", label: "Total", dot: "bg-[#5f8dff]" },
+  { value: "active", label: "Active", dot: "bg-[#34d399]" },
+  { value: "paused", label: "Paused", dot: "bg-[#fbbf24]" },
+  { value: "pending_approval", label: "Approval", dot: "bg-[#a78bfa]" },
+  { value: "error", label: "Error", dot: "bg-[#f87171]" },
+];
+
+function statusDot(status: string): string {
+  if (status === "active") return "bg-green-400";
+  if (status === "paused") return "bg-yellow-400";
+  if (status === "pending_approval") return "bg-amber-400";
+  if (status === "error") return "bg-red-400";
+  return "bg-neutral-400";
+}
+
+/** Keep a node when it matches the filter itself or has a matching descendant, so the reporting path stays visible. */
+function filterTree(nodes: OrgNode[], filter: StatusFilter): OrgNode[] {
+  if (filter === "all") return nodes;
+  return nodes.flatMap((node) => {
+    const reports = filterTree(node.reports, filter);
+    return node.status === filter || reports.length > 0 ? [{ ...node, reports }] : [];
+  });
+}
 
 function OrgTree({
   nodes,
@@ -48,41 +80,30 @@ function OrgTreeNode({
     <div>
       <Link
         to={hrefFn(node.id)}
-        className="flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors cursor-pointer hover:bg-accent/50 no-underline text-inherit"
+        className={cn(ROW_TRACKS, "h-9 px-3 text-sm no-underline text-inherit transition-colors hover:bg-[#151b28]")}
         style={{ paddingLeft: `${depth * 16 + 12}px` }}
       >
-        {hasChildren ? (
-          <button
-            className="p-0.5"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setExpanded(!expanded);
-            }}
-          >
-            <ChevronRight
-              className={cn("h-3 w-3 transition-transform", expanded && "rotate-90")}
-            />
-          </button>
-        ) : (
-          <span className="w-4" />
-        )}
-        <span
-          className={cn(
-            "h-2 w-2 rounded-full shrink-0",
-            node.status === "active"
-              ? "bg-green-400"
-              : node.status === "paused"
-                ? "bg-yellow-400"
-                : node.status === "pending_approval"
-                  ? "bg-amber-400"
-                : node.status === "error"
-                  ? "bg-red-400"
-                  : "bg-neutral-400"
+        <span className="flex min-w-0 items-center gap-2">
+          {hasChildren ? (
+            <button
+              className="p-0.5"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setExpanded(!expanded);
+              }}
+            >
+              <ChevronRight
+                className={cn("h-3 w-3 transition-transform", expanded && "rotate-90")}
+              />
+            </button>
+          ) : (
+            <span className="w-4" />
           )}
-        />
-        <span className="font-medium flex-1">{node.name}</span>
-        <span className="text-xs text-muted-foreground">{node.role}</span>
+          <span className={cn("h-2 w-2 shrink-0 rounded-full", statusDot(node.status))} />
+          <span className="min-w-0 truncate font-medium text-[#e6edf7]">{node.name}</span>
+        </span>
+        <span className="hidden min-w-0 truncate text-xs text-[#8b97ad] sm:block">{node.role}</span>
         <StatusBadge status={node.status} />
       </Link>
       {hasChildren && expanded && (
@@ -95,6 +116,7 @@ function OrgTreeNode({
 export function Org() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const [filter, setFilter] = useState<StatusFilter>("all");
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Org Chart" }]);
@@ -106,6 +128,21 @@ export function Org() {
     enabled: !!selectedCompanyId,
   });
 
+  const stats = useMemo(() => {
+    const counts: Record<string, number> = { all: 0, roots: data?.length ?? 0, active: 0, paused: 0, pending_approval: 0, error: 0 };
+    const walk = (nodes: OrgNode[]) => {
+      for (const node of nodes) {
+        counts.all += 1;
+        counts[node.status] = (counts[node.status] ?? 0) + 1;
+        walk(node.reports);
+      }
+    };
+    walk(data ?? []);
+    return counts;
+  }, [data]);
+
+  const visible = useMemo(() => filterTree(data ?? [], filter), [data, filter]);
+
   if (!selectedCompanyId) {
     return <EmptyState icon={GitBranch} message="Select a company to view org chart." />;
   }
@@ -115,15 +152,44 @@ export function Org() {
   }
 
   return (
-    <div className="space-y-4 tabular-nums">
-      <div className={cn(cockpitPanel, "flex items-center gap-3 px-3 py-2")}>
-        <div className="flex min-w-0 items-center gap-2">
-          <GitBranch className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className={cockpitSectionHeader}>Org Chart</span>
-          <span className="hidden truncate text-xs text-muted-foreground sm:inline">
-            Reporting structure
-          </span>
-        </div>
+    <div className="space-y-2 tabular-nums">
+      {/* 1-row cockpit strip: agent counts double as status-filter shortcuts */}
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Agents in the org chart by status">
+        <span className="cockpit-cell min-w-0 shrink-0">
+          <GitBranch className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span className="truncate uppercase tracking-wide">Org Chart</span>
+        </span>
+        <span className="cockpit-cell shrink-0" title="Top-level agents">
+          Roots <b className="ml-1">{stats.roots}</b>
+        </span>
+        {STATUS_FILTERS.map((item) => (
+          <button
+            key={item.value}
+            type="button"
+            aria-pressed={filter === item.value}
+            title={`Show ${item.label.toLowerCase()} agents`}
+            onClick={() => setFilter(item.value)}
+            className={cn(
+              "cockpit-cell min-w-0 flex-1 cursor-pointer justify-center transition-colors",
+              filter === item.value ? "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_-1px_0_#5f8dff]" : "hover:bg-[#151b28] hover:text-[#e6edf7]",
+            )}
+          >
+            <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", item.dot)} />
+            <span className="truncate uppercase tracking-wide">{item.label}</span>
+            <b className="ml-1">{stats[item.value] ?? 0}</b>
+          </button>
+        ))}
+      </div>
+
+      {/* Tight single-row 40px toolbar: visible/total readout · deep-cobalt canvas CTA. */}
+      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] pl-1.5 pr-1.5">
+        <span className="shrink-0 text-[11px] text-[#8b97ad]">
+          <b className="font-mono text-[#e6edf7]">{visible.length}</b> of {stats.all} agents shown
+        </span>
+        <Link to="/org" className={PRIMARY_CTA} title="Open the interactive org chart canvas">
+          Open Org Chart
+          <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+        </Link>
       </div>
 
       {error && <p className="text-sm text-destructive">{error.message}</p>}
@@ -136,8 +202,16 @@ export function Org() {
       )}
 
       {data && data.length > 0 && (
-        <div className={cn(cockpitPanel, "overflow-hidden py-1")}>
-          <OrgTree nodes={data} hrefFn={(id) => `/agents/${id}`} />
+        <div aria-label="Org chart" className={cn(PANEL, "overflow-hidden")}>
+          <div className={cn(ROW_TRACKS, "h-7 border-b border-[#242d3f] px-3 text-[10.5px] uppercase tracking-[0.08em] text-[#8b97ad]")}>
+            <span>Agent</span>
+            <span className="hidden sm:block">Role</span>
+            <span className="text-right">Status</span>
+          </div>
+          {visible.length === 0 && (
+            <div className="px-3 py-6 text-center text-xs text-[#8b97ad]">No agents match this filter.</div>
+          )}
+          <OrgTree nodes={visible} hrefFn={(id) => `/agents/${id}`} />
         </div>
       )}
     </div>

@@ -21,6 +21,13 @@ import {
 } from "../components/agent-config-primitives";
 import { AccessSettingsSection } from "../components/access-settings/AccessSettingsSection";
 
+// Cockpit primitives (approved Linear + Datadog palette; mirrors .cockpit-strip/.cockpit-toolbar).
+const CARD = "rounded-md border border-[#242d3f] bg-[#151b28]";
+const FIELD = "rounded-md border border-[#242d3f] bg-[#111622] text-[#e6edf7] outline-none focus:border-[#5f8dff] focus:ring-[#5f8dff]/40";
+const LABEL = "text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]";
+const CTA = "bg-[#2563eb] text-[#f8fafc] hover:bg-[#5f8dff]";
+const LANGUAGE_LABEL: Record<CompanyDefaultLanguage, string> = { en: "English", ko: "한국어" };
+
 export function CompanySettings() {
   const {
     companies,
@@ -231,22 +238,70 @@ export function CompanySettings() {
     });
   }
 
+  const archived = selectedCompany.status === "archived";
+  const strip = [
+    { label: "Company", value: selectedCompany.name, dot: brandColor || "bg-[#5f8dff]" },
+    { label: "Timezone", value: selectedCompany.timezone ?? "System default", dot: "bg-[#5f8dff]" },
+    { label: "Language", value: LANGUAGE_LABEL[selectedCompany.defaultLanguage], dot: "bg-[#5f8dff]" },
+    { label: "Hire approvals", value: selectedCompany.requireBoardApprovalForNewAgents ? "Required" : "Optional", dot: selectedCompany.requireBoardApprovalForNewAgents ? "bg-[#fbbf24]" : "bg-[#8b97ad]" },
+    { label: "Status", value: archived ? "Archived" : "Active", dot: archived ? "bg-[#8b97ad]" : "bg-[#34d399]" },
+  ];
+
   return (
-    <div className="max-w-2xl space-y-6 [&>section>div:first-child]:text-[11px] [&>section>div:first-child]:font-semibold [&>section>div:first-child]:uppercase [&>section>div:first-child]:tracking-wider [&>section>div:first-child]:text-muted-foreground [&>section>div:last-child]:rounded-md [&>section>div:last-child]:border [&>section>div:last-child]:border-border/80 [&>section>div:last-child]:bg-card/60">
-      <div className="flex items-center gap-2">
-        <Settings className="h-5 w-5 text-muted-foreground" />
-        <h1 className="text-lg font-semibold">Company Settings</h1>
+    <div className="max-w-3xl space-y-2 tabular-nums">
+      {/* 1-row 5-column cockpit strip: live company summary (reflects saved state) */}
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Company summary">
+        {strip.map((cell) => (
+          <div key={cell.label} className="cockpit-cell min-w-0 flex-1 justify-center">
+            <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.dot}`} />
+            <span className="truncate uppercase tracking-wide">{cell.label}</span>
+            <b className="ml-1 truncate">{cell.value}</b>
+          </div>
+        ))}
+      </div>
+
+      {/* 40px unified toolbar; the deep-cobalt save CTA appears only while dirty */}
+      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-2">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <h1 className="flex min-w-0 items-center gap-2 truncate text-sm font-semibold text-[#e6edf7]">
+            <Settings className="h-4 w-4 shrink-0 text-[#8b97ad]" aria-hidden />
+            Company Settings
+          </h1>
+          <span className={`truncate text-xs ${generalDirty ? "text-[#fbbf24]" : "text-[#8b97ad]"}`}>
+            {generalDirty ? "Unsaved changes in General / Appearance" : "All changes saved"}
+          </span>
+        </div>
+        {generalDirty && (
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            {generalMutation.isSuccess && (
+              <span className="text-xs text-[#34d399]">Saved</span>
+            )}
+            {generalMutation.isError && (
+              <span className="text-xs text-destructive">
+                {generalMutation.error instanceof Error
+                  ? generalMutation.error.message
+                  : "Failed to save"}
+              </span>
+            )}
+            <Button
+              size="sm"
+              className={`h-7 text-xs ${CTA}`}
+              onClick={handleSaveGeneral}
+              disabled={generalMutation.isPending || !companyName.trim()}
+            >
+              {generalMutation.isPending ? "Saving..." : "Save changes"}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* General */}
-      <div className="space-y-4">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          General
-        </div>
-        <div className="space-y-3 rounded-md border border-border/80 bg-card/60 px-4 py-4">
+      <div className="space-y-2">
+        <div className={LABEL}>General</div>
+        <div className={`space-y-3 px-4 py-4 ${CARD}`}>
           <Field label="Company name" hint="The display name for your company.">
             <input
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              className={`w-full px-2.5 py-1.5 text-sm ${FIELD}`}
               type="text"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
@@ -257,7 +312,7 @@ export function CompanySettings() {
             hint="Optional description shown in the company profile."
           >
             <input
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              className={`w-full px-2.5 py-1.5 text-sm ${FIELD}`}
               type="text"
               value={description}
               placeholder="Optional company description"
@@ -269,7 +324,7 @@ export function CompanySettings() {
             hint="IANA timezone for this company (e.g. Asia/Seoul, America/New_York). Used by workflows unless overridden. Leave empty for system default."
           >
             <input
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              className={`w-full px-2.5 py-1.5 text-sm ${FIELD}`}
               type="text"
               value={timezone}
               placeholder="e.g. Asia/Seoul"
@@ -281,7 +336,7 @@ export function CompanySettings() {
             hint="Agent-written descriptions, comments, and operator summaries use this language. Tools, code, IDs, JSON, and other internal execution data stay in English."
           >
             <select
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              className={`w-full px-2.5 py-1.5 text-sm ${FIELD}`}
               value={defaultLanguage}
               onChange={(event) => setDefaultLanguage(event.target.value as CompanyDefaultLanguage)}
             >
@@ -294,7 +349,7 @@ export function CompanySettings() {
             hint="Private folder on the Paperwork server where agents and workflows create and validate files first. It is not shared with n8n. Leave empty to use the project default."
           >
             <input
-              className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none"
+              className={`w-full px-2.5 py-1.5 text-sm ${FIELD}`}
               type="text"
               value={workProductRoot}
               placeholder="e.g. /srv/papercompany/projects/research-company/produced_work"
@@ -305,12 +360,10 @@ export function CompanySettings() {
       </div>
 
       {/* Appearance */}
-      <div className="space-y-4">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Appearance
-        </div>
-        <div className="space-y-3 rounded-md border border-border/80 bg-card/60 px-4 py-4">
-          <div className="flex items-start gap-4">
+      <div className="space-y-2">
+        <div className={LABEL}>Appearance</div>
+        <div className={`space-y-3 px-4 py-4 ${CARD}`}>
+          <div className="flex min-w-0 items-start gap-4">
             <div className="shrink-0">
               <CompanyPatternIcon
                 companyName={companyName || selectedCompany.name}
@@ -319,7 +372,7 @@ export function CompanySettings() {
                 className="rounded-[14px]"
               />
             </div>
-            <div className="flex-1 space-y-3">
+            <div className="min-w-0 flex-1 space-y-3">
               <Field
                 label="Logo"
                 hint="Upload a PNG, JPEG, WEBP, GIF, or SVG logo image."
@@ -329,13 +382,14 @@ export function CompanySettings() {
                     type="file"
                     accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
                     onChange={handleLogoFileChange}
-                    className="w-full rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm outline-none file:mr-4 file:rounded-md file:border-0 file:bg-muted file:px-2.5 file:py-1 file:text-xs"
+                    className={`w-full px-2.5 py-1.5 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-[#111622] file:px-2.5 file:py-1 file:text-xs file:text-[#e6edf7] ${FIELD}`}
                   />
                   {logoUrl && (
                     <div className="flex items-center gap-2">
                       <Button
                         size="sm"
                         variant="outline"
+                        className="h-7 border-[#242d3f] bg-[#111622] text-xs text-[#e6edf7] hover:bg-[#1a2131] hover:text-[#e6edf7]"
                         onClick={handleClearLogo}
                         disabled={clearLogoMutation.isPending}
                       >
@@ -356,7 +410,7 @@ export function CompanySettings() {
                     </span>
                   )}
                   {logoUploadMutation.isPending && (
-                    <span className="text-xs text-muted-foreground">Uploading logo...</span>
+                    <span className="text-xs text-[#8b97ad]">Uploading logo...</span>
                   )}
                 </div>
               </Field>
@@ -369,7 +423,7 @@ export function CompanySettings() {
                     type="color"
                     value={brandColor || "#6366f1"}
                     onChange={(e) => setBrandColor(e.target.value)}
-                    className="h-8 w-8 cursor-pointer rounded border border-border bg-transparent p-0"
+                    className="h-8 w-8 cursor-pointer rounded border border-[#242d3f] bg-[#111622] p-0"
                   />
                   <input
                     type="text"
@@ -381,14 +435,14 @@ export function CompanySettings() {
                       }
                     }}
                     placeholder="Auto"
-                    className="w-28 rounded-md border border-border bg-transparent px-2.5 py-1.5 text-sm font-mono outline-none"
+                    className={`w-28 px-2.5 py-1.5 font-mono text-sm ${FIELD}`}
                   />
                   {brandColor && (
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={() => setBrandColor("")}
-                      className="text-xs text-muted-foreground"
+                      className="text-xs text-[#8b97ad] hover:text-[#e6edf7]"
                     >
                       Clear
                     </Button>
@@ -400,38 +454,13 @@ export function CompanySettings() {
         </div>
       </div>
 
-      {/* Save button for General + Appearance */}
-      {generalDirty && (
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            onClick={handleSaveGeneral}
-            disabled={generalMutation.isPending || !companyName.trim()}
-          >
-            {generalMutation.isPending ? "Saving..." : "Save changes"}
-          </Button>
-          {generalMutation.isSuccess && (
-            <span className="text-xs text-muted-foreground">Saved</span>
-          )}
-          {generalMutation.isError && (
-            <span className="text-xs text-destructive">
-              {generalMutation.error instanceof Error
-                  ? generalMutation.error.message
-                  : "Failed to save"}
-            </span>
-          )}
-        </div>
-      )}
-
       <CompanyWorkProductStorageSettings companyId={selectedCompany.id} />
       <CompanyDataStorageSettings companyId={selectedCompany.id} />
 
       {/* Hiring */}
-      <div className="space-y-4">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Hiring
-        </div>
-        <div className="rounded-md border border-border/80 bg-card/60 px-4 py-3">
+      <div className="space-y-2">
+        <div className={LABEL}>Hiring</div>
+        <div className={`px-4 py-3 ${CARD}`}>
           <ToggleField
             label="Require board approval for new hires"
             hint="New agent hires stay pending until approved by board."
@@ -441,16 +470,14 @@ export function CompanySettings() {
         </div>
       </div>
 
-      <div className="[&>div>div:first-child]:text-[11px] [&>div>div:first-child]:font-semibold [&>div>div:first-child]:uppercase [&>div>div:first-child]:tracking-wider [&>div>div:first-child]:text-muted-foreground [&>div>div:last-child]:rounded-md [&>div>div:last-child]:border [&>div>div:last-child]:border-border/80 [&>div>div:last-child]:bg-card/60"><AccessSettingsSection selectedCompanyId={selectedCompanyId} /></div>
+      <AccessSettingsSection selectedCompanyId={selectedCompanyId} />
 
       {/* Invites */}
-      <div className="space-y-4">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Invites
-        </div>
-        <div className="space-y-3 rounded-md border border-border/80 bg-card/60 px-4 py-4">
+      <div className="space-y-2">
+        <div className={LABEL}>Invites</div>
+        <div className={`space-y-3 px-4 py-4 ${CARD}`}>
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-[#8b97ad]">
               Generate an OpenClaw agent invite snippet.
             </span>
             <HintIcon text="Creates a short-lived OpenClaw agent invite and renders a copy-ready prompt." />
@@ -458,6 +485,7 @@ export function CompanySettings() {
           <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
+              className={`h-7 text-xs ${CTA}`}
               onClick={() => inviteMutation.mutate()}
               disabled={inviteMutation.isPending}
             >
@@ -470,15 +498,15 @@ export function CompanySettings() {
             <p className="text-sm text-destructive">{inviteError}</p>
           )}
           {inviteSnippet && (
-            <div className="rounded-md border border-border bg-muted/30 p-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs text-muted-foreground">
+            <div className="rounded-md border border-[#242d3f] bg-[#111622] p-2">
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <div className="min-w-0 truncate text-xs text-[#8b97ad]">
                   OpenClaw Invite Prompt
                 </div>
                 {snippetCopied && (
                   <span
                     key={snippetCopyDelightId}
-                    className="flex items-center gap-1 text-xs text-green-600 animate-pulse"
+                    className="flex shrink-0 items-center gap-1 text-xs text-[#34d399] animate-pulse"
                   >
                     <Check className="h-3 w-3" />
                     Copied
@@ -487,7 +515,7 @@ export function CompanySettings() {
               </div>
               <div className="mt-1 space-y-1.5">
                 <textarea
-                  className="h-[28rem] w-full rounded-md border border-border bg-background px-2 py-1.5 font-mono text-xs outline-none"
+                  className={`h-[28rem] w-full px-2 py-1.5 font-mono text-xs ${FIELD}`}
                   value={inviteSnippet}
                   readOnly
                 />
@@ -495,6 +523,7 @@ export function CompanySettings() {
                   <Button
                     size="sm"
                     variant="ghost"
+                    className="text-xs text-[#8b97ad] hover:text-[#e6edf7]"
                     onClick={async () => {
                       try {
                         await navigator.clipboard.writeText(inviteSnippet);
@@ -516,12 +545,12 @@ export function CompanySettings() {
       </div>
 
       {/* Danger Zone */}
-      <div className="space-y-4">
+      <div className="space-y-2">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-destructive">
           Danger Zone
         </div>
-        <div className="space-y-3 rounded-md border border-border/80 bg-card/60 px-4 py-4">
-          <p className="text-sm text-muted-foreground">
+        <div className={`space-y-3 px-4 py-4 ${CARD}`}>
+          <p className="text-sm text-[#8b97ad]">
             Archive this company to hide it from the sidebar. This persists in
             the database.
           </p>
@@ -531,7 +560,7 @@ export function CompanySettings() {
               variant="destructive"
               disabled={
                 archiveMutation.isPending ||
-                selectedCompany.status === "archived"
+                archived
               }
               onClick={() => {
                 if (!selectedCompanyId) return;
@@ -553,7 +582,7 @@ export function CompanySettings() {
             >
               {archiveMutation.isPending
                 ? "Archiving..."
-                : selectedCompany.status === "archived"
+                : archived
                 ? "Already archived"
                 : "Archive company"}
             </Button>

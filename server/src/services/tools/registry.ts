@@ -9,6 +9,7 @@ import { toolDefinitions, toolAuditLog, agents, issues } from "@paperclipai/db";
 import { eq, and, desc } from "drizzle-orm";
 import crypto from "node:crypto";
 import { validateToolArtifactContract } from '../workflow/artifact-config-validation.js';
+import { badRequest } from '../../errors.js';
 import type {
   ToolDefinition,
   CreateToolDefinitionInput,
@@ -23,6 +24,31 @@ import type {
 function hashArgs(args: Record<string, unknown>): string {
   const str = JSON.stringify(args, Object.keys(args).sort());
   return crypto.createHash("sha256").update(str).digest("hex");
+}
+
+type ToolDefinitionUpdates = Partial<Omit<ToolDefinition, "id" | "createdAt" | "updatedAt">>;
+
+function isAdapterConfigObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * A supplied adapterConfig replaces the stored one wholesale and must be an object; anything
+ * else is a 400 here rather than a jsonb write failure. A partial update that omits it keeps
+ * the stored value, so the artifact contract is enforced against that stored config.
+ */
+async function assertUpdateArtifactContract(db: Db, id: string, updates: ToolDefinitionUpdates): Promise<void> {
+  if (!Object.prototype.hasOwnProperty.call(updates, "adapterConfig") || updates.adapterConfig === undefined) {
+    const existing = await toolService.getDefinitionById(db, id);
+    if (existing && isAdapterConfigObject(existing.adapterConfig)) {
+      validateToolArtifactContract(existing.adapterConfig);
+    }
+    return;
+  }
+  if (!isAdapterConfigObject(updates.adapterConfig)) {
+    throw badRequest("adapterConfig must be an object");
+  }
+  validateToolArtifactContract(updates.adapterConfig);
 }
 
 /**
@@ -119,9 +145,9 @@ export const toolService = {
   async updateDefinition(
     db: Db,
     id: string,
-    updates: Partial<Omit<ToolDefinition, "id" | "createdAt" | "updatedAt">>,
+    updates: ToolDefinitionUpdates,
   ): Promise<ToolDefinition | null> {
-    validateToolArtifactContract(updates.adapterConfig);
+    await assertUpdateArtifactContract(db, id, updates);
     await db
       .update(toolDefinitions)
       .set({

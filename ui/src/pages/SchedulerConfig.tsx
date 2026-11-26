@@ -13,8 +13,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Clock, Plus, Trash2, CalendarClock, ToggleLeft, ToggleRight } from "lucide-react";
 import { cn } from "../lib/utils";
 
-// scheduleKeys are in queryKeys.scheduler — aliased here for brevity
-
+// Cockpit primitives (approved Linear + Datadog palette; mirrors .cockpit-strip/.cockpit-toolbar).
+const CARD = "rounded-md border border-[#242d3f] bg-[#151b28]";
+const FIELD = "rounded-md border border-[#242d3f] bg-[#111622] text-[#e6edf7] outline-none focus:border-[#5f8dff] focus:ring-[#5f8dff]/40";
+const LABEL = "text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]";
+const CTA = "bg-[#2563eb] text-[#f8fafc] hover:bg-[#5f8dff]";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -26,6 +29,16 @@ function formatDate(date: string | null | undefined): string {
     month: "short",
     day: "numeric",
     year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(date));
+}
+
+function formatShort(date: string | null | undefined): string {
+  if (!date) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(date));
@@ -89,13 +102,13 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-4 rounded-md border border-border/80 bg-card/60 p-4"
+      className={`space-y-4 ${CARD} p-4`}
     >
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">New Schedule</p>
+      <p className={LABEL}>New Schedule</p>
 
       {/* Agent */}
       <div className="space-y-1.5">
-        <label className="text-xs text-muted-foreground">Agent</label>
+        <label className="text-xs font-medium text-[#8b97ad]">Agent</label>
         <Select value={agentId} onValueChange={setAgentId}>
           <SelectTrigger className="h-8 text-sm">
             <SelectValue placeholder="Select agent..." />
@@ -110,7 +123,7 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
 
       {/* Cron preset */}
       <div className="space-y-1.5">
-        <label className="text-xs text-muted-foreground">Preset</label>
+        <label className="text-xs font-medium text-[#8b97ad]">Preset</label>
         <Select onValueChange={handlePreset} defaultValue="__custom__">
           <SelectTrigger className="h-8 text-sm tabular-nums">
             <SelectValue placeholder="Choose preset..." />
@@ -126,9 +139,9 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
 
       {/* Cron expression */}
       <div className="space-y-1.5">
-        <label className="text-xs text-muted-foreground">Cron expression</label>
+        <label className="text-xs font-medium text-[#8b97ad]">Cron expression</label>
         <Input
-          className="h-8 text-sm font-mono tabular-nums"
+          className={`h-8 text-sm font-mono tabular-nums ${FIELD}`}
           value={cronExpression}
           onChange={(e) => setCronExpression(e.target.value)}
           placeholder="* * * * *"
@@ -140,9 +153,9 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
 
       {/* Timezone */}
       <div className="space-y-1.5">
-        <label className="text-xs text-muted-foreground">Timezone</label>
+        <label className="text-xs font-medium text-[#8b97ad]">Timezone</label>
         <Input
-          className="h-8 text-sm"
+          className={`h-8 text-sm ${FIELD}`}
           value={timezone}
           onChange={(e) => setTimezone(e.target.value)}
           placeholder="UTC"
@@ -154,8 +167,8 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
       )}
 
       <div className="flex items-center gap-2 pt-1">
-        <Button type="submit" size="sm" className="h-7 text-xs" disabled={createMutation.isPending}>
-          {createMutation.isPending ? "Creating..." : "Create"}
+        <Button type="submit" size="sm" className={`h-7 text-xs ${CTA}`} disabled={createMutation.isPending}>
+          {createMutation.isPending ? "Creating..." : "Create schedule"}
         </Button>
         <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={onCancel}>
           Cancel
@@ -195,39 +208,40 @@ function ScheduleRow({ schedule, agentName, companyId }: ScheduleRowProps) {
 
   return (
     <div className={cn(
-      "flex items-center gap-3 rounded-md border border-border/80 bg-card/60 px-4 py-3 text-sm",
+      "grid grid-cols-[1rem_minmax(0,1fr)_2rem_2rem] items-center gap-3 px-4 py-2.5 text-sm sm:grid-cols-[1rem_minmax(0,1fr)_10.5rem_10.5rem_2rem_2rem]",
+      CARD,
       !schedule.enabled && "opacity-60",
     )}>
       {/* Icon */}
-      <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+      <Clock className="h-4 w-4 shrink-0 text-[#8b97ad]" />
 
       {/* Cron + agent */}
-      <div className="flex-1 min-w-0 space-y-0.5">
-        <p className="font-mono text-xs font-medium truncate tabular-nums">{schedule.cronExpression}</p>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>{agentName}</span>
-          <span>·</span>
-          <span>{schedule.timezone}</span>
+      <div className="min-w-0 space-y-0.5">
+        <p className="truncate font-mono text-xs font-medium tabular-nums text-[#e6edf7]">{schedule.cronExpression}</p>
+        <div className="flex min-w-0 items-center gap-2 text-xs text-[#8b97ad]">
+          <span className="min-w-0 truncate">{agentName}</span>
+          <span className="shrink-0">·</span>
+          <span className="shrink-0 tabular-nums">{schedule.timezone}</span>
         </div>
       </div>
 
       {/* Next run */}
-      <div className="shrink-0 text-right hidden sm:block">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Next run</p>
-        <p className="text-xs font-medium tabular-nums">{formatDate(schedule.nextRunAt)}</p>
+      <div className="hidden min-w-0 text-right sm:block">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8b97ad]">Next</p>
+        <p className="truncate text-xs font-medium tabular-nums text-[#e6edf7]">{formatDate(schedule.nextRunAt)}</p>
       </div>
 
       {/* Last run */}
-      <div className="shrink-0 text-right hidden md:block">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Last run</p>
-        <p className="text-xs tabular-nums">{formatDate(schedule.lastRunAt)}</p>
+      <div className="hidden min-w-0 text-right sm:block">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8b97ad]">Last</p>
+        <p className="truncate text-xs tabular-nums">{formatDate(schedule.lastRunAt)}</p>
       </div>
 
       {/* Toggle */}
       <Button
         variant="ghost"
-        size="icon-sm"
-        className={cn("shrink-0", schedule.enabled ? "text-green-600" : "text-muted-foreground")}
+        size="icon-xs"
+        className={cn("h-7 w-7 justify-self-center", schedule.enabled ? "text-[#34d399] hover:text-[#34d399]" : "text-[#8b97ad] hover:text-[#e6edf7]")}
         onClick={() => toggleMutation.mutate(!schedule.enabled)}
         disabled={toggleMutation.isPending}
         title={schedule.enabled ? "Disable schedule" : "Enable schedule"}
@@ -240,8 +254,8 @@ function ScheduleRow({ schedule, agentName, companyId }: ScheduleRowProps) {
       {/* Delete */}
       <Button
         variant="ghost"
-        size="icon-sm"
-        className="shrink-0 text-muted-foreground hover:text-destructive"
+        size="icon-xs"
+        className="h-7 w-7 justify-self-center text-[#8b97ad] hover:text-destructive"
         onClick={() => deleteMutation.mutate()}
         disabled={deleteMutation.isPending}
       >
@@ -285,35 +299,52 @@ export function SchedulerConfig() {
     return <EmptyState icon={CalendarClock} message="Select a company to view schedules." />;
   }
 
-  if (isLoading) {
-    return <PageSkeleton variant="list" />;
-  }
+  const list = schedules ?? [];
+  const enabledCount = list.filter((s) => s.enabled).length;
+  const nextRunAt = list
+    .filter((s) => s.enabled && s.nextRunAt)
+    .map((s) => s.nextRunAt as string)
+    .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
+  const strip = [
+    { label: "Schedules", value: schedules ? list.length : "—", dot: "bg-[#5f8dff]" },
+    { label: "Enabled", value: schedules ? enabledCount : "—", dot: "bg-[#34d399]" },
+    { label: "Disabled", value: schedules ? list.length - enabledCount : "—", dot: "bg-[#8b97ad]" },
+    { label: "Next run", value: nextRunAt ? formatShort(nextRunAt) : "—", dot: "bg-[#fbbf24]" },
+  ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2 tabular-nums">
       {error && (
         <p className="text-sm text-destructive">
           {error instanceof Error ? error.message : String(error)}
         </p>
       )}
 
-      {/* Header */}
-      <div className="flex items-center justify-between rounded-md border border-border/80 bg-card/60 px-3 py-2">
-        <div>
-          <h1 className="text-base font-semibold">Scheduler</h1>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Cron-based agent wakeup schedules
-          </p>
+      {/* 1-row 4-column cockpit strip */}
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Scheduler summary">
+        {strip.map((cell) => (
+          <div key={cell.label} className="cockpit-cell min-w-0 flex-1 justify-center">
+            <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.dot}`} />
+            <span className="truncate uppercase tracking-wide">{cell.label}</span>
+            <b className="ml-1">{cell.value}</b>
+          </div>
+        ))}
+      </div>
+
+      {/* 40px unified toolbar */}
+      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-2">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <h1 className="truncate text-sm font-semibold text-[#e6edf7]">Scheduler</h1>
+          <span className="truncate text-xs text-[#8b97ad]">Cron-based agent wakeup schedules</span>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-7 text-xs"
+        <button
+          type="button"
+          aria-pressed={showForm}
           onClick={() => setShowForm((v) => !v)}
+          className="ml-auto inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-md bg-[#2563eb] px-2.5 text-xs font-medium text-[#f8fafc] transition-colors hover:bg-[#5f8dff]"
         >
-          <Plus className="h-3.5 w-3.5 mr-1.5" />
-          New Schedule
-        </Button>
+          <Plus className="h-3.5 w-3.5" aria-hidden />New Schedule
+        </button>
       </div>
 
       {/* Create form */}
@@ -325,8 +356,10 @@ export function SchedulerConfig() {
         />
       )}
 
+      {isLoading && <PageSkeleton variant="list" />}
+
       {/* Empty state */}
-      {schedules && schedules.length === 0 && !showForm && (
+      {!isLoading && schedules && schedules.length === 0 && !showForm && (
         <EmptyState
           icon={CalendarClock}
           message="No schedules yet."
@@ -335,9 +368,19 @@ export function SchedulerConfig() {
         />
       )}
 
-      {/* Schedule list */}
-      {schedules && schedules.length > 0 && (
-        <div className="space-y-2">
+      {/* Schedule list: explicit column tracks keep columns from overlapping */}
+      {!isLoading && schedules && schedules.length > 0 && (
+        <div className={`grid grid-cols-[1rem_minmax(0,1fr)_2rem_2rem] items-center gap-3 border-b border-[#242d3f] px-4 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad] sm:grid-cols-[1rem_minmax(0,1fr)_10.5rem_10.5rem_2rem_2rem]`}>
+          <span />
+          <span>Cron</span>
+          <span className="hidden text-right sm:block">Next run</span>
+          <span className="hidden text-right sm:block">Last run</span>
+          <span className="sr-only">Enabled</span>
+          <span className="sr-only">Delete</span>
+        </div>
+      )}
+      {!isLoading && schedules && schedules.length > 0 && (
+        <div className="space-y-1.5">
           {schedules.map((schedule) => (
             <ScheduleRow
               key={schedule.id}

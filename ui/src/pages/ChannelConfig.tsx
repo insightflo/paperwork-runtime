@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { channelApi, type ChannelConfig } from "../api/channel";
 import { secretsApi } from "../api/secrets";
@@ -21,17 +21,20 @@ import {
 import { cn } from "../lib/utils";
 import { ChannelCollaborationBoard } from "../components/ChannelCollaborationBoard";
 
-// ---------------------------------------------------------------------------
-// Query keys (local — no cross-page sharing needed)
-// ---------------------------------------------------------------------------
+type ConnectionStatus = "unknown" | "checking" | "connected" | "error";
 
-// channelKeys are in queryKeys.channel
+// Cockpit primitives (approved Linear + Datadog palette; mirrors .cockpit-strip/.cockpit-toolbar).
+const CARD = "rounded-md border border-[#242d3f] bg-[#151b28]";
+const FIELD = "border-[#242d3f] bg-[#111622] text-[#e6edf7] outline-none focus:border-[#5f8dff] focus:ring-[#5f8dff]/40";
+const CTA = "bg-[#2563eb] text-[#f8fafc] hover:bg-[#5f8dff]";
+const TAB_CLASS =
+  "h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors aria-pressed:bg-[#151b28] aria-pressed:text-[#e6edf7] aria-pressed:shadow-[inset_0_0_0_1px_#242d3f] text-[#8b97ad] hover:text-[#e6edf7]";
+const STATUS_DOT: Record<ConnectionStatus, string> = { unknown: "bg-[#8b97ad]", checking: "bg-[#fbbf24]", connected: "bg-[#34d399]", error: "bg-[#f87171]" };
+const STATUS_LABEL: Record<ConnectionStatus, string> = { unknown: "Not tested", checking: "Testing", connected: "Connected", error: "Failed" };
 
 // ---------------------------------------------------------------------------
 // Status indicator
 // ---------------------------------------------------------------------------
-
-type ConnectionStatus = "unknown" | "checking" | "connected" | "error";
 
 interface StatusIndicatorProps {
   status: ConnectionStatus;
@@ -42,7 +45,7 @@ interface StatusIndicatorProps {
 function StatusIndicator({ status, errorMessage, botUsername }: StatusIndicatorProps) {
   if (status === "unknown") {
     return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 text-sm text-[#8b97ad]">
         <AlertCircle className="h-4 w-4 shrink-0" />
         <span>Not tested</span>
       </div>
@@ -51,7 +54,7 @@ function StatusIndicator({ status, errorMessage, botUsername }: StatusIndicatorP
 
   if (status === "checking") {
     return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 text-sm text-[#8b97ad]">
         <RefreshCw className="h-4 w-4 shrink-0 animate-spin" />
         <span>Testing connection...</span>
       </div>
@@ -60,12 +63,12 @@ function StatusIndicator({ status, errorMessage, botUsername }: StatusIndicatorP
 
   if (status === "connected") {
     return (
-      <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+      <div className="flex items-center gap-2 text-sm text-[#34d399]">
         <CheckCircle2 className="h-4 w-4 shrink-0" />
         <span>
           Connected
           {botUsername && (
-            <span className="text-muted-foreground ml-1">(@{botUsername})</span>
+            <span className="min-w-0 truncate text-[#8b97ad] ml-1">(@{botUsername})</span>
           )}
         </span>
       </div>
@@ -79,7 +82,7 @@ function StatusIndicator({ status, errorMessage, botUsername }: StatusIndicatorP
         <span>Connection failed</span>
       </div>
       {errorMessage && (
-        <p className="text-xs text-muted-foreground pl-6">{errorMessage}</p>
+        <p className="pl-6 text-xs text-[#8b97ad]">{errorMessage}</p>
       )}
     </div>
   );
@@ -92,9 +95,10 @@ function StatusIndicator({ status, errorMessage, botUsername }: StatusIndicatorP
 interface TelegramSectionProps {
   companyId: string;
   config: ChannelConfig | null;
+  onStatusChange?: (status: ConnectionStatus, botUsername?: string) => void;
 }
 
-function TelegramSection({ companyId, config }: TelegramSectionProps) {
+function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionProps) {
   const queryClient = useQueryClient();
 
   // Form state
@@ -165,6 +169,10 @@ function TelegramSection({ companyId, config }: TelegramSectionProps) {
   });
 
   const isConfigured = !!config?.botTokenSecretId;
+  // Lifted so the page-level cockpit strip can show the live connection-test state.
+  useEffect(() => {
+    onStatusChange?.(testStatus, testBotUsername);
+  }, [onStatusChange, testStatus, testBotUsername]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -206,18 +214,20 @@ function TelegramSection({ companyId, config }: TelegramSectionProps) {
     createSecretMutation.isPending || updateConfigMutation.isPending;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Status row */}
-      <div className="flex items-center justify-between">
-        <StatusIndicator
-          status={testStatus}
-          errorMessage={testError}
-          botUsername={testBotUsername}
-        />
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 truncate">
+          <StatusIndicator
+            status={testStatus}
+            errorMessage={testError}
+            botUsername={testBotUsername}
+          />
+        </div>
         <Button
           variant="outline"
           size="sm"
-          className="h-7 text-xs"
+          className="h-7 shrink-0 text-xs border-[#242d3f] bg-[#111622] text-[#e6edf7] hover:bg-[#1a2131] hover:text-[#e6edf7]"
           onClick={() => testMutation.mutate()}
           disabled={!isConfigured || testMutation.isPending}
           title={!isConfigured ? "Save a configuration first" : undefined}
@@ -227,45 +237,45 @@ function TelegramSection({ companyId, config }: TelegramSectionProps) {
         </Button>
       </div>
 
-      <Separator />
+      <Separator className="bg-[#242d3f]" />
 
       {/* Config form */}
-      <form onSubmit={handleSave} className="space-y-4 rounded-md border border-border/80 bg-card/60 p-4">
+      <form onSubmit={handleSave} className={`space-y-4 ${CARD} p-4`}>
         {/* Bot username */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">
+          <label className="text-xs font-medium text-[#8b97ad]">
             Bot username
           </label>
           <Input
-            className="h-8 text-sm"
+            className={`h-8 text-sm ${FIELD}`}
             value={botUsername}
             onChange={(e) => setBotUsername(e.target.value)}
             placeholder="e.g. papercompanyBot"
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-[#8b97ad]">
             The Telegram username of your bot (without @).
           </p>
         </div>
 
         {/* Bot token */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">
+          <label className="text-xs font-medium text-[#8b97ad]">
             Bot token
             {isConfigured && (
-              <span className="ml-2 text-green-600 dark:text-green-400 font-normal">
+              <span className="ml-2 font-normal text-[#34d399]">
                 (token stored — enter new value to rotate)
               </span>
             )}
           </label>
           <Input
-            className="h-8 text-sm font-mono"
+            className={`h-8 text-sm font-mono ${FIELD}`}
             type="password"
             value={botToken}
             onChange={(e) => setBotToken(e.target.value)}
             placeholder={isConfigured ? "Leave blank to keep existing token" : "123456789:ABCdef..."}
             autoComplete="off"
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-[#8b97ad]">
             Obtain from @BotFather on Telegram. Stored encrypted in company secrets.
           </p>
         </div>
@@ -273,16 +283,16 @@ function TelegramSection({ companyId, config }: TelegramSectionProps) {
         {/* Secret name (only shown when not yet configured) */}
         {!isConfigured && (
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
+            <label className="text-xs font-medium text-[#8b97ad]">
               Secret name
             </label>
             <Input
-              className="h-8 text-sm"
+              className={`h-8 text-sm ${FIELD}`}
               value={secretName}
               onChange={(e) => setSecretName(e.target.value)}
               placeholder="telegram_bot_token"
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-[#8b97ad]">
               The name under which the token will be saved in company secrets.
             </p>
           </div>
@@ -291,10 +301,10 @@ function TelegramSection({ companyId, config }: TelegramSectionProps) {
         {/* Existing secret selector (if token already stored) */}
         {isConfigured && config?.botTokenSecretId && (
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
+            <label className="text-xs font-medium text-[#8b97ad]">
               Stored secret
             </label>
-            <p className="text-xs text-muted-foreground font-mono">
+            <p className="truncate font-mono text-xs text-[#8b97ad]">
               {secrets?.find((s) => s.id === config.botTokenSecretId)?.name ?? config.botTokenSecretId}
             </p>
           </div>
@@ -305,17 +315,17 @@ function TelegramSection({ companyId, config }: TelegramSectionProps) {
         )}
 
         {saveSuccess && (
-          <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1.5">
+          <p className="flex items-center gap-1.5 text-xs text-[#34d399]">
             <CheckCircle2 className="h-3.5 w-3.5" />
             Configuration saved.
           </p>
         )}
 
-        <div className="pt-1">
+        <div className="flex items-center justify-end pt-1">
           <Button
             type="submit"
             size="sm"
-            className="h-7 text-xs"
+            className={`h-7 text-xs ${CTA}`}
             disabled={isSaving}
           >
             <Save className="h-3.5 w-3.5 mr-1.5" />
@@ -335,6 +345,12 @@ export function ChannelConfig() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [channelTab, setChannelTab] = useState<"board" | "telegram">("board");
+  const [testStatus, setTestStatus] = useState<ConnectionStatus>("unknown");
+  const [testedBotUsername, setTestedBotUsername] = useState<string | undefined>();
+  const handleStatusChange = useCallback((status: ConnectionStatus, botUsername?: string) => {
+    setTestStatus(status);
+    setTestedBotUsername(botUsername);
+  }, []);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Channel" }]);
@@ -354,45 +370,61 @@ export function ChannelConfig() {
     return <PageSkeleton variant="detail" />;
   }
 
+  const isConfigured = !!config?.botTokenSecretId;
+  const strip = [
+    { label: "Telegram", value: !config ? "—" : config.enabled ? "Enabled" : "Disabled", dot: !config ? "bg-[#8b97ad]" : config.enabled ? "bg-[#34d399]" : "bg-[#fbbf24]" },
+    { label: "Bot", value: !config ? "—" : config.botUsername ? `@${config.botUsername}` : "Not set", dot: "bg-[#5f8dff]" },
+    { label: "Token secret", value: !config ? "—" : isConfigured ? "Stored" : "Missing", dot: !config ? "bg-[#8b97ad]" : isConfigured ? "bg-[#34d399]" : "bg-[#f87171]" },
+    { label: "Connection test", value: STATUS_LABEL[testStatus], dot: STATUS_DOT[testStatus] },
+  ];
+
   return (
-    <div className="space-y-6 max-w-xl">
+    <div className="space-y-2 tabular-nums">
       {error && (
         <p className="text-sm text-destructive">
           {error instanceof Error ? error.message : String(error)}
         </p>
       )}
 
-      {/* Header */}
-      <div>
-        <h1 className="text-base font-semibold">Channel Configuration</h1>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Configure external messaging channels for agent notifications.
-        </p>
-      </div>
-
-      {/* Segmented tabs */}
-      <div className="inline-flex rounded-md border border-border/80 bg-card/60 p-0.5">
-        {([
-          { id: "board", label: "협업 채널 보드" },
-          { id: "telegram", label: "Telegram 연동 설정" },
-        ] as const).map((tab) => (
+      {/* 1-row 4-column cockpit strip; the Telegram cells jump to the Telegram tab */}
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Channel summary">
+        {strip.map((cell) => (
           <button
-            key={tab.id}
+            key={cell.label}
             type="button"
-            onClick={() => setChannelTab(tab.id)}
-            className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
-              channelTab === tab.id
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            )}
+            onClick={() => setChannelTab("telegram")}
+            className={`cockpit-cell min-w-0 flex-1 justify-center transition-colors ${channelTab === "telegram" ? "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_-1px_0_#5f8dff]" : "hover:bg-[#151b28] hover:text-[#e6edf7]"}`}
           >
-            {tab.label}
+            <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.dot}`} />
+            <span className="truncate uppercase tracking-wide">{cell.label}</span>
+            <b className="ml-1 truncate">{cell.value}</b>
           </button>
         ))}
       </div>
 
-      <Separator />
+      {/* 40px unified toolbar: title · segmented tabs */}
+      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-2">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <h1 className="truncate text-sm font-semibold text-[#e6edf7]">Channel Configuration</h1>
+          <span className="hidden truncate text-xs text-[#8b97ad] md:inline">Configure external messaging channels for agent notifications.</span>
+        </div>
+        <div role="group" aria-label="Channel views" className="ml-auto flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5">
+          {([
+            { id: "board", label: "협업 채널 보드" },
+            { id: "telegram", label: "Telegram 연동 설정" },
+          ] as const).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              aria-pressed={channelTab === tab.id}
+              onClick={() => setChannelTab(tab.id)}
+              className={TAB_CLASS}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {channelTab === "board" && (
         <ChannelCollaborationBoard companyId={selectedCompanyId} />
@@ -400,23 +432,23 @@ export function ChannelConfig() {
 
       {channelTab === "telegram" && (
         /* Telegram section */
-        <div className="space-y-4 rounded-md border border-border/80 bg-card/60 p-4">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-medium">Telegram</h2>
+        <div className={`max-w-2xl space-y-4 p-4 ${CARD}`}>
+          <div className="flex min-w-0 items-center gap-2">
+            <MessageSquare className="h-4 w-4 shrink-0 text-[#8b97ad]" />
+            <h2 className="truncate text-sm font-medium text-[#e6edf7]">Telegram</h2>
             {config?.enabled && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
+              <span className="rounded border border-[#242d3f] bg-[#0b0e14] px-1.5 py-0.5 text-[11px] font-medium text-[#34d399]">
                 Enabled
               </span>
             )}
             {config && !config.enabled && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+              <span className="rounded border border-[#242d3f] bg-[#0b0e14] px-1.5 py-0.5 text-[11px] font-medium text-[#8b97ad]">
                 Disabled
               </span>
             )}
           </div>
 
-          <TelegramSection companyId={selectedCompanyId} config={config ?? null} />
+          <TelegramSection companyId={selectedCompanyId} config={config ?? null} onStatusChange={handleStatusChange} />
         </div>
       )}
     </div>

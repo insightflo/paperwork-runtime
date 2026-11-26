@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "@/lib/router";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { dashboardApi } from "../api/dashboard";
 import { activityApi } from "../api/activity";
 import { ACTIVE_ISSUE_STATUS_FILTER, issuesApi } from "../api/issues";
@@ -377,6 +377,7 @@ export function Dashboard() {
     queryKey: queryKeys.agents.list(selectedCompanyId!),
     queryFn: () => agentsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
   });
 
   useEffect(() => {
@@ -387,36 +388,42 @@ export function Dashboard() {
     queryKey: queryKeys.dashboard(selectedCompanyId!),
     queryFn: () => dashboardApi.summary(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
   });
 
   const { data: activity } = useQuery({
     queryKey: queryKeys.activity(selectedCompanyId!),
     queryFn: () => activityApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
   });
 
   const { data: issues } = useQuery({
     queryKey: queryKeys.issues.list(selectedCompanyId!, { status: ACTIVE_ISSUE_STATUS_FILTER }),
     queryFn: () => issuesApi.list(selectedCompanyId!, { status: ACTIVE_ISSUE_STATUS_FILTER }),
     enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
   });
 
   const { data: missions } = useQuery({
     queryKey: queryKeys.missions.list(selectedCompanyId!),
     queryFn: () => missionsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
   });
 
   const { data: projects } = useQuery({
     queryKey: queryKeys.projects.list(selectedCompanyId!),
     queryFn: () => projectsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
   });
 
   const { data: runStats } = useQuery({
     queryKey: queryKeys.heartbeatStats(selectedCompanyId!),
     queryFn: () => heartbeatsApi.stats(selectedCompanyId!, { days: 14 }),
     enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
   });
 
   // Shares the cache entry that ActiveAgentsPanel already reads, so the
@@ -425,9 +432,10 @@ export function Dashboard() {
     queryKey: [...queryKeys.liveRuns(selectedCompanyId!), COCKPIT_RUNS_QUERY_KEY_SUFFIX],
     queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!, 4),
     enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
   });
 
-  const recentIssues = issues ? getRecentIssues(issues) : [];
+  const recentIssues = useMemo(() => (issues ? getRecentIssues(issues) : []), [issues]);
   const recentActivity = useMemo(() => (activity ?? []).slice(0, 10), [activity]);
 
   useEffect(() => {

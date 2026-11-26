@@ -22,6 +22,7 @@ import { mountMissionRevisionStart } from "./mission-revision-start.js";
 import { type Db } from "@paperclipai/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { missionService } from "../services/missions.js";
+import { issueService } from "../services/issues.js";
 import { dispatchSourceIssueNativeResume } from "../services/workflow/source-issue-native-resume.js";
 import { missionDelegationService } from "../services/mission-delegations.js";
 import { heartbeatService } from "../services/heartbeat.js";
@@ -44,6 +45,27 @@ import {
   getMissionDecisionLog,
 } from "../services/missions/mission-decision-reports.js";
 import { createPlanQaWakeupHandler, createPlanningIssueWakeupHandler } from "../services/missions/plan-qa-wakeup.js";
+
+const MAX_MISSION_ISSUE_LIST_LIMIT = 200;
+
+function parsePositiveIntQuery(value: unknown): number | undefined {
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return undefined;
+  return parsed;
+}
+
+function parseMissionIssueListLimit(value: unknown): number | undefined {
+  const parsed = parsePositiveIntQuery(value);
+  return parsed === undefined ? undefined : Math.min(parsed, MAX_MISSION_ISSUE_LIST_LIMIT);
+}
+
+function parseNonNegativeIntQuery(value: unknown): number {
+  if (typeof value !== "string" || value.trim() === "") return 0;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) return 0;
+  return parsed;
+}
 
 /** [휴먼카드 해석] 표시용 해석 스냅숋(원문 폴백 판단은 UI 책임 — null이면 원문만). */
 function serializeSummary(row: CardSummaryRow | null | undefined) {
@@ -106,6 +128,7 @@ export function missionRoutes(db: Db) { const router = Router();
   );
   const delegationSvc = missionDelegationService(db);
   const summariesSvc = cardSummaryService(db);
+  const issuesSvc = issueService(db);
   const svc = missionService(db, {
     onOwnerActionCreated: ({ mission, issue, sourceIssue, reason }) => {
       return heartbeat.wakeup(mission.ownerAgentId, {
@@ -808,11 +831,17 @@ export function missionRoutes(db: Db) { const router = Router();
    * Get the issue tree for a mission.
    */
   router.get("/missions/:id/issues", async (req, res) => {
-    const companyId = await svc.readCompanyId(req.params.id);
+    const missionId = req.params.id;
+    const companyId = await svc.readCompanyId(missionId);
     assertCompanyAccess(req, companyId);
 
-    const issueTree = await svc.getIssueTree(req.params.id);
-    res.json(issueTree);
+    const missionIssues = await issuesSvc.list(companyId, {
+      missionId,
+      view: "full",
+      limit: parseMissionIssueListLimit(req.query.limit),
+      offset: parseNonNegativeIntQuery(req.query.offset),
+    });
+    res.json(missionIssues);
   });
 
   /**

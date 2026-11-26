@@ -56,10 +56,12 @@ import { resolveAgentWorkProductRouteGuard } from "../services/issue-execution-c
 import { handleDelegatedArtifactHandback } from "../services/delegated-artifact-handback.js";
 import { completeUnblockActionWithSourceHandback } from "../services/missions/owner-action-completion.js";
 import { standaloneIssueExecutionContractService } from "../services/standalone-issue-execution-contract.js";
+import { activityService } from "../services/activity.js";
 
 const MAX_ISSUE_COMMENT_LIMIT = 500;
 // [목적] 목록 페이지 윈도우 상한. 기본 limit은 두지 않고(전체 보드 절단 방지) 호출자가 넘길 때만 적용한다.
-const MAX_ISSUE_LIST_LIMIT = 5000;
+const MAX_ISSUE_LIST_LIMIT = 200;
+const MAX_ISSUE_RUN_LIST_LIMIT = 100;
 
 /** [목적] 양의 정수 쿼리만 통과시키고 그 외(빈 값·NaN·0·음수·소수)는 무시한다. */
 function parsePositiveIntQuery(value: unknown): number | undefined {
@@ -73,6 +75,20 @@ function parsePositiveIntQuery(value: unknown): number | undefined {
 function parseIssueListLimit(value: unknown): number | undefined {
   const parsed = parsePositiveIntQuery(value);
   return parsed === undefined ? undefined : Math.min(parsed, MAX_ISSUE_LIST_LIMIT);
+}
+
+/** [목적] run 목록 limit 쿼리를 해석해 상한을 적용한다. */
+function parseIssueRunListLimit(value: unknown): number | undefined {
+  const parsed = parsePositiveIntQuery(value);
+  return parsed === undefined ? undefined : Math.min(parsed, MAX_ISSUE_RUN_LIST_LIMIT);
+}
+
+/** [목적] offset 쿼리를 0 이상 정수로 해석한다. 값이 없거나 잘못되면 기본값 0이다. */
+function parseNonNegativeIntQuery(value: unknown): number {
+  if (typeof value !== "string" || value.trim() === "") return 0;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) return 0;
+  return parsed;
 }
 
 function contentTypeForWorkProductPath(filePath: string): string {
@@ -93,6 +109,7 @@ function contentTypeForWorkProductPath(filePath: string): string {
 export function issueRoutes(db: Db, storage: StorageService) {
   const router = Router();
   const svc = issueService(db);
+  const activitySvc = activityService(db);
   const executionContractSvc = standaloneIssueExecutionContractService(db);
   const access = accessService(db);
   const heartbeat = heartbeatService(db);
@@ -426,6 +443,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
       labelId: req.query.labelId as string | undefined,
       originKind: req.query.originKind as string | undefined,
       originId: req.query.originId as string | undefined,
+      missionId: req.query.missionId as string | undefined,
       includeRoutineExecutions:
         req.query.includeRoutineExecutions === "true" || req.query.includeRoutineExecutions === "1",
       q: req.query.q as string | undefined,
@@ -433,7 +451,7 @@ export function issueRoutes(db: Db, storage: StorageService) {
       // [이유] 기본 목록 응답이 64.6MB였고 그 87%가 description이었다(첫 화면은 본문을 쓰지 않는다).
       view: req.query.view === "full" ? "full" : "summary",
       limit: parseIssueListLimit(req.query.limit),
-      offset: parsePositiveIntQuery(req.query.offset),
+      offset: parseNonNegativeIntQuery(req.query.offset),
     });
     res.json(result);
   });
@@ -596,6 +614,21 @@ export function issueRoutes(db: Db, storage: StorageService) {
       details: { name: removed.name, color: removed.color },
     });
     res.json(removed);
+  });
+
+  router.get("/issues/:id/runs", async (req, res) => {
+    const id = req.params.id as string;
+    const issue = await svc.getById(id);
+    if (!issue) {
+      res.status(404).json({ error: "Issue not found" });
+      return;
+    }
+    assertCompanyAccess(req, issue.companyId);
+    const result = await activitySvc.runsForIssue(issue.companyId, issue.id, {
+      limit: parseIssueRunListLimit(req.query.limit),
+      offset: parseNonNegativeIntQuery(req.query.offset),
+    });
+    res.json(result);
   });
 
   router.get("/issues/:id", async (req, res) => {

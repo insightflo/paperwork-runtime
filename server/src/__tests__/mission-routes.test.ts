@@ -5,11 +5,11 @@ import { missionRoutes } from "../routes/missions.js";
 import { errorHandler } from "../middleware/index.js";
 import { logActivity } from "../services/activity-log.js";
 
+const mockIssueService = vi.hoisted(() => ({ list: vi.fn() }));
 const mockMissionService = vi.hoisted(() => ({
   create: vi.fn(),
   getById: vi.fn(),
   readCompanyId: vi.fn(),
-  getIssueTree: vi.fn(),
   list: vi.fn(),
   listWorkflowRuns: vi.fn(),
   runActiveMissionOwnerSupervision: vi.fn(),
@@ -17,6 +17,9 @@ const mockMissionService = vi.hoisted(() => ({
 
 vi.mock("../services/missions.js", () => ({
   missionService: () => mockMissionService,
+}));
+vi.mock("../services/issues.js", () => ({
+  issueService: () => mockIssueService,
 }));
 
 vi.mock("../services/activity-log.js", () => ({
@@ -100,8 +103,8 @@ describe("mission routes subresources", () => {
     }));
   });
 
-  it("returns mission issues from the mission service", async () => {
-    mockMissionService.getIssueTree.mockResolvedValue([
+  it("returns mission issues from the mission-scoped issue query", async () => {
+    mockIssueService.list.mockResolvedValue([
       { id: "issue-1", title: "Mission issue", missionId: "mission-1" },
     ]);
 
@@ -111,7 +114,10 @@ describe("mission routes subresources", () => {
     expect(res.body).toEqual([
       expect.objectContaining({ id: "issue-1", title: "Mission issue", missionId: "mission-1" }),
     ]);
-    expect(mockMissionService.getIssueTree).toHaveBeenCalledWith("mission-1");
+    expect(mockIssueService.list).toHaveBeenCalledWith(
+      "company-1",
+      expect.objectContaining({ missionId: "mission-1", view: "full", offset: 0 }),
+    );
   });
 
   it("returns additive owner-action explanations on mission detail", async () => {
@@ -375,7 +381,7 @@ describe("mission routes subresources", () => {
     const res = await request(createApp()).get("/api/missions/mission-2/issues");
 
     expect(res.status).toBe(403);
-    expect(mockMissionService.getIssueTree).not.toHaveBeenCalled();
+    expect(mockIssueService.list).not.toHaveBeenCalled();
   });
 
   it("blocks mission workflow runs when the board actor cannot access the mission company", async () => {

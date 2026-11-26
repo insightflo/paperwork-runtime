@@ -1,4 +1,5 @@
 import { NavLink } from "@/lib/router";
+import { prefetchRoute } from "../App";
 import { cn } from "../lib/utils";
 import { useSidebar } from "../context/SidebarContext";
 import { useSidebarDensity } from "../lib/sidebar-slide-physics";
@@ -98,6 +99,8 @@ export function SidebarNavItem({
   // The full badge description stays reachable as a tooltip even though the pill may show only a count.
   const badgeTooltip = badgeDetail ? `${label} (${badgeDetail})` : undefined;
   const onClick = () => { if (isMobile) setSidebarOpen(false); };
+  // Warm the destination chunk before the click so navigation is instant.
+  const warmRoute = () => prefetchRoute(to);
 
   if (showCompactMode) {
     const compactTitle = badgeTooltip ?? label;
@@ -108,6 +111,8 @@ export function SidebarNavItem({
         title={compactTitle}
         aria-label={compactTitle}
         onClick={onClick}
+        onMouseEnter={warmRoute}
+        onFocus={warmRoute}
         className={({ isActive }) =>
           cn(
             "group relative mx-auto flex h-9 w-9 items-center justify-center rounded-[10px] border border-l-2 transition-colors",
@@ -131,6 +136,8 @@ export function SidebarNavItem({
       title={badgeTooltip}
       aria-label={badgeTooltip}
       onClick={onClick}
+      onMouseEnter={warmRoute}
+      onFocus={warmRoute}
       className={({ isActive }) =>
         cn(
           "group flex items-center gap-2.5 rounded-[9px] border border-l-2 px-3 py-1.5 text-[13px] font-medium transition-colors",

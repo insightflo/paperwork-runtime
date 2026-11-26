@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { Db } from "@paperclipai/db";
+import { activityLog, issues, type Db } from "@paperclipai/db";
+import { and, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { validate } from "../middleware/validate.js";
 import { activityService } from "../services/activity.js";
 import { assertBoard, assertCompanyAccess } from "./authz.js";
@@ -18,6 +19,23 @@ const createActivitySchema = z.object({
   agentId: z.string().uuid().optional().nullable(),
   details: z.record(z.unknown()).optional().nullable(),
 });
+
+const DEFAULT_ACTIVITY_LIMIT = 200;
+const MAX_ACTIVITY_LIMIT = 500;
+
+function parseActivityLimit(value: unknown): number {
+  if (typeof value !== "string" || value.trim() === "") return DEFAULT_ACTIVITY_LIMIT;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) return DEFAULT_ACTIVITY_LIMIT;
+  return Math.min(parsed, MAX_ACTIVITY_LIMIT);
+}
+
+function parseActivityOffset(value: unknown): number {
+  if (typeof value !== "string" || value.trim() === "") return 0;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) return 0;
+  return parsed;
+}
 
 export function activityRoutes(db: Db) {
   const router = Router();
@@ -37,14 +55,32 @@ export function activityRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
 
-    const filters = {
-      companyId,
-      agentId: req.query.agentId as string | undefined,
-      entityType: req.query.entityType as string | undefined,
-      entityId: req.query.entityId as string | undefined,
-    };
-    const result = await svc.list(filters);
-    res.json(result);
+    const agentId = req.query.agentId as string | undefined;
+    const entityType = req.query.entityType as string | undefined;
+    const entityId = req.query.entityId as string | undefined;
+    const limit = parseActivityLimit(req.query.limit);
+    const offset = parseActivityOffset(req.query.offset);
+    const canUseBoundedQuery = typeof (db as { execute?: unknown }).execute === "function";
+    if (!canUseBoundedQuery) {
+      const result = await svc.list({ companyId, agentId, entityType, entityId });
+      res.json(result);
+      return;
+    }
+    const issueIdAsUuid = sql`case when ${activityLog.entityType} = 'issue' and ${activityLog.entityId} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then ${activityLog.entityId}::uuid else null end`;
+    const conditions = [eq(activityLog.companyId, companyId)];
+    if (agentId) conditions.push(eq(activityLog.agentId, agentId));
+    if (entityType) conditions.push(eq(activityLog.entityType, entityType));
+    if (entityId) conditions.push(eq(activityLog.entityId, entityId));
+
+    const rows = await db
+      .select({ activityLog })
+      .from(activityLog)
+      .leftJoin(issues, sql`${issues.id} = ${issueIdAsUuid}`)
+      .where(and(...conditions, or(ne(activityLog.entityType, "issue"), isNull(issues.hiddenAt))))
+      .orderBy(desc(activityLog.createdAt), desc(activityLog.id))
+      .limit(limit)
+      .offset(offset);
+    res.json(rows.map((row) => row.activityLog));
   });
 
   router.post("/companies/:companyId/activity", validate(createActivitySchema), async (req, res) => {

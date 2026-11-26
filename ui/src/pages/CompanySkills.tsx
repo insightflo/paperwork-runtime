@@ -56,6 +56,13 @@ import {
   Wrench,
 } from "lucide-react";
 
+// Cockpit primitives (approved Linear + Datadog palette; mirrors .cockpit-strip/.cockpit-toolbar).
+const CARD = "rounded-md border border-[#242d3f] bg-[#151b28]";
+const LABEL = "text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]";
+const CTA = "bg-[#2563eb] text-[#f8fafc] hover:bg-[#5f8dff]";
+const TAB_CLASS =
+  "h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors aria-pressed:bg-[#151b28] aria-pressed:text-[#e6edf7] aria-pressed:shadow-[inset_0_0_0_1px_#242d3f] text-[#8b97ad] hover:text-[#e6edf7]";
+
 type SkillTreeNode = {
   name: string;
   path: string | null;
@@ -258,38 +265,39 @@ function NewSkillForm({
   const canCreate = name.trim().length > 0 || sourceLocator.trim().length > 0;
 
   return (
-    <div className="border-b border-border px-4 py-4">
+    <div className="border-b border-[#242d3f] bg-[#111622] px-4 py-4">
       <div className="space-y-3">
         <Input
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder="Skill name"
-          className="h-9 rounded-none border-0 border-b border-border px-0 shadow-none focus-visible:ring-0"
+          className="h-9 rounded-none border-0 border-b border-[#242d3f] px-0 text-[#e6edf7] shadow-none focus-visible:ring-0"
         />
         <Input
           value={slug}
           onChange={(event) => setSlug(event.target.value)}
           placeholder="optional-shortname"
-          className="h-9 rounded-none border-0 border-b border-border px-0 shadow-none focus-visible:ring-0"
+          className="h-9 rounded-none border-0 border-b border-[#242d3f] px-0 text-[#e6edf7] shadow-none focus-visible:ring-0"
         />
         <Input
           value={sourceLocator}
           onChange={(event) => setSourceLocator(event.target.value)}
           placeholder="/srv/papercompany/company-skills/my-skill"
-          className="h-9 rounded-none border-0 border-b border-border px-0 shadow-none focus-visible:ring-0"
+          className="h-9 rounded-none border-0 border-b border-[#242d3f] px-0 text-[#e6edf7] shadow-none focus-visible:ring-0"
         />
         <Textarea
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           placeholder="Short description"
-          className="min-h-20 rounded-none border-0 border-b border-border px-0 shadow-none focus-visible:ring-0"
+          className="min-h-20 rounded-none border-0 border-b border-[#242d3f] px-0 text-[#e6edf7] shadow-none focus-visible:ring-0"
         />
         <div className="flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onCancel} disabled={isPending}>
+          <Button variant="ghost" size="sm" className="text-[#8b97ad] hover:text-[#e6edf7]" onClick={onCancel} disabled={isPending}>
             Cancel
           </Button>
           <Button
             size="sm"
+            className={`h-7 text-xs ${CTA}`}
             onClick={() => onCreate({
               name: name.trim() || null,
               slug: slug.trim() || null,
@@ -439,7 +447,7 @@ function SkillList({
         const SourceIcon = source.icon;
 
         return (
-          <div key={skill.id} className="overflow-hidden rounded-md border border-border/80 bg-card/60">
+          <div key={skill.id} className={`overflow-hidden ${CARD}`}>
             <div
               className={cn(
                 "group grid grid-cols-[minmax(0,1fr)_2.25rem] items-center gap-x-1 px-3 py-1.5 hover:bg-accent/30",
@@ -562,42 +570,42 @@ function SkillPane({
   const latestPin = shortRef(updateStatus?.latestRef);
 
   return (
-    <div className="min-w-0 rounded-md border border-border/80 bg-card/60">
-      <div className="border-b border-border/80 px-5 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="min-w-0 bg-[#151b28]">
+      <div className="border-b border-[#242d3f] px-5 py-4">
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="flex items-center gap-2 truncate text-2xl font-semibold">
-              <SourceIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
+            <h1 className="flex min-w-0 items-center gap-2 truncate text-xl font-semibold text-[#e6edf7]">
+              <SourceIcon className="h-5 w-5 shrink-0 text-[#8b97ad]" />
               {detail.name}
             </h1>
             {detail.description && (
-              <p className="mt-2 max-w-3xl text-sm text-muted-foreground">{detail.description}</p>
+              <p className="mt-2 max-w-3xl text-sm text-[#8b97ad]">{detail.description}</p>
             )}
           </div>
           {detail.editable ? (
             <button
               type="button"
-              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+              className="inline-flex shrink-0 items-center gap-2 text-sm text-[#8b97ad] hover:text-[#e6edf7]"
               onClick={() => setEditMode(!editMode)}
             >
               <Pencil className="h-3.5 w-3.5" />
               {editMode ? "Stop editing" : "Edit"}
             </button>
           ) : (
-            <div className="text-sm text-muted-foreground">{detail.editableReason}</div>
+            <div className="min-w-0 truncate text-sm text-[#8b97ad]">{detail.editableReason}</div>
           )}
         </div>
 
-        <div className="mt-4 space-y-3 border-t border-border/80 pt-4 text-sm">
+        <div className="mt-4 space-y-3 border-t border-[#242d3f] pt-4 text-sm">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Source</span>
-              <span className="flex items-center gap-2">
-                <SourceIcon className="h-3.5 w-3.5 text-muted-foreground" />
+            <div className="flex min-w-0 items-center gap-2">
+              <span className={LABEL}>Source</span>
+              <span className="flex min-w-0 items-center gap-2">
+                <SourceIcon className="h-3.5 w-3.5 shrink-0 text-[#8b97ad]" />
                 {detail.sourcePath ? (
                   <button
                     type="button"
-                    className="truncate hover:text-foreground text-muted-foreground transition-colors cursor-pointer"
+                    className="truncate text-[#8b97ad] transition-colors hover:text-[#e6edf7] cursor-pointer"
                     onClick={() => {
                       navigator.clipboard.writeText(detail.sourcePath!);
                       pushToast({ title: "Copied path to workspace" });
@@ -606,20 +614,21 @@ function SkillPane({
                     {source.label}
                   </button>
                 ) : (
-                  <span className="truncate">{source.label}</span>
+                  <span className="truncate text-[#8b97ad]">{source.label}</span>
                 )}
               </span>
             </div>
             {detail.sourceType === "github" && (
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Pin</span>
-                <span className="font-mono text-xs">{currentPin ?? "untracked"}</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className={LABEL}>Pin</span>
+                <span className="font-mono text-xs text-[#5f8dff]">{currentPin ?? "untracked"}</span>
                 {updateStatus?.trackingRef && (
-                  <span className="text-xs text-muted-foreground">tracking {updateStatus.trackingRef}</span>
+                  <span className="truncate text-xs text-[#8b97ad]">tracking {updateStatus.trackingRef}</span>
                 )}
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="h-7 border border-[#242d3f] bg-[#111622] text-xs text-[#e6edf7] hover:bg-[#1a2131] hover:text-[#e6edf7]"
                   onClick={onCheckUpdates}
                   disabled={checkUpdatesPending || updateStatusLoading}
                 >
@@ -629,6 +638,7 @@ function SkillPane({
                 {updateStatus?.supported && updateStatus.hasUpdate && (
                   <Button
                     size="sm"
+                    className={`h-7 text-xs ${CTA}`}
                     onClick={onInstallUpdate}
                     disabled={installUpdatePending}
                   >
@@ -637,33 +647,33 @@ function SkillPane({
                   </Button>
                 )}
                 {updateStatus?.supported && !updateStatus.hasUpdate && !updateStatusLoading && (
-                  <span className="text-xs text-muted-foreground">Up to date</span>
+                  <span className="text-xs text-[#34d399]">Up to date</span>
                 )}
                 {!updateStatus?.supported && updateStatus?.reason && (
-                  <span className="text-xs text-muted-foreground">{updateStatus.reason}</span>
+                  <span className="min-w-0 truncate text-xs text-[#8b97ad]">{updateStatus.reason}</span>
                 )}
               </div>
             )}
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Key</span>
-              <span className="font-mono text-xs">{detail.key}</span>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className={LABEL}>Key</span>
+              <span className="truncate font-mono text-xs text-[#e6edf7]">{detail.key}</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Mode</span>
-              <span>{detail.editable ? "Editable" : "Read only"}</span>
+              <span className={LABEL}>Mode</span>
+              <span className={detail.editable ? "text-[#34d399]" : "text-[#8b97ad]"}>{detail.editable ? "Editable" : "Read only"}</span>
             </div>
           </div>
-          <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Used by</span>
+          <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
+            <span className={LABEL}>Used by</span>
             {usedBy.length === 0 ? (
-              <span className="text-muted-foreground">No agents attached</span>
+              <span className="text-[#8b97ad]">No agents attached</span>
             ) : (
-              <div className="flex flex-wrap gap-x-3 gap-y-1">
+              <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1">
                 {usedBy.map((agent) => (
                   <Link
                     key={agent.id}
                     to={`/agents/${agent.urlKey}/skills`}
-                    className="text-foreground no-underline hover:underline"
+                    className="min-w-0 truncate text-[#e6edf7] no-underline hover:underline"
                   >
                     {agent.name}
                   </Link>
@@ -674,17 +684,17 @@ function SkillPane({
         </div>
       </div>
 
-      <div className="border-b border-border/80 px-5 py-3">
+      <div className="border-b border-[#242d3f] px-5 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className="truncate font-mono text-sm">{file?.path ?? "SKILL.md"}</div>
+            <div className="truncate font-mono text-sm text-[#e6edf7]">{file?.path ?? "SKILL.md"}</div>
           </div>
           <div className="flex items-center gap-2">
             {file?.markdown && !editMode && (
-              <div className="flex items-center border border-border/80">
+              <div className="flex items-center border border-[#242d3f]">
                 <button
                   type="button"
-                  className={cn("px-3 py-1.5 text-sm", viewMode === "preview" && "text-foreground", viewMode !== "preview" && "text-muted-foreground")}
+                  className={cn("px-3 py-1.5 text-sm", viewMode === "preview" && "bg-[#111622] text-[#e6edf7]", viewMode !== "preview" && "text-[#8b97ad]")}
                   onClick={() => setViewMode("preview")}
                 >
                   <span className="flex items-center gap-1.5">
@@ -694,7 +704,7 @@ function SkillPane({
                 </button>
                 <button
                   type="button"
-                  className={cn("border-l border-border/80 px-3 py-1.5 text-sm", viewMode === "code" && "text-foreground", viewMode !== "code" && "text-muted-foreground")}
+                  className={cn("border-l border-[#242d3f] px-3 py-1.5 text-sm", viewMode === "code" && "bg-[#111622] text-[#e6edf7]", viewMode !== "code" && "text-[#8b97ad]")}
                   onClick={() => setViewMode("code")}
                 >
                   <span className="flex items-center gap-1.5">
@@ -706,10 +716,10 @@ function SkillPane({
             )}
             {editMode && file?.editable && (
               <>
-                <Button variant="ghost" size="sm" onClick={() => setEditMode(false)} disabled={savePending}>
+                <Button variant="ghost" size="sm" className="text-[#8b97ad] hover:text-[#e6edf7]" onClick={() => setEditMode(false)} disabled={savePending}>
                   Cancel
                 </Button>
-                <Button size="sm" onClick={onSave} disabled={savePending}>
+                <Button size="sm" className={`h-7 text-xs ${CTA}`} onClick={onSave} disabled={savePending}>
                   <Save className="mr-1.5 h-3.5 w-3.5" />
                   {savePending ? "Saving..." : "Save"}
                 </Button>
@@ -723,7 +733,7 @@ function SkillPane({
         {fileLoading ? (
           <PageSkeleton variant="detail" />
         ) : !file ? (
-          <div className="text-sm text-muted-foreground">Select a file to inspect.</div>
+          <div className="text-sm text-[#8b97ad]">Select a file to inspect.</div>
         ) : editMode && file.editable ? (
           file.markdown ? (
             <MarkdownEditor
@@ -1021,6 +1031,16 @@ export function CompanySkills() {
     importSkill.mutate(trimmedSource);
   }
 
+  const skillList = skillsQuery.data ?? [];
+  const editableCount = skillList.filter((skill) => skill.editable).length;
+  const skillStrip = [
+    { label: "Skills", value: skillsQuery.data ? skillList.length : "—", dot: "bg-[#5f8dff]" },
+    { label: "Editable", value: skillsQuery.data ? editableCount : "—", dot: "bg-[#34d399]" },
+    { label: "Read only", value: skillsQuery.data ? skillList.length - editableCount : "—", dot: "bg-[#8b97ad]" },
+    { label: "GitHub pinned", value: skillsQuery.data ? skillList.filter((skill) => skill.sourceBadge === "github").length : "—", dot: "bg-[#fbbf24]" },
+    { label: "Agent attachments", value: skillsQuery.data ? skillList.reduce((sum, skill) => sum + skill.attachedAgentCount, 0) : "—", dot: "bg-[#5f8dff]" },
+  ];
+
   return (
     <>
       <Dialog open={emptySourceHelpOpen} onOpenChange={setEmptySourceHelpOpen}>
@@ -1036,25 +1056,25 @@ export function CompanySkills() {
               href="https://skills.sh"
               target="_blank"
               rel="noreferrer"
-              className="flex items-start justify-between rounded-md border border-border/80 bg-card/60 px-3 py-3 text-foreground no-underline transition-colors hover:bg-accent/40"
+              className="flex items-start justify-between px-3 py-3 text-[#e6edf7] no-underline transition-colors hover:bg-[#1a2131] border border-[#242d3f] bg-[#151b28] rounded-md"
             >
-              <span>
+              <span className="min-w-0">
                 <span className="block font-medium">Browse skills.sh</span>
-                <span className="mt-1 block text-muted-foreground">
+                <span className="mt-1 block text-[#8b97ad]">
                   Find install commands and paste one here.
                 </span>
               </span>
-              <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-[#8b97ad]" />
             </a>
             <a
               href="https://github.com/search?q=SKILL.md&type=code"
               target="_blank"
               rel="noreferrer"
-              className="flex items-start justify-between rounded-md border border-border/80 bg-card/60 px-3 py-3 text-foreground no-underline transition-colors hover:bg-accent/40"
+              className="flex items-start justify-between px-3 py-3 text-[#e6edf7] no-underline transition-colors hover:bg-[#1a2131] border border-[#242d3f] bg-[#151b28] rounded-md"
             >
-              <span>
+              <span className="min-w-0">
                 <span className="block font-medium">Search GitHub</span>
-                <span className="mt-1 block text-muted-foreground">
+                <span className="mt-1 block text-[#8b97ad]">
                   Look for repositories with `SKILL.md`, then paste the repo URL here.
                 </span>
               </span>
@@ -1065,83 +1085,85 @@ export function CompanySkills() {
         </DialogContent>
       </Dialog>
 
-      <div className="mb-4 inline-grid grid-cols-2 overflow-hidden rounded-md border border-border/80 bg-card/60 text-sm">
-        <button
-          type="button"
-          className={cn(
-            "flex items-center justify-center gap-1.5 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-            surface === "skills" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/40",
-          )}
-          onClick={() => setSurface("skills")}
-          aria-pressed={surface === "skills"}
-        >
-          <Boxes className="h-3.5 w-3.5" />
-          Skills
-        </button>
-        <button
-          type="button"
-          className={cn(
-            "flex items-center justify-center gap-1.5 border-l border-border/80 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-            surface === "tools" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/40",
-          )}
-          onClick={() => setSurface("tools")}
-          aria-pressed={surface === "tools"}
-        >
-          <Wrench className="h-3.5 w-3.5" />
-          Tools
-        </button>
+      <div className="space-y-2 tabular-nums">
+      {/* 1-row 5-column cockpit strip: live skill library summary */}
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Skills summary">
+        {skillStrip.map((cell) => (
+          <div key={cell.label} className="cockpit-cell min-w-0 flex-1 justify-center">
+            <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.dot}`} />
+            <span className="truncate uppercase tracking-wide">{cell.label}</span>
+            <b className="ml-1 truncate">{cell.value}</b>
+          </div>
+        ))}
+      </div>
+
+      {/* 40px unified toolbar: Skills / Tools surface switch */}
+      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-2">
+        <div role="group" aria-label="Skills surfaces" className="flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5">
+          {([
+            { key: "skills", label: "Skills", icon: Boxes },
+            { key: "tools", label: "Tools", icon: Wrench },
+          ] as const).map((tab) => (
+            <button key={tab.key} type="button" aria-pressed={surface === tab.key} onClick={() => setSurface(tab.key)} className={TAB_CLASS}>
+              <tab.icon className="mr-1 inline h-3 w-3 align-[-2px]" aria-hidden />{tab.label}
+            </button>
+          ))}
+        </div>
+        <h1 className="ml-3 truncate text-sm font-semibold text-[#e6edf7]">Company Skills</h1>
+        <span className="truncate text-xs text-[#8b97ad]">Skill library shared by agents in this company</span>
       </div>
 
       {surface === "tools" ? (
         <ToolAdminPanel companyId={selectedCompanyId} />
       ) : (
-      <div className="grid min-h-[calc(100vh-12rem)] gap-0 tabular-nums xl:grid-cols-[19rem_minmax(0,1fr)]">
-        <aside className="border-r border-border/80">
-          <div className="border-b border-border/80 px-4 py-3">
-            <>
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <h1 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Skills</h1>
-                <p className="text-xs text-muted-foreground tabular-nums">
+      <div className={`grid min-h-[calc(100vh-13rem)] min-w-0 gap-0 overflow-hidden tabular-nums xl:grid-cols-[19rem_minmax(0,1fr)] ${CARD}`}>
+        <aside className="min-w-0 border-r border-[#242d3f] bg-[#111622]">
+          <div className="border-b border-[#242d3f] px-4 py-3">
+            <div className="flex min-w-0 items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className={LABEL}>Skills</h2>
+                <p className="truncate text-xs text-[#8b97ad] tabular-nums">
                   {skillsQuery.data?.length ?? 0} available
                 </p>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex shrink-0 items-center gap-1">
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  className="text-[#8b97ad] hover:text-[#e6edf7]"
                   onClick={() => scanProjects.mutate()}
                   disabled={scanProjects.isPending}
                   title="Scan project workspaces for skills"
                 >
                   <RefreshCw className={cn("h-4 w-4", scanProjects.isPending && "animate-spin")} />
                 </Button>
-                <Button variant="ghost" size="icon-sm" onClick={() => setCreateOpen((value) => !value)}>
+                <Button variant="ghost" size="icon-sm" className="text-[#8b97ad] hover:text-[#e6edf7]" onClick={() => setCreateOpen((value) => !value)}>
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
             </div>
 
-            <div className="mt-3 flex items-center gap-2 border-b border-border/80 pb-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
+            <div className="mt-3 flex min-w-0 items-center gap-2 border-b border-[#242d3f] pb-2">
+              <Search className="h-4 w-4 shrink-0 text-[#8b97ad]" />
               <input
                 value={skillFilter}
                 onChange={(event) => setSkillFilter(event.target.value)}
                 placeholder="Filter skills"
-                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                className="w-full bg-transparent text-sm text-[#e6edf7] outline-none placeholder:text-[#8b97ad]"
               />
             </div>
 
-            <div className="mt-3 flex items-center gap-2 border-b border-border/80 pb-2">
+            <div className="mt-3 flex min-w-0 items-center gap-2 border-b border-[#242d3f] pb-2">
               <input
                 value={source}
                 onChange={(event) => setSource(event.target.value)}
                 placeholder="Paste path, GitHub URL, or skills.sh command"
-                className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                className="w-full bg-transparent text-sm text-[#e6edf7] outline-none placeholder:text-[#8b97ad]"
               />
               <Button
                 size="sm"
                 variant="ghost"
+                className="shrink-0 text-[#8b97ad] hover:text-[#e6edf7]"
                 onClick={handleAddSkillSource}
                 disabled={importSkill.isPending}
               >
@@ -1149,11 +1171,10 @@ export function CompanySkills() {
               </Button>
             </div>
             {scanStatusMessage && (
-              <p className="mt-3 text-xs text-muted-foreground tabular-nums">
+              <p className="mt-3 truncate text-xs text-[#8b97ad] tabular-nums">
                 {scanStatusMessage}
               </p>
             )}
-            </>
           </div>
 
           {createOpen && (
@@ -1193,7 +1214,7 @@ export function CompanySkills() {
           )}
         </aside>
 
-        <div className="min-w-0 pl-6">
+        <div className="min-w-0">
           <SkillPane
             loading={skillsQuery.isLoading || detailQuery.isLoading}
             detail={activeDetail}
@@ -1219,6 +1240,7 @@ export function CompanySkills() {
         </div>
       </div>
       )}
+      </div>
     </>
   );
 }
