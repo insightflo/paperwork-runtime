@@ -10,7 +10,6 @@ import {
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
 import { issueService } from "../services/issues.js";
-import { hermesChatService } from "../services/hermes-chat.js";
 import { completeUnblockActionWithSourceHandback } from "../services/missions/owner-action-completion.js";
 import { gatherUnblockSourceEvidence } from "../services/missions/owner-action-unblock-handback.js";
 import { issueRoutes } from "../routes/issues.js";
@@ -45,8 +44,20 @@ describeEmbeddedPostgres("owner-action closeout guard (mission_main_executor_unb
       issuePrefix: `OA${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
       requireBoardApprovalForNewAgents: false,
     });
-    agentId = (await hermesChatService(db).ensureOperationsAgent(companyId)).id;
-    await db.update(agents).set({ status: "paused" }).where(eq(agents.id, agentId));
+    const [createdAgent] = await db
+      .insert(agents)
+      .values({
+        companyId,
+        name: "Owner Action Test Agent",
+        role: "pm",
+        status: "paused",
+        adapterType: "codex_local",
+        adapterConfig: {},
+        runtimeConfig: {},
+        permissions: {},
+      })
+      .returning({ id: agents.id });
+    agentId = createdAgent.id;
   }, 60_000);
 
   afterAll(async () => {

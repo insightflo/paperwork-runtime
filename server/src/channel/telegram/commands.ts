@@ -6,7 +6,7 @@
  */
 
 import type { Db } from "@paperclipai/db";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { agents, approvals, issues, missions } from "@paperclipai/db";
 import { getChannelRegistry } from "../index.js";
 import { persistChatId, registerChatId } from "./outbound.js";
@@ -23,8 +23,6 @@ import type { MissionDetail } from "../../services/missions.js";
 import { issueService } from "../../services/issues.js";
 import { approvalService } from "../../services/approvals.js";
 import { heartbeatService } from "../../services/heartbeat.js";
-import { hermesChatService } from "../../services/hermes-chat.js";
-import { resolveRecoveryAdviceForChat } from "../../services/hermes-chat-recovery.js";
 
 /**
  * System actor ID used when Telegram acts on behalf of the system
@@ -68,7 +66,7 @@ export function buildTelegramHandler(db: Db, _companyId: string) {
 
     try {
       if (!command) {
-        await cmdHermesConversation(sender, chatId, message, db, context.companyId);
+        await cmdOpsConversation(sender, chatId, message, db, context.companyId);
         return;
       }
 
@@ -114,7 +112,7 @@ function readNestedString(value: unknown, path: string[]): string | null {
   return typeof cursor === "string" && cursor.trim() ? cursor.trim() : null;
 }
 
-async function findHermesOperationsAgent(db: Db, companyId: string, botUsername?: string | null) {
+async function findOperationsAgent(db: Db, companyId: string, botUsername?: string | null) {
   const rows = await db
     .select({
       id: agents.id,
@@ -124,7 +122,7 @@ async function findHermesOperationsAgent(db: Db, companyId: string, botUsername?
       runtimeConfig: agents.runtimeConfig,
     })
     .from(agents)
-    .where(and(eq(agents.companyId, companyId), eq(agents.adapterType, "hermes_local")));
+    .where(eq(agents.companyId, companyId));
 
   const activeRows = rows.filter((row) => row.status !== "terminated" && row.status !== "pending_approval");
   const normalizedBot = botUsername?.toLowerCase() ?? null;
@@ -132,17 +130,18 @@ async function findHermesOperationsAgent(db: Db, companyId: string, botUsername?
     const runtimeBot = readNestedString(row.runtimeConfig, ["telegram", "botUsername"])?.toLowerCase() ?? null;
     const domain = readNestedString(row.runtimeConfig, ["domain"]);
     const mode = readNestedString(row.runtimeConfig, ["operatingMode"]);
+    const telegram = asRecord(asRecord(row.runtimeConfig)?.telegram);
     return (
-      row.name === "Hermes Operations Manager" ||
-      row.name === "Hermes Ops Manager" ||
       domain === "operations" ||
       mode === "chief_of_staff_liaison" ||
+      mode === "independent_management_operator" ||
+      telegram?.directConversation === true ||
       (normalizedBot !== null && runtimeBot === normalizedBot)
     );
   }) ?? null;
 }
 
-async function cmdHermesConversation(
+async function cmdOpsConversation(
   sender: (chatId: number, text: string) => Promise<void>,
   chatId: number,
   message: TelegramMessage,
@@ -152,47 +151,21 @@ async function cmdHermesConversation(
   const text = message.text?.trim();
   if (!text) return;
 
-  const chatService = hermesChatService(db);
-  const agent = await chatService.findOperationsAgent(companyId) ?? await findHermesOperationsAgent(db, companyId, "inflo_research_bot");
+  const agent = await findOperationsAgent(db, companyId, "inflo_research_bot");
   if (!agent) {
-    await sender(chatId, formatError("Hermes Operations Manager is not configured for this company."));
+    await sender(chatId, formatError("Operations Manager is not configured for this company."));
     return;
   }
 
   const senderLabel = message.from?.username
     ? `@${message.from.username}`
     : message.from?.first_name ?? `telegram:${message.from?.id ?? "unknown"}`;
-  const session = await chatService.getOrCreateTelegramSession(companyId, {
-    chatId,
-    title: "Telegram chat",
-    agentId: agent.id,
-  });
-  const userMessage = await chatService.addUserMessage(companyId, session.id, text, {
-    telegram: {
-      chatId,
-      messageId: message.message_id,
-      fromId: message.from?.id ?? null,
-      fromUsername: message.from?.username ?? null,
-      senderLabel,
-    },
-  });
-  const assistantMessage = await chatService.addAssistantPlaceholder(companyId, session.id, agent.id);
-  const recentMessages = await chatService.recentConversation(companyId, session.id, 14);
-  // [P2] recovery 질문(메시지 텍스트 기반)이면 처방 계산해 context에 부착(fail-open).
-  const recoveryAdvice = await resolveRecoveryAdviceForChat(db, {
-    companyId,
-    currentPage: null,
-    messageText: text,
-  });
 
   const run = await heartbeatService(db).wakeup(agent.id, {
     source: "on_demand",
-    triggerDetail: "telegram_hermes_chat",
-    reason: "telegram_hermes_chat_message",
+    triggerDetail: "telegram_ops_chat",
+    reason: "telegram_ops_chat_message",
     payload: {
-      sessionId: session.id,
-      userMessageId: userMessage.id,
-      assistantMessageId: assistantMessage.id,
       telegramChatId: chatId,
       telegramMessageId: message.message_id,
     },
@@ -200,53 +173,31 @@ async function cmdHermesConversation(
     requestedByActorType: "user",
     requestedByActorId: senderLabel,
     contextSnapshot: {
-      taskKey: `hermes-chat:${session.id}`,
+      taskKey: `telegram-ops:${chatId}`,
       forceFreshSession: false,
       telegramOperatorMessage: true,
       telegramChatId: chatId,
       telegramMessageId: message.message_id,
       telegramFromId: message.from?.id ?? null,
       telegramFromUsername: message.from?.username ?? null,
-      paperclipHermesChat: {
-        sessionId: session.id,
-        sessionTitle: session.title,
-        userMessageId: userMessage.id,
-        assistantMessageId: assistantMessage.id,
-        currentMessage: text,
-        recentMessages,
-        currentPage: null,
-        attachments: [],
-        // [P2] nested key ONLY — top-level decision 금지(verdict reader 충돌).
-        recoveryAdvice,
-        source: "telegram",
-        telegramChatId: chatId,
-        telegramMessageId: message.message_id,
-        instructions: [
-          "Default to a concise Telegram operations answer: 3-6 short bullets or 1-2 short paragraphs.",
-          "This is a free-form operations chat, not a mission or issue assignment.",
-          "Do not create an issue for this message unless the operator explicitly asks you to create one.",
-          "Use live Paperclip state when answering questions about prior work, artifacts, agents, missions, workflow runs, scheduler state, or issue status.",
-          "If you take an action, name the exact issue, mission, run, workflow, or agent changed.",
-        ],
-      },
+      currentMessage: text,
+      instructions: [
+        "Default to a concise Telegram operations answer: 3-6 short bullets or 1-2 short paragraphs.",
+        "This is a free-form operations chat, not a mission or issue assignment.",
+        "Do not create an issue for this message unless the operator explicitly asks you to create one.",
+        "Use live Paperclip state when answering questions about prior work, artifacts, agents, missions, workflow runs, scheduler state, or issue status.",
+        "If you take an action, name the exact issue, mission, run, workflow, or agent changed.",
+      ],
     },
   });
 
-  if (run) {
-    await chatService.attachRunToAssistantMessage(assistantMessage.id, run.id);
-  } else {
-    await chatService.markAssistantMessage(assistantMessage.id, {
-      status: "failed",
-      body: "Hermes is busy and this message was saved, but no run was queued.",
-    });
-  }
-
+  const agentLabel = agent.name || "Operations Manager";
   await sender(
     chatId,
     formatSuccess(
       run
-        ? "Hermes가 응답을 준비 중입니다."
-        : "메시지는 저장됐지만 현재 실행 큐 정책에 의해 응답 실행이 보류되었습니다.",
+        ? `${agentLabel}가 응답을 준비 중입니다.`
+        : "현재 실행 큐 정책에 의해 응답 실행이 보류되었습니다.",
     ),
   );
 }

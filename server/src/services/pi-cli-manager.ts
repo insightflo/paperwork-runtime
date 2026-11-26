@@ -17,7 +17,6 @@ import type {
 } from "@paperclipai/shared/types/instance";
 import { resetClaudeModelsCacheForTests } from "../adapters/claude-models.js";
 import { resetCodexModelsCacheForTests } from "../adapters/codex-models.js";
-import { resetHermesModelsCacheForTests } from "../adapters/hermes-models.js";
 import { listAdapterModels } from "../adapters/registry.js";
 import { badRequest } from "../errors.js";
 import { localEncryptedProvider } from "../secrets/local-encrypted-provider.js";
@@ -68,7 +67,6 @@ function flushAllAdapterModelCaches(): void {
   resetCommandCodeModelsCacheForTests();
   resetCodexModelsCacheForTests();
   resetClaudeModelsCacheForTests();
-  resetHermesModelsCacheForTests();
 }
 
 function resolveRustCliRuntimeBin(opts: PiCliManagerOptions): string | null {

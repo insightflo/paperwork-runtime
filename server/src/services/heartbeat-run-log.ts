@@ -1,11 +1,8 @@
 import { eq } from "drizzle-orm";
 import { heartbeatRuns, type Db } from "@paperclipai/db";
-import { appendWithCap, MAX_EXCERPT_BYTES, parseObject } from "../adapters/utils.js";
-import { parseHermesProgressText } from "../adapters/hermes-local-execute.js";
+import { appendWithCap, MAX_EXCERPT_BYTES } from "../adapters/utils.js";
 import { redactCurrentUserText, type CurrentUserRedactionOptions } from "../log-redaction.js";
 import { logger } from "../middleware/logger.js";
-import { hermesChatService } from "./hermes-chat.js";
-import { readNonEmptyString } from "./heartbeat-run-context.js";
 import { resolveRunawayLogLimitBytes } from "./heartbeat-stability.js";
 import { publishLiveEvent } from "./live-events.js";
 import { serializeRunLogEvent, type RunLogEvent, type RunLogHandle, type RunLogStore } from "./run-log-store.js";
@@ -49,8 +46,6 @@ export function createHeartbeatRunLog(options: HeartbeatRunLogOptions) {
   let stdoutGuardBuffer = "";
   let stderrGuardBuffer = "";
   let currentUserRedactionOptions: CurrentUserRedactionOptions | undefined;
-  let hermesChatAssistantMessageId: string | null = null;
-  let hermesChat: ReturnType<typeof hermesChatService> | null = null;
   const storageLimitBytes = resolveRunawayLogLimitBytes(options.config);
   let storageCapped = false;
   let summaryEmitted = false;
@@ -97,21 +92,6 @@ export function createHeartbeatRunLog(options: HeartbeatRunLogOptions) {
     else stderrGuardBuffer = remaining;
     return lines.filter((line) => line.trim().length > 0);
   };
-  let lastHermesChatProgressText = "";
-  let lastHermesChatProgressUpdateMs = 0;
-  const maybeUpdateHermesChatProgress = async (now: Date) => {
-    if (!hermesChat || !hermesChatAssistantMessageId || adapterType !== "hermes_local") return;
-    const progressText = parseHermesProgressText(stdoutExcerpt);
-    if (!progressText || progressText === lastHermesChatProgressText) return;
-    if (now.getTime() - lastHermesChatProgressUpdateMs < 2_000) return;
-    lastHermesChatProgressText = progressText;
-    lastHermesChatProgressUpdateMs = now.getTime();
-    try {
-      await hermesChat.updateAssistantProgress(hermesChatAssistantMessageId, progressText);
-    } catch (err) {
-      logger.warn({ err, runId: getRun().id }, "failed to update Hermes chat progress");
-    }
-  };
 
   async function begin() {
     handle = await runLogStore.begin({
@@ -130,9 +110,6 @@ export function createHeartbeatRunLog(options: HeartbeatRunLogOptions) {
       .where(eq(heartbeatRuns.id, runId));
 
     currentUserRedactionOptions = await options.getRedactionOptions();
-    const hermesChatContext = parseObject(context.paperclipHermesChat);
-    hermesChatAssistantMessageId = readNonEmptyString(hermesChatContext.assistantMessageId);
-    hermesChat = hermesChatAssistantMessageId ? hermesChatService(db) : null;
   }
 
   let lastActivityTouchMs = 0;
@@ -173,7 +150,6 @@ export function createHeartbeatRunLog(options: HeartbeatRunLogOptions) {
     }
     if (stream === "stdout") stdoutExcerpt = appendWithCap(stdoutExcerpt, sanitizedChunk, MAX_EXCERPT_BYTES);
     if (stream === "stderr") stderrExcerpt = appendWithCap(stderrExcerpt, sanitizedChunk, MAX_EXCERPT_BYTES);
-    if (stream === "stdout") await maybeUpdateHermesChatProgress(now);
 
     await appendStoredEvent({ stream, chunk: sanitizedChunk, ts });
     if (now.getTime() - lastActivityTouchMs >= RUN_ACTIVITY_TOUCH_INTERVAL_MS) {

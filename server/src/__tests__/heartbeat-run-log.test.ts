@@ -8,13 +8,9 @@ import { publishLiveEvent } from "../services/live-events.js";
 import { serializeRunLogEvent, type RunLogStore } from "../services/run-log-store.js";
 import { evaluateRuntimeBroadScanHook } from "../services/runtime-broad-scan-hook.js";
 
-const { progress } = vi.hoisted(() => ({ progress: vi.fn() }));
 vi.mock("../adapters/index.js", () => ({ runningProcesses: new Map() }));
 vi.mock("../middleware/logger.js", () => ({ logger: { warn: vi.fn() } }));
 vi.mock("../services/live-events.js", () => ({ publishLiveEvent: vi.fn() }));
-vi.mock("../services/hermes-chat.js", () => ({
-  hermesChatService: vi.fn(() => ({ updateAssistantProgress: progress })),
-}));
 vi.mock("../services/runtime-broad-scan-hook.js", () => ({ evaluateRuntimeBroadScanHook: vi.fn() }));
 
 type Options = Parameters<typeof createHeartbeatRunLog>[0];
@@ -45,7 +41,7 @@ function fixture(overrides: Partial<Options> = {}) {
   return { log, store, handle, summary, writes, where, events, appendEvent, appendBroadScanEvent };
 }
 
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(20_000); vi.mocked(evaluateRuntimeBroadScanHook).mockReset().mockResolvedValue({ intercepted: false }); progress.mockReset().mockResolvedValue(undefined); });
+beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(20_000); vi.mocked(evaluateRuntimeBroadScanHook).mockReset().mockResolvedValue({ intercepted: false }); });
 afterEach(() => { runningProcesses.clear(); vi.useRealTimers(); vi.clearAllMocks(); });
 
 describe("C07 run-log extraction preserves the existing output contract", () => {
@@ -272,24 +268,5 @@ describe("C07 run-log extraction preserves the existing output contract", () => 
     await expect(unopened.log.begin()).rejects.toThrow("begin unavailable");
     expect(await unopened.log.finalizeAfterError()).toBeNull();
     expect(unopened.store.finalize).not.toHaveBeenCalled();
-  });
-
-  it("throttles Hermes stdout progress independently and tolerates progress write failure", async () => {
-    const h = fixture({ adapterType: "hermes_local", context: { paperclipHermesChat: { assistantMessageId: "assistant" } } });
-    await h.log.begin();
-    progress.mockRejectedValueOnce(new Error("chat unavailable"));
-    await h.log.onLog("stdout", "    알겠습니다. 구조를 확인하고 영향도를 파악하겠습니다.\n");
-    expect(progress).toHaveBeenCalledTimes(1);
-    vi.setSystemTime(21_000);
-    await h.log.onLog("stdout", "    먼저 workflow step 정의를 확인하겠습니다.\n");
-    expect(progress).toHaveBeenCalledTimes(1);
-    vi.setSystemTime(22_000);
-    await h.log.onLog("stderr", "not stdout\n");
-    expect(progress).toHaveBeenCalledTimes(1);
-    await h.log.onLog("stdout", "");
-    expect(progress).toHaveBeenCalledTimes(2);
-    expect(progress.mock.calls[1]).toEqual(["assistant", expect.stringContaining("먼저 workflow step 정의를 확인하겠습니다.")]);
-    await h.log.onLog("stdout", "");
-    expect(progress).toHaveBeenCalledTimes(2);
   });
 });

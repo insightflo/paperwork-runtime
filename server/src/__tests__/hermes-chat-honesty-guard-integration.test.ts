@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { activityLog, companies, createDb, heartbeatRuns } from "@paperclipai/db";
+import { activityLog, agents, companies, createDb, heartbeatRuns } from "@paperclipai/db";
 
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
-import { applyRunHonestyCaveat, hermesChatService } from "../services/hermes-chat.js";
+import { applyRunHonestyCaveat } from "../services/run-honesty-guard.js";
 
 // [목적] applyRunHonestyCaveat의 proof가 activity_log.runId FK로 exact 매칭하는지 검증.
 //   이전 issue_comments(authorAgentId+창) 휴리스틱이 같은 agent의 다른-run 댓글을 false-positive proof로
@@ -40,8 +40,20 @@ describeEmbeddedPostgres("applyRunHonestyCaveat (activity_log exact proof)", () 
       requireBoardApprovalForNewAgents: false,
     });
 
-    const ensured = await hermesChatService(db).ensureOperationsAgent(companyId);
-    agentId = ensured.id;
+    const [createdAgent] = await db
+      .insert(agents)
+      .values({
+        companyId,
+        name: "Operations Manager",
+        role: "pm",
+        status: "idle",
+        adapterType: "codex_local",
+        adapterConfig: {},
+        runtimeConfig: { domain: "operations" },
+        permissions: {},
+      })
+      .returning({ id: agents.id });
+    agentId = createdAgent.id;
 
     const [r1] = await db
       .insert(heartbeatRuns)

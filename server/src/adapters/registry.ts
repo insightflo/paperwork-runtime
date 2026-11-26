@@ -21,7 +21,7 @@ import {
 import { agentConfigurationDoc as codexAgentConfigurationDoc, models as codexModels } from "@paperclipai/adapter-codex-local";
 import { listCodexModels } from "./codex-models.js";
 import { listClaudeModels } from "./claude-models.js";
-import { listHermesModels } from "./hermes-models.js";
+import { hermesRetiredAdapter } from "./hermes-retired.js";
 import {
   execute as piExecute,
   listPiSkills,
@@ -41,16 +41,6 @@ import {
   discoverCommandCodeModelEffortsCached,
 } from "@paperclipai/adapter-commandcode-local/server";
 import { agentConfigurationDoc as commandCodeAgentConfigurationDoc } from "@paperclipai/adapter-commandcode-local";
-import {
-  testEnvironment as hermesTestEnvironment,
-  sessionCodec as hermesSessionCodec,
-} from "hermes-paperclip-adapter/server";
-import {
-  agentConfigurationDoc as hermesAgentConfigurationDoc,
-  models as hermesModels,
-} from "hermes-paperclip-adapter";
-import { executeHermesLocal } from "./hermes-local-execute.js";
-import { listHermesSkills, syncHermesSkills } from "./hermes-skills.js";
 import { processAdapter } from "./process/index.js";
 import { httpAdapter } from "./http/index.js";
 
@@ -114,19 +104,6 @@ const commandCodeLocalAdapter: ServerAdapterModule = {
   supportsLocalAgentJwt: true,
   agentConfigurationDoc: commandCodeAgentConfigurationDoc,
 };
-const hermesLocalAdapter: ServerAdapterModule = {
-  type: "hermes_local",
-  execute: executeHermesLocal,
-  testEnvironment: hermesTestEnvironment,
-  sessionCodec: hermesSessionCodec,
-  sessionManagement: getAdapterSessionManagement("hermes_local") ?? undefined,
-  models: hermesModels,
-  listModels: listHermesModels,
-  supportsLocalAgentJwt: true,
-  listSkills: listHermesSkills,
-  syncSkills: syncHermesSkills,
-  agentConfigurationDoc: hermesAgentConfigurationDoc,
-};
 const adaptersByType = new Map<string, ServerAdapterModule>(
   [
     acpxLocalAdapter,
@@ -134,7 +111,7 @@ const adaptersByType = new Map<string, ServerAdapterModule>(
     codexLocalAdapter,
     piLocalAdapter,
     commandCodeLocalAdapter,
-    hermesLocalAdapter,
+    hermesRetiredAdapter,
     processAdapter,
     httpAdapter,
   ].map((a) => [a.type, a]),

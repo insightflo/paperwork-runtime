@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyHonestyCaveat, detectClaimedAction } from "../services/hermes-chat.js";
+import { applyHonestyCaveat, detectClaimedAction } from "../services/run-honesty-guard.js";
 
 // [목적] P5 honesty guard의 pure 분기(claim 검출 + proof 유무에 따른 caveat 부착)를 검증.
 //   applyRunHonestyCaveat의 DB 쿼리(wakeup/comment count)는 통합 테스트 영역.
