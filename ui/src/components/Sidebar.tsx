@@ -126,12 +126,12 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
 
   return (
     <aside className="w-full h-full min-h-0 border-r border-sidebar-border bg-sidebar flex flex-col">
-      {/* Top bar: Company name (bold) + live pulse chip + Search + Compact mini-bar toggle */}
+      {/* Top header: Combo 1 tactile inset company pill card */}
       {compact ? (
-        <div className="flex items-center justify-center gap-1 px-2 h-12 shrink-0 border-b border-sidebar-border">
+        <div className="flex flex-col items-center gap-1 px-2 py-2.5 shrink-0 border-b border-sidebar-border">
           {selectedCompany?.brandColor && (
             <div
-              className="w-3 h-3 rounded-sm shrink-0"
+              className="w-3.5 h-3.5 rounded-[4px] shrink-0 ring-1 ring-black/10 dark:ring-white/15 mb-0.5"
               style={{ backgroundColor: selectedCompany.brandColor }}
               title={selectedCompany.name}
             />
@@ -158,51 +158,60 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
           </Button>
         </div>
       ) : (
-        <div className="flex items-center gap-1.5 px-3 h-12 shrink-0 border-b border-sidebar-border">
-          {selectedCompany?.brandColor && (
-            <div
-              className="w-3.5 h-3.5 rounded-[4px] shrink-0 ring-1 ring-black/10 dark:ring-white/15"
-              style={{ backgroundColor: selectedCompany.brandColor }}
-            />
-          )}
-          <span className="flex-1 text-[13px] font-semibold tracking-[-0.01em] text-foreground truncate">
-            {selectedCompany?.name ?? "Select company"}
-          </span>
-          {liveRunCount > 0 && (
-            <span
-              title={`${liveRunCount} live run${liveRunCount === 1 ? "" : "s"}`}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#65a30d]/30 bg-[#65a30d]/10 px-2 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[#4d7c0f] dark:border-[#a3e635]/30 dark:bg-[#a3e635]/14 dark:text-[#a3e635] shrink-0"
-            >
-              <span className="pw-live-dot" />
-              {liveRunCount}
-            </span>
-          )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-muted-foreground shrink-0"
-            onClick={openSearch}
-            aria-label="검색 (⌘K)"
-            title="검색 (⌘K)"
-          >
-            <Search className="h-4 w-4" />
-          </Button>
-          {!isMobile && onToggleCompact && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="text-muted-foreground shrink-0"
-              onClick={onToggleCompact}
-              aria-label="아이콘 미니바로 접기"
-              title="아이콘 미니바로 접기"
-            >
-              <PanelLeftClose className="h-4 w-4" />
-            </Button>
-          )}
+        <div className="px-2.5 pt-2.5 pb-1.5 shrink-0">
+          <div className="flex items-center justify-between gap-2 rounded-[9px] border border-slate-200/90 bg-white px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.07] dark:bg-[linear-gradient(180deg,rgba(22,28,42,0.9),rgba(14,18,28,0.9))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.095)]">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              {selectedCompany?.brandColor && (
+                <div
+                  className="h-3.5 w-3.5 shrink-0 rounded-[4px] ring-1 ring-black/10 dark:ring-white/15"
+                  style={{ backgroundColor: selectedCompany.brandColor }}
+                />
+              )}
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="truncate text-[12.5px] font-semibold leading-tight tracking-[-0.01em] text-foreground">
+                  {selectedCompany?.name ?? "Select company"}
+                </span>
+                <span className="truncate font-mono text-[10.5px] leading-tight text-muted-foreground">
+                  {selectedCompany?.issuePrefix ? `${selectedCompany.issuePrefix} · cockpit` : "workspace"}
+                </span>
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <span
+                title={liveRunCount > 0 ? `${liveRunCount} live run${liveRunCount === 1 ? "" : "s"}` : "Cockpit live"}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[#65a30d]/30 bg-[#65a30d]/10 px-1.5 py-0.5 font-mono text-[9.5px] font-semibold tabular-nums text-[#4d7c0f] dark:border-[#a3e635]/25 dark:bg-[#a3e635]/14 dark:text-[#a3e635]"
+              >
+                <span className="pw-live-dot" />
+                {liveRunCount > 0 ? `${liveRunCount} LIVE` : "LIVE"}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={openSearch}
+                aria-label="검색 (⌘K)"
+                title="검색 (⌘K)"
+              >
+                <Search className="h-3.5 w-3.5" />
+              </Button>
+              {!isMobile && onToggleCompact && (
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+                  onClick={onToggleCompact}
+                  aria-label="아이콘 미니바로 접기"
+                  title="아이콘 미니바로 접기"
+                >
+                  <PanelLeftClose className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      <nav className={cn("flex-1 min-h-0 overflow-y-auto scrollbar-auto-hide flex flex-col", compact ? "gap-2.5 px-2 py-2" : "gap-4 px-3 py-2")}>
+      <nav className={cn("cockpit-sidebar-nav flex-1 min-h-0 overflow-y-auto scrollbar-auto-hide flex flex-col", compact ? "gap-2.5 px-2 py-2" : "gap-3 px-2.5 py-2")}>
         <div className="flex flex-col gap-0.5">
           <div className={compact ? "flex flex-col gap-0.5" : CREATE_BAR}>
             {creationActions.map(({ label, short, Icon, run }, index) => (
@@ -272,25 +281,15 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
               onClick={onOpenHermes}
               title="Hermes"
               aria-label="Hermes"
-              style={
-                hermesPanelOpen
-                  ? {
-                      borderRadius: compact ? 10 : 9,
-                      backgroundColor: "var(--openbot-nav-active-bg)",
-                      borderColor: "var(--openbot-nav-active-border)",
-                      color: compact ? "var(--openbot-accent-text)" : undefined,
-                    }
-                  : { borderRadius: compact ? 10 : 9, borderColor: "transparent" }
-              }
               className={cn(
-                "flex items-center border text-[13px] font-medium transition-colors",
-                compact ? "mx-auto h-9 w-9 justify-center" : "gap-2.5 px-3 py-1.5",
+                "flex items-center rounded-[9px] border border-l-2 text-[13px] font-medium transition-colors",
+                compact ? "mx-auto h-9 w-9 justify-center rounded-[10px]" : "gap-2.5 px-3 py-1.5",
                 hermesPanelOpen
-                  ? "text-foreground"
-                  : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
+                  ? "border-slate-200/90 border-l-[var(--pw-cobalt)] bg-accent/60 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:border-l-[var(--pw-lime)] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.075),rgba(255,255,255,0.03))] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.095)]"
+                  : "border-transparent text-foreground/80 hover:bg-accent/50 hover:text-foreground",
               )}
             >
-              <MessageSquare className="h-4 w-4 shrink-0" />
+              <MessageSquare className={cn("h-4 w-4 shrink-0", hermesPanelOpen && "text-[#2563eb] dark:text-[#a3e635]")} />
               {!compact && <span className="flex-1 truncate text-left">Hermes</span>}
             </button>
             <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
