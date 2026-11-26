@@ -22,6 +22,7 @@ import {
 } from "@paperclipai/adapter-utils/server-utils";
 import { commandcodeFlavor } from "./commandcode-flavor.js";
 import type { ParsedCommandCodeOutput } from "./parse.js";
+import { ensureCommandCodeRunAdditionalDirectories } from "./settings.js";
 import { extractRunEndRecovery, extractRunTailRecovery, isCommandCodeUnknownSessionError, parseCommandCodeJsonl } from "./parse.js";
 import {
   buildCommandCodeRunEnv,
@@ -84,6 +85,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
   const workspace = resolveEffectiveCwd(config, context);
   const cwd = workspace.cwd;
   await ensureAbsoluteDirectory(cwd, { createIfMissing: true });
+  // --add-dir is a no-op in `-p` mode: grant out-of-workspace reads via settings before spawn.
+  await ensureCommandCodeRunAdditionalDirectories({ config, cwd, onLog });
 
   const { runtimeEnv, redactedEnv } = buildCommandCodeRunEnv({
     runId,
