@@ -1,11 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "@/lib/router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { approvalsApi } from "../api/approvals";
 import { accessApi } from "../api/access";
 import { ApiError } from "../api/client";
 import { dashboardApi } from "../api/dashboard";
-import { issuesApi } from "../api/issues";
+import { ACTIVE_ISSUE_STATUS_FILTER, issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -356,6 +356,7 @@ export function Inbox() {
     queryKey: queryKeys.agents.list(selectedCompanyId!),
     queryFn: () => agentsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
   });
 
   useEffect(() => {
@@ -374,6 +375,7 @@ export function Inbox() {
     queryKey: queryKeys.approvals.list(selectedCompanyId!),
     queryFn: () => approvalsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
   });
 
   const {
@@ -393,18 +395,24 @@ export function Inbox() {
     },
     enabled: !!selectedCompanyId,
     retry: false,
+    placeholderData: keepPreviousData,
   });
 
   const { data: dashboard, isLoading: isDashboardLoading } = useQuery({
     queryKey: queryKeys.dashboard(selectedCompanyId!),
     queryFn: () => dashboardApi.summary(selectedCompanyId!),
     enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
   });
 
+  // Bounded to active work items (same filter and cache key as Dashboard). The full unfiltered
+  // list (~10.5k rows / 64MB JSON) was only read to title failed runs, and attention items are
+  // restricted server-side to unresolved issues, which the active statuses cover.
   const { data: issues, isLoading: isIssuesLoading } = useQuery({
-    queryKey: queryKeys.issues.list(selectedCompanyId!),
-    queryFn: () => issuesApi.list(selectedCompanyId!),
+    queryKey: queryKeys.issues.list(selectedCompanyId!, { status: ACTIVE_ISSUE_STATUS_FILTER }),
+    queryFn: () => issuesApi.list(selectedCompanyId!, { status: ACTIVE_ISSUE_STATUS_FILTER }),
     enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
   });
   const {
     data: touchedIssuesRaw = [],
@@ -417,6 +425,7 @@ export function Inbox() {
         status: "backlog,todo,in_progress,in_review,blocked,done",
       }),
     enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
   });
 
   const {
@@ -651,6 +660,7 @@ export function Inbox() {
   // picked. From lg up the first row is previewed by default.
   const [pickedKey, setPickedKey] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const previousSelectedKeyRef = useRef<string | null>(null);
 
   const triageItems = workItemsToRender;
   const triageKeys = useMemo(() => triageItems.map(triageKey), [triageItems]);
@@ -661,7 +671,11 @@ export function Inbox() {
   const mobileDetail = pickedIndex >= 0;
 
   useEffect(() => {
-    if (!selectedKey) return;
+    const previousKey = previousSelectedKeyRef.current;
+    previousSelectedKeyRef.current = selectedKey;
+    // The auto-assigned first row (initial mount, first data) is already at the top of the list;
+    // a synchronous scrollIntoView there only forces a layout on the hottest render path.
+    if (!selectedKey || previousKey === null) return;
     listRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
   }, [selectedKey]);
 

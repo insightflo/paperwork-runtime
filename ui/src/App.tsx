@@ -1,4 +1,4 @@
-import { Suspense, lazy, type ReactNode } from "react";
+import { Suspense, lazy, useEffect, type ReactNode } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,81 @@ const HumanOperator = lazy(async () => ({ default: (await import("./pages/HumanO
 const InstanceGeneralSettings = lazy(async () => ({ default: (await import("./pages/InstanceGeneralSettings")).InstanceGeneralSettings }));
 const InstanceSettings = lazy(async () => ({ default: (await import("./pages/InstanceSettings")).InstanceSettings }));
 const InstanceExperimentalSettings = lazy(async () => ({ default: (await import("./pages/InstanceExperimentalSettings")).InstanceExperimentalSettings }));
+
+/**
+ * Route chunk prefetch. Each entry is the same dynamic `import()` the lazy route element
+ * above uses, so warming a route only loads and caches its chunk: no render, no data fetch.
+ */
+const ROUTE_CHUNK_LOADERS: Record<string, () => Promise<unknown>> = {
+  "/missions": () => import("./pages/Missions"),
+  "/dashboard": () => import("./pages/Dashboard"),
+  "/inbox": () => import("./pages/Inbox"),
+  "/issues": () => import("./pages/Issues"),
+  "/agents": () => import("./pages/Agents"),
+  "/workflows": () => import("./pages/Workflows"),
+  "/costs": () => import("./pages/Costs"),
+  "/projects": () => import("./pages/Projects"),
+  "/approvals": () => import("./pages/Approvals"),
+  "/activity": () => import("./pages/Activity"),
+  "/quality": () => import("./pages/Quality"),
+  "/human-operator": () => import("./pages/HumanOperator"),
+  "/company/settings": () => import("./pages/CompanySettings"),
+  "/skills": () => import("./pages/CompanySkills"),
+  "/scheduler": () => import("./pages/SchedulerConfig"),
+  "/channels": () => import("./pages/ChannelConfig"),
+};
+/** Top sidebar routes warmed once the first paint is done, in likely-visit order. */
+const IDLE_PREFETCH_ROUTES = ["/missions", "/dashboard", "/inbox", "/issues", "/agents"];
+const IDLE_PREFETCH_TIMEOUT_MS = 3000;
+const IDLE_PREFETCH_FALLBACK_DELAY_MS = 2000;
+const prefetchedRoutes = new Set<string>();
+
+/** `/:companyPrefix/missions`, `/missions/123` and `/missions?tab=x` all resolve to `/missions`. */
+function resolvePrefetchableRoute(to: string): string | null {
+  if (typeof to !== "string") return null;
+  const pathname = to.split(/[?#]/, 1)[0].replace(/\/+$/, "") || "/";
+  const unprefixed = pathname.replace(/^\/[^/]+(?=\/)/, "");
+  for (const candidate of unprefixed === pathname ? [pathname] : [pathname, unprefixed]) {
+    if (ROUTE_CHUNK_LOADERS[candidate]) return candidate;
+    const parent = candidate.slice(0, candidate.lastIndexOf("/"));
+    if (ROUTE_CHUNK_LOADERS[parent]) return parent;
+  }
+  return null;
+}
+
+function warmRoute(to: string): Promise<void> {
+  const route = resolvePrefetchableRoute(to);
+  if (!route || prefetchedRoutes.has(route)) return Promise.resolve();
+  prefetchedRoutes.add(route);
+  return ROUTE_CHUNK_LOADERS[route]().then(
+    () => undefined,
+    () => {
+      prefetchedRoutes.delete(route);
+    },
+  );
+}
+
+/**
+ * Warm a route chunk before the click (sidebar hover/focus). Fire-and-forget: a failed load
+ * is swallowed and retried on the next hover, so the navigation path itself never changes.
+ */
+export function prefetchRoute(to: string): void {
+  void warmRoute(to);
+}
+
+function prefetchRoutesSequentially(routes: readonly string[]): Promise<void> {
+  const [next, ...rest] = routes;
+  return next ? warmRoute(next).then(() => prefetchRoutesSequentially(rest)) : Promise.resolve();
+}
+
+function scheduleWhenIdle(task: () => void): () => void {
+  if (typeof window.requestIdleCallback === "function") {
+    const handle = window.requestIdleCallback(() => task(), { timeout: IDLE_PREFETCH_TIMEOUT_MS });
+    return () => window.cancelIdleCallback(handle);
+  }
+  const handle = window.setTimeout(task, IDLE_PREFETCH_FALLBACK_DELAY_MS);
+  return () => window.clearTimeout(handle);
+}
 function lazyRoute(element: ReactNode) {
   return (
     <Suspense fallback={<div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading...</div>}>
@@ -324,6 +399,13 @@ function NoCompaniesStartPage() {
 }
 
 export function App() {
+  // After the first paint, quietly warm the top sidebar routes one at a time so the first
+  // click on them does not wait for a chunk download.
+  useEffect(
+    () => scheduleWhenIdle(() => void prefetchRoutesSequentially(IDLE_PREFETCH_ROUTES)),
+    [],
+  );
+
   return (
     <>
       <Routes>
