@@ -101,7 +101,7 @@ function CopyMarkdownButton({ text }: { text: string }) {
   return (
     <button
       type="button"
-      className="text-muted-foreground hover:text-foreground transition-colors"
+      className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground dark:hover:bg-white/[0.06]"
       title="Copy as markdown"
       onClick={() => {
         navigator.clipboard.writeText(text).then(() => {
@@ -110,7 +110,7 @@ function CopyMarkdownButton({ text }: { text: string }) {
         });
       }}
     >
-      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      {copied ? <Check className="h-3 w-3 text-lime-600 dark:text-[#a3e635]" /> : <Copy className="h-3 w-3" />}
     </button>
   );
 }
@@ -129,7 +129,7 @@ const TimelineList = memo(function TimelineList({
   highlightCommentId?: string | null;
 }) {
   if (timeline.length === 0) {
-    return <p className="text-sm text-muted-foreground">No comments or runs yet.</p>;
+    return <p className="tactile-card dark:bg-[#0e131d] p-3 text-sm text-muted-foreground dark:text-[#8f9db3]">No comments or runs yet.</p>;
   }
 
   return (
@@ -138,7 +138,7 @@ const TimelineList = memo(function TimelineList({
         if (item.kind === "run") {
           const run = item.run;
           return (
-            <div key={`run:${run.runId}`} className="border border-border bg-accent/20 p-3 overflow-hidden min-w-0 rounded-sm">
+            <div key={`run:${run.runId}`} className="tactile-card dark:bg-[#0e131d] p-3 overflow-hidden min-w-0">
               <div className="flex items-center justify-between mb-2">
                 <Link to={`/agents/${run.agentId}`} className="hover:underline">
                   <Identity
@@ -146,15 +146,15 @@ const TimelineList = memo(function TimelineList({
                     size="sm"
                   />
                 </Link>
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs tabular-nums text-muted-foreground dark:text-[#8f9db3]">
                   {formatDateTime(run.startedAt ?? run.createdAt)}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">Run</span>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground dark:text-[#8f9db3]">Run</span>
                 <Link
                   to={`/agents/${run.agentId}/runs/${run.runId}`}
-                  className="inline-flex items-center rounded-md border border-border bg-accent/40 px-2 py-1 font-mono text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
+                  className="inline-flex items-center rounded-md border border-border bg-accent/40 px-2 py-1 font-mono tabular-nums text-muted-foreground transition-colors hover:border-blue-500/40 hover:bg-blue-500/10 hover:text-blue-700 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#60a5fa] dark:hover:border-[#60a5fa]/35 dark:hover:bg-[#60a5fa]/10 dark:hover:text-[#60a5fa]"
                 >
                   {run.runId.slice(0, 8)}
                 </Link>
@@ -170,7 +170,7 @@ const TimelineList = memo(function TimelineList({
           <div
             key={comment.id}
             id={`comment-${comment.id}`}
-            className={`border p-3 overflow-hidden min-w-0 rounded-sm transition-colors duration-1000 ${isHighlighted ? "border-primary/50 bg-primary/5" : "border-border"}`}
+            className={`tactile-card dark:bg-[#0e131d] p-3 overflow-hidden min-w-0 transition-colors duration-1000 ${isHighlighted ? "border-blue-500/50 bg-blue-500/5 dark:border-[#60a5fa]/45 dark:bg-[#60a5fa]/10" : ""}`}
           >
             <div className="flex items-center justify-between mb-1">
               {comment.authorAgentId ? (
@@ -186,7 +186,7 @@ const TimelineList = memo(function TimelineList({
               <span className="flex items-center gap-1.5">
                 <a
                   href={`#comment-${comment.id}`}
-                  className="text-xs text-muted-foreground hover:text-foreground hover:underline transition-colors"
+                  className="text-xs tabular-nums text-muted-foreground transition-colors hover:text-blue-700 hover:underline dark:text-[#8f9db3] dark:hover:text-[#60a5fa]"
                 >
                   {formatDateTime(comment.createdAt)}
                 </a>
@@ -199,12 +199,12 @@ const TimelineList = memo(function TimelineList({
                 {comment.runAgentId ? (
                   <Link
                     to={`/agents/${comment.runAgentId}/runs/${comment.runId}`}
-                    className="inline-flex items-center rounded-md border border-border bg-accent/30 px-2 py-1 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+                    className="inline-flex items-center rounded-md border border-border bg-accent/30 px-2 py-1 text-[10px] font-mono tabular-nums text-muted-foreground transition-colors hover:border-blue-500/40 hover:text-blue-700 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#60a5fa] dark:hover:border-[#60a5fa]/35 dark:hover:text-[#60a5fa]"
                   >
                     run {comment.runId.slice(0, 8)}
                   </Link>
                 ) : (
-                  <span className="inline-flex items-center rounded-md border border-border bg-accent/30 px-2 py-1 text-[10px] font-mono text-muted-foreground">
+                  <span className="inline-flex items-center rounded-md border border-border bg-accent/30 px-2 py-1 text-[10px] font-mono tabular-nums text-muted-foreground dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#60a5fa]">
                     run {comment.runId.slice(0, 8)}
                   </span>
                 )}
@@ -361,7 +361,7 @@ export function CommentThread({
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold">Comments &amp; Runs ({timeline.length})</h3>
+      <h3 className="flex items-center gap-2 text-sm font-semibold"><span>Comments &amp; Runs</span><span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground dark:border-[#a3e635]/25 dark:bg-[#a3e635]/10 dark:text-[#a3e635]">{timeline.length}</span></h3>
 
       <div className={cn("space-y-4", timelineClassName)}>
         <TimelineList
@@ -374,7 +374,7 @@ export function CommentThread({
       </div>
 
       {readOnly ? null : (
-      <div className="space-y-2">
+      <div className="tactile-card dark:bg-[#0e131d] space-y-2 p-3">
         <MarkdownEditor
           ref={editorRef}
           value={body}
@@ -411,7 +411,7 @@ export function CommentThread({
               type="checkbox"
               checked={reopen}
               onChange={(e) => setReopen(e.target.checked)}
-              className="rounded border-border"
+              className="rounded border-border accent-blue-600 dark:accent-[#60a5fa]"
             />
             Re-open
           </label>

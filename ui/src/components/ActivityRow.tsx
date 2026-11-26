@@ -78,6 +78,20 @@ function entityLink(entityType: string, entityId: string, name?: string | null):
   }
 }
 
+type ActivityTone = "lime" | "cobalt" | "amber";
+
+function activityTone(event: ActivityEvent): ActivityTone {
+  if (event.action.includes("cost") || event.action.includes("approval") || event.action.includes("paused")) return "amber";
+  if (event.entityType === "heartbeat_run" || event.action.includes("created") || event.action.includes("resumed")) return "lime";
+  return "cobalt";
+}
+
+const ACTIVITY_TONE_CLASSES: Record<ActivityTone, string> = {
+  lime: "border-lime-600/70 dark:border-l-[#a3e635]",
+  cobalt: "border-l-blue-600/70 dark:border-l-[#60a5fa]",
+  amber: "border-l-amber-600/80 dark:border-l-[#f59e0b]",
+};
+
 interface ActivityRowProps {
   event: ActivityEvent;
   agentMap: Map<string, Agent>;
@@ -88,6 +102,7 @@ interface ActivityRowProps {
 
 export function ActivityRow({ event, agentMap, entityNameMap, entityTitleMap, className }: ActivityRowProps) {
   const verb = formatVerb(event.action, event.details);
+  const tone = activityTone(event);
 
   const isHeartbeatEvent = event.entityType === "heartbeat_run";
   const heartbeatAgentId = isHeartbeatEvent
@@ -108,7 +123,7 @@ export function ActivityRow({ event, agentMap, entityNameMap, entityTitleMap, cl
   const actorName = actor?.name ?? (event.actorType === "system" ? "System" : event.actorType === "user" ? "Board" : event.actorId || "Unknown");
 
   const inner = (
-    <div className="flex gap-3">
+    <div className="flex items-baseline gap-3">
       <p className="flex-1 min-w-0 truncate">
         <Identity
           name={actorName}
@@ -116,16 +131,17 @@ export function ActivityRow({ event, agentMap, entityNameMap, entityTitleMap, cl
           className="align-baseline"
         />
         <span className="text-muted-foreground ml-1">{verb} </span>
-        {name && <span className="font-medium">{name}</span>}
-        {entityTitle && <span className="text-muted-foreground ml-1">— {entityTitle}</span>}
+        {name && <span className="font-medium text-foreground dark:text-[#eef2f8]">{name}</span>}
+        {entityTitle && <span className="ml-1 text-muted-foreground dark:text-[#8f9db3]">— {entityTitle}</span>}
       </p>
-      <span className="text-xs text-muted-foreground shrink-0 pt-0.5 text-right tabular-nums">{timeAgo(event.createdAt)}</span>
+      <span className="shrink-0 pt-0.5 text-right font-mono text-xs tabular-nums text-muted-foreground dark:text-[#8f9db3]">{timeAgo(event.createdAt)}</span>
     </div>
   );
 
   const classes = cn(
-    "border-b border-border/60 px-3 py-1.5 text-sm",
-    link && "cursor-pointer hover:bg-accent/40 transition-colors",
+    "border-b border-l-2 border-border/60 px-3 py-2 text-sm tabular-nums transition-colors dark:border-b-white/[0.055]",
+    ACTIVITY_TONE_CLASSES[tone],
+    link && "cursor-pointer hover:bg-accent/50 dark:hover:bg-[#0e131d]",
     className,
   );
 

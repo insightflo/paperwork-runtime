@@ -61,9 +61,9 @@ interface IssuePropertiesProps {
 
 function PropertyRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-3 py-1.5">
-      <span className="text-xs text-muted-foreground shrink-0 w-20">{label}</span>
-      <div className="flex items-center gap-1.5 min-w-0 flex-1">{children}</div>
+    <div className="flex items-center gap-3 border-b border-border/55 py-2 last:border-b-0 dark:border-white/[0.055]">
+      <span className="w-20 shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground dark:text-[#8f9db3]">{label}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 text-foreground dark:text-[#eef2f8]">{children}</div>
     </div>
   );
 }
@@ -93,7 +93,7 @@ function PropertyPicker({
   children: React.ReactNode;
 }) {
   const btnCn = cn(
-    "inline-flex items-center gap-1.5 cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1 py-0.5 transition-colors",
+    "inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-transparent px-1.5 -mx-1 py-0.5 transition-colors hover:border-border hover:bg-accent/60 dark:hover:border-white/[0.09] dark:hover:bg-[#0e131d]",
     triggerClassName,
   );
 
@@ -107,7 +107,7 @@ function PropertyPicker({
           {extra}
         </PropertyRow>
         {open && (
-          <div className={cn("rounded-md border border-border bg-popover p-1 mb-2", popoverClassName)}>
+          <div className={cn("tactile-card dark:bg-[#0e131d] p-1 mb-2", popoverClassName)}>
             {children}
           </div>
         )}
@@ -121,7 +121,7 @@ function PropertyPicker({
         <PopoverTrigger asChild>
           <button className={btnCn}>{triggerContent}</button>
         </PopoverTrigger>
-        <PopoverContent className={cn("p-1", popoverClassName)} align={popoverAlign} collisionPadding={16}>
+        <PopoverContent className={cn("tactile-card dark:bg-[#0e131d] p-1", popoverClassName)} align={popoverAlign} collisionPadding={16}>
           {children}
         </PopoverContent>
       </Popover>
@@ -163,11 +163,11 @@ function CopyableValue({ value, label, mono, className }: { value: string; label
       </span>
       <button
         type="button"
-        className="shrink-0 mt-0.5 p-0.5 rounded hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 focus:opacity-100"
+        className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-colors hover:bg-accent/60 hover:text-foreground focus:opacity-100 group-hover:opacity-100 dark:hover:bg-white/[0.06]"
         onClick={handleCopy}
         title={copied ? "Copied!" : "Copy to clipboard"}
       >
-        {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+        {copied ? <Check className="h-3 w-3 text-lime-600 dark:text-[#a3e635]" /> : <Copy className="h-3 w-3" />}
       </button>
     </div>
   );
@@ -349,7 +349,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const labelsContent = (
     <>
       <input
-        className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
+        className="mb-1 w-full border-b border-border/70 bg-transparent px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-blue-500 dark:border-white/[0.08] dark:text-[#eef2f8] dark:focus:border-[#60a5fa]"
         placeholder="Search labels..."
         value={labelSearch}
         onChange={(e) => setLabelSearch(e.target.value)}
@@ -367,8 +367,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               <div key={label.id} className="flex items-center gap-1">
                 <button
                   className={cn(
-                    "flex items-center gap-2 flex-1 px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-left",
-                    selected && "bg-accent"
+                    "flex items-center gap-2 flex-1 px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06] text-left",
+                    selected && "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]"
                   )}
                   onClick={() => toggleLabel(label.id)}
                 >
@@ -403,7 +403,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           />
         </div>
         <button
-          className="flex items-center justify-center gap-1.5 w-full px-2 py-1.5 text-xs rounded border border-border hover:bg-accent/50 disabled:opacity-50"
+          className="flex items-center justify-center gap-1.5 w-full px-2 py-1.5 text-xs rounded border border-border hover:bg-accent/60 dark:hover:bg-white/[0.06] disabled:opacity-50"
           disabled={!newLabelName.trim() || createLabel.isPending}
           onClick={() =>
             createLabel.mutate({
@@ -436,7 +436,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const assigneeContent = (
     <>
       <input
-        className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
+        className="mb-1 w-full border-b border-border/70 bg-transparent px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-blue-500 dark:border-white/[0.08] dark:text-[#eef2f8] dark:focus:border-[#60a5fa]"
         placeholder="Search assignees..."
         value={assigneeSearch}
         onChange={(e) => setAssigneeSearch(e.target.value)}
@@ -445,8 +445,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
       <div className="max-h-48 overflow-y-auto overscroll-contain">
         <button
           className={cn(
-            "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-            !issue.assigneeAgentId && !issue.assigneeUserId && "bg-accent"
+            "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06]",
+            !issue.assigneeAgentId && !issue.assigneeUserId && "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]"
           )}
           onClick={() => { onUpdate({ assigneeAgentId: null, assigneeUserId: null }); setAssigneeOpen(false); }}
         >
@@ -455,8 +455,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         {currentUserId && (
           <button
             className={cn(
-              "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-              issue.assigneeUserId === currentUserId && "bg-accent",
+              "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06]",
+              issue.assigneeUserId === currentUserId && "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]",
             )}
             onClick={() => {
               onUpdate({ assigneeAgentId: null, assigneeUserId: currentUserId });
@@ -470,8 +470,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         {issue.createdByUserId && issue.createdByUserId !== currentUserId && (
           <button
             className={cn(
-              "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-              issue.assigneeUserId === issue.createdByUserId && "bg-accent",
+              "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06]",
+              issue.assigneeUserId === issue.createdByUserId && "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]",
             )}
             onClick={() => {
               onUpdate({ assigneeAgentId: null, assigneeUserId: issue.createdByUserId });
@@ -492,8 +492,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           <button
             key={a.id}
             className={cn(
-              "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-              a.id === issue.assigneeAgentId && "bg-accent"
+              "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06]",
+              a.id === issue.assigneeAgentId && "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]"
             )}
             onClick={() => { trackRecentAssignee(a.id); onUpdate({ assigneeAgentId: a.id, assigneeUserId: null }); setAssigneeOpen(false); }}
           >
@@ -523,7 +523,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const projectContent = (
     <>
       <input
-        className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
+        className="mb-1 w-full border-b border-border/70 bg-transparent px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-blue-500 dark:border-white/[0.08] dark:text-[#eef2f8] dark:focus:border-[#60a5fa]"
         placeholder="Search work contexts..."
         value={projectSearch}
         onChange={(e) => setProjectSearch(e.target.value)}
@@ -532,8 +532,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
       <div className="max-h-48 overflow-y-auto overscroll-contain">
         <button
           className={cn(
-            "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 whitespace-nowrap",
-            !issue.projectId && "bg-accent"
+            "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06] whitespace-nowrap",
+            !issue.projectId && "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]"
           )}
           onClick={() => {
             onUpdate({
@@ -558,8 +558,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           <button
             key={p.id}
             className={cn(
-              "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 whitespace-nowrap",
-              p.id === issue.projectId && "bg-accent"
+              "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06] whitespace-nowrap",
+              p.id === issue.projectId && "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]"
             )}
             onClick={() => {
               const defaultMode = defaultExecutionWorkspaceModeForProject(p);
@@ -587,8 +587,8 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   );
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-1">
+    <div className="space-y-3 tabular-nums">
+      <section className="tactile-card space-y-1 px-3 py-1.5 dark:bg-[#0e131d]">
         <PropertyRow label="Status">
           <StatusIcon
             status={issue.status}
@@ -627,7 +627,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           extra={issue.assigneeAgentId ? (
             <Link
               to={`/agents/${issue.assigneeAgentId}`}
-              className="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground"
+              className="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-accent/60 dark:hover:bg-white/[0.06] transition-colors text-muted-foreground hover:text-foreground"
               onClick={(e) => e.stopPropagation()}
             >
               <ArrowUpRight className="h-3 w-3" />
@@ -648,7 +648,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           extra={issue.projectId ? (
             <Link
               to={projectLink(issue.projectId)!}
-              className="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-accent/50 transition-colors text-muted-foreground hover:text-foreground"
+              className="inline-flex items-center justify-center h-5 w-5 rounded hover:bg-accent/60 dark:hover:bg-white/[0.06] transition-colors text-muted-foreground hover:text-foreground"
               onClick={(e) => e.stopPropagation()}
             >
               <ArrowUpRight className="h-3 w-3" />
@@ -662,7 +662,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           <PropertyRow label="Execution Context">
             <div className="w-full space-y-2">
               <select
-                className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none"
+                className="w-full rounded-md border border-border/80 bg-background/70 px-2 py-1.5 text-xs outline-none transition-colors focus:border-blue-500 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:border-[#60a5fa]"
                 value={currentExecutionWorkspaceSelection}
                 onChange={(e) => {
                   const nextMode = e.target.value;
@@ -687,7 +687,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
 
               {currentExecutionWorkspaceSelection === "reuse_existing" && (
                 <select
-                  className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none"
+                  className="w-full rounded-md border border-border/80 bg-background/70 px-2 py-1.5 text-xs outline-none transition-colors focus:border-blue-500 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:border-[#60a5fa]"
                   value={issue.executionWorkspaceId ?? ""}
                   onChange={(e) => {
                     const nextExecutionWorkspaceId = e.target.value || null;
@@ -713,7 +713,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               )}
 
               {issue.currentExecutionWorkspace && (
-                <div className="text-[11px] text-muted-foreground space-y-0.5">
+                <div className="space-y-0.5 border-l-2 border-l-amber-500 pl-2 text-[11px] text-muted-foreground dark:border-l-[#f59e0b] dark:text-[#9aa7bd]">
                   <div style={{ overflowWrap: "anywhere" }}>
                     Current:{" "}
                     <Link
@@ -756,14 +756,14 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
 
         {issue.requestDepth > 0 && (
           <PropertyRow label="Depth">
-            <span className="text-sm font-mono">{issue.requestDepth}</span>
+            <span className="font-mono text-sm font-semibold tabular-nums text-blue-700 dark:text-[#60a5fa]">{issue.requestDepth}</span>
           </PropertyRow>
         )}
-      </div>
+      </section>
 
-      <Separator />
+      <Separator className="dark:bg-white/[0.07]" />
 
-      <div className="space-y-1">
+      <section className="tactile-card space-y-1 px-3 py-1.5 dark:bg-[#0e131d]">
         {(issue.createdByAgentId || issue.createdByUserId) && (
           <PropertyRow label="Created by">
             {issue.createdByAgentId ? (
@@ -783,21 +783,21 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         )}
         {issue.startedAt && (
           <PropertyRow label="Started">
-            <span className="text-sm">{formatDate(issue.startedAt)}</span>
+            <span className="text-sm tabular-nums">{formatDate(issue.startedAt)}</span>
           </PropertyRow>
         )}
         {issue.completedAt && (
           <PropertyRow label="Completed">
-            <span className="text-sm">{formatDate(issue.completedAt)}</span>
+            <span className="text-sm tabular-nums">{formatDate(issue.completedAt)}</span>
           </PropertyRow>
         )}
         <PropertyRow label="Created">
-          <span className="text-sm">{formatDate(issue.createdAt)}</span>
+          <span className="text-sm tabular-nums">{formatDate(issue.createdAt)}</span>
         </PropertyRow>
         <PropertyRow label="Updated">
-          <span className="text-sm">{timeAgo(issue.updatedAt)}</span>
+          <span className="text-sm tabular-nums">{timeAgo(issue.updatedAt)}</span>
         </PropertyRow>
-      </div>
+      </section>
     </div>
   );
 }
