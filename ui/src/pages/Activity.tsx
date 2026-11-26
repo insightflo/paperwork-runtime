@@ -26,8 +26,8 @@ const activityPageKey = (companyId: string, page: number) => [...queryKeys.activ
 const NEXT_PAGE_PREFETCH_STALE_MS = 30_000;
 
 /* ── Cockpit strip + toolbar vocabulary ──
- * Categories carry a micro status dot so the 1-row strip, the 40px tab group and the
- * DiffBadge pills below all speak the same emerald/amber/crimson/cobalt language. */
+ * Categories carry a micro status dot so the 1-row strip and the DiffBadge pills
+ * below all speak the same emerald/amber/crimson/cobalt language. */
 const CATEGORY_PILLS: { id: ActivityCategory; label: string; dot: string }[] = [
   { id: "all", label: "전체", dot: "bg-blue-500 dark:bg-[#60a5fa]" },
   { id: "agent", label: "에이전트", dot: "bg-lime-500 dark:bg-[#a3e635]" },
@@ -36,8 +36,6 @@ const CATEGORY_PILLS: { id: ActivityCategory; label: string; dot: string }[] = [
   { id: "worktree", label: "워크트리", dot: "bg-slate-400 dark:bg-[#8b97ad]" },
 ];
 
-const TAB_CLASS =
-  "h-7 cursor-pointer rounded-md px-2.5 text-xs whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 dark:focus-visible:ring-[#60a5fa]/30 aria-pressed:bg-white aria-pressed:text-slate-950 aria-pressed:shadow-[inset_0_-2px_0_#65a30d,0_1px_2px_rgba(15,23,42,0.08)] dark:aria-pressed:bg-[#141c2b] dark:aria-pressed:text-[#edf2fb] dark:aria-pressed:shadow-[inset_0_-2px_0_#a3e635,inset_0_1px_0_rgba(255,255,255,0.08)] text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]";
 const STRIP_CELL_CLASS =
   "cockpit-cell min-w-[5.5rem] flex-1 cursor-pointer justify-center transition-colors hover:bg-slate-50 hover:text-slate-950 dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]";
 const STRIP_CELL_ACTIVE_CLASS = "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_#65a30d] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_#a3e635]";
@@ -227,26 +225,9 @@ export function Activity() {
         </div>
       </div>
 
-      {/* Tight 40px toolbar: category tabs + local search */}
+      {/* Tight 40px toolbar: full-width local search */}
       <div className={TOOLBAR_CLASS}>
-        <div role="group" aria-label="활동 유형 필터" className="flex shrink-0 items-center gap-0.5 rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-slate-100 dark:bg-[#090c12] p-0.5">
-          {CATEGORY_PILLS.map((pill) => (
-            <button
-              key={pill.id}
-              type="button"
-              aria-pressed={category === pill.id}
-              onClick={() => setCategory(pill.id)}
-              className={TAB_CLASS}
-            >
-              {pill.label}
-              <span className={cn("ml-1 font-mono text-[10px] tabular-nums", category === pill.id ? "text-blue-600 dark:text-[#60a5fa]" : "text-slate-500 dark:text-[#8b97ad]")}>
-                {data ? categoryCounts[pill.id] : "—"}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        <div className="relative ml-2 min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-[#8b97ad]" />
           <input
             value={searchQuery}

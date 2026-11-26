@@ -39,11 +39,9 @@ const adapterLabels: Record<string, string> = {
   antigravity_local: "Antigravity",
   gemini_local: "Gemini",
   opencode_local: "OpenCode",
-  hermes_local: "Hermes",
   commandcode_local: "Command Code",
   pi_local: "Pi",
   cursor: "Cursor",
-  openclaw_gateway: "OpenClaw Gateway",
   process: "Process",
   http: "HTTP",
 };
@@ -55,12 +53,11 @@ type ViewMode = "cards" | "list" | "org";
 const CONTROL =
   "h-8 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground outline-none transition-colors focus:border-primary placeholder:text-muted-foreground dark:border-white/[0.09] dark:bg-[#07090d] dark:text-[#eef2f8] dark:focus:border-[#60a5fa] dark:placeholder:text-[#627089]";
 
-const STATUS_TABS: { value: TelemetryStatusFilter; label: string; route?: string }[] = [
-  { value: "all", label: "전체", route: "/agents/all" },
-  { value: "running", label: "실행 중", route: "/agents/active" },
-  { value: "idle", label: "대기" },
-  { value: "attention", label: "오류/일시정지", route: "/agents/error" },
-];
+const STATUS_ROUTES: Partial<Record<TelemetryStatusFilter, string>> = {
+  all: "/agents/all",
+  running: "/agents/active",
+  attention: "/agents/error",
+};
 
 /** Explicit column tracks for compact list view. */
 const ROW_TRACKS =
@@ -99,6 +96,7 @@ function FleetCell({
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={cn(
         "flex min-w-0 cursor-pointer flex-col gap-0.5 px-3.5 py-2.5 text-left transition-colors",
@@ -313,9 +311,9 @@ export function Agents() {
 
   const handleStatusSelect = (next: TelemetryStatusFilter) => {
     setStatusFilter(next);
-    const tabDef = STATUS_TABS.find((t) => t.value === next);
-    if (tabDef?.route) {
-      navigate(tabDef.route);
+    const route = STATUS_ROUTES[next];
+    if (route) {
+      navigate(route);
     }
   };
 
@@ -374,54 +372,9 @@ export function Agents() {
         />
       </section>
 
-      {/* Widescreen primary toolbar: status strip + search + adapter/role filters + view toggle + new agent */}
+      {/* Widescreen primary toolbar: search + adapter/role filters + view toggle + new agent */}
       <div className="tactile-card flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-slate-200/90 bg-white px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_6px_20px_-12px_rgba(0,0,0,0.7)]">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          {/* Status filter strip */}
-          <div
-            role="group"
-            aria-label="에이전트 상태 필터"
-            className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5 dark:border-white/[0.07] dark:bg-[#07090d]"
-          >
-            {STATUS_TABS.map((item) => {
-              const active = statusFilter === item.value;
-              const badgeCount =
-                item.value === "all"
-                  ? fleet.total
-                  : item.value === "running"
-                    ? fleet.active
-                    : item.value === "idle"
-                      ? fleet.idle
-                      : fleet.attention;
-              return (
-                <button
-                  key={item.value}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => handleStatusSelect(item.value)}
-                  className={cn(
-                    "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors",
-                    active
-                      ? "bg-background text-foreground shadow-xs dark:bg-[#151d2e] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
-                      : "text-muted-foreground hover:text-foreground dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]",
-                  )}
-                >
-                  <span>{item.label}</span>
-                  <span
-                    className={cn(
-                      "rounded px-1 font-mono text-[10px] tabular-nums",
-                      active
-                        ? "bg-primary/10 text-primary dark:bg-[#a3e635]/15 dark:text-[#a3e635]"
-                        : "bg-muted text-muted-foreground dark:bg-white/[0.05] dark:text-[#627089]",
-                    )}
-                  >
-                    {badgeCount}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
           {/* Search input */}
           <label className="relative flex min-w-[180px] flex-1 max-w-xs items-center">
             <Search

@@ -240,48 +240,25 @@ describe("Missions", () => {
     expect(html).toContain("RefreshCw");
   });
 
-  it("renders the cockpit command header and quick operator links on Missions", () => {
+  it("omits the duplicate global 5-column KPI strip and hides the escalation ticker when nothing is waiting", () => {
     const html = renderToStaticMarkup(<Missions />);
 
-    expect(html).toContain("명령 헤더");
-    expect(html).toContain("Active agents");
-    expect(html).toContain("Waiting / blocked");
-    expect(html).toContain(">—<");
-    expect(html).toContain('href="/worktree/rules"');
-    expect(html).toContain('href="/channels"');
-    expect(html).toContain('href="/human-operator"');
-    expect(html).toContain("우측 인스펙터");
+    expect(html).not.toContain("Active agents");
+    expect(html).not.toContain("Monthly spend");
+    expect(html).not.toContain("Running work");
+    expect(html).not.toContain("waiting on humans");
   });
 
-  it("renders the live metrics as one 5-column cockpit strip with a single-line queue ticker", () => {
+  it("renders the compact escalation ticker when decisions or queue items are waiting", () => {
     telemetryData = {
-      dashboard: {
-        companyId: "company-1",
-        agents: { active: 3, running: 2, paused: 0, error: 1 },
-        tasks: { open: 4, inProgress: 5, blocked: 7, done: 9 },
-        costs: { monthSpendCents: 123456, monthBudgetCents: 250000, monthUtilizationPercent: 49 },
-        pendingApprovals: 1,
-        budgets: { activeIncidents: 0, pendingApprovals: 1, pausedAgents: 0, pausedProjects: 0 },
-      },
       "operator-decisions": { data: [{ id: "d-1", title: "Approve source list" }], page: { nextCursor: null } },
       "ops-console-queue": { items: [{ id: "q-1", reason: "Heartbeat stalled" }] },
     };
 
     const html = renderToStaticMarkup(<Missions />);
 
-    expect(html).toContain("tactile-card grid grid-cols-2 overflow-hidden rounded-[12px]");
-    expect(html).toContain("lg:grid-cols-5");
-    expect(html.match(/text-xl font-semibold/g)).toHaveLength(5);
-    expect(html).toContain("Active agents");
-    expect(html).toContain("6 enabled");
-    expect(html).toContain("Running work");
-    expect(html).toContain("7 blocked");
-    expect(html).toContain("Active missions");
-    expect(html).toContain("1 planning");
-    expect(html).toContain("Monthly spend");
-    expect(html).toContain("$1234.56");
-    expect(html).toContain("of $2500.00 · 49%");
-    expect(html).toContain("Waiting / blocked");
+    expect(html).not.toContain("Active agents");
+    expect(html).not.toContain("Monthly spend");
     expect(html).toContain("2 waiting on humans");
     expect(html).toContain("Decision");
     expect(html).toContain("Approve source list");
@@ -290,13 +267,10 @@ describe("Missions", () => {
     expect(html).toContain("Review →");
   });
 
-  it("aligns status tabs, compact executor/sort controls, and the new mission CTA on one toolbar row", () => {
+  it("omits duplicate legacy status tabs and aligns executor/date/sort controls with the new mission CTA on one toolbar row", () => {
     const html = renderToStaticMarkup(<Missions />);
 
-    expect(html).toContain('aria-label="Filter missions by status"');
-    for (const tab of ["All", "Planning", "Active", "Paused", "Completed", "Cancelled"]) {
-      expect(html).toContain(`>${tab}</button>`);
-    }
+    expect(html).not.toContain('aria-label="Filter missions by status"');
     expect(html).toContain("All executors");
     expect(html).toContain('aria-label="Main executor"');
     expect(html).toContain('aria-label="Sort missions"');

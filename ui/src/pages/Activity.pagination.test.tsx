@@ -89,7 +89,7 @@ async function click(el: Element | null | undefined) {
   await flush();
 }
 const button = (name: string) => [...container.querySelectorAll("nav button")].find((b) => b.textContent?.trim() === name);
-const tab = (label: string) => [...container.querySelectorAll('[aria-label="활동 유형 필터"] button')].find((b) => b.textContent?.startsWith(label));
+const tab = (label: string) => [...container.querySelectorAll('[aria-label="활동 유형별 건수"] button')].find((b) => b.textContent?.includes(label));
 const bar = () => container.querySelector("nav[aria-label='Pagination']")!;
 const barText = () => bar().textContent ?? "";
 const rows = () => [...container.querySelectorAll("[data-event]")] as HTMLElement[];
