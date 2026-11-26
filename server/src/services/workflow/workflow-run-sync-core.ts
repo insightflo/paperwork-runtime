@@ -31,6 +31,7 @@ import { workflowHasConditionalEdges } from "./control-flow/edge-condition.js";
 import { applyBackEdgeReworkPass } from "./control-flow/loop-driver.js";
 import { cancelResolvedQaSourceDefectOwnerCards } from "./qa-source-defect-owner-card.js";
 import { closeResolvedWorkflowUnblocks } from "./resolved-unblock-closeout.js";
+import { closeStaleToolFailureOwnerActions } from "./tool-failure-owner-action-closeout.js";
 import { isRunTerminalBoundaryV1Enabled } from "./run-terminal-boundary-flag.js";
 import { isRunReopenGuardEnabled } from "./run-reopen-guard-flag.js";
 import { applyStructuralGatePass, requeueStaleStructuralGatesForBlockedQa } from "./control-flow/structural-gate-rework.js";
@@ -734,6 +735,18 @@ async function syncWorkflowRunStateCore(
     });
   } catch {
     // Unblock closeout must never break workflow synchronization.
+  }
+  // [tool-failure owner action closeout] 툴 스텝 실패 카드는 그 스텝이 성공했거나 런이 completed/cancelled
+  //   로 끝나면 무효가 되므로 자동 종결한다(감사 로그 동반). failed 종결은 여전히 유효한 에스컬레이션이라
+  //   유지한다(모듈 내부 판정). 실패해도 sync 를 깨뜨리지 않는다(다음 sync 재시도).
+  try {
+    await closeStaleToolFailureOwnerActions({
+      db,
+      run: { id: updatedRun.id, status: updatedRun.status, companyId: updatedRun.companyId, missionId: updatedRun.missionId },
+      stepRuns,
+    });
+  } catch {
+    // swallowed: owner action closeout must never break workflow sync.
   }
   // [qa source-defect card cleanup] 상황 해소(런 종결/이후 generation 통과)로 무효가 된 pending
   //   원천결함 오너 카드를 자동 cancel 한다(감사 로그 동반). 실패해도 sync 를 깨뜨리지 않는다.
