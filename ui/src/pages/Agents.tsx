@@ -120,7 +120,7 @@ function FleetCell({
 }
 
 export function Agents() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canAdmin = true } = useCompany();
   const { openNewAgent } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
@@ -603,8 +603,13 @@ export function Agents() {
           <Button
             size="sm"
             variant="outline"
-            onClick={openNewAgent}
-            className="h-8 border-transparent bg-[#2563eb] px-3 text-xs font-semibold text-[#f8fafc] hover:bg-[#1d4fd8]"
+            disabled={!canAdmin}
+            title={!canAdmin ? "Admin or owner role required to hire agents" : undefined}
+            onClick={() => {
+              if (!canAdmin) return;
+              openNewAgent();
+            }}
+            className="h-8 border-transparent bg-[#2563eb] px-3 text-xs font-semibold text-[#f8fafc] hover:bg-[#1d4fd8] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus className="h-3.5 w-3.5" />
             New Agent
@@ -617,9 +622,13 @@ export function Agents() {
       {agents && agents.length === 0 && (
         <EmptyState
           icon={Bot}
-          message="Create your first agent to get started."
-          action="New Agent"
-          onAction={openNewAgent}
+          message={
+            canAdmin
+              ? "Create your first agent to get started."
+              : "No agents yet. Admin or owner role required to hire agents."
+          }
+          action={canAdmin ? "New Agent" : undefined}
+          onAction={canAdmin ? openNewAgent : undefined}
         />
       )}
 

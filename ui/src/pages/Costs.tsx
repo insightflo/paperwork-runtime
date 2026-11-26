@@ -10,7 +10,7 @@ import type {
   FinanceEvent,
   QuotaWindow,
 } from "@paperclipai/shared";
-import { ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronRight, Coins, DollarSign, ReceiptText } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, ChevronDown, ChevronRight, Coins, DollarSign, Lock, ReceiptText } from "lucide-react";
 import { budgetsApi } from "../api/budgets";
 import { costsApi } from "../api/costs";
 import { BillerSpendCard } from "../components/BillerSpendCard";
@@ -192,7 +192,7 @@ function FinanceSummaryCard({
 }
 
 export function Costs() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canAdmin = true, currentRole } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
 
@@ -770,18 +770,28 @@ export function Costs() {
               {activeBudgetIncidents.length > 0 ? (
                 <div className="grid gap-4 xl:grid-cols-2">
                   {activeBudgetIncidents.slice(0, 2).map((incident) => (
-                    <BudgetIncidentCard
+                    <div
                       key={incident.id}
-                      incident={incident}
-                      isMutating={incidentMutation.isPending}
-                      onKeepPaused={() => incidentMutation.mutate({ incidentId: incident.id, action: "keep_paused" })}
-                      onRaiseAndResume={(amount) =>
-                        incidentMutation.mutate({
-                          incidentId: incident.id,
-                          action: "raise_budget_and_resume",
-                          amount,
-                        })}
-                    />
+                      className={!canAdmin ? "[&_input]:pointer-events-none [&_input]:opacity-60" : undefined}
+                      title={!canAdmin ? "Admin or owner role required to resolve budget incidents" : undefined}
+                    >
+                      <BudgetIncidentCard
+                        incident={incident}
+                        isMutating={!canAdmin || incidentMutation.isPending}
+                        onKeepPaused={() => {
+                          if (!canAdmin) return;
+                          incidentMutation.mutate({ incidentId: incident.id, action: "keep_paused" });
+                        }}
+                        onRaiseAndResume={(amount) => {
+                          if (!canAdmin) return;
+                          incidentMutation.mutate({
+                            incidentId: incident.id,
+                            action: "raise_budget_and_resume",
+                            amount,
+                          });
+                        }}
+                      />
+                    </div>
                   ))}
                 </div>
               ) : null}
@@ -961,7 +971,18 @@ export function Costs() {
             <>
               <Card className={TACTILE_CARD_CLASS}>
                 <CardHeader className="px-5 pt-5 pb-3">
-                  <CardTitle className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]">Budget control plane</CardTitle>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <CardTitle className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]">Budget control plane</CardTitle>
+                    {!canAdmin && (
+                      <span
+                        className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#fde68a]"
+                        title="Admin or owner role required to edit budget policies or resolve incidents"
+                      >
+                        <Lock className="h-3 w-3 shrink-0" />
+                        Read-only{currentRole ? ` (${currentRole})` : ""} · Admin or owner role required
+                      </span>
+                    )}
+                  </div>
                   <CardDescription>
                     Hard-stop spend limits for agents and work contexts. Provider subscription quota stays separate and appears under Providers.
                   </CardDescription>
@@ -1004,18 +1025,28 @@ export function Costs() {
                   </div>
                   <div className="grid gap-4 xl:grid-cols-2">
                     {activeBudgetIncidents.map((incident) => (
-                      <BudgetIncidentCard
+                      <div
                         key={incident.id}
-                        incident={incident}
-                        isMutating={incidentMutation.isPending}
-                        onKeepPaused={() => incidentMutation.mutate({ incidentId: incident.id, action: "keep_paused" })}
-                        onRaiseAndResume={(amount) =>
-                          incidentMutation.mutate({
-                            incidentId: incident.id,
-                            action: "raise_budget_and_resume",
-                            amount,
-                          })}
-                      />
+                        className={!canAdmin ? "[&_input]:pointer-events-none [&_input]:opacity-60" : undefined}
+                        title={!canAdmin ? "Admin or owner role required to resolve budget incidents" : undefined}
+                      >
+                        <BudgetIncidentCard
+                          incident={incident}
+                          isMutating={!canAdmin || incidentMutation.isPending}
+                          onKeepPaused={() => {
+                            if (!canAdmin) return;
+                            incidentMutation.mutate({ incidentId: incident.id, action: "keep_paused" });
+                          }}
+                          onRaiseAndResume={(amount) => {
+                            if (!canAdmin) return;
+                            incidentMutation.mutate({
+                              incidentId: incident.id,
+                              action: "raise_budget_and_resume",
+                              amount,
+                            });
+                          }}
+                        />
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -1043,13 +1074,17 @@ export function Costs() {
                             key={summary.policyId}
                             summary={summary}
                             isSaving={policyMutation.isPending}
-                            onSave={(amount) =>
-                              policyMutation.mutate({
-                                scopeType: summary.scopeType,
-                                scopeId: summary.scopeId,
-                                amount,
-                                windowKind: summary.windowKind,
-                              })}
+                            onSave={
+                              canAdmin
+                                ? (amount) =>
+                                    policyMutation.mutate({
+                                      scopeType: summary.scopeType,
+                                      scopeId: summary.scopeId,
+                                      amount,
+                                      windowKind: summary.windowKind,
+                                    })
+                                : undefined
+                            }
                           />
                         ))}
                       </div>

@@ -9,7 +9,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
 import { PageTabBar } from "../components/PageTabBar";
 import { Tabs } from "@/components/ui/tabs";
-import { ShieldCheck } from "lucide-react";
+import { Lock, ShieldCheck } from "lucide-react";
 import { ApprovalCard } from "../components/ApprovalCard";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { CompactPagination, PAGE_SIZE, PAGE_WINDOW_KEY, pageOffset, splitFetchedPage, usePageNumber, useScrollToTopOnPageChange } from "../components/CompactPagination";
@@ -53,7 +53,7 @@ const newestFirst = (a: Pick<Approval, "createdAt">, b: Pick<Approval, "createdA
 
 export function Approvals() {
   const lang = useCompanyLanguage();
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canAdmin = true, currentRole } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -159,6 +159,14 @@ export function Approvals() {
   const renderRow = (approval: Approval) => (
     <div
       key={approval.id}
+      title={
+        !canAdmin && (approval.status === "pending" || approval.status === "revision_requested")
+          ? t(
+              "Admin or owner role required to approve, reject, or request revision",
+              "승인, 거절 또는 수정 요청은 관리자 이상 권한이 필요합니다.",
+            )
+          : undefined
+      }
       className={cn(
         "border-l-2 bg-white dark:bg-[#0e131d] px-3 py-2 transition-colors hover:bg-slate-50 dark:hover:bg-[#141b29]",
         "[&>div]:rounded-none [&>div]:border-0 [&>div]:bg-transparent [&>div]:p-0 [&>div]:shadow-none",
@@ -168,10 +176,16 @@ export function Approvals() {
       <ApprovalCard
         approval={approval}
         requesterAgent={requestAgent(approval)}
-        onApprove={() => approveMutation.mutate(approval.id)}
-        onReject={() => rejectMutation.mutate(approval.id)}
+        onApprove={() => {
+          if (!canAdmin) return;
+          approveMutation.mutate(approval.id);
+        }}
+        onReject={() => {
+          if (!canAdmin) return;
+          rejectMutation.mutate(approval.id);
+        }}
         detailLink={`/approvals/${approval.id}`}
-        isPending={approveMutation.isPending || rejectMutation.isPending}
+        isPending={!canAdmin || approveMutation.isPending || rejectMutation.isPending}
       />
     </div>
   );
@@ -227,7 +241,19 @@ export function Approvals() {
             { value: "all", label: L(lang, { en: "All", ko: "전체" }) },
           ]} />
         </Tabs>
-        <div className="ml-auto flex shrink-0 items-baseline gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {!canAdmin && (
+            <span
+              className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#fde68a]"
+              title={t(
+                "Admin or owner role required to approve, reject, or request revision",
+                "승인, 거절 또는 수정 요청은 관리자 이상 권한이 필요합니다.",
+              )}
+            >
+              <Lock className="h-3 w-3 shrink-0" />
+              {t(`Read-only${currentRole ? ` (${currentRole})` : ""}`, `읽기 전용${currentRole ? ` (${currentRole})` : ""}`)}
+            </span>
+          )}
           <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500 dark:text-[#8b97ad]">
             {L(lang, { en: "Shown", ko: "표시" })}
           </span>
