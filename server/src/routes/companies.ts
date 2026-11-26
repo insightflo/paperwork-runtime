@@ -15,7 +15,20 @@ import {
   logActivity,
 } from "../services/index.js";
 import type { StorageService } from "../storage/types.js";
-import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess, getActorInfo } from "./authz.js";
+import {
+  TEAM_ROLES,
+  type TeamRole,
+  assertBoard,
+  assertCompanyAccess,
+  assertCompanyAdminAccess,
+  getActorInfo,
+} from "./authz.js";
+
+function normalizeTeamRole(role: unknown): TeamRole | null {
+  return typeof role === "string" && (TEAM_ROLES as readonly string[]).includes(role)
+    ? (role as TeamRole)
+    : null;
+}
 
 export function companyRoutes(db: Db, _storage?: StorageService) {
   const router = Router();
@@ -26,7 +39,10 @@ export function companyRoutes(db: Db, _storage?: StorageService) {
 
   async function assertCanUpdateBranding(req: Request, companyId: string) {
     assertCompanyAccess(req, companyId);
-    if (req.actor.type === "board") return;
+    if (req.actor.type === "board") {
+      await assertCompanyAdminAccess(access, req, companyId);
+      return;
+    }
     if (!req.actor.agentId) throw forbidden("Agent authentication required");
 
     const actorAgent = await agents.getById(req.actor.agentId);
@@ -42,11 +58,29 @@ export function companyRoutes(db: Db, _storage?: StorageService) {
     assertBoard(req);
     const result = await svc.list();
     if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
-      res.json(result);
+      res.json(result.map((company) => ({ ...company, myRole: "owner" as const })));
       return;
     }
     const allowed = new Set(req.actor.companyIds ?? []);
-    res.json(result.filter((company) => allowed.has(company.id)));
+    const memberships = req.actor.userId
+      ? await access.listUserCompanyAccess(req.actor.userId)
+      : [];
+    const roleByCompanyId = new Map<string, TeamRole>();
+    for (const membership of memberships) {
+      if (membership.status !== "active") continue;
+      const role = normalizeTeamRole(membership.membershipRole);
+      if (role) {
+        roleByCompanyId.set(membership.companyId, role);
+      }
+    }
+    res.json(
+      result
+        .filter((company) => allowed.has(company.id))
+        .map((company) => ({
+          ...company,
+          myRole: roleByCompanyId.get(company.id) ?? ("viewer" as const),
+        })),
+    );
   });
 
   router.get("/stats", async (req, res) => {
@@ -82,7 +116,21 @@ export function companyRoutes(db: Db, _storage?: StorageService) {
       res.status(404).json({ error: "Company not found" });
       return;
     }
-    res.json(company);
+    let myRole: TeamRole;
+    if (req.actor.type === "agent") {
+      myRole = "member";
+    } else if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
+      myRole = "owner";
+    } else {
+      const membership = req.actor.userId
+        ? await access.getMembership(companyId, "user", req.actor.userId)
+        : null;
+      myRole =
+        membership && membership.status === "active"
+          ? (normalizeTeamRole(membership.membershipRole) ?? "viewer")
+          : "viewer";
+    }
+    res.json({ ...company, myRole });
   });
 
   router.post("/", validate(createCompanySchema), async (req, res) => {

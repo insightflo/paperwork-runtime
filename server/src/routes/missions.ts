@@ -27,8 +27,10 @@ import { dispatchSourceIssueNativeResume } from "../services/workflow/source-iss
 import { missionDelegationService } from "../services/mission-delegations.js";
 import { heartbeatService } from "../services/heartbeat.js";
 import { cancelMissionWorkflowRuns } from "../services/workflow/workflow-cancellation.js";
+import { accessService } from "../services/access.js";
 import { logger } from "../middleware/logger.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertCompanyWriteAccess } from "./authz-write.js";
 import { notFound, badRequest, conflict } from "../errors.js";
 import { isTerminalMissionStatus } from "../services/missions/shared-types.js";
 import { logActivity } from "../services/activity-log.js";
@@ -117,6 +119,7 @@ function attachOwnerRequestSummaries(
 }
 
 export function missionRoutes(db: Db) { const router = Router();
+  const access = accessService(db);
   const heartbeat = heartbeatService(db);
   const enqueuePlanQaWakeup = createPlanQaWakeupHandler(
     heartbeat,
@@ -294,7 +297,7 @@ export function missionRoutes(db: Db) { const router = Router();
     async (req, res) => {
       const { companyId, requestId } = req.params;
       assertBoard(req);
-      assertCompanyAccess(req, companyId);
+      await assertCompanyWriteAccess(access, req, companyId);
       const requests = await listCompanyHumanOperatorRequests(db, { companyId });
       const request = requests.find((row) => row.id === requestId);
       if (!request) {
@@ -344,7 +347,7 @@ export function missionRoutes(db: Db) { const router = Router();
    */
   router.post("/companies/:companyId/missions", async (req, res) => {
     const { companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
 
     const { ownerAgentId, title, description, goalId, projectId, status, agentIds, source, sourceMissionId, sourceWorkflowRunId } = req.body;
 
@@ -393,7 +396,7 @@ export function missionRoutes(db: Db) { const router = Router();
     if (mission.companyId !== companyId) {
       throw notFound("Mission not found");
     }
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
 
     const { staleAfterMinutes, applySafeActions, applyOwnerDecisionActions, dispatchOwnerDecisionWakeups, dispatchStaleSourceIssueWakeups } = req.body ?? {};
     let parsedStaleAfterMinutes: number | undefined;
@@ -469,7 +472,7 @@ export function missionRoutes(db: Db) { const router = Router();
    */
   router.post("/missions/:id/delegations", async (req, res) => {
     const mission = await svc.getById(req.params.id);
-    assertCompanyAccess(req, mission.companyId);
+    await assertCompanyWriteAccess(access, req, mission.companyId);
 
     const {
       targetCompanyId,
@@ -483,7 +486,7 @@ export function missionRoutes(db: Db) { const router = Router();
     if (!targetCompanyId || !targetOwnerAgentId) {
       throw badRequest("targetCompanyId and targetOwnerAgentId are required");
     }
-    assertCompanyAccess(req, targetCompanyId);
+    await assertCompanyWriteAccess(access, req, targetCompanyId);
 
     const result = await delegationSvc.create({
       sourceMissionId: req.params.id,
@@ -548,7 +551,7 @@ export function missionRoutes(db: Db) { const router = Router();
    */
   router.post("/missions/:id/decision-reports", async (req, res) => {
     const mission = await svc.getById(req.params.id);
-    assertCompanyAccess(req, mission.companyId);
+    await assertCompanyWriteAccess(access, req, mission.companyId);
     const actor = getActorInfo(req);
 
     const result = await applyMissionDecisionReports(db, {
@@ -595,7 +598,7 @@ export function missionRoutes(db: Db) { const router = Router();
    */
   router.patch("/missions/:id", async (req, res) => {
     const existing = await svc.getById(req.params.id);
-    assertCompanyAccess(req, existing.companyId);
+    await assertCompanyWriteAccess(access, req, existing.companyId);
 
     const { title, description, status, goalId, projectId, startedAt, completedAt } = req.body;
     if (status === "cancelled") {
@@ -661,7 +664,7 @@ export function missionRoutes(db: Db) { const router = Router();
    */
   router.delete("/missions/:id", async (req, res) => {
     const existing = await svc.getById(req.params.id);
-    assertCompanyAccess(req, existing.companyId);
+    await assertCompanyWriteAccess(access, req, existing.companyId);
 
     await svc.delete(req.params.id);
 
@@ -705,7 +708,7 @@ export function missionRoutes(db: Db) { const router = Router();
    */
   router.post("/missions/:id/agents", async (req, res) => {
     const mission = await svc.getById(req.params.id);
-    assertCompanyAccess(req, mission.companyId);
+    await assertCompanyWriteAccess(access, req, mission.companyId);
 
     const { agentId, role } = req.body;
     if (!agentId) {
@@ -728,7 +731,7 @@ export function missionRoutes(db: Db) { const router = Router();
    */
   router.patch("/missions/:id/agents/:agentId", async (req, res) => {
     const mission = await svc.getById(req.params.id);
-    assertCompanyAccess(req, mission.companyId);
+    await assertCompanyWriteAccess(access, req, mission.companyId);
 
     const { role } = req.body;
     if (!role) {
@@ -746,7 +749,7 @@ export function missionRoutes(db: Db) { const router = Router();
    */
   router.delete("/missions/:id/agents/:agentId", async (req, res) => {
     const mission = await svc.getById(req.params.id);
-    assertCompanyAccess(req, mission.companyId);
+    await assertCompanyWriteAccess(access, req, mission.companyId);
 
     await svc.removeAgent(req.params.id, req.params.agentId);
     res.status(204).send();

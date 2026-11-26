@@ -57,8 +57,10 @@ import {
 } from "../services/workflow/tool-catalog.js";
 import type { WorkflowDefinition, WorkflowRun, WorkflowStepRun } from "../services/workflow/types.js";
 import { badRequest, conflict, notFound, unauthorized, unprocessable } from "../errors.js";
+import { accessService } from "../services/access.js";
 import { logger } from "../middleware/logger.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess, getActorInfo } from "./authz.js";
+import { assertCompanyWriteAccess } from "./authz-write.js";
 import { workflowResumeRoutes } from "./workflow-resume.js";
 import { assertWorkflowQaConfigWrite, updateAuthorizedWorkflowDefinition } from './workflow-qa-config-auth.js';
 import { QA_REWORK_CAP_BOOST_KEY } from "../services/workflow/control-flow/types.js";
@@ -271,6 +273,7 @@ const actorForActivity = getActorInfo;
 
 export function workflowRoutes(db: Db) {
   const router = Router();
+  const access = accessService(db);
   router.use(workflowResumeRoutes(db));
   router.get("/companies/:companyId/workflows/overview", async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -325,8 +328,7 @@ export function workflowRoutes(db: Db) {
 
   router.post("/companies/:companyId/workflows/tools/grants", validate(workflowToolGrantSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
+    await assertCompanyAdminAccess(access, req, companyId);
     const actor = actorForActivity(req);
     const grant = await grantWorkflowToolToAgent(db, {
       companyId,
@@ -350,8 +352,7 @@ export function workflowRoutes(db: Db) {
 
   router.delete("/companies/:companyId/workflows/tools/grants", validate(workflowToolGrantSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
+    await assertCompanyAdminAccess(access, req, companyId);
     const actor = actorForActivity(req);
     const revoked = await revokeWorkflowToolFromAgent(db, {
       companyId,
@@ -374,8 +375,7 @@ export function workflowRoutes(db: Db) {
 
   router.post("/companies/:companyId/workflows/tools/sync-from-tool-registry", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
+    await assertCompanyAdminAccess(access, req, companyId);
     const result = await syncToolRegistryToolsToCore(db, companyId);
     const actor = actorForActivity(req);
     await logActivity(db, {
@@ -394,8 +394,7 @@ export function workflowRoutes(db: Db) {
 
   router.post("/companies/:companyId/workflows/qa-cap-acceptance/enable", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
+    await assertCompanyAdminAccess(access, req, companyId);
     const result = await enableQaCapAcceptanceForCompany(db, companyId);
     const actor = actorForActivity(req);
     await logActivity(db, {
@@ -421,7 +420,7 @@ export function workflowRoutes(db: Db) {
 
   router.post("/companies/:companyId/workflows", validate(createWorkflowDefinitionSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     assertWorkflowQaConfigWrite(req);
     const definition = await workflowDomainCall(() => workflowService.createDefinition(db, {
       ...req.body,
@@ -461,6 +460,7 @@ export function workflowRoutes(db: Db) {
     if (!existing || !canAccessRecord(req, existing.companyId)) {
       throw notFound("Workflow definition not found");
     }
+    await assertCompanyWriteAccess(access, req, existing.companyId);
     assertWorkflowQaConfigWrite(req, existing.steps);
     const definition = await workflowDomainCall(() => updateAuthorizedWorkflowDefinition(db, workflowId, req));
     if (!definition) throw notFound("Workflow definition not found");
@@ -494,6 +494,7 @@ export function workflowRoutes(db: Db) {
     if (!existing || !canAccessRecord(req, existing.companyId)) {
       throw notFound("Workflow definition not found");
     }
+    await assertCompanyWriteAccess(access, req, existing.companyId);
     const archived = await workflowService.deleteDefinition(db, workflowId);
     const actor = actorForActivity(req);
     await logActivity(db, {
@@ -538,6 +539,7 @@ export function workflowRoutes(db: Db) {
     if (!definition || !canAccessRecord(req, definition.companyId)) {
       throw notFound("Workflow definition not found");
     }
+    await assertCompanyWriteAccess(access, req, definition.companyId);
     const triggeredBy = req.body.triggeredBy ?? (req.actor.type === "agent" ? "agent" : "board");
     const result = await workflowDomainCall(() => workflowService.trigger(db, {
       ...req.body,
@@ -643,6 +645,7 @@ export function workflowRoutes(db: Db) {
     if (!run || !canAccessRecord(req, run.companyId)) {
       throw notFound("Workflow step run not found");
     }
+    await assertCompanyWriteAccess(access, req, run.companyId);
 
     const retryResult = await retryIssueLessToolWorkflowStep(db, {
       companyId: run.companyId,
@@ -686,6 +689,7 @@ export function workflowRoutes(db: Db) {
     if (!consumer) throw notFound("Workflow step run not found");
     const run = await workflowService.getRun(db, consumer.workflowRunId);
     if (!run || !canAccessRecord(req, run.companyId)) throw notFound("Workflow step run not found");
+    await assertCompanyAdminAccess(access, req, run.companyId);
     const toolInvocation = consumer.metadata?.toolInvocation as { dispatchError?: unknown } | undefined;
     const dispatchError = typeof consumer.lastDispatchErrorSummary === "string" && consumer.lastDispatchErrorSummary.length > 0
       ? consumer.lastDispatchErrorSummary
@@ -747,6 +751,7 @@ export function workflowRoutes(db: Db) {
     if (!run || !canAccessRecord(req, run.companyId)) {
       throw notFound("Workflow step run not found");
     }
+    await assertCompanyAdminAccess(access, req, run.companyId);
     const amount = Number((req.body as Record<string, unknown>)?.amount);
     if (!Number.isInteger(amount) || amount < 1 || amount > 50) {
       throw unprocessable("amount must be an integer between 1 and 50");
@@ -792,6 +797,7 @@ export function workflowRoutes(db: Db) {
     if (!run || !canAccessRecord(req, run.companyId)) {
       throw notFound("Workflow run not found");
     }
+    await assertCompanyWriteAccess(access, req, run.companyId);
     const result = await workflowDomainCall(() => workflowService.resumeRun(db, { runId, companyId: run.companyId }));
     const actor = actorForActivity(req);
     await logActivity(db, {
@@ -814,6 +820,7 @@ export function workflowRoutes(db: Db) {
     if (!run || !canAccessRecord(req, run.companyId)) {
       throw notFound("Workflow run not found");
     }
+    await assertCompanyWriteAccess(access, req, run.companyId);
     const cancelled = await workflowService.cancelRun(db, { runId, companyId: run.companyId });
     const actor = actorForActivity(req);
     await logActivity(db, {
@@ -837,6 +844,7 @@ export function workflowRoutes(db: Db) {
     if (!existing || !canAccessRecord(req, existing.companyId)) {
       throw notFound("Issue not found");
     }
+    await assertCompanyWriteAccess(access, req, existing.companyId);
     const issue = await svc.update(issueId, { status: "done", workflowSyncSource: "workflows_route" });
     if (!issue) throw notFound("Issue not found");
     const actor = actorForActivity(req);
@@ -872,7 +880,7 @@ export function workflowRoutes(db: Db) {
     if (!definition || !canAccessRecord(req, definition.companyId)) {
       throw notFound("Workflow definition not found");
     }
-    assertBoard(req);
+    await assertCompanyAdminAccess(access, req, definition.companyId);
     const actor = actorForActivity(req);
 
     const secretValue = generateWebhookSecret();
@@ -940,7 +948,7 @@ export function workflowRoutes(db: Db) {
     if (!definition || !canAccessRecord(req, definition.companyId)) {
       throw notFound("Workflow definition not found");
     }
-    assertBoard(req);
+    await assertCompanyAdminAccess(access, req, definition.companyId);
     const [config] = await db
       .select()
       .from(workflowWebhookConfigs)
