@@ -41,17 +41,10 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface SidebarProps {
-  /** Retained as optional no-ops until Wave S18-3 removes them from Layout.tsx. */
-  onOpenHermes?: () => void;
-  hermesPanelOpen?: boolean;
   onToggleCompact?: () => void;
 }
 
-export function Sidebar({
-  onOpenHermes: _onOpenHermes,
-  hermesPanelOpen: _hermesPanelOpen,
-  onToggleCompact,
-}: SidebarProps) {
+export function Sidebar({ onToggleCompact }: SidebarProps = {}) {
   const [adminOpen, setAdminOpen] = useState(false);
   const { compact: rawCompact } = useSidebarDensity();
   const { isMobile } = useSidebar();

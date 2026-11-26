@@ -193,7 +193,7 @@ export function Layout() {
         {isMobile ? (
           <div className={cn("fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden pt-[env(safe-area-inset-top)] transition-transform duration-100 ease-out", sidebarOpen ? "translate-x-0" : "-translate-x-full")}>
             <div className="flex flex-1 min-h-0 overflow-hidden">
-              <CompanyRail />
+              <CompanyRail onToggleSidebar={toggleSidebar} />
               {sidePanel}
             </div>
             <SidebarFooterBar
@@ -208,7 +208,7 @@ export function Layout() {
           </div>
         ) : (
           <div className="flex h-full shrink-0">
-            <CompanyRail />
+            <CompanyRail onToggleSidebar={slide.toggleNav} />
             <div
               data-compact-nav={slide.density.compact ? "true" : undefined}
               className="flex h-full flex-col overflow-hidden transition-[width] duration-100 ease-out"
