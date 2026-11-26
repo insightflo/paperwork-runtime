@@ -15,6 +15,7 @@ import { operatorDecisionsApi } from "../api/operator-decisions";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
+import { useOptionalToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
@@ -231,6 +232,7 @@ export function Missions() {
   const { selectedCompanyId } = useCompany();
   const { openNewMission } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const toast = useOptionalToast();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -352,6 +354,12 @@ export function Missions() {
 
   const hasClientRadarFilter =
     radarStatus !== "all" || searchQuery.trim().length > 0 || workflowFilter !== "all";
+  const hasUrlFilter =
+    statusFilter !== "all" ||
+    ownerAgentId !== "all" ||
+    Boolean(to) ||
+    (Boolean(searchParams.get("from")) && from !== getDefaultCreatedFrom());
+  const hasAnyFilter = hasClientRadarFilter || hasUrlFilter;
 
   // When a client-side radar filter/search is active, filter across the full fleet and paginate cleanly.
   const filteredClientMissions = useMemo(() => {
@@ -478,12 +486,18 @@ export function Missions() {
         await queryClient.invalidateQueries({ queryKey: queryKeys.missions.list(selectedCompanyId) });
         void refetchMissions();
       } catch (err) {
-        setActionError(err instanceof Error ? err.message : String(err));
+        const message = err instanceof Error ? err.message : String(err);
+        setActionError(message);
+        toast?.pushToast({
+          title: nextStatus === "paused" ? "미션 일시정지 실패" : "미션 재개 실패",
+          body: message,
+          tone: "error",
+        });
       } finally {
         setMutatingMissionId(null);
       }
     },
-    [selectedCompanyId, mutatingMissionId, queryClient, refetchMissions],
+    [selectedCompanyId, mutatingMissionId, queryClient, refetchMissions, toast],
   );
 
   const moveSelection = useCallback(
@@ -686,6 +700,28 @@ export function Missions() {
               </option>
             ))}
           </select>
+
+          {hasAnyFilter && (
+            <button
+              type="button"
+              onClick={() => {
+                setRadarStatus("all");
+                setSearchQuery("");
+                setWorkflowFilter("all");
+                setLocalPage(1);
+                if (hasUrlFilter) {
+                  updateSearchParams(
+                    { status: null, ownerAgentId: null, from: null, to: null },
+                    { resetPage: true },
+                  );
+                }
+              }}
+              className="inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-md border border-blue-500/30 bg-blue-500/10 px-2 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-500/15 dark:border-[#60a5fa]/35 dark:bg-[#2563eb]/15 dark:text-[#60a5fa] dark:hover:bg-[#2563eb]/25"
+            >
+              <X className="h-3 w-3" />
+              필터 초기화
+            </button>
+          )}
         </div>
 
         <button

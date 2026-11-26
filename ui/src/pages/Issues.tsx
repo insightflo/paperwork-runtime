@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useCallback, useRef, useState } from "react";
-import { useLocation, useSearchParams } from "@/lib/router";
+import { useLocation, useNavigate, useSearchParams } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { ACTIVE_ISSUE_STATUS_FILTER, issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
@@ -90,6 +90,7 @@ export function Issues() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
 
@@ -271,7 +272,35 @@ export function Issues() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || isTypingTarget(event.target)) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isTypingTarget(event.target)) {
+        if (event.key === "Escape") {
+          const searchInput = listRef.current?.querySelector<HTMLInputElement>('input[aria-label="Search work"]');
+          if (searchInput && event.target === searchInput) {
+            searchInput.blur();
+          }
+        }
+        return;
+      }
+      if (event.key === "/") {
+        const searchInput = listRef.current?.querySelector<HTMLInputElement>('input[aria-label="Search work"]');
+        if (searchInput) {
+          event.preventDefault();
+          searchInput.focus();
+          searchInput.select();
+        }
+        return;
+      }
+      if (event.key === "Enter" && selectedPath) {
+        event.preventDefault();
+        const selectedLink = listRef.current?.querySelector<HTMLAnchorElement>('a[data-pw-selected="true"]');
+        if (selectedLink) {
+          selectedLink.click();
+        } else {
+          navigate(selectedPath, { state: issueLinkState });
+        }
+        return;
+      }
       if (event.key !== "j" && event.key !== "k") return;
       const paths = visibleRowPaths();
       if (paths.length === 0) return;
@@ -280,7 +309,7 @@ export function Issues() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [visibleRowPaths]);
+  }, [visibleRowPaths, selectedPath, navigate, issueLinkState]);
 
   if (!selectedCompanyId) {
     return <EmptyState icon={CircleDot} message="Select a company to view work." />;

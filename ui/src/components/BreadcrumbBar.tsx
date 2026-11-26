@@ -1,9 +1,28 @@
 import { Link } from "@/lib/router";
-import { Menu, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
+import {
+  Bot,
+  FolderKanban,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Rocket,
+  Search,
+  SquarePen,
+} from "lucide-react";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useCompany } from "../context/CompanyContext";
+import { useOptionalDialog } from "../context/DialogContext";
 import { useSidebar } from "../context/SidebarContext";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -27,9 +46,11 @@ function openCommandPalette() {
 
 export function BreadcrumbBar() {
   const { breadcrumbs } = useBreadcrumbs();
-  const { selectedCompany } = useCompany();
+  const { selectedCompany, canWrite } = useCompany();
+  const dialog = useOptionalDialog();
   const { sidebarOpen, toggleSidebar, isMobile } = useSidebar();
   const companyPrefix = selectedCompany?.issuePrefix?.trim() || null;
+  const showQuickCreate = Boolean(dialog) && canWrite !== false;
 
   const menuButton = (
     <Button
@@ -140,6 +161,62 @@ export function BreadcrumbBar() {
           <span className="hidden rounded-md border border-slate-200/80 bg-slate-50 px-2 py-0.5 font-mono text-[10px] font-medium text-slate-500 sm:inline-flex dark:border-white/[0.07] dark:bg-white/[0.04] dark:text-[#9aa7bd]">
             {companyPrefix}
           </span>
+        )}
+        {showQuickCreate && dialog && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="icon-sm"
+                aria-label="Quick create"
+                title="Quick create"
+                className="h-7 w-7 shrink-0 rounded-lg border border-blue-600/25 bg-blue-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_1px_2px_rgba(37,99,235,0.2)] transition-colors hover:bg-blue-500 dark:border-[#60a5fa]/40 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              sideOffset={6}
+              className="w-52 rounded-xl border-slate-200/90 bg-white/95 p-1 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_12px_32px_rgba(15,23,42,0.14)] backdrop-blur-md dark:border-white/10 dark:bg-[#0e131d]/95 dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_16px_40px_rgba(0,0,0,0.55)]"
+            >
+              <DropdownMenuLabel className="px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                Quick create
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator className="bg-slate-200/80 dark:bg-white/[0.08]" />
+              <DropdownMenuItem
+                className="cursor-pointer rounded-lg text-xs"
+                onSelect={() => dialog.openNewMission()}
+              >
+                <Rocket className="h-3.5 w-3.5 text-[#2563eb] dark:text-[#60a5fa]" />
+                New Mission
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer rounded-lg text-xs"
+                onSelect={() => dialog.openNewIssue()}
+              >
+                <SquarePen className="h-3.5 w-3.5 text-[#4d7c0f] dark:text-[#a3e635]" />
+                New Work Item
+                <kbd className="ml-auto rounded border border-slate-200 bg-slate-50 px-1 py-px font-mono text-[10px] text-slate-500 dark:border-white/10 dark:bg-white/[0.05] dark:text-slate-400">
+                  C
+                </kbd>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer rounded-lg text-xs"
+                onSelect={() => dialog.openNewAgent()}
+              >
+                <Bot className="h-3.5 w-3.5 text-amber-600 dark:text-[#f59e0b]" />
+                New Agent
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer rounded-lg text-xs"
+                onSelect={() => dialog.openNewProject()}
+              >
+                <FolderKanban className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
+                New Work Context
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
         <Button
           type="button"

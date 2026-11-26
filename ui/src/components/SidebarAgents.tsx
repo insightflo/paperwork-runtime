@@ -167,9 +167,9 @@ export function SidebarAgents() {
   const [open, setOpen] = useState(true);
   // Idle agents stay collapsed by default behind a 1-line `대기 (N)` toggle.
   const [idleOpen, setIdleOpen] = useState(false);
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canWrite } = useCompany();
   const { openNewAgent } = useDialog();
-  const { isMobile } = useSidebar();
+  const { isMobile, setSidebarOpen } = useSidebar();
   const location = useLocation();
   const { compact: rawCompact } = useSidebarDensity();
   const compact = rawCompact && !isMobile;
@@ -243,18 +243,20 @@ export function SidebarAgents() {
     <Collapsible open={compact ? true : open} onOpenChange={setOpen} className="flex min-h-0 flex-1 flex-col">
       {compact ? (
         <div className="mb-1 flex justify-center border-t border-sidebar-border pt-1.5">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              openNewAgent();
-            }}
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:bg-accent/50 hover:text-foreground"
-            aria-label="New agent"
-            title="New agent"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </button>
+          {canWrite !== false && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                openNewAgent();
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:bg-accent/50 hover:text-foreground"
+              aria-label="New agent"
+              title="New agent"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
       ) : (
         <div className="mb-1 flex shrink-0 items-center justify-between px-2">
@@ -270,18 +272,31 @@ export function SidebarAgents() {
             >
               ● {pinned.length}
             </span>
-            <button
-              type="button"
+            <NavLink
+              to="/agents"
               onClick={(e) => {
                 e.stopPropagation();
-                openNewAgent();
+                if (isMobile) setSidebarOpen(false);
               }}
-              className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:bg-accent/50 hover:text-foreground"
-              aria-label="New agent"
-              title="New agent"
+              className="rounded px-1 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+              title="전체 에이전트 보기"
             >
-              <Plus className="h-3 w-3" />
-            </button>
+              전체 →
+            </NavLink>
+            {canWrite !== false && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openNewAgent();
+                }}
+                className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:bg-accent/50 hover:text-foreground"
+                aria-label="New agent"
+                title="New agent"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            )}
           </div>
         </div>
       )}

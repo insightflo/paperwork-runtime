@@ -21,6 +21,7 @@ import {
   PanelLeftOpen,
   ChevronRight,
   FolderKanban,
+  Bot,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarNavItem } from "./SidebarNavItem";
@@ -229,10 +230,11 @@ export function Sidebar({ onToggleCompact }: SidebarProps = {}) {
                 />
                 {!compact && <span>관리 · 도구</span>}
               </span>
-              {!compact && <span className="font-mono text-[10px] text-muted-foreground/70">14</span>}
+              {!compact && <span className="font-mono text-[10px] text-muted-foreground/70">15</span>}
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-1 max-h-[40vh] overflow-y-auto scrollbar-auto-hide">
               <div className="flex flex-col gap-0.5">
+                <SidebarNavItem to="/bots" label="Bots" icon={Bot} />
                 <SidebarNavItem to="/quality" label="Quality" icon={ListChecks} />
                 <SidebarNavItem to="/org" label="Org" icon={Network} />
                 <SidebarNavItem to="/skills" label="Skills" icon={Boxes} />
