@@ -29,13 +29,13 @@ import {
 
 /* ── Cockpit vocabulary (shared with Work/Issues/Approvals): 1-row strip, 40px toolbar, hairline rows, semantic pills.
  * Every data-* hook and label string below is a test/audit contract. */
-const HAIRLINE_ROW = "rounded-md border border-[#242d3f] bg-[#111622] transition-colors hover:bg-[#151b28]";
+const HAIRLINE_ROW = "rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50 dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] dark:hover:bg-[#141b29]";
 const PILL_CLASS = "inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[10px] font-semibold uppercase tracking-wide";
-const BADGE_PILL = cn(PILL_CLASS, "border border-[#242d3f] bg-[#0b0e14] text-[#8b97ad]");
-const ATTENTION_TONE = { needed: "bg-[#fbbf24]/15 text-[#fbbf24]", none: "bg-[#34d399]/15 text-[#34d399]", unknown: "bg-[#8b97ad]/15 text-[#8b97ad]" } as const;
-const EVIDENCE_TEXT = "whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-[#b6c2d6]";
+const BADGE_PILL = cn(PILL_CLASS, "border border-slate-200/80 bg-slate-100/80 text-slate-500 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#8b97ad]");
+const ATTENTION_TONE = { needed: "bg-amber-500/10 text-amber-700 dark:bg-[#f59e0b]/15 dark:text-[#f59e0b]", none: "bg-lime-500/10 text-lime-700 dark:bg-[#a3e635]/15 dark:text-[#a3e635]", unknown: "bg-slate-500/10 text-slate-500 dark:bg-[#8b97ad]/15 dark:text-[#8b97ad]" } as const;
+const EVIDENCE_TEXT = "whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-slate-600 dark:text-[#b6c2d6]";
 const TAB_CLASS =
-  "h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors aria-pressed:bg-[#151b28] aria-pressed:text-[#e6edf7] aria-pressed:shadow-[inset_0_0_0_1px_#242d3f] text-[#8b97ad] hover:text-[#e6edf7]";
+  "h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors text-slate-500 hover:text-slate-950 aria-pressed:bg-white aria-pressed:text-slate-950 aria-pressed:shadow-[inset_0_0_0_1px_rgba(15,23,42,0.1)] dark:text-[#8b97ad] dark:hover:text-[#edf2fb] dark:aria-pressed:bg-[#151d2b] dark:aria-pressed:text-[#edf2fb] dark:aria-pressed:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]";
 
 function formatRequestTime(value: string): string {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
@@ -93,32 +93,32 @@ function RequestDecisionState({ state }: { state: HumanOperatorRequestStateV1 })
   const result = decision.result;
   const continuation = state.continuation;
   return (
-    <section data-human-operator-request-state={decision.status} className="mt-2 space-y-1.5 border-t border-[#242d3f] pt-2 text-xs">
+    <section data-human-operator-request-state={decision.status} className="mt-2 space-y-1.5 border-t border-slate-200/80 dark:border-white/[0.08] pt-2 text-xs">
       <dl className="grid gap-x-3 gap-y-0.5 sm:grid-cols-[max-content_1fr]">
-        <dt className="text-[#8b97ad]">{L(lang, { en: "Owner action issue", ko: "조치 소유 이슈" })}</dt>
+        <dt className="text-slate-500 dark:text-[#8b97ad]">{L(lang, { en: "Owner action issue", ko: "조치 소유 이슈" })}</dt>
         <dd data-owner-action-issue-id className={EVIDENCE_TEXT}>{state.ownerActionIssueId}</dd>
-        <dt className="text-[#8b97ad]">{L(lang, { en: "Source/navigation issue", ko: "원천·탐색 이슈" })}</dt>
+        <dt className="text-slate-500 dark:text-[#8b97ad]">{L(lang, { en: "Source/navigation issue", ko: "원천·탐색 이슈" })}</dt>
         <dd data-source-issue-id className={EVIDENCE_TEXT}>{state.sourceIssueId ?? L(lang, { en: "None recorded", ko: "기록된 원천 이슈 없음" })}</dd>
       </dl>
       {decision.status === "resolved" && result && (
         <div data-human-operator-decision-result className={EVIDENCE_TEXT}>
-          <p><span className="font-semibold text-[#e6edf7]">{L(lang, { en: "Selected result", ko: "선택 결과" })}:</span> {result.actionId} · {result.outcome}</p>
+          <p><span className="font-semibold text-slate-950 dark:text-[#edf2fb]">{L(lang, { en: "Selected result", ko: "선택 결과" })}:</span> {result.actionId} · {result.outcome}</p>
           {result.selectedOptionIds.length > 0 && <p>{L(lang, { en: "Selected options", ko: "선택 항목" })}: {result.selectedOptionIds.join(", ")}</p>}
           {result.comment && <p>{L(lang, { en: "Recorded comment", ko: "기록된 메모" })}: {result.comment}</p>}
         </div>
       )}
-      {decision.status === "cancelled" && <p className="text-[#8b97ad]">{L(lang, { en: "This decision was cancelled.", ko: "이 결정은 취소되었습니다." })}</p>}
+      {decision.status === "cancelled" && <p className="text-slate-500 dark:text-[#8b97ad]">{L(lang, { en: "This decision was cancelled.", ko: "이 결정은 취소되었습니다." })}</p>}
       {decision.status !== "pending" && (
         <div data-human-operator-continuation className="space-y-0.5">
-          <p className="font-semibold text-[#e6edf7]">{L(lang, { en: "Native follow-up state", ko: "후속 실행 상태" })}</p>
+          <p className="font-semibold text-slate-950 dark:text-[#edf2fb]">{L(lang, { en: "Native follow-up state", ko: "후속 실행 상태" })}</p>
           {!continuation
             ? <p className={EVIDENCE_TEXT}>{decision.continuationMode === "none" ? L(lang, { en: "No automatic follow-up is expected.", ko: "자동 후속 실행 대상이 아닙니다." }) : L(lang, { en: "Follow-up evidence needs review.", ko: "후속 실행 증거 확인 필요" })}</p>
             : <div className={EVIDENCE_TEXT}>
               <p>{continuationStatusLabel(lang, continuation.effectiveStatus)} · {continuation.state}</p>
               <p>{L(lang, { en: "Attempts", ko: "시도" })}: {continuation.attemptCount}/{continuation.maxAttempts} · {L(lang, { en: "Manual retries", ko: "수동 재시도" })}: {continuation.manualRetryCount}/{continuation.maxManualRetries}</p>
-              {continuation.errorCode && <p className="text-[#f87171]">{L(lang, { en: "Error code", ko: "오류 코드" })}: {continuation.errorCode}</p>}
+              {continuation.errorCode && <p className="text-rose-700 dark:text-[#f87171]">{L(lang, { en: "Error code", ko: "오류 코드" })}: {continuation.errorCode}</p>}
               {continuation.retryHint && <p>{L(lang, { en: "Read-only diagnostic hint", ko: "읽기 전용 진단 참고" })}: {continuation.retryHint}</p>}
-              {continuation.state === "accepted" && <p className="text-[#8b97ad]">{L(lang, { en: "Accepted delivery does not mean the mission or owner work is complete.", ko: "실행 접수는 미션 완료나 오너 작업 소비를 뜻하지 않습니다." })}</p>}
+              {continuation.state === "accepted" && <p className="text-slate-500 dark:text-[#8b97ad]">{L(lang, { en: "Accepted delivery does not mean the mission or owner work is complete.", ko: "실행 접수는 미션 완료나 오너 작업 소비를 뜻하지 않습니다." })}</p>}
             </div>}
         </div>
       )}
@@ -152,13 +152,13 @@ function HumanOperatorRow({ request, card, requestState, requestStateProblem, sc
   ) : null;
   const requestReasons = (<>
     {requestState && requestState.identity !== "exact" && requestState.reasonCode && (
-      <p data-human-operator-request-reason className={cn(EVIDENCE_TEXT, "text-[#8b97ad]")}>{L(lang, { en: "Reason", ko: "사유 코드" })}: {requestState.reasonCode}</p>
+      <p data-human-operator-request-reason className={cn(EVIDENCE_TEXT, "text-slate-500 dark:text-[#8b97ad]")}>{L(lang, { en: "Reason", ko: "사유 코드" })}: {requestState.reasonCode}</p>
     )}
-    {requestStateProblem && <p data-human-operator-request-reason className={cn(EVIDENCE_TEXT, "text-[#8b97ad]")}>{L(lang, { en: "Request state is shown as unknown.", ko: "요청 상태를 미확인으로 표시했습니다." })}</p>}
+    {requestStateProblem && <p data-human-operator-request-reason className={cn(EVIDENCE_TEXT, "text-slate-500 dark:text-[#8b97ad]")}>{L(lang, { en: "Request state is shown as unknown.", ko: "요청 상태를 미확인으로 표시했습니다." })}</p>}
   </>);
   const evidenceBody = (<>
-    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8b97ad]">{evidenceHeading}</p>
-    <p className="whitespace-pre-line font-mono text-xs leading-relaxed text-[#b6c2d6]">{request.summary}</p>
+    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-[#8b97ad]">{evidenceHeading}</p>
+    <p className="whitespace-pre-line font-mono text-xs leading-relaxed text-slate-600 dark:text-[#b6c2d6]">{request.summary}</p>
     {summaryPanel}
     {requestReasons}
   </>);
@@ -168,18 +168,18 @@ function HumanOperatorRow({ request, card, requestState, requestStateProblem, sc
   if (card) {
     return (
       <li data-human-operator-lifecycle={scope.lifecycle} className={cn(HAIRLINE_ROW, "p-2 [&>article]:rounded-md [&>article]:border-0 [&>article]:bg-transparent [&>article]:p-0")}>
-        <details data-human-operator-evidence-fold className="mb-1.5 border-b border-[#242d3f] pb-1.5 text-xs">
-          <summary className="flex min-w-0 cursor-pointer flex-wrap items-center gap-2 text-xs text-[#8b97ad]">
+        <details data-human-operator-evidence-fold className="mb-1.5 border-b border-slate-200/80 dark:border-white/[0.08] pb-1.5 text-xs">
+          <summary className="flex min-w-0 cursor-pointer flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-[#8b97ad]">
             <span data-human-input-card-badge className={BADGE_PILL}>{cardStatusBadge}</span>
             <span>{L(lang, { en: "Show request evidence", ko: "과거 요청 증거 보기" })}</span>
             <span className="font-mono tabular-nums">{formatRequestTime(request.timestamp)}</span>
           </summary>
           <div className="mt-2 space-y-1.5">
             {/* details 안 첫 번째 a[href] 가 missionLink(request)여야 기존 링크 계약이 유지된다. */}
-            <Link to={missionLink(request)} className="inline-flex items-center gap-1 text-xs font-medium text-[#5f8dff] underline">
+            <Link to={missionLink(request)} className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 dark:text-[#60a5fa] underline">
               {L(lang, { en: "Open mission", ko: "미션 열기" })}<ExternalLink className="h-3 w-3" />
             </Link>
-            <h2 className="min-w-0 truncate text-sm font-semibold text-[#e6edf7]">{request.title}</h2>
+            <h2 className="min-w-0 truncate text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">{request.title}</h2>
             {evidenceBody}
             {requestState?.identity === "exact" && requestStateProblem === null && <RequestDecisionState state={requestState} />}
           </div>
@@ -205,14 +205,14 @@ function HumanOperatorRow({ request, card, requestState, requestStateProblem, sc
           <summary className="flex min-w-0 cursor-pointer items-center gap-2 text-xs">
             <StatusBadge status={scope.missionStatus ?? "unknown"} />
             <span data-human-input-card-badge className={BADGE_PILL}>{cardStatusBadge}</span>
-            <span className="min-w-0 truncate font-medium text-[#e6edf7]">{request.title}</span>
-            {resultSummary && <span className="shrink-0 font-mono text-[11px] text-[#8b97ad]">{resultSummary}</span>}
+            <span className="min-w-0 truncate font-medium text-slate-950 dark:text-[#edf2fb]">{request.title}</span>
+            {resultSummary && <span className="shrink-0 font-mono text-[11px] text-slate-500 dark:text-[#8b97ad]">{resultSummary}</span>}
             {requestState.attention === true && <AttentionPill value="needed" />}
             {requestState.attention === false && <AttentionPill value="none" />}
             {requestState.attention === null && <AttentionPill value="unknown" />}
-            <span className="ml-auto shrink-0 font-mono text-[11px] text-[#8b97ad]">{formatRequestTime(decisionState.resolvedAt ?? decisionState.cancelledAt ?? request.timestamp)}</span>
+            <span className="ml-auto shrink-0 font-mono text-[11px] text-slate-500 dark:text-[#8b97ad]">{formatRequestTime(decisionState.resolvedAt ?? decisionState.cancelledAt ?? request.timestamp)}</span>
           </summary>
-          <div className="mt-2 space-y-1.5 border-t border-[#242d3f] pt-2">
+          <div className="mt-2 space-y-1.5 border-t border-slate-200/80 dark:border-white/[0.08] pt-2">
             <Button asChild variant="outline" size="sm" className="w-full shrink-0 lg:w-auto">
               <Link to={missionLink(request)}>{L(lang, { en: "Open mission", ko: "미션 열기" })}<ExternalLink className="ml-1.5 h-3.5 w-3.5" /></Link>
             </Button>
@@ -234,10 +234,10 @@ function HumanOperatorRow({ request, card, requestState, requestStateProblem, sc
             <StatusBadge status={scope.missionStatus ?? "unknown"} />
             <span data-human-input-card-badge className={BADGE_PILL}>{cardStatusBadge}</span>
             {(!requestState || requestState.attention === null) ? <AttentionPill value="unknown" /> : <AttentionPill value={requestState.attention ? "needed" : "none"} />}
-            <span className="font-mono text-[11px] text-[#8b97ad]">{formatRequestTime(request.timestamp)}</span>
+            <span className="font-mono text-[11px] text-slate-500 dark:text-[#8b97ad]">{formatRequestTime(request.timestamp)}</span>
           </div>
           <div>
-            <h2 className="min-w-0 truncate text-sm font-semibold text-[#e6edf7]">{request.title}</h2>
+            <h2 className="min-w-0 truncate text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">{request.title}</h2>
             <div className="mt-1 space-y-1">{evidenceBody}</div>
           </div>
         </div>
@@ -357,16 +357,16 @@ export function HumanOperator() {
     : L(lang, { en: `${surface.displayedCount} ${surface.displayedCount === 1 ? "item" : "items"} displayed`, ko: `항목 ${surface.displayedCount}개 표시 중` });
   const recentWindowNotice = L(lang, { en: "Showing a bounded recent request window; this is not a total or a count of all pending work.", ko: "최근 요청 일부 표시이며 전체 요청 또는 전체 대기 수가 아닙니다." });
   const stripCells = [
-    { label: L(lang, { en: "Pending cards", ko: "대기 카드" }), value: pendingCardCount, dot: cn("bg-[#fbbf24]", pendingCardCount > 0 && "animate-pulse") },
-    { label: L(lang, { en: "Requests", ko: "요청" }), value: requests.length, dot: "bg-[#5f8dff]" },
+    { label: L(lang, { en: "Pending cards", ko: "대기 카드" }), value: pendingCardCount, dot: cn("bg-amber-500 dark:bg-[#f59e0b]", pendingCardCount > 0 && "animate-pulse") },
+    { label: L(lang, { en: "Requests", ko: "요청" }), value: requests.length, dot: "bg-blue-500 dark:bg-[#60a5fa]" },
     { label: L(lang, { en: "Attention", ko: "주의 필요" }), value: attentionCount, dot: attentionCount > 0 ? "bg-[#f87171]" : "bg-[#4a5670]" },
-    { label: L(lang, { en: "Active/planning", ko: "활성/계획" }), value: surface.activeCount, dot: "bg-[#34d399]" },
+    { label: L(lang, { en: "Active/planning", ko: "활성/계획" }), value: surface.activeCount, dot: "bg-lime-500 dark:bg-[#a3e635]" },
   ];
 
   return (
     <div className="space-y-2 tabular-nums">
       {/* 1-row 5-cell cockpit strip: human queue telemetry */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label={L(lang, { en: "Human operator queue", ko: "사람 운영자 대기열" })}>
+      <div className="cockpit-strip w-full gap-0 rounded-xl border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]" role="group" aria-label={L(lang, { en: "Human operator queue", ko: "사람 운영자 대기열" })}>
         {stripCells.map((cell) => (
           <div key={cell.label} className="cockpit-cell min-w-0 flex-1 justify-center">
             <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.dot}`} />
@@ -376,49 +376,49 @@ export function HumanOperator() {
         ))}
         <div className="cockpit-cell min-w-0 shrink-0">
           <span className="truncate uppercase tracking-wide">{L(lang, { en: "Displayed", ko: "표시" })}</span>
-          <b className="ml-1 text-[#5f8dff]">{surface.displayedCount}</b>
+          <b className="ml-1 text-blue-700 dark:text-[#60a5fa]">{surface.displayedCount}</b>
         </div>
       </div>
 
       {/* Tight 40px toolbar: lifecycle section tabs · bounded-window notices · refresh action */}
-      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-2">
-        <div role="group" aria-label={L(lang, { en: "Jump to a mission group", ko: "미션 그룹으로 이동" })} className="flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5">
+      <div className="cockpit-toolbar h-10 rounded-xl border border-slate-200/90 bg-white px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
+        <div role="group" aria-label={L(lang, { en: "Jump to a mission group", ko: "미션 그룹으로 이동" })} className="flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-200/80 bg-slate-100/80 p-0.5 dark:border-white/[0.08] dark:bg-[#090c12]">
           {visibleSections.map((s) => (
             <button key={s.lifecycle} type="button" className={TAB_CLASS}
               onClick={() => document.getElementById(`human-operator-${s.lifecycle}-heading`)?.scrollIntoView?.({ block: "start" })}>
-              {s.title} <span className="ml-1 font-mono text-[10px] text-[#8b97ad]">{sectionCount(s.data)}</span>
+              {s.title} <span className="ml-1 font-mono text-[10px] text-slate-500 dark:text-[#8b97ad]">{sectionCount(s.data)}</span>
             </button>
           ))}
         </div>
         <div className="ml-2 flex min-w-0 flex-1 items-center gap-2 text-[11px]">
-          <p className="shrink-0 font-semibold text-[#e6edf7]">{displayedLabel}</p>
-          <p data-human-operator-recent-window className="min-w-0 truncate text-[#8b97ad]" title={recentWindowNotice}>{recentWindowNotice}</p>
+          <p className="shrink-0 font-semibold text-slate-950 dark:text-[#edf2fb]">{displayedLabel}</p>
+          <p data-human-operator-recent-window className="min-w-0 truncate text-slate-500 dark:text-[#8b97ad]" title={recentWindowNotice}>{recentWindowNotice}</p>
         </div>
-        <Button variant="outline" size="sm" className="ml-2 h-7 shrink-0 border-[#242d3f] bg-[#151b28] px-2.5 text-xs text-[#e6edf7] hover:bg-[#1a2131]" onClick={() => void refreshAll()} disabled={isFetching}>
+        <Button variant="outline" size="sm" className="ml-2 h-7 shrink-0 border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] px-2.5 text-xs text-slate-950 dark:text-[#edf2fb] hover:bg-slate-100 dark:hover:bg-[#141b29]" onClick={() => void refreshAll()} disabled={isFetching}>
           <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
           {isFetching ? "Refreshing" : "Refresh"}
         </Button>
       </div>
 
-      {error && <div className="flex items-center gap-2 rounded-md border border-[#f87171]/40 bg-[#f87171]/10 p-3 text-sm text-[#f87171]" role="alert">
+      {error && <div className="flex items-center gap-2 rounded-md border border-[#f87171]/40 bg-[#f87171]/10 p-3 text-sm text-rose-700 dark:text-[#f87171]" role="alert">
         <AlertTriangle className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate">{error instanceof Error ? error.message : "Failed to load Human Operator work."}</span>
       </div>}
 
-      {missionStatusNotice && <p className="truncate text-xs text-[#8b97ad]" role={missionsQuery.isError ? "alert" : "status"}>{missionStatusNotice}</p>}
+      {missionStatusNotice && <p className="truncate text-xs text-slate-500 dark:text-[#8b97ad]" role={missionsQuery.isError ? "alert" : "status"}>{missionStatusNotice}</p>}
 
       {visibleSections.map(({ lifecycle, title, note, data }) => {
         const count = sectionCount(data);
         const headingId = `human-operator-${lifecycle}-heading`;
         return (
           <section key={lifecycle} aria-labelledby={headingId} className="scroll-mt-2 space-y-1.5">
-            <h2 id={headingId} className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8b97ad]">
-              {title} <b className="font-mono text-[10px] font-medium text-[#5f8dff]">{count}</b>
+            <h2 id={headingId} className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-[#8b97ad]">
+              {title} <b className="font-mono text-[10px] font-medium text-blue-700 dark:text-[#60a5fa]">{count}</b>
               <span className="sr-only">{L(lang, { en: `${count} displayed`, ko: `${count}개 표시` })}</span>
             </h2>
-            {note && count > 0 && <p className="text-xs text-[#8b97ad]">{note}</p>}
+            {note && count > 0 && <p className="text-xs text-slate-500 dark:text-[#8b97ad]">{note}</p>}
             {data.cards.length > 0 && (
-              <div aria-label={L(lang, { en: "Pending Interactive Cards", ko: "대기 중인 인터랙티브 카드" })} className="space-y-1.5 [&>article]:rounded-md [&>article]:border-[#242d3f] [&>article]:bg-[#111622]">
-                <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8b97ad]">{L(lang, { en: "Pending Interactive Cards", ko: "대기 중인 인터랙티브 카드" })}</h3>
+              <div aria-label={L(lang, { en: "Pending Interactive Cards", ko: "대기 중인 인터랙티브 카드" })} className="space-y-1.5 [&>article]:rounded-xl [&>article]:border-slate-200/90 [&>article]:bg-white [&>article]:shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:[&>article]:border-white/[0.08] dark:[&>article]:bg-[#0e131d] dark:[&>article]:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-[#8b97ad]">{L(lang, { en: "Pending Interactive Cards", ko: "대기 중인 인터랙티브 카드" })}</h3>
                 {data.cards.map(({ decision }) => <OperatorDecisionCard key={decision.id} decision={decision} onResolve={resolveDecision} />)}
               </div>
             )}
@@ -435,7 +435,7 @@ export function HumanOperator() {
               />
             ))}</ul>}
             {surface.displayedCount === 0 && lifecycle === "active" && (
-              <h3 data-human-operator-empty-heading tabIndex={-1} className="text-sm font-medium text-[#e6edf7]">
+              <h3 data-human-operator-empty-heading tabIndex={-1} className="text-sm font-medium text-slate-950 dark:text-[#edf2fb]">
                 {L(lang, { en: "No requests in this recent window.", ko: "최근 요청 범위에 표시할 요청이 없습니다." })}
               </h3>
             )}
