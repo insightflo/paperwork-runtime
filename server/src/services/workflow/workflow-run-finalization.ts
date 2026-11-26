@@ -16,6 +16,8 @@ import {
 import { applyLinkedWorkflowRunFinalization, reloadWorkflowRunForFinalization } from "./workflow-child-native-finalization.js";
 import { stopMissionRuntimesForMission, TERMINAL_WORKFLOW_STATUSES } from "../missions/mission-runtime-manager.js";
 import { logActivity } from "../activity-log.js";
+import { hasRunnableControlFlowSkippedStep } from "./conditional-skip-revival.js";
+import type { ValidationVerdictObservation } from "./dag-readiness-facts.js";
 
 const WORKFLOW_STEP_TERMINAL_STATUSES = new Set(["completed", "failed", "skipped"]);
 
@@ -23,6 +25,11 @@ interface WorkflowRunFinalizationHooks {
   normalizeRecord(value: unknown): Record<string, unknown>;
   getDynamicLaunchStepIds(context: WorkflowExecutionContext): Set<string> | undefined;
   buildWorkflowDefinitionExecutionShape(context: WorkflowExecutionContext): WorkflowDefinitionExecutionShape;
+  controlFlowGuard?: {
+    validationVerdictsByIssueId?: Map<string, ValidationVerdictObservation>;
+    v1EnforcementEnabled?: boolean;
+    issueStatusByIssueId?: Map<string, string>;
+  };
 }
 
 export async function finalizeWorkflowRunState(
@@ -52,12 +59,22 @@ export async function finalizeWorkflowRunState(
   const allStepsTerminal = dynamicLaunchStepIds
     ? executableStepRuns.length === dynamicLaunchStepIds.size && !executableHasActiveStep
     : stepRuns.length === context.steps.length && !hasActiveStep;
+  const hasRunnableSkippedControlFlowStep = hooks.controlFlowGuard
+    ? hasRunnableControlFlowSkippedStep({
+      steps: context.steps,
+      stepRuns,
+      validationVerdictsByIssueId: hooks.controlFlowGuard.validationVerdictsByIssueId,
+      v1EnforcementEnabled: hooks.controlFlowGuard.v1EnforcementEnabled,
+      issueStatusByIssueId: hooks.controlFlowGuard.issueStatusByIssueId,
+      dynamicLaunchStepIds,
+    })
+    : false;
   const candidateStatus =
     context.run.status === "cancelled"
       ? "cancelled"
       : hasFailedStep && allStepsTerminal
         ? "failed"
-        : !hasFailedStep && allStepsTerminal
+        : !hasFailedStep && allStepsTerminal && !hasRunnableSkippedControlFlowStep
           ? "completed"
           : "running";
   const deferConvergence =
