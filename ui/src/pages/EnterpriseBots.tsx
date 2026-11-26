@@ -24,18 +24,33 @@ import type { Company, CompanySecret } from "@paperclipai/shared";
 import { authApi } from "../api/auth";
 import {
   enterpriseBotsApi,
+  type BotCapabilityMatrixEntry,
   type BotTerminalAction,
   type BotTerminalTransport,
   type CreateBotInput,
   type CreateBotResponse,
+  type EnterpriseBotAuditEvent,
   type EnterpriseBotCallableBy,
   type EnterpriseBotsSnapshot,
+  type HealthSample,
   type PingBotResponse,
   type RegisterTerminalResponse,
+  type TerminalTelemetry,
   type UpdateBotInput,
 } from "../api/enterprise-bots";
 import { secretsApi } from "../api/secrets";
 import { EmptyState } from "../components/EmptyState";
+import { ApprovalQueueDrawer } from "../components/enterprise-bots/ApprovalQueueDrawer";
+import { BotHealthSparkline } from "../components/enterprise-bots/BotHealthSparkline";
+import { CapabilityMatrix, type BotCapabilityRule } from "../components/enterprise-bots/CapabilityMatrix";
+import {
+  ChannelInvokePreview,
+  type ChannelAuditEntry,
+  type ChannelInvokePreviewRequest,
+  type ChannelInvokePreviewResult,
+} from "../components/enterprise-bots/ChannelInvokePreview";
+import { TerminalPairingBanner } from "../components/enterprise-bots/TerminalPairingBanner";
+import { TerminalTelemetryCard } from "../components/enterprise-bots/TerminalTelemetryCard";
 import { CompanyContext } from "../context/CompanyContext";
 import { useToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
@@ -60,11 +75,13 @@ export interface EnterpriseBot {
   callableBy: CallableBy;
   dataScope: DataScope;
   capabilities: string[];
+  capabilityRules?: BotCapabilityRule[];
   ownerName: string;
   webhookUrl?: string | null;
   apiSecretId?: string | null;
   lastPingStatus?: string | null;
   lastPingLatencyMs?: number | null;
+  healthHistory?: HealthSample[];
 }
 
 export interface ClientTerminal {
@@ -76,6 +93,8 @@ export interface ClientTerminal {
   ownerName: string;
   lastHeartbeatAt: string | null;
   transport?: BotTerminalTransport;
+  telemetry?: TerminalTelemetry | null;
+  healthHistory?: HealthSample[];
 }
 
 export interface Channel {
@@ -129,8 +148,13 @@ export interface EnterpriseBotsProps {
   ) => Promise<RegisterTerminalResponse | void> | RegisterTerminalResponse | void;
   onPingBot?: (botId: string) => Promise<PingBotResponse | void> | PingBotResponse | void;
   onUpdateBot?: (botId: string, patch: UpdateBotInput) => Promise<unknown> | void;
+  onUpdateBotCapabilities?: (botId: string, capabilities: BotCapabilityMatrixEntry[]) => Promise<unknown> | void;
   onDeleteBot?: (botId: string) => Promise<unknown> | void;
   onCommandTerminal?: (terminalId: string, action: BotTerminalAction) => Promise<unknown> | void;
+  onPreviewChannelInvoke?: (
+    request: ChannelInvokePreviewRequest,
+  ) => Promise<ChannelInvokePreviewResult | void> | ChannelInvokePreviewResult | void;
+  auditEntries?: ChannelAuditEntry[];
 }
 
 export const EXEC_OWNER_ONLY_REASON =
@@ -167,6 +191,7 @@ function normalizeSnapshot(snapshot: EnterpriseBotsSnapshot): EnterpriseBotsData
       apiSecretId: b.apiSecretId ?? null,
       lastPingStatus: b.lastPingStatus ?? null,
       lastPingLatencyMs: b.lastPingLatencyMs ?? null,
+      healthHistory: b.healthHistory ?? [],
     })),
     terminals: (snapshot.terminals ?? []).map((t) => ({
       id: t.id,
@@ -177,6 +202,8 @@ function normalizeSnapshot(snapshot: EnterpriseBotsSnapshot): EnterpriseBotsData
       ownerName: t.ownerName ?? t.ownerUserId ?? "Company",
       lastHeartbeatAt: t.lastHeartbeatAt ?? t.lastSeenAt ?? null,
       transport: t.transport,
+      telemetry: t.telemetry ?? null,
+      healthHistory: t.healthHistory ?? [],
     })),
     channels: (snapshot.channels ?? []).map((c) => ({
       id: c.id,
@@ -219,6 +246,51 @@ interface IssuedTokenBanner {
   label: string;
   token: string;
   hint: string;
+}
+
+interface PairingBannerState {
+  terminalId: string;
+  terminalName: string;
+  oneTimeToken: string;
+  lastSeenAt: string | null;
+}
+
+function mapAuditEvents(events: EnterpriseBotAuditEvent[]): ChannelAuditEntry[] {
+  return events.map((ev) => {
+    const details = ev.details ?? {};
+    const outcome =
+      typeof details.outcome === "string"
+        ? details.outcome
+        : typeof details.decision === "string"
+          ? details.decision
+          : "recorded";
+    const detail =
+      typeof details.reason === "string"
+        ? details.reason
+        : typeof details.capabilityKey === "string"
+          ? `${details.capabilityKey}${typeof details.executionTarget === "string" ? ` · ${details.executionTarget}` : ""}`
+          : null;
+    return {
+      id: ev.id,
+      timestamp: ev.createdAt,
+      actor: ev.actorId || ev.actorType,
+      action: ev.action,
+      outcome,
+      detail,
+    };
+  });
+}
+
+function toCapabilityRules(bot: EnterpriseBot): BotCapabilityRule[] {
+  if (bot.capabilityRules) return bot.capabilityRules;
+  const defaultCallable: EnterpriseBotCallableBy =
+    bot.callableBy === "owner" ? "self_only" : bot.callableBy;
+  return bot.capabilities.map((capabilityKey) => ({
+    capabilityKey,
+    callableBy: defaultCallable,
+    dataScope: bot.dataScope,
+    requiresApproval: bot.kind === "personal",
+  }));
 }
 
 const TAB_CLASS =
@@ -336,8 +408,11 @@ export function EnterpriseBots(props: EnterpriseBotsProps) {
       onRegisterTerminalSubmit={props.onRegisterTerminalSubmit}
       onPingBot={props.onPingBot}
       onUpdateBot={props.onUpdateBot}
+      onUpdateBotCapabilities={props.onUpdateBotCapabilities}
       onDeleteBot={props.onDeleteBot}
       onCommandTerminal={props.onCommandTerminal}
+      onPreviewChannelInvoke={props.onPreviewChannelInvoke}
+      auditEntries={props.auditEntries ?? []}
     />
   );
 }
@@ -353,8 +428,11 @@ function LiveEnterpriseBots({
   onRegisterTerminalSubmit,
   onPingBot,
   onUpdateBot,
+  onUpdateBotCapabilities,
   onDeleteBot,
   onCommandTerminal,
+  onPreviewChannelInvoke,
+  auditEntries,
 }: EnterpriseBotsProps & { companyId: string; selectedCompany: Company | null }) {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
@@ -362,6 +440,11 @@ function LiveEnterpriseBots({
   const snapshotQuery = useQuery({
     queryKey: queryKeys.enterpriseBots.snapshot(companyId),
     queryFn: () => enterpriseBotsApi.getSnapshot(companyId),
+  });
+
+  const auditQuery = useQuery({
+    queryKey: queryKeys.enterpriseBots.audit(companyId),
+    queryFn: () => enterpriseBotsApi.getAudit(companyId, 50),
   });
 
   const secretsQuery = useQuery({
@@ -384,9 +467,16 @@ function LiveEnterpriseBots({
         : { bots: [], terminals: [], channels: [], pendingApprovals: [] },
     [snapshotQuery.data],
   );
+  const resolvedAuditEntries = useMemo<ChannelAuditEntry[]>(
+    () => auditEntries ?? mapAuditEvents(auditQuery.data?.events ?? []),
+    [auditEntries, auditQuery.data],
+  );
 
   const invalidateSnapshot = () =>
-    queryClient.invalidateQueries({ queryKey: queryKeys.enterpriseBots.snapshot(companyId) });
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.enterpriseBots.snapshot(companyId) }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.enterpriseBots.audit(companyId) }),
+    ]);
 
   const handleCreateBot = async (input: AttachBotSubmitPayload) => {
     if (onCreateBot) return onCreateBot(input);
@@ -457,6 +547,36 @@ function LiveEnterpriseBots({
     return result;
   };
 
+  const handleUpdateBotCapabilities = async (botId: string, capabilities: BotCapabilityMatrixEntry[]) => {
+    if (onUpdateBotCapabilities) return onUpdateBotCapabilities(botId, capabilities);
+    const result = await enterpriseBotsApi.updateBotCapabilities(companyId, botId, capabilities);
+    await invalidateSnapshot();
+    pushToast({
+      title: "Bot capabilities saved",
+      body: `${result.bot.name} (${result.capabilities.length})`,
+      tone: "success",
+    });
+    return result;
+  };
+
+  const handlePreviewChannelInvoke = async (
+    request: ChannelInvokePreviewRequest,
+  ): Promise<ChannelInvokePreviewResult | void> => {
+    if (onPreviewChannelInvoke) return onPreviewChannelInvoke(request);
+    const res = await enterpriseBotsApi.previewChannelInvoke(request.channelId, {
+      companyId,
+      targetBotId: request.targetBotId,
+      capabilityKey: request.capabilityKey,
+      executionTarget: request.executionTarget === "channel_only" ? "none" : request.executionTarget,
+    });
+    return {
+      outcome: res.outcome,
+      forcedFilter: res.forcedFilter,
+      reasonCode: res.reason,
+      summary: res.reason,
+    };
+  };
+
   const handleDeleteBot = async (botId: string) => {
     if (onDeleteBot) return onDeleteBot(botId);
     const result = await enterpriseBotsApi.deleteBot(companyId, botId);
@@ -506,8 +626,11 @@ function LiveEnterpriseBots({
       onRegisterTerminalSubmit={handleRegisterTerminalSubmit}
       onPingBot={handlePingBot}
       onUpdateBot={handleUpdateBot}
+      onUpdateBotCapabilities={handleUpdateBotCapabilities}
       onDeleteBot={handleDeleteBot}
       onCommandTerminal={handleCommandTerminal}
+      onPreviewChannelInvoke={handlePreviewChannelInvoke}
+      auditEntries={resolvedAuditEntries}
       onActionError={(title, err) =>
         pushToast({
           title,
@@ -535,8 +658,13 @@ interface EnterpriseBotsCockpitProps {
   ) => Promise<RegisterTerminalResponse | void> | RegisterTerminalResponse | void;
   onPingBot?: (botId: string) => Promise<PingBotResponse | void> | PingBotResponse | void;
   onUpdateBot?: (botId: string, patch: UpdateBotInput) => Promise<unknown> | void;
+  onUpdateBotCapabilities?: (botId: string, capabilities: BotCapabilityMatrixEntry[]) => Promise<unknown> | void;
   onDeleteBot?: (botId: string) => Promise<unknown> | void;
   onCommandTerminal?: (terminalId: string, action: BotTerminalAction) => Promise<unknown> | void;
+  onPreviewChannelInvoke?: (
+    request: ChannelInvokePreviewRequest,
+  ) => Promise<ChannelInvokePreviewResult | void> | ChannelInvokePreviewResult | void;
+  auditEntries: ChannelAuditEntry[];
   onActionError?: (title: string, err: unknown) => void;
 }
 
@@ -554,8 +682,11 @@ function EnterpriseBotsCockpit({
   onRegisterTerminalSubmit,
   onPingBot,
   onUpdateBot,
+  onUpdateBotCapabilities,
   onDeleteBot,
   onCommandTerminal,
+  onPreviewChannelInvoke,
+  auditEntries,
   onActionError,
 }: EnterpriseBotsCockpitProps) {
   const [tab, setTab] = useState<Tab>("bots");
@@ -563,11 +694,20 @@ function EnterpriseBotsCockpit({
   const [selected, setSelected] = useState<Partial<Record<Tab, string>>>({});
   const [attachOpen, setAttachOpen] = useState(false);
   const [registerTerminalOpen, setRegisterTerminalOpen] = useState(false);
+  const [approvalDrawerOpen, setApprovalDrawerOpen] = useState(false);
   const [issuedToken, setIssuedToken] = useState<IssuedTokenBanner | null>(null);
+  const [pairingBanner, setPairingBanner] = useState<PairingBannerState | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [pingResults, setPingResults] = useState<Record<string, PingBotResponse>>({});
+  const [pingSamples, setPingSamples] = useState<Record<string, HealthSample[]>>({});
   const now = Date.parse(data.now ?? new Date().toISOString());
+  const canAdmin = viewerRole === "owner" || viewerRole === "admin";
+  const serverUrl =
+    typeof window !== "undefined" && window.location?.origin ? window.location.origin : "http://localhost:3100";
+  const pairedTerminal = pairingBanner
+    ? data.terminals.find((t) => t.id === pairingBanner.terminalId)
+    : undefined;
 
   const q = search.trim().toLowerCase();
   const lists = useMemo(
@@ -584,10 +724,10 @@ function EnterpriseBotsCockpit({
   const meta = TABS.find((t) => t.key === tab)!;
 
   const strip = [
-    { label: "Active Bots", value: data.bots.filter((b) => b.status === "active").length, dot: STATUS_DOT.active, tab: "bots" },
-    { label: "Online Terminals", value: data.terminals.filter((t) => t.status === "online").length, dot: STATUS_DOT.online, tab: "terminals" },
-    { label: "Shared Channels", value: data.channels.length, dot: "bg-blue-500 dark:bg-[#60a5fa]", tab: "channels" },
-    { label: "Pending Owner Approvals", value: data.pendingApprovals.length, dot: data.pendingApprovals.length ? STATUS_DOT.paused : STATUS_DOT.offline, tab: "channels" },
+    { label: "Active Bots", value: data.bots.filter((b) => b.status === "active").length, dot: STATUS_DOT.active, tab: "bots" as Tab, openApprovals: false },
+    { label: "Online Terminals", value: data.terminals.filter((t) => t.status === "online").length, dot: STATUS_DOT.online, tab: "terminals" as Tab, openApprovals: false },
+    { label: "Shared Channels", value: data.channels.length, dot: "bg-blue-500 dark:bg-[#60a5fa]", tab: "channels" as Tab, openApprovals: false },
+    { label: "Pending Owner Approvals", value: data.pendingApprovals.length, dot: data.pendingApprovals.length ? STATUS_DOT.paused : STATUS_DOT.offline, tab: null, openApprovals: true },
   ] as const;
 
   const runAction = async (key: string, errorTitle: string, fn: () => Promise<unknown> | unknown) => {
@@ -621,22 +761,25 @@ function EnterpriseBotsCockpit({
         role="group"
         aria-label="Enterprise bot telemetry"
       >
-        {strip.map((cell) => (
-          <button
-            key={cell.label}
-            type="button"
-            onClick={() => setTab(cell.tab)}
-            className={`cockpit-cell flex-1 min-w-0 cursor-pointer justify-center px-3 transition-colors ${
-              tab === cell.tab
-                ? "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_#2563eb] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_#60a5fa]"
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]"
-            }`}
-          >
-            <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${cell.dot}`} />
-            <span className="truncate text-[11px] font-semibold uppercase tracking-[0.1em]">{cell.label}</span>
-            <b className="ml-0.5 font-mono text-xs font-semibold text-slate-950 dark:text-[#edf2fb]">{cell.value}</b>
-          </button>
-        ))}
+        {strip.map((cell) => {
+          const isActive = cell.openApprovals ? approvalDrawerOpen : tab === cell.tab && !approvalDrawerOpen;
+          return (
+            <button
+              key={cell.label}
+              type="button"
+              onClick={() => (cell.openApprovals ? setApprovalDrawerOpen(true) : setTab(cell.tab))}
+              className={`cockpit-cell flex-1 min-w-0 cursor-pointer justify-center px-3 transition-colors ${
+                isActive
+                  ? "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_#2563eb] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_#60a5fa]"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]"
+              }`}
+            >
+              <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${cell.dot}`} />
+              <span className="truncate text-[11px] font-semibold uppercase tracking-[0.1em]">{cell.label}</span>
+              <b className="ml-0.5 font-mono text-xs font-semibold text-slate-950 dark:text-[#edf2fb]">{cell.value}</b>
+            </button>
+          );
+        })}
       </div>
 
       {/* Unified Combo 1 40px tactile cockpit toolbar */}
@@ -684,7 +827,19 @@ function EnterpriseBotsCockpit({
         </button>
       </div>
 
-      {/* One-time bearer token banner (pcp_bot_... or pcp_term_...) */}
+      {/* OpenBot-style terminal pairing banner (env-var daemon & doctor commands + live heartbeat) */}
+      {pairingBanner && (
+        <TerminalPairingBanner
+          terminalId={pairingBanner.terminalId}
+          terminalName={pairingBanner.terminalName}
+          oneTimeToken={pairingBanner.oneTimeToken}
+          serverUrl={serverUrl}
+          lastSeenAt={pairedTerminal?.lastHeartbeatAt ?? pairingBanner.lastSeenAt}
+          onDismiss={() => setPairingBanner(null)}
+        />
+      )}
+
+      {/* One-time bot inbound bearer token banner (pcp_bot_...) */}
       {issuedToken && (
         <div
           role="status"
@@ -832,14 +987,29 @@ function EnterpriseBotsCockpit({
           {tab === "bots" && (
             <BotDetail
               bot={data.bots.find((b) => b.id === currentId)}
+              canAdmin={canAdmin}
               pingResult={currentId ? pingResults[currentId] : undefined}
+              extraSamples={currentId ? pingSamples[currentId] : undefined}
               busyAction={busyAction}
               onPing={
                 onPingBot
                   ? (botId) =>
                       void runAction(`ping:${botId}`, "Ping failed", async () => {
                         const res = await onPingBot(botId);
-                        if (res) setPingResults((prev) => ({ ...prev, [botId]: res }));
+                        if (res) {
+                          setPingResults((prev) => ({ ...prev, [botId]: res }));
+                          const sample: HealthSample = {
+                            ts: res.checkedAt ?? new Date().toISOString(),
+                            ok: res.ok,
+                            rttMs: res.latencyMs ?? null,
+                            statusCode: typeof res.status === "number" ? res.status : null,
+                            errorRef: res.error ?? null,
+                          };
+                          setPingSamples((prev) => ({
+                            ...prev,
+                            [botId]: [...(prev[botId] ?? []), sample].slice(-20),
+                          }));
+                        }
                       })
                   : undefined
               }
@@ -848,6 +1018,14 @@ function EnterpriseBotsCockpit({
                   ? (bot) =>
                       void runAction(`status:${bot.id}`, "Failed to update bot", () =>
                         onUpdateBot(bot.id, { status: bot.status === "paused" ? "active" : "paused" }),
+                      )
+                  : undefined
+              }
+              onSaveCapabilities={
+                onUpdateBotCapabilities
+                  ? (botId, next) =>
+                      void runAction(`caps:${botId}`, "Failed to save capabilities", () =>
+                        onUpdateBotCapabilities(botId, next),
                       )
                   : undefined
               }
@@ -878,8 +1056,18 @@ function EnterpriseBotsCockpit({
           {tab === "channels" && (
             <ChannelDetail
               channel={data.channels.find((c) => c.id === currentId)}
+              bots={data.bots}
               approvals={data.pendingApprovals}
+              auditEntries={auditEntries}
               busyAction={busyAction}
+              onPreview={
+                onPreviewChannelInvoke
+                  ? async (request) =>
+                      (await runAction(`preview:${request.channelId}`, "Dry-run preview failed", () =>
+                        onPreviewChannelInvoke(request),
+                      )) as ChannelInvokePreviewResult | undefined
+                  : undefined
+              }
               onDecision={
                 onApprovalDecision
                   ? (approvalId, decision) =>
@@ -892,6 +1080,24 @@ function EnterpriseBotsCockpit({
           )}
         </section>
       </div>
+
+      <ApprovalQueueDrawer
+        open={approvalDrawerOpen}
+        approvals={data.pendingApprovals}
+        canAdmin={canAdmin}
+        viewerId={viewerId}
+        busyApprovalId={busyAction?.startsWith("approval:") ? busyAction.slice("approval:".length) : null}
+        now={now}
+        onClose={() => setApprovalDrawerOpen(false)}
+        onDecision={
+          onApprovalDecision
+            ? (approvalId, decision) =>
+                void runAction(`approval:${approvalId}`, "Failed to submit approval decision", () =>
+                  onApprovalDecision(approvalId, decision),
+                )
+            : undefined
+        }
+      />
 
       {attachOpen && (
         <AttachOpenBotModal
@@ -924,12 +1130,12 @@ function EnterpriseBotsCockpit({
             );
             const created = res as RegisterTerminalResponse | undefined;
             if (created?.token) {
-              setIssuedToken({
-                label: `One-time terminal token for ${created.terminal?.name ?? payload.name}`,
-                token: created.token,
-                hint: "Store this pcp_term_ bearer token for terminal heartbeats. It will not be shown again.",
+              setPairingBanner({
+                terminalId: created.terminal?.id ?? "",
+                terminalName: created.terminal?.name ?? payload.name,
+                oneTimeToken: created.token,
+                lastSeenAt: created.terminal?.lastSeenAt ?? null,
               });
-              setTokenCopied(false);
             }
             setRegisterTerminalOpen(false);
           }}
@@ -941,22 +1147,30 @@ function EnterpriseBotsCockpit({
 
 function BotDetail({
   bot,
+  canAdmin,
   pingResult,
+  extraSamples,
   busyAction,
   onPing,
   onToggleStatus,
+  onSaveCapabilities,
   onRevoke,
 }: {
   bot?: EnterpriseBot;
+  canAdmin: boolean;
   pingResult?: PingBotResponse;
+  extraSamples?: HealthSample[];
   busyAction: string | null;
   onPing?: (botId: string) => void;
   onToggleStatus?: (bot: EnterpriseBot) => void;
+  onSaveCapabilities?: (botId: string, capabilities: BotCapabilityMatrixEntry[]) => void;
   onRevoke?: (botId: string) => void;
 }) {
+  const capabilityRules = useMemo(() => (bot ? toCapabilityRules(bot) : []), [bot]);
   if (!bot) return <p className="text-xs text-slate-500 dark:text-[#8b97ad]">Select a bot to inspect its capabilities.</p>;
   const isPaused = bot.status === "paused";
   const isRevoked = bot.status === "revoked";
+  const combinedSamples = [...(bot.healthHistory ?? []), ...(extraSamples ?? [])].slice(-20);
   const rows: [string, ReactNode][] = [
     ["Kind", <KindTag>{bot.kind}</KindTag>],
     ["Owner", bot.ownerName],
@@ -987,6 +1201,7 @@ function BotDetail({
           <Activity className="h-3.5 w-3.5" aria-hidden />
           Test Ping
         </button>
+        <BotHealthSparkline samples={combinedSamples} slots={20} width={112} height={24} />
         <button
           type="button"
           disabled={!onToggleStatus || isRevoked || busyAction !== null}
@@ -1020,16 +1235,12 @@ function BotDetail({
             : `Ping failed: ${pingResult.error ?? pingResult.status ?? "unreachable"}`}
         </div>
       )}
-      <div className="space-y-2">
-        <SectionTitle>Capabilities</SectionTitle>
-        <div className="flex flex-wrap gap-1.5">
-          {bot.capabilities.length > 0 ? (
-            bot.capabilities.map((c) => <KindTag key={c}>{c}</KindTag>)
-          ) : (
-            <span className="text-xs text-slate-500 dark:text-[#8b97ad]">No declared capabilities.</span>
-          )}
-        </div>
-      </div>
+      <CapabilityMatrix
+        capabilities={capabilityRules}
+        canAdmin={canAdmin && !isRevoked}
+        saving={busyAction === `caps:${bot.id}`}
+        onSave={(next) => onSaveCapabilities?.(bot.id, next)}
+      />
     </div>
   );
 }
@@ -1067,6 +1278,20 @@ function TerminalDetail({
           ["Last heartbeat", <span className="font-mono" title={terminal.lastHeartbeatAt ?? undefined}>{since(terminal.lastHeartbeatAt, now)}</span>],
           ["You", `${viewerRole}${isOwner ? " · owner" : ""}`],
         ]}
+      />
+      <TerminalTelemetryCard
+        telemetry={{
+          transport: terminal.transport ?? "outbound_wss",
+          os: terminal.telemetry?.os ?? null,
+          arch: terminal.telemetry?.arch ?? null,
+          daemonVersion: terminal.telemetry?.daemonVersion ?? null,
+          rttMs: terminal.telemetry?.lastRttMs ?? null,
+          cpuPercent: terminal.telemetry?.cpuPct ?? null,
+          memoryMb: terminal.telemetry?.memRssMb ?? null,
+          lastHeartbeatAt: terminal.lastHeartbeatAt,
+          samples: terminal.healthHistory ?? [],
+        }}
+        now={now}
       />
       <div className="flex flex-wrap gap-2" aria-label="Terminal actions">
         <button
@@ -1115,13 +1340,21 @@ function TerminalDetail({
 
 function ChannelDetail({
   channel,
+  bots,
   approvals,
+  auditEntries,
   busyAction,
+  onPreview,
   onDecision,
 }: {
   channel?: Channel;
+  bots: EnterpriseBot[];
   approvals: PendingOwnerApproval[];
+  auditEntries: ChannelAuditEntry[];
   busyAction: string | null;
+  onPreview?: (
+    request: ChannelInvokePreviewRequest,
+  ) => Promise<ChannelInvokePreviewResult | void> | ChannelInvokePreviewResult | void;
   onDecision?: (approvalId: string, decision: "approve" | "deny") => void;
 }) {
   const queue = channel ? approvals.filter((p) => p.channelId === channel.id) : approvals;
@@ -1138,6 +1371,21 @@ function ChannelDetail({
         </div>
       ) : (
         <p className="text-xs text-slate-500 dark:text-[#8b97ad]">Select a channel to see its members.</p>
+      )}
+      {channel && (
+        <ChannelInvokePreview
+          channelId={channel.id}
+          channelName={channel.name}
+          bots={bots.map((b) => ({
+            id: b.id,
+            name: b.name,
+            kind: b.kind,
+            capabilities: b.capabilities,
+          }))}
+          auditEntries={auditEntries}
+          busy={busyAction === `preview:${channel.id}`}
+          onPreview={onPreview}
+        />
       )}
       <div className="space-y-2">
         <SectionTitle>Pending owner approvals · {queue.length}</SectionTitle>

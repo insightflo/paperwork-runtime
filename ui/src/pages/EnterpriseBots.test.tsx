@@ -199,7 +199,7 @@ describe("EnterpriseBots cockpit", () => {
     expect(container.querySelector("[data-issued-token]")?.textContent).toBe("pcp_bot_secret_once_123");
   });
 
-  it("opens Register Terminal dialog and shows one-time pcp_term_ token banner on submit", async () => {
+  it("opens Register Terminal dialog and shows TerminalPairingBanner with env-var daemon & doctor commands on submit", async () => {
     const onRegisterTerminalSubmit = vi.fn().mockResolvedValue({
       terminal: {
         id: "t-new",
@@ -241,7 +241,13 @@ describe("EnterpriseBots cockpit", () => {
       kind: "personal_terminal",
       transport: "outbound_wss",
     });
-    expect(container.querySelector("[data-issued-token]")?.textContent).toBe("pcp_term_once_999");
+    const banner = container.querySelector("[data-terminal-pairing-banner]")!;
+    expect(banner).toBeTruthy();
+    expect(banner.getAttribute("data-pairing-status")).toBe("waiting");
+    const snippet = banner.querySelector("[data-pairing-snippet]")?.textContent ?? "";
+    expect(snippet).toContain("export PAPERWORK_TERMINAL_TOKEN='pcp_term_once_999'");
+    expect(snippet).toContain('paperwork-bot daemon --server');
+    expect(banner.querySelector("[data-doctor-snippet]")?.textContent).toContain("paperwork-bot doctor");
   });
 
   it("wires Bot Test Ping, Pause, Revoke and Terminal Stop/Revoke live action callbacks", async () => {
@@ -265,6 +271,7 @@ describe("EnterpriseBots cockpit", () => {
     await click(button("Test Ping"));
     expect(onPingBot).toHaveBeenCalledWith("b1");
     expect(detail().querySelector("[data-ping-result]")?.textContent).toContain("38ms");
+    expect(detail().querySelector("[data-health-sparkline]")).toBeTruthy();
 
     await click(button("Pause"));
     expect(onUpdateBot).toHaveBeenCalledWith("b1", { status: "paused" });
@@ -273,10 +280,85 @@ describe("EnterpriseBots cockpit", () => {
     expect(onDeleteBot).toHaveBeenCalledWith("b1");
 
     await click(tabButton("terminals"));
+    expect(detail().querySelector("[data-terminal-telemetry-card]")).toBeTruthy();
+    expect(detail().querySelector("[data-health-sparkline]")).toBeTruthy();
     await click(button("Stop"));
     expect(onCommandTerminal).toHaveBeenCalledWith("t1", "stop");
 
     await click(button("Revoke"));
     expect(onCommandTerminal).toHaveBeenCalledWith("t1", "revoke");
+  });
+
+  it("wires CapabilityMatrix in BotDetail, ChannelInvokePreview in ChannelDetail, and ApprovalQueueDrawer from telemetry strip", async () => {
+    const onUpdateBotCapabilities = vi.fn().mockResolvedValue(undefined);
+    const onPreviewChannelInvoke = vi.fn().mockResolvedValue({
+      outcome: "allowed",
+      forcedFilter: { companyId: "c1" },
+      summary: "Allowed under company scope",
+    });
+    const onApprovalDecision = vi.fn().mockResolvedValue(undefined);
+
+    await render(
+      <EnterpriseBots
+        initialData={DATA}
+        viewerId="u-admin"
+        viewerRole="admin"
+        onUpdateBotCapabilities={onUpdateBotCapabilities}
+        onPreviewChannelInvoke={onPreviewChannelInvoke}
+        onApprovalDecision={onApprovalDecision}
+        auditEntries={[
+          {
+            id: "ev-1",
+            timestamp: "2026-11-26T00:59:00.000Z",
+            actor: "u-maya",
+            action: "bot.channel.invoke",
+            outcome: "allowed",
+            detail: "web.search",
+          },
+        ]}
+      />,
+    );
+
+    // 1. CapabilityMatrix in BotDetail
+    const matrix = detail().querySelector("[data-capability-matrix]")!;
+    expect(matrix).toBeTruthy();
+    const approvalSwitch = matrix.querySelector<HTMLButtonElement>('button[aria-label="Requires approval for web.search"]')!;
+    await click(approvalSwitch);
+    await click(matrix.querySelector<HTMLButtonElement>("[data-save-matrix]")!);
+    expect(onUpdateBotCapabilities).toHaveBeenCalledWith("b1", [
+      {
+        capabilityKey: "web.search",
+        callableBy: "company",
+        dataScope: "company",
+        requiresApproval: true,
+      },
+    ]);
+
+    // 2. Open ApprovalQueueDrawer from 4th telemetry strip cell while on Bots tab
+    const stripCells = [...container.querySelectorAll(".cockpit-strip .cockpit-cell")];
+    await click(stripCells[3]);
+    const drawer = container.querySelector('[role="dialog"][aria-label="Pending Owner Approvals"]')!;
+    expect(drawer).toBeTruthy();
+    expect(tabButton("bots")?.getAttribute("aria-pressed")).toBe("true");
+    const approveBtn = [...drawer.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Approve");
+    await click(approveBtn);
+    expect(onApprovalDecision).toHaveBeenCalledWith("pa1", "approve");
+    await click(drawer.querySelector('button[aria-label="Close approvals drawer"]'));
+    expect(container.querySelector('[role="dialog"][aria-label="Pending Owner Approvals"]')).toBeNull();
+
+    // 3. ChannelInvokePreview + audit timeline in ChannelDetail
+    await click(tabButton("channels"));
+    const preview = detail().querySelector('[data-channel-invoke-preview="c1"]')!;
+    expect(preview).toBeTruthy();
+    expect(preview.querySelector('[data-audit-entry="ev-1"]')).toBeTruthy();
+    const dryRunBtn = [...preview.querySelectorAll("button")].find((b) => b.textContent?.includes("Run Dry-Run"));
+    await click(dryRunBtn);
+    expect(onPreviewChannelInvoke).toHaveBeenCalledWith({
+      channelId: "c1",
+      targetBotId: "b1",
+      capabilityKey: "web.search",
+      executionTarget: "channel_only",
+    });
+    expect(preview.querySelector('[data-preview-outcome="allowed"]')).toBeTruthy();
   });
 });
