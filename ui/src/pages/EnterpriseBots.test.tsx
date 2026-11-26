@@ -124,4 +124,159 @@ describe("EnterpriseBots cockpit", () => {
     expect(container.textContent).toContain("No bots registered.");
     expect(detail().textContent).toContain("Select a bot");
   });
+
+  it("uses Combo 1 Tactile Cockpit primitives and defaults viewerRole safely to member", async () => {
+    await render(<EnterpriseBots initialData={DATA} />);
+    expect(container.querySelector(".cockpit-strip")).toBeTruthy();
+    expect(container.querySelectorAll(".cockpit-strip .cockpit-cell").length).toBe(4);
+    expect(container.querySelector(".cockpit-toolbar.tactile-card")).toBeTruthy();
+    expect(container.querySelectorAll(".tactile-card").length).toBeGreaterThanOrEqual(3);
+
+    await click(tabButton("terminals"));
+    const dds = [...detail().querySelectorAll("dd")].map((d) => d.textContent?.trim());
+    expect(dds).toContain("member");
+    expect(dds).not.toContain("admin");
+  });
+
+  it("opens Attach OpenBot dialog, submits bot creation, and shows one-time pcp_bot_ token banner", async () => {
+    const onCreateBot = vi.fn().mockResolvedValue({
+      bot: {
+        id: "b-new",
+        name: "Release Assistant",
+        kind: "team",
+        status: "active",
+        callableBy: "team",
+        dataScope: "team",
+        capabilities: ["deploy.check"],
+      },
+      inboundToken: "pcp_bot_secret_once_123",
+    });
+
+    await render(<EnterpriseBots initialData={DATA} onCreateBot={onCreateBot} />);
+    await click(button("Attach OpenBot"));
+
+    const dialog = container.querySelector('[role="dialog"][aria-label="Attach OpenBot"]')!;
+    expect(dialog).toBeTruthy();
+
+    const setInputValue = async (el: HTMLInputElement | HTMLSelectElement, value: string) => {
+      const proto = el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, "value")!.set!;
+      await act(async () => {
+        setter.call(el, value);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    };
+
+    await setInputValue(dialog.querySelector<HTMLInputElement>('input[aria-label="Bot Name"]')!, "Release Assistant");
+    await setInputValue(dialog.querySelector<HTMLSelectElement>('select[aria-label="Bot Kind"]')!, "company");
+    await setInputValue(dialog.querySelector<HTMLSelectElement>('select[aria-label="Callable By"]')!, "company");
+    await setInputValue(dialog.querySelector<HTMLSelectElement>('select[aria-label="Data Scope"]')!, "team");
+    await setInputValue(
+      dialog.querySelector<HTMLInputElement>('input[aria-label="Webhook URL"]')!,
+      "https://bots.example.com/hook",
+    );
+    await setInputValue(
+      dialog.querySelector<HTMLInputElement>('input[aria-label="Capabilities"]')!,
+      "deploy.check, logs.read",
+    );
+
+    const form = dialog.querySelector("form")!;
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(onCreateBot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "Release Assistant",
+        kind: "company",
+        callableBy: "company",
+        dataScope: "team",
+        webhookUrl: "https://bots.example.com/hook",
+        capabilities: ["deploy.check", "logs.read"],
+      }),
+    );
+    expect(container.querySelector("[data-issued-token]")?.textContent).toBe("pcp_bot_secret_once_123");
+  });
+
+  it("opens Register Terminal dialog and shows one-time pcp_term_ token banner on submit", async () => {
+    const onRegisterTerminalSubmit = vi.fn().mockResolvedValue({
+      terminal: {
+        id: "t-new",
+        companyId: "c-1",
+        kind: "worker_node",
+        name: "gpu-worker-01",
+        ownerUserId: null,
+        teamId: null,
+        botId: null,
+        transport: "tailscale_direct",
+        status: "offline",
+        lastSeenAt: null,
+        revokedAt: null,
+      },
+      token: "pcp_term_once_999",
+    });
+
+    await render(<EnterpriseBots initialData={DATA} onRegisterTerminalSubmit={onRegisterTerminalSubmit} />);
+    await click(button("Register Terminal"));
+
+    const dialog = container.querySelector('[role="dialog"][aria-label="Register Terminal"]')!;
+    expect(dialog).toBeTruthy();
+
+    const nameInput = dialog.querySelector<HTMLInputElement>('input[aria-label="Terminal Name"]')!;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    await act(async () => {
+      setter.call(nameInput, "gpu-worker-01");
+      nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+      nameInput.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const form = dialog.querySelector("form")!;
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(onRegisterTerminalSubmit).toHaveBeenCalledWith({
+      name: "gpu-worker-01",
+      kind: "personal_terminal",
+      transport: "outbound_wss",
+    });
+    expect(container.querySelector("[data-issued-token]")?.textContent).toBe("pcp_term_once_999");
+  });
+
+  it("wires Bot Test Ping, Pause, Revoke and Terminal Stop/Revoke live action callbacks", async () => {
+    const onPingBot = vi.fn().mockResolvedValue({ ok: true, status: 200, latencyMs: 38 });
+    const onUpdateBot = vi.fn().mockResolvedValue(undefined);
+    const onDeleteBot = vi.fn().mockResolvedValue(undefined);
+    const onCommandTerminal = vi.fn().mockResolvedValue(undefined);
+
+    await render(
+      <EnterpriseBots
+        initialData={DATA}
+        viewerId="u-admin"
+        viewerRole="admin"
+        onPingBot={onPingBot}
+        onUpdateBot={onUpdateBot}
+        onDeleteBot={onDeleteBot}
+        onCommandTerminal={onCommandTerminal}
+      />,
+    );
+
+    await click(button("Test Ping"));
+    expect(onPingBot).toHaveBeenCalledWith("b1");
+    expect(detail().querySelector("[data-ping-result]")?.textContent).toContain("38ms");
+
+    await click(button("Pause"));
+    expect(onUpdateBot).toHaveBeenCalledWith("b1", { status: "paused" });
+
+    await click(button("Revoke"));
+    expect(onDeleteBot).toHaveBeenCalledWith("b1");
+
+    await click(tabButton("terminals"));
+    await click(button("Stop"));
+    expect(onCommandTerminal).toHaveBeenCalledWith("t1", "stop");
+
+    await click(button("Revoke"));
+    expect(onCommandTerminal).toHaveBeenCalledWith("t1", "revoke");
+  });
 });

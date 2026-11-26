@@ -12,6 +12,107 @@ export type BotTerminalStatus = "offline" | "online" | "revoked";
 export type BotTerminalAction = "exec" | "stop" | "revoke";
 export type BotCapabilityDataScope = "self" | "team" | "company";
 export type ChannelExecutionTarget = "personal_terminal" | "worker_node" | "none";
+export type EnterpriseBotKind = "personal" | "team" | "company";
+export type EnterpriseBotCallableBy = "self_only" | "team" | "company";
+export type EnterpriseBotStatus = "active" | "paused" | "revoked";
+export type BotApprovalDecision = "approved" | "rejected";
+
+export interface EnterpriseBotRecord {
+  id: string;
+  companyId?: string;
+  name: string;
+  kind: EnterpriseBotKind;
+  status: EnterpriseBotStatus;
+  callableBy: EnterpriseBotCallableBy | "owner";
+  dataScope?: BotCapabilityDataScope;
+  capabilities?: string[];
+  ownerUserId?: string | null;
+  ownerName?: string | null;
+  teamId?: string | null;
+  webhookUrl?: string | null;
+  apiSecretId?: string | null;
+  lastPingAt?: string | null;
+  lastPingStatus?: string | null;
+  lastPingLatencyMs?: number | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface EnterpriseBotSnapshotTerminal extends BotTerminal {
+  ownerName?: string | null;
+  lastHeartbeatAt?: string | null;
+}
+
+export interface EnterpriseBotSnapshotChannel {
+  id: string;
+  name: string;
+  kind?: "team" | "shared" | "dm";
+  members: string[];
+}
+
+export interface EnterpriseBotSnapshotApproval {
+  id: string;
+  channelId: string;
+  botId: string;
+  botName: string;
+  fromUserName: string;
+  toTerminalId: string;
+  toTerminalName: string;
+  toOwnerName: string;
+  action: string;
+  requestedAt: string;
+}
+
+export interface EnterpriseBotsSnapshot {
+  bots: EnterpriseBotRecord[];
+  terminals: EnterpriseBotSnapshotTerminal[];
+  channels: EnterpriseBotSnapshotChannel[];
+  pendingApprovals: EnterpriseBotSnapshotApproval[];
+  now?: string;
+}
+
+export interface CreateBotInput {
+  name: string;
+  kind: EnterpriseBotKind;
+  callableBy: EnterpriseBotCallableBy;
+  dataScope: BotCapabilityDataScope;
+  webhookUrl?: string | null;
+  apiSecretId?: string | null;
+  capabilities?: string[];
+  teamId?: string | null;
+  ownerUserId?: string | null;
+}
+
+export interface CreateBotResponse {
+  bot: EnterpriseBotRecord;
+  /** One-time inbound bearer token (`pcp_bot_...`), returned only on creation. */
+  inboundToken?: string;
+}
+
+export interface UpdateBotInput {
+  name?: string;
+  kind?: EnterpriseBotKind;
+  status?: EnterpriseBotStatus;
+  callableBy?: EnterpriseBotCallableBy;
+  dataScope?: BotCapabilityDataScope;
+  webhookUrl?: string | null;
+  apiSecretId?: string | null;
+  capabilities?: string[];
+}
+
+export interface PingBotResponse {
+  ok: boolean;
+  status?: number | string;
+  latencyMs?: number;
+  error?: string | null;
+  checkedAt?: string;
+}
+
+export interface DecideApprovalResponse {
+  ok?: boolean;
+  approvalId?: string;
+  decision: BotApprovalDecision;
+}
 
 /** Server `PublicBotTerminal`: the stored record minus `tokenHash`. */
 export interface BotTerminal {
@@ -106,4 +207,39 @@ export const enterpriseBotsApi = {
   /** `POST /channels/:channelId/invoke` → 200 (allowed) | 202 (requires_approval). */
   invokeChannelMention: (channelId: string, input: InvokeChannelInput) =>
     api.post<InvokeChannelPayload>(`${BASE}/channels/${encodeURIComponent(channelId)}/invoke`, input),
+
+  /** `GET /companies/:companyId/snapshot` → 200 `{ bots, terminals, channels, pendingApprovals, now }`. */
+  getSnapshot: (companyId: string) =>
+    api.get<EnterpriseBotsSnapshot>(`${BASE}/companies/${encodeURIComponent(companyId)}/snapshot`),
+
+  /** `POST /companies/:companyId/bots` → 201 `{ bot, inboundToken? }`. */
+  createBot: (companyId: string, body: CreateBotInput) =>
+    api.post<CreateBotResponse>(`${BASE}/companies/${encodeURIComponent(companyId)}/bots`, body),
+
+  /** `PATCH /companies/:companyId/bots/:botId` → 200 `{ bot }`. */
+  updateBot: (companyId: string, botId: string, patch: UpdateBotInput) =>
+    api.patch<{ bot: EnterpriseBotRecord }>(
+      `${BASE}/companies/${encodeURIComponent(companyId)}/bots/${encodeURIComponent(botId)}`,
+      patch,
+    ),
+
+  /** `DELETE /companies/:companyId/bots/:botId` → 200 | 204. */
+  deleteBot: (companyId: string, botId: string) =>
+    api.delete<{ ok?: boolean; bot?: EnterpriseBotRecord }>(
+      `${BASE}/companies/${encodeURIComponent(companyId)}/bots/${encodeURIComponent(botId)}`,
+    ),
+
+  /** `POST /companies/:companyId/bots/:botId/ping` → 200 `{ ok, status?, latencyMs?, error? }`. */
+  pingBot: (companyId: string, botId: string) =>
+    api.post<PingBotResponse>(
+      `${BASE}/companies/${encodeURIComponent(companyId)}/bots/${encodeURIComponent(botId)}/ping`,
+      {},
+    ),
+
+  /** `POST /companies/:companyId/approvals/:approvalId/decision` → 200 `{ decision, ... }`. */
+  decideApproval: (companyId: string, approvalId: string, decision: BotApprovalDecision) =>
+    api.post<DecideApprovalResponse>(
+      `${BASE}/companies/${encodeURIComponent(companyId)}/approvals/${encodeURIComponent(approvalId)}/decision`,
+      { decision },
+    ),
 };
