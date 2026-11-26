@@ -69,7 +69,29 @@ describe("SidebarNavItem", () => {
     expect(html).toContain('title="Missions"');
     expect(html).toContain('aria-label="Missions"');
     expect(html).toContain(">4<");
-    expect(html).not.toContain('<span class="flex-1 truncate">Missions</span>');
+    expect(html).not.toContain('min-w-0 flex-1 truncate">Missions</span>');
+  });
+
+  it("keeps the full badge text in the tooltip while showing a concise shrink-proof count pill", () => {
+    const html = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/RES/human-operator"]}>
+        <SidebarNavItem
+          to="/human-operator"
+          label="Human Operator"
+          icon={Icon}
+          textBadge="9+"
+          textBadgeDetail="9 active items displayed · more pending cards · status stale"
+          textBadgeTone="amber"
+        />
+      </MemoryRouter>
+    );
+
+    expect(html).toContain('title="Human Operator (9 active items displayed · more pending cards · status stale)"');
+    expect(html).toContain('aria-label="Human Operator (9 active items displayed · more pending cards · status stale)"');
+    expect(html).toContain('min-w-0 flex-1 truncate">Human Operator</span>');
+    expect(html).not.toContain("9 active items displayed</span>");
+    // The pill itself stays a shrink-proof numeric count; the detail lives on the link tooltip/label.
+    expect(html).toMatch(/class="[^"]*shrink-0 tabular-nums[^"]*"><span class="truncate">9\+<\/span><\/span>/);
   });
 
   it("exposes amber textBadge status via title and status dot in compact mode", () => {
