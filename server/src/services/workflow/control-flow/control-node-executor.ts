@@ -343,11 +343,11 @@ export async function resetStaleIfControlNodesForResume(input: {
       }
     }
     if (!stale) continue;
-
     const metadata = normalizeRecord(row.metadata);
     delete metadata.controlNodeResult;
     delete metadata.controlNodeError;
     delete metadata.controlNodeGraceWait;
+    metadata.controlNodeReevaluation = { schemaVersion: 1, reason: "stale_if_verdict", resetAt: new Date().toISOString() };
     await input.db
       .update(workflowStepRuns)
       .set({

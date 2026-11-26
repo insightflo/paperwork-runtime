@@ -10,7 +10,7 @@ import { QaRemediationAdmissionHold, unresolvedQaRemediationAdmissionPending, ty
 import { issueComments, issues, workflowDefinitions, workflowStepRuns } from "@paperclipai/db";
 import { workflowControlNodeResultSchema } from "@paperclipai/shared";
 import { sortWorkflowStepsByPriority } from "./dag-step-priority.js";
-import { buildStepRunMap, toConditionalStepObservation } from "./dag-step-observation.js";
+import { buildStepRunMap } from "./dag-step-observation.js";
 import { normalizeRecord } from "./dag-metadata-helpers.js";
 import { buildPredFactsMap, type ValidationVerdictObservation } from "./dag-readiness-facts.js";
 import { loadLatestValidationVerdicts, type WorkflowValidationIssueBinding } from "./dag-validation-verdicts.js";
@@ -27,14 +27,14 @@ import { isHeartbeatFinalizationV1Enabled } from "../heartbeat-finalization/flag
 import { TERMINAL_WORKFLOW_STATUSES } from "../missions/mission-runtime-manager.js";
 import { logActivity } from "../activity-log.js";
 import { logger } from "../../middleware/logger.js";
-import { classifyStepActivation, workflowHasConditionalEdges, type StepActivation } from "./control-flow/edge-condition.js";
+import { workflowHasConditionalEdges } from "./control-flow/edge-condition.js";
 import { applyBackEdgeReworkPass } from "./control-flow/loop-driver.js";
 import { cancelResolvedQaSourceDefectOwnerCards } from "./qa-source-defect-owner-card.js";
 import { closeResolvedWorkflowUnblocks } from "./resolved-unblock-closeout.js";
 import { isRunTerminalBoundaryV1Enabled } from "./run-terminal-boundary-flag.js";
 import { isRunReopenGuardEnabled } from "./run-reopen-guard-flag.js";
 import { applyStructuralGatePass, requeueStaleStructuralGatesForBlockedQa } from "./control-flow/structural-gate-rework.js";
-import { reviveConditionalSkip } from "./conditional-skip-settlement.js";
+import { reviveRunnableControlFlowSkippedSteps } from "./conditional-skip-revival.js";
 import { stepRunNeedsWorkflowResume } from "./dag-rework-observation.js";
 import { reloadWorkflowStepRunsForSameRun } from "./workproduct-dependency-gate.js";
 import { isStructuralGateStep } from "./control-flow/structural-gate.js";
@@ -48,12 +48,11 @@ import { loadWorkflowExecutionContext } from "./workflow-execution-context.js";
 import { assertResumeAccepted } from "./resume/acceptance.js";
 import { readWorkflowRunWithStepRuns } from "./workflow-run-step-read.js";
 import { discoverWorkflowChildStart } from "./workflow-child-discovery.js";
-import { workflowChildStepIds, ensureStepRunRecords, buildWorkflowStepRunMetadata, resetUnlaunchedTerminalStepRuns } from "./workflow-step-run-maintenance.js";
+import { workflowChildStepIds, ensureStepRunRecords, resetUnlaunchedTerminalStepRuns } from "./workflow-step-run-maintenance.js";
 import { syncStepRunsFromIssueState } from "./workflow-issue-state-sync.js";
 import { readWorkflowToolCorrection } from "./workflow-tool-correction.js";
 import { applyConditionalSkipPropagation } from "./workflow-conditional-skip.js";
 import { findRunnableStepsWithNodeFallback } from "./workflow-core-client.js";
-import { activateStepsWithNodeFallback } from "./workflow-core-client-s5.js";
 import { cancelOutstandingWorkflowIssues } from "./workflow-cancellation.js";
 import { startIssueLessToolStepRun } from "./workflow-tool-start.js";
 import type { WorkflowExecutionContext } from "./dag-engine.js";
@@ -342,79 +341,29 @@ async function syncWorkflowRunStateCore(
     && shouldLoadValidationVerdictsForRun(context.steps, stepRuns)
     ? await loadLatestValidationVerdicts(db, runValidationBindings)
     : new Map<string, ValidationVerdictObservation>();
-  // ④ revive pass — 선행이 회복(rework/재시도 completed) 되어 failure cascade 로 controlFlowSkipped 된
-  //   downstream step 이 다시 runnable 이 되면 sentinel 을 풀고 pending 으로 부활시켜 이어지는 launch 가
-  //   다시 잡게 한다. plain(legacy dependsOn) 워크플로도 포함한다 — deadlock-reconciler 가 남긴 stale skip 은
-  //   선행 완료 후 반드시 재평가되어야 회복된 run 이 정상 종료된다(조건부-edge 전용 게이트 제거).
-  //   IF false-branch / 여전히 failed 인 선행은 classifyStepActivation 이 runnable=false 를 주어 부활하지
-  //   않는다(legitimate-skip/flap 회피). resetUnlaunchedTerminalStepRuns 은 controlFlowSkipped 를 제외하므로
-  //   이 pass 가 유일한 정확한 부활 경로(무조건 skipped→pending flap 없음).
+  // ④ revive pass — 회복된 선행 아래의 stale controlFlowSkipped row 는 generation-CAS 부활
+  //   경로로만 pending 으로 되돌린다. resetUnlaunchedTerminalStepRuns 은 sentinel row 를 제외하므로
+  //   이 pass 가 유일한 정확한 부활 경로(무조건 skipped→pending flap 없음)다.
   let revivalProofLost = false;
   if (context.run.status !== "cancelled") {
-    const reviveRunMap = buildStepRunMap(stepRuns);
-    // [B2 사실망 통일] revive 도 launch 와 동일한 v1 정책 스냅샷을 소비한다 — launch 가 dispatch_ready_at
-    //   대기로 미기동하는 선행을 revive 가 먼저 부활시키지 않는다(같은 평가에서 같은 사실).
-    let revivePredsByStepId = buildPredFactsMap(context.steps, reviveRunMap, validationVerdictsByIssueId, v1Enforcement, issueStatusByIssueId);
-    // [S5] tx 밖 pass — 부활 판정은 Rust activate 배치로 묶는다(첫 후보에서 lazy 1 spawn). 부활로 preds 가
-    //   재구축되면 배치를 함께 무효화해 다음 후보에서 신선하게 재계산한다(stale 판정 방지 — 부활된 선행이
-    //   pending 이 되면 always/failure edge 판정이 달라진다). Map miss 만 per-step TS 판정으로 보전한다.
-    let reviveActivations: Map<string, StepActivation> | null = null;
-    let revivedAny = false;
-    for (const step of context.steps) {
-      const sr = reviveRunMap.get(step.id);
-      if (!sr || sr.status !== "skipped" || normalizeRecord(sr.metadata).controlFlowSkipped !== true) continue;
-      reviveActivations ??= await activateStepsWithNodeFallback(context.steps, revivePredsByStepId);
-      const activation = reviveActivations.get(step.id) ?? classifyStepActivation(step, revivePredsByStepId);
-      if (!activation.runnable) continue;
-      const nextMetadata = { ...buildWorkflowStepRunMetadata(step, sr.metadata), controlFlowSkipped: false };
-      const result = await reviveConditionalSkip(db, {
-        observedRun: context.run,
-        target: sr,
-        nextMetadata,
-        observedPredecessors: stepRuns
-          .filter((predecessor) => predecessor.id !== sr.id)
-          .map(toConditionalStepObservation),
-        invalidateGeneration: v1Enforcement,
-      });
-      if (result.kind !== "settled") {
-        // The CAS proof was lost after the snapshot was taken. Reload authority and
-        // stop this sync's derived passes; a later sync re-evaluates fresh state.
-        revivalProofLost = true;
-        stepRuns = await reloadWorkflowStepRunsForSameRun(db, stepRuns);
-        // A cancelled durable row is terminal authority. Return the committed
-        // snapshot instead of letting tail finalization recompute over it.
-        const durable = await getWorkflowExecutionResultSnapshot(db, runId);
-        if (!durable) throw new Error(`Workflow run ${runId} not found`);
-        if (durable.status === "cancelled") {
-          return { kind: "synced", result: durable };
-        }
-        break;
+    const revival = await reviveRunnableControlFlowSkippedSteps({
+      db,
+      context,
+      stepRuns,
+      validationVerdictsByIssueId,
+      v1EnforcementEnabled: v1Enforcement,
+      issueStatusByIssueId,
+    });
+    stepRuns = revival.stepRuns;
+    revivalProofLost = revival.proofLost;
+    if (revivalProofLost) {
+      // A cancelled durable row is terminal authority. Return the committed
+      // snapshot instead of letting tail finalization recompute over it.
+      const durable = await getWorkflowExecutionResultSnapshot(db, runId);
+      if (!durable) throw new Error(`Workflow run ${runId} not found`);
+      if (durable.status === "cancelled") {
+        return { kind: "synced", result: durable };
       }
-      revivedAny = true;
-      // Keep later candidates on the authoritative observation returned by the CAS
-      // write; otherwise a revived predecessor still looks skipped and causes a
-      // false proof loss on the next row.
-      sr.status = "pending";
-      sr.startedAt = null;
-      sr.completedAt = null;
-      sr.dispatchReadyAt = null;
-      sr.evidenceReadyAt = null;
-      sr.dispatchOwnerWakeupRequestId = null;
-      sr.dispatchOwnerHeartbeatRunId = null;
-      sr.executionGeneration = result.executionGeneration;
-      sr.statusTransitionVersion = result.statusTransitionVersion;
-      sr.metadata = nextMetadata;
-      revivePredsByStepId = buildPredFactsMap(
-        context.steps,
-        reviveRunMap,
-        validationVerdictsByIssueId,
-        v1Enforcement,
-        issueStatusByIssueId,
-      );
-      reviveActivations = null;
-    }
-    if (revivedAny) {
-      stepRuns = await db.select().from(workflowStepRuns).where(eq(workflowStepRuns.workflowRunId, runId));
     }
   }
   if (!revivalProofLost) {
@@ -536,13 +485,16 @@ async function syncWorkflowRunStateCore(
 
       let failedIssueLessToolStep = false;
       let executedControlNode = false;
+      const initialControlNodeStepIds = new Set<string>();
       for (const step of runnableSteps) {
         const stepRun = stepRunMap.get(step.id);
         if (!stepRun) continue;
 
         if (isWorkflowControlNode(step)) {
+          const reevaluation = normalizeRecord(stepRun.metadata).controlNodeReevaluation !== undefined;
           await executeWorkflowControlNode({ db, context, step, stepRun });
           executedControlNode = true;
+          if (!reevaluation) initialControlNodeStepIds.add(step.id);
           continue;
         }
 
@@ -656,6 +608,27 @@ async function syncWorkflowRunStateCore(
           revivalProofLost = true;
           break;
         }
+        if (initialControlNodeStepIds.size > 0) {
+          const revival = await reviveRunnableControlFlowSkippedSteps({
+            db,
+            context,
+            stepRuns,
+            validationVerdictsByIssueId,
+            v1EnforcementEnabled: v1Enforcement,
+            issueStatusByIssueId,
+            onlyEdgeStepIds: initialControlNodeStepIds,
+          });
+          stepRuns = revival.stepRuns;
+          if (revival.proofLost) {
+            const durable = await getWorkflowExecutionResultSnapshot(db, runId);
+            if (!durable) throw new Error(`Workflow run ${runId} not found`);
+            if (durable.status === "cancelled") {
+              return { kind: "synced", result: durable };
+            }
+            revivalProofLost = true;
+            break;
+          }
+        }
       }
       shouldContinue = failedIssueLessToolStep || executedControlNode;
     }
@@ -721,7 +694,14 @@ async function syncWorkflowRunStateCore(
   // [run-reopen-guard v1] 플래그는 sync 당 1회 읽는다(terminal-parent 가드에서 읽은 값을 재사용).
   const terminalBoundaryEnabled = await isRunTerminalBoundaryV1Enabled(db);
   const updatedRun = await finalizeWorkflowRunState(db, context, stepRuns, terminalBoundaryEnabled, reopenGuardEnabled, {
-    normalizeRecord, getDynamicLaunchStepIds, buildWorkflowDefinitionExecutionShape,
+    normalizeRecord,
+    getDynamicLaunchStepIds,
+    buildWorkflowDefinitionExecutionShape,
+    controlFlowGuard: {
+      validationVerdictsByIssueId,
+      v1EnforcementEnabled: v1Enforcement,
+      issueStatusByIssueId,
+    },
   });
   // [workflow child step] 자식 run 종말 → 부모 waiting 스텝 마감 훅. 훅 실패는 sync 를 깨뜨리지 않는다
   //   (reconciler 가 회복). 훅은 자기 waiting 스텝만 마감한다(규칙 7/8).
