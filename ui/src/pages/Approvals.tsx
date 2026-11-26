@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "@/lib/router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { approvalsApi } from "../api/approvals";
 import { agentsApi } from "../api/agents";
 import { useCompany } from "../context/CompanyContext";
@@ -12,8 +12,9 @@ import { Tabs } from "@/components/ui/tabs";
 import { ShieldCheck } from "lucide-react";
 import { ApprovalCard } from "../components/ApprovalCard";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { CompactPagination, PAGE_SIZE, PAGE_WINDOW_KEY, pageOffset, splitFetchedPage, usePageNumber, useScrollToTopOnPageChange } from "../components/CompactPagination";
 import { L, useCompanyLanguage } from "../lib/companyLanguage";
-import type { ApprovalStatus } from "@paperclipai/shared";
+import type { Approval, ApprovalStatus } from "@paperclipai/shared";
 
 type StatusFilter = "pending" | "all";
 
@@ -42,6 +43,13 @@ const STATUS_RAIL: Record<ApprovalStatus, string> = {
 /** Decision evidence (plan / raw payload blocks) renders as monospace, wrapped, on the canvas colour. */
 const ROW_EVIDENCE_CLASS =
   "[&_pre]:whitespace-pre-wrap [&_pre]:border [&_pre]:border-[#242d3f] [&_pre]:bg-[#0b0e14] [&_pre]:text-[#b6c2d6] [&_.whitespace-pre-wrap]:font-mono";
+/** Server status filter behind each tab; the Pending tab additionally pins `revision_requested` rows (still actionable). */
+const TAB_STATUS: Record<StatusFilter, string | undefined> = { pending: "pending", all: undefined };
+const ACTIONABLE_FOLLOWUP_STATUS = "revision_requested";
+/** A freshly prefetched next page is not re-requested when the user simply returns to the previous page. */
+const NEXT_PAGE_PREFETCH_STALE_MS = 30_000;
+const newestFirst = (a: Pick<Approval, "createdAt">, b: Pick<Approval, "createdAt">) =>
+  new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 
 export function Approvals() {
   const lang = useCompanyLanguage();
@@ -53,16 +61,58 @@ export function Approvals() {
   const pathSegment = location.pathname.split("/").pop() ?? "pending";
   const statusFilter: StatusFilter = pathSegment === "all" ? "all" : "pending";
   const [actionError, setActionError] = useState<string | null>(null);
+  const t = (en: string, ko: string) => L(lang, { en, ko });
+  // Explicit server-backed paging: page resets to 1 when the tab or company changes.
+  const [page, setPage] = usePageNumber(`${selectedCompanyId ?? ""}|${statusFilter}`);
+  const listRef = useRef<HTMLDivElement>(null);
+  useScrollToTopOnPageChange(page, listRef);
+  const rowStatus = TAB_STATUS[statusFilter];
 
   useEffect(() => {
-    setBreadcrumbs([{ label: L(lang, { en: "Approvals", ko: "승인" }) }]);
+    setBreadcrumbs([{ label: t("Approvals", "승인") }]);
   }, [setBreadcrumbs, lang]);
 
-  const { data, isLoading, error } = useQuery({
+  // Unfiltered snapshot feeds the status strip / queue badge (cache-shared with the inbox badge).
+  const { data } = useQuery({
     queryKey: queryKeys.approvals.list(selectedCompanyId!),
     queryFn: () => approvalsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
   });
+  const {
+    data: pageData,
+    isLoading,
+    isFetching,
+    isPlaceholderData,
+    error,
+  } = useQuery({
+    queryKey: [...queryKeys.approvals.list(selectedCompanyId!, rowStatus), PAGE_WINDOW_KEY, PAGE_SIZE, page] as const,
+    queryFn: () => approvalsApi.list(selectedCompanyId!, { status: rowStatus, limit: PAGE_SIZE + 1, offset: pageOffset(page) }),
+    enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
+  });
+  const { items: pageRows, hasMore } = useMemo(() => splitFetchedPage(pageData), [pageData]);
+  const { data: revisionData } = useQuery({
+    queryKey: [...queryKeys.approvals.list(selectedCompanyId!, ACTIONABLE_FOLLOWUP_STATUS), PAGE_WINDOW_KEY] as const,
+    queryFn: () => approvalsApi.list(selectedCompanyId!, { status: ACTIONABLE_FOLLOWUP_STATUS, limit: PAGE_SIZE + 1 }),
+    enabled: !!selectedCompanyId && statusFilter === "pending",
+  });
+  const { items: revisionRows } = useMemo(() => splitFetchedPage(revisionData), [revisionData]);
+
+  // Resolving the last row of a trailing page must not strand the user on an empty page.
+  useEffect(() => {
+    if (pageData && !isPlaceholderData && pageRows.length === 0 && page > 1) setPage(page - 1);
+  }, [pageData, isPlaceholderData, pageRows.length, page, setPage]);
+
+  // Prefetch the next page so Prev/Next feels instant.
+  useEffect(() => {
+    if (!selectedCompanyId || !hasMore || isPlaceholderData) return;
+    const next = page + 1;
+    void queryClient.prefetchQuery({
+      queryKey: [...queryKeys.approvals.list(selectedCompanyId!, rowStatus), PAGE_WINDOW_KEY, PAGE_SIZE, next] as const,
+      queryFn: () => approvalsApi.list(selectedCompanyId!, { status: rowStatus, limit: PAGE_SIZE + 1, offset: pageOffset(next) }),
+      staleTime: NEXT_PAGE_PREFETCH_STALE_MS,
+    });
+  }, [queryClient, selectedCompanyId, rowStatus, hasMore, isPlaceholderData, page]);
 
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
@@ -70,11 +120,14 @@ export function Approvals() {
     enabled: !!selectedCompanyId,
   });
 
+  // One prefix covers every tab's page window plus the unfiltered count snapshot.
+  const invalidateApprovals = () => queryClient.invalidateQueries({ queryKey: ["approvals", selectedCompanyId!] });
+
   const approveMutation = useMutation({
     mutationFn: (id: string) => approvalsApi.approve(data!.find(a => a.id === id)!),
     onSuccess: (_approval, id) => {
       setActionError(null);
-      queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(selectedCompanyId!) });
+      invalidateApprovals();
       navigate(`/approvals/${id}?resolved=approved`);
     },
     onError: (err) => {
@@ -86,24 +139,42 @@ export function Approvals() {
     mutationFn: (id: string) => approvalsApi.reject(data!.find(a => a.id === id)!),
     onSuccess: () => {
       setActionError(null);
-      queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(selectedCompanyId!) });
+      invalidateApprovals();
     },
     onError: (err) => {
       setActionError(err instanceof Error ? err.message : L(lang, { en: "Failed to reject", ko: "거절하지 못했습니다." }));
     },
   });
 
+  const rows = useMemo(() => [...pageRows].sort(newestFirst), [pageRows]);
+  const revisionQueue = useMemo(() => (statusFilter === "pending" ? [...revisionRows].sort(newestFirst) : []), [statusFilter, revisionRows]);
+
   const statusCounts = (data ?? []).reduce<Record<ApprovalStatus, number>>(
     (acc, a) => { acc[a.status as ApprovalStatus] = (acc[a.status as ApprovalStatus] ?? 0) + 1; return acc; },
     { pending: 0, revision_requested: 0, approved: 0, rejected: 0, cancelled: 0 },
   );
   const pendingCount = statusCounts.pending + statusCounts.revision_requested;
-
-  const filtered = (data ?? [])
-    .filter(
-      (a) => statusFilter === "all" || a.status === "pending" || a.status === "revision_requested",
-    )
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const requestAgent = (approval: Approval) =>
+    approval.requestedByAgentId ? (agents ?? []).find((a) => a.id === approval.requestedByAgentId) ?? null : null;
+  const renderRow = (approval: Approval) => (
+    <div
+      key={approval.id}
+      className={cn(
+        "border-l-2 bg-[#111622] px-3 py-2 transition-colors hover:bg-[#151b28]",
+        "[&>div]:rounded-none [&>div]:border-0 [&>div]:bg-transparent [&>div]:p-0 [&>div]:shadow-none",
+        STATUS_RAIL[approval.status as ApprovalStatus] ?? "border-l-[#8b97ad]",
+      )}
+    >
+      <ApprovalCard
+        approval={approval}
+        requesterAgent={requestAgent(approval)}
+        onApprove={() => approveMutation.mutate(approval.id)}
+        onReject={() => rejectMutation.mutate(approval.id)}
+        detailLink={`/approvals/${approval.id}`}
+        isPending={approveMutation.isPending || rejectMutation.isPending}
+      />
+    </div>
+  );
 
   if (!selectedCompanyId) {
     return <p className="text-sm text-muted-foreground">{L(lang, { en: "Select a company first.", ko: "먼저 회사를 선택하세요." })}</p>;
@@ -160,14 +231,30 @@ export function Approvals() {
           <span className="text-[10px] uppercase tracking-[0.16em] text-[#8b97ad]">
             {L(lang, { en: "Shown", ko: "표시" })}
           </span>
-          <b className="font-mono text-sm font-semibold leading-none text-[#e6edf7]">{filtered.length}</b>
+          <b className="font-mono text-sm font-semibold leading-none text-[#e6edf7]">{rows.length + revisionQueue.length}</b>
         </div>
       </div>
 
       {error && <p className="text-sm text-destructive">{error.message}</p>}
       {actionError && <p className="text-sm text-destructive">{actionError}</p>}
 
-      {filtered.length === 0 && (
+      <CompactPagination
+        page={page}
+        count={rows.length}
+        hasMore={hasMore}
+        loading={isFetching}
+        onPageChange={setPage}
+        labels={{
+          list: t("Approvals pagination", "승인 목록 페이징"),
+          prev: t("Prev", "이전"),
+          next: t("Next", "다음"),
+          page: t("Page", "페이지"),
+          showing: t("Showing", "표시"),
+          loading: t("Loading…", "불러오는 중…"),
+        }}
+      />
+
+      {rows.length === 0 && revisionQueue.length === 0 && !isFetching && (
         <div className="flex flex-col items-center justify-center rounded-md border border-[#242d3f] bg-[#111622] py-14 text-center">
           <ShieldCheck className="h-7 w-7 text-[#34d399] mb-3" />
           <p className="text-xs text-[#8b97ad]">
@@ -176,30 +263,33 @@ export function Approvals() {
         </div>
       )}
 
-      {filtered.length > 0 && (
-        <div className={cn(
-          "divide-y divide-[#242d3f] overflow-hidden rounded-md border border-[#242d3f] bg-[#111622]",
-          ROW_EVIDENCE_CLASS,
-        )}>
-          {filtered.map((approval) => (
-            <div
-              key={approval.id}
-              className={cn(
-                "border-l-2 bg-[#111622] px-3 py-2 transition-colors hover:bg-[#151b28]",
-                "[&>div]:rounded-none [&>div]:border-0 [&>div]:bg-transparent [&>div]:p-0 [&>div]:shadow-none",
-                STATUS_RAIL[approval.status as ApprovalStatus] ?? "border-l-[#8b97ad]",
-              )}
-            >
-              <ApprovalCard
-                approval={approval}
-                requesterAgent={approval.requestedByAgentId ? (agents ?? []).find((a) => a.id === approval.requestedByAgentId) ?? null : null}
-                onApprove={() => approveMutation.mutate(approval.id)}
-                onReject={() => rejectMutation.mutate(approval.id)}
-                detailLink={`/approvals/${approval.id}`}
-                isPending={approveMutation.isPending || rejectMutation.isPending}
-              />
-            </div>
-          ))}
+      {(rows.length > 0 || revisionQueue.length > 0) && (
+        <div
+          ref={listRef}
+          aria-busy={isFetching}
+          className={cn(
+            "divide-y divide-[#242d3f] overflow-hidden rounded-md border border-[#242d3f] bg-[#111622] transition-opacity",
+            ROW_EVIDENCE_CLASS,
+            isFetching && "opacity-70",
+          )}
+        >
+          {revisionQueue.length > 0 && (
+            <section aria-label={t("Revision requested", "수정 요청")}>
+              <header className="flex items-center gap-2 bg-[#0b0e14] px-3 py-1.5 text-[11px] uppercase tracking-wide text-[#8b97ad]">
+                <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#5f8dff]" />
+                <span className="truncate">{t("Revision requested", "수정 요청")}</span>
+                <b className="ml-1 font-mono text-[#5f8dff]">
+                  {revisionQueue.length}
+                  {(revisionData?.length ?? 0) > PAGE_SIZE && "+"}
+                </b>
+                <span className="ml-auto normal-case tracking-normal">
+                  {t("Still actionable · resubmission pending", "여전히 승인/거절 가능 · 재제출 대기")}
+                </span>
+              </header>
+              <div className="divide-y divide-[#242d3f]">{revisionQueue.map(renderRow)}</div>
+            </section>
+          )}
+          {rows.length > 0 && <div className="divide-y divide-[#242d3f]">{rows.map(renderRow)}</div>}
         </div>
       )}
     </div>
