@@ -820,8 +820,8 @@ export function OnboardingWizard() {
                       ) : null}
 
                       {shouldSuggestUnsetAnthropicApiKey && (
-                        <div className="rounded-md border border-amber-300/60 bg-amber-50/40 px-2.5 py-2 space-y-2">
-                          <p className="text-[11px] text-amber-900/90 leading-relaxed">
+                        <div className="rounded-md border border-amber-300/60 dark:border-amber-500/40 bg-amber-50/40 dark:bg-amber-500/10 px-2.5 py-2 space-y-2">
+                          <p className="text-[11px] text-amber-900/90 dark:text-amber-200 leading-relaxed">
                             Claude failed while{" "}
                             <span className="font-mono">ANTHROPIC_API_KEY</span>{" "}
                             is set. You can clear it in this CEO adapter config

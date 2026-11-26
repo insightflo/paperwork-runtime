@@ -80,7 +80,7 @@ export function BreadcrumbBar() {
       aria-label="Open command palette"
       aria-keyshortcuts="Meta+K"
       title="Search missions, agents, approvals… (⌘K)"
-      className="hidden h-[30px] w-[clamp(220px,32vw,420px)] justify-start gap-2 rounded-lg border border-slate-200/90 bg-slate-50/90 px-2.5 text-xs font-normal text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300 hover:bg-white hover:text-slate-900 md:flex dark:border-white/[0.08] dark:bg-[linear-gradient(180deg,#131926,#0d111a)] dark:text-slate-400 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_8px_rgba(0,0,0,0.3)] dark:hover:border-white/[0.15] dark:hover:text-slate-100"
+      className="hidden h-[30px] w-[clamp(220px,32vw,420px)] justify-start gap-2 rounded-lg border border-slate-200/90 bg-slate-50/90 px-2.5 text-xs font-normal text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300 hover:bg-white hover:text-slate-900 md:flex dark:border-white/[0.08] dark:bg-[#0d111a] dark:bg-[linear-gradient(180deg,#131926,#0d111a)] dark:text-slate-400 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_2px_8px_rgba(0,0,0,0.3)] dark:hover:border-white/[0.15] dark:hover:bg-[#131926] dark:hover:text-slate-100"
     >
       <Search className="h-3.5 w-3.5 shrink-0 text-[#2563eb] dark:text-[#60a5fa]" />
       <span className="min-w-0 flex-1 truncate text-left">Search missions, agents, approvals…</span>

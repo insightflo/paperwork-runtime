@@ -90,7 +90,7 @@ export function SortableCompanyItem({
               className={cn(
                 "relative flex h-9 w-9 items-center justify-center rounded-[8px] border overflow-visible transition-all duration-150",
                 isSelected
-                  ? "border-[#2563eb]/35 bg-[#2563eb]/10 text-[#2563eb] dark:border-[#a3e635]/28 dark:bg-[linear-gradient(180deg,rgba(163,230,53,0.14),rgba(163,230,53,0.05))] dark:text-[#a3e635] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
+                  ? "border-[#2563eb]/35 bg-[#2563eb]/10 text-[#2563eb] dark:border-[#a3e635]/28 dark:bg-transparent dark:bg-[linear-gradient(180deg,rgba(163,230,53,0.14),rgba(163,230,53,0.05))] dark:text-[#a3e635] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
                   : "border-transparent bg-transparent hover:border-slate-300/70 hover:bg-slate-200/60 dark:hover:border-white/[0.065] dark:hover:bg-white/[0.04]",
                 isDragging && "scale-105 shadow-lg",
               )}
