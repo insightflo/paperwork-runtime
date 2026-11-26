@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useCallback, useRef, useState } from "react";
 import { useLocation, useSearchParams } from "@/lib/router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { issuesApi } from "../api/issues";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { ACTIVE_ISSUE_STATUS_FILTER, issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
 import { heartbeatsApi } from "../api/heartbeats";
@@ -25,6 +25,12 @@ const STATUS_GROUPS: { key: StatusGroup; label: string; statuses: string[]; dot:
   { key: "blocked", label: "Blocked", statuses: ["blocked"], dot: "bg-[#fbbf24]" },
   { key: "completed", label: "Completed", statuses: ["done"], dot: "bg-[#34d399]" },
 ];
+
+/* Server-side status filter per tab. Active rows are the default payload; archived
+ * rows are requested only after an explicit Completed press. Open / In Progress /
+ * Blocked stay client-side filters over the active payload. */
+const statusFilterFor = (group: StatusGroup | null) =>
+  group === "completed" ? "done" : ACTIVE_ISSUE_STATUS_FILTER;
 
 /* ── Restyle hooks for the IssuesList chrome ──
  * The component contract is unchanged; the page-owned wrapper restyles its
@@ -184,9 +190,17 @@ export function Issues() {
     setBreadcrumbs([{ label: "Work" }]);
   }, [setBreadcrumbs]);
 
-  const { data: issues, isLoading, error } = useQuery({
-    queryKey: queryKeys.issues.list(selectedCompanyId!),
-    queryFn: () => issuesApi.list(selectedCompanyId!),
+  const statusFilter = statusFilterFor(activeGroup);
+  const { data: issues, isLoading, error, isPlaceholderData } = useQuery({
+    queryKey: queryKeys.issues.list(selectedCompanyId!, { status: statusFilter }),
+    queryFn: () => issuesApi.list(selectedCompanyId!, { status: statusFilter }),
+    enabled: !!selectedCompanyId,
+    placeholderData: keepPreviousData,
+  });
+  // Keeps the Open / In Progress / Blocked counts correct while Completed shows archived rows.
+  const { data: activeIssues } = useQuery({
+    queryKey: queryKeys.issues.list(selectedCompanyId!, { status: ACTIVE_ISSUE_STATUS_FILTER }),
+    queryFn: () => issuesApi.list(selectedCompanyId!, { status: ACTIVE_ISSUE_STATUS_FILTER }),
     enabled: !!selectedCompanyId,
   });
 
@@ -195,23 +209,33 @@ export function Issues() {
       issuesApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId!) });
+      for (const status of [ACTIVE_ISSUE_STATUS_FILTER, statusFilterFor("completed")]) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId!, { status }) });
+      }
     },
   });
 
+  // Archived rows exist in cache only once the Completed tab has loaded them.
+  const archivedIssues = activeGroup === "completed" && !isPlaceholderData ? issues : undefined;
   const groupCounts = useMemo(() => {
     const counts: Record<StatusGroup, number> = { open: 0, in_progress: 0, blocked: 0, completed: 0 };
-    for (const issue of issues ?? []) {
+    for (const issue of [...(activeIssues ?? []), ...(archivedIssues ?? [])]) {
       const group = STATUS_GROUPS.find((g) => g.statuses.includes(issue.status));
       if (group) counts[group.key] += 1;
     }
     return counts;
-  }, [issues]);
+  }, [activeIssues, archivedIssues]);
+  const groupCount = (group: StatusGroup) => {
+    const loaded = group === "completed" ? archivedIssues : activeIssues;
+    return loaded ? groupCounts[group] : "—";
+  };
 
   const activeStatuses = STATUS_GROUPS.find((g) => g.key === activeGroup)?.statuses;
   const visibleIssues = useMemo(() => {
-    if (!activeStatuses) return issues ?? [];
+    // keepPreviousData hands us the previous tab's rows while the new tab loads; show those untouched.
+    if (!activeStatuses || isPlaceholderData) return issues ?? [];
     return (issues ?? []).filter((issue) => activeStatuses.includes(issue.status));
-  }, [issues, activeStatuses]);
+  }, [issues, activeStatuses, isPlaceholderData]);
 
   const visibleRowPaths = useCallback(() => {
     const root = listRef.current;
@@ -264,7 +288,7 @@ export function Issues() {
               type="button"
               aria-pressed={active}
               disabled={searchActive}
-              title={searchActive ? "Clear the search to filter by status" : `Show ${group.label.toLowerCase()} work items`}
+              title={searchActive ? "Clear the search to filter by status" : group.key === "completed" && !archivedIssues ? "Load done work items" : `Show ${group.label.toLowerCase()} work items`}
               onClick={() => setActiveGroup(active ? null : group.key)}
               className={`cockpit-cell min-w-0 flex-1 justify-center transition-colors disabled:cursor-default disabled:opacity-60 ${
                 active
@@ -274,7 +298,7 @@ export function Issues() {
             >
               <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${group.dot}`} />
               <span className="truncate uppercase tracking-wide">{group.label}</span>
-              <b className="ml-1">{issues ? groupCounts[group.key] : "—"}</b>
+              <b className="ml-1">{groupCount(group.key)}</b>
             </button>
           );
         })}
