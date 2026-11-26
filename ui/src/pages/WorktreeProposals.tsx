@@ -32,25 +32,25 @@ const DATE_FORMAT: Intl.DateTimeFormatOptions = { month: "short", day: "numeric"
 
 type StatusFilter = ProposalStatus | "all";
 
-// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
+// Combo 1 tactile cockpit signals: lime approved, amber pending, cobalt informational.
 /** One table drives the strip cells (filter shortcuts) and the per-row status styling. */
-const STATUS_TABLE: { value: ProposalStatus; label: string; color: string; icon: React.ElementType }[] = [
-  { value: "proposed", label: "Pending", color: "#fbbf24", icon: Clock },
-  { value: "approved", label: "Approved", color: "#34d399", icon: CheckCircle2 },
-  { value: "rejected", label: "Rejected", color: "#f87171", icon: XCircle },
+const STATUS_TABLE: { value: ProposalStatus; label: string; dot: string; text: string; icon: React.ElementType }[] = [
+  { value: "proposed", label: "Pending", dot: "bg-amber-500 dark:bg-[#f59e0b]", text: "text-amber-700 dark:text-[#f59e0b]", icon: Clock },
+  { value: "approved", label: "Approved", dot: "bg-lime-500 dark:bg-[#a3e635]", text: "text-lime-700 dark:text-[#a3e635]", icon: CheckCircle2 },
+  { value: "rejected", label: "Rejected", dot: "bg-rose-500 dark:bg-[#fb7185]", text: "text-rose-600 dark:text-[#fb7185]", icon: XCircle },
 ];
 
 const SEVERITY_COLORS: Record<string, string> = {
-  MUST: "bg-[#f87171]/15 text-[#f87171]",
-  SHOULD: "bg-[#fbbf24]/15 text-[#fbbf24]",
-  MAY: "bg-[#5f8dff]/15 text-[#5f8dff]",
+  MUST: "bg-rose-500/10 text-rose-700 dark:bg-[#fb7185]/15 dark:text-[#fb7185]",
+  SHOULD: "bg-amber-500/10 text-amber-700 dark:bg-[#f59e0b]/15 dark:text-[#f59e0b]",
+  MAY: "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/15 dark:text-[#60a5fa]",
 };
 
 /** Fixed column tracks: name (flexes, truncates) | severity | agent | date | status | action (never wrap). */
 const ROW_TRACKS =
   "grid grid-cols-[minmax(0,1fr)_max-content_max-content] items-center gap-3 px-3 sm:grid-cols-[minmax(0,1fr)_4rem_max-content_max-content] lg:grid-cols-[minmax(0,1fr)_4rem_10rem_9.5rem_max-content_max-content]";
-const STRIP_CELL_ACTIVE = "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_-1px_0_#5f8dff]";
-const STRIP_CELL_IDLE = "hover:bg-[#151b28] hover:text-[#e6edf7]";
+const STRIP_CELL_ACTIVE = "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_#2563eb] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_#60a5fa]";
+const STRIP_CELL_IDLE = "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -63,23 +63,23 @@ function formatDate(date: string | null | undefined): string {
 
 function DiffView({ change }: { change: ProposedRuleChange }) {
   return (
-    <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 rounded-md border border-[#242d3f] bg-[#151b28] p-3 text-xs">
-      <span className="pt-0.5 font-medium text-[#8b97ad]">Name</span>
-      <span className="min-w-0 truncate font-medium text-[#e6edf7]">{change.name}</span>
-      <span className="pt-0.5 font-medium text-[#8b97ad]">Severity</span>
-      <span className={cn("justify-self-start rounded px-1.5 py-0.5 font-mono font-medium text-xs", SEVERITY_COLORS[change.severity] ?? "bg-[#151b28] text-[#8b97ad]")}>
+    <div className="grid grid-cols-[5rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 tactile-card p-3 text-xs dark:bg-none dark:border-white/[0.08] dark:bg-[#0e131d]">
+      <span className="pt-0.5 font-medium text-slate-500 dark:text-[#8b97ad]">Name</span>
+      <span className="min-w-0 truncate font-medium text-slate-950 dark:text-[#eef2f8]">{change.name}</span>
+      <span className="pt-0.5 font-medium text-slate-500 dark:text-[#8b97ad]">Severity</span>
+      <span className={cn("justify-self-start rounded px-1.5 py-0.5 font-mono font-medium text-xs", SEVERITY_COLORS[change.severity] ?? "bg-slate-100 dark:bg-[#151d2b] text-slate-500 dark:text-[#8b97ad]")}>
         {change.severity}
       </span>
-      <span className="pt-0.5 font-medium text-[#8b97ad]">Action</span>
-      <span className="min-w-0 truncate font-mono text-[#e6edf7]">{change.action}</span>
+      <span className="pt-0.5 font-medium text-slate-500 dark:text-[#8b97ad]">Action</span>
+      <span className="min-w-0 truncate font-mono text-slate-950 dark:text-[#eef2f8]">{change.action}</span>
       {change.message && (
         <>
-          <span className="pt-0.5 font-medium text-[#8b97ad]">Message</span>
-          <span className="whitespace-pre-wrap break-words text-[#8b97ad]">{change.message}</span>
+          <span className="pt-0.5 font-medium text-slate-500 dark:text-[#8b97ad]">Message</span>
+          <span className="whitespace-pre-wrap break-words text-slate-500 dark:text-[#8b97ad]">{change.message}</span>
         </>
       )}
-      <span className="self-start pt-0.5 font-medium text-[#8b97ad]">Predicate</span>
-      <pre className="overflow-x-auto rounded-md border border-[#242d3f] bg-[#0b0e14] p-2 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">
+      <span className="self-start pt-0.5 font-medium text-slate-500 dark:text-[#8b97ad]">Predicate</span>
+      <pre className="overflow-x-auto rounded-md border border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-[#090c12] p-2 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">
         {JSON.stringify(change.predicate, null, 2)}
       </pre>
     </div>
@@ -111,7 +111,7 @@ function ReviewForm({ proposal, onDone }: ReviewFormProps) {
   });
 
   return (
-    <div className="mt-3 space-y-2 border-t border-[#242d3f] pt-3">
+    <div className="mt-3 space-y-2 border-t border-slate-200/90 dark:border-white/[0.08] pt-3">
       <HumanReviewPacket packet={{
         schemaVersion: "human-review-v1", decisionSubject: `${proposal.proposedChange.name} 운영 규칙 변경을 적용할까요?`,
         evidence: [{ label: "규칙 변경 제안 원본", href: `/worktree/proposals#proposal-${proposal.id}`, location: `제안 ${proposal.id} > Proposed rule`, description: proposal.rationale }],
@@ -122,7 +122,7 @@ function ReviewForm({ proposal, onDone }: ReviewFormProps) {
       }} />
       <label className="flex items-start gap-2 text-xs"><input type="checkbox" checked={reviewAcknowledged} onChange={(event) => setReviewAcknowledged(event.target.checked)} /><span>원본 규칙, 적용 영향과 오판 위험을 확인했습니다.</span></label>
       <textarea
-        className="h-16 w-full resize-none rounded-md border border-input bg-[#0b0e14] px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+        className="h-16 w-full resize-none rounded-md border border-slate-200/90 bg-white text-slate-900 placeholder:text-slate-400 dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#eef2f8] dark:placeholder:text-[#627089] px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
         placeholder={L(lang, { en: "Review note (optional)", ko: "검토 메모(선택)" })}
         value={reviewNote}
         onChange={(e) => setReviewNote(e.target.value)}
@@ -130,15 +130,15 @@ function ReviewForm({ proposal, onDone }: ReviewFormProps) {
       {reviewError && <p className="text-xs text-destructive">{reviewError}</p>}
       <div className="flex items-center gap-2">
         {/* Deep-cobalt primary: the one governing action of this page */}
-        <Button size="sm" variant="outline" className="h-7 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]"
+        <Button size="sm" variant="outline" className="h-7 bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]"
           onClick={() => mutation.mutate("approved")} disabled={mutation.isPending || !reviewAcknowledged}>
           <CheckCircle2 className="h-3.5 w-3.5" />{L(lang, { en: "Approve", ko: "승인" })}
         </Button>
-        <Button size="sm" variant="outline" className="h-7 border-[#f87171]/50 text-xs text-[#f87171] hover:bg-[#f87171]/10 hover:text-[#f87171]"
+        <Button size="sm" variant="outline" className="h-7 border-rose-500/40 text-xs text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 dark:border-[#fb7185]/45 dark:text-[#fb7185] dark:hover:bg-[#fb7185]/10 dark:hover:text-[#fb7185]"
           onClick={() => mutation.mutate("rejected")} disabled={mutation.isPending}>
           <XCircle className="h-3.5 w-3.5" />{L(lang, { en: "Reject", ko: "거절" })}
         </Button>
-        <Button size="sm" variant="ghost" className="h-7 text-xs text-[#8b97ad] hover:text-[#e6edf7]" onClick={onDone} disabled={mutation.isPending}>
+        <Button size="sm" variant="ghost" className="h-7 text-xs text-slate-500 dark:text-[#8b97ad] hover:text-slate-900 dark:hover:text-[#eef2f8]" onClick={onDone} disabled={mutation.isPending}>
           {L(lang, { en: "Cancel", ko: "취소" })}
         </Button>
       </div>
@@ -176,12 +176,12 @@ function ProposalRow({ proposal, agentMap, reviewSeq }: ProposalRowProps) {
   const change = proposal.proposedChange;
 
   return (
-    <div id={`proposal-${proposal.id}`} className="border-b border-[#242d3f] transition-colors last:border-b-0 hover:bg-[#151b28]">
+    <div id={`proposal-${proposal.id}`} className="border-b border-slate-200/90 transition-colors last:border-b-0 hover:bg-slate-50 dark:border-white/[0.08] dark:hover:bg-[#141b29]">
       {/* Row header */}
       <div className={cn(ROW_TRACKS, "h-10 text-sm")}>
         <span className="flex min-w-0 items-center gap-3">
           <button
-            className="shrink-0 p-0.5 text-[#8b97ad] hover:text-[#e6edf7]"
+            className="shrink-0 p-0.5 text-slate-500 dark:text-[#8b97ad] hover:text-slate-900 dark:hover:text-[#eef2f8]"
             onClick={() => { setExpanded((v) => !v); if (reviewing) setReviewing(false); }}
             aria-label={expanded ? "Collapse proposal" : "Expand proposal"}
           >
@@ -189,29 +189,29 @@ function ProposalRow({ proposal, agentMap, reviewSeq }: ProposalRowProps) {
               ? <ChevronDown className="h-3.5 w-3.5" />
               : <ChevronRight className="h-3.5 w-3.5" />}
           </button>
-          <GitPullRequest className="h-4 w-4 shrink-0 text-[#8b97ad]" />
-          <span className="min-w-0 flex-1 truncate font-medium text-[#e6edf7]">{change.name}</span>
+          <GitPullRequest className="h-4 w-4 shrink-0 text-slate-500 dark:text-[#8b97ad]" />
+          <span className="min-w-0 flex-1 truncate font-medium text-slate-950 dark:text-[#eef2f8]">{change.name}</span>
         </span>
 
         {/* Severity badge */}
         <span className={cn(
           "justify-self-start rounded px-1.5 py-0.5 font-mono font-medium text-xs",
-          SEVERITY_COLORS[change.severity] ?? "bg-[#151b28] text-[#8b97ad]",
+          SEVERITY_COLORS[change.severity] ?? "bg-slate-100 dark:bg-[#151d2b] text-slate-500 dark:text-[#8b97ad]",
         )}>
           {change.severity}
         </span>
 
         {/* Agent */}
-        <span className="hidden min-w-0 items-center gap-1 text-xs text-[#8b97ad] sm:flex">
+        <span className="hidden min-w-0 items-center gap-1 text-xs text-slate-500 dark:text-[#8b97ad] sm:flex">
           <Bot className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate">{agentMap[proposal.proposedBy] ?? proposal.proposedBy}</span>
         </span>
 
         {/* Date */}
-        <span className="hidden min-w-0 truncate text-xs text-[#8b97ad] lg:block">{formatDate(proposal.createdAt)}</span>
+        <span className="hidden min-w-0 truncate text-xs text-slate-500 dark:text-[#8b97ad] lg:block">{formatDate(proposal.createdAt)}</span>
 
         {/* Status */}
-        <span className="hidden shrink-0 items-center gap-1 text-xs lg:flex" style={{ color: statusInfo?.color }}>
+        <span className={cn("hidden shrink-0 items-center gap-1 text-xs lg:flex", statusInfo?.text)}>
           <StatusIcon className="h-3.5 w-3.5" />
           <span title={status}>{humanLabel(lang, "approvalStatus", status === "proposed" ? "pending" : status).label}</span>
         </span>
@@ -236,21 +236,21 @@ function ProposalRow({ proposal, agentMap, reviewSeq }: ProposalRowProps) {
       {expanded && (
         <div className="space-y-3 px-10 pb-4">
           <div>
-            <p className="mb-1 text-xs font-medium text-[#8b97ad]">Rationale</p>
-            <p className="whitespace-pre-wrap break-words text-xs text-[#e6edf7]">{proposal.rationale}</p>
+            <p className="mb-1 text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Rationale</p>
+            <p className="whitespace-pre-wrap break-words text-xs text-slate-950 dark:text-[#eef2f8]">{proposal.rationale}</p>
           </div>
           <div>
-            <p className="mb-2 text-xs font-medium text-[#8b97ad]">Proposed rule</p>
+            <p className="mb-2 text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Proposed rule</p>
             <DiffView change={change} />
           </div>
 
           {/* Review info if already decided */}
           {!isPending && proposal.reviewedBy && (
-            <div className="space-y-0.5 border-t border-[#242d3f] pt-2 text-xs text-[#8b97ad]">
-              <p><span className="font-medium text-[#e6edf7]">Reviewed by:</span> {agentMap[proposal.reviewedBy] ?? proposal.reviewedBy}</p>
-              <p><span className="font-medium text-[#e6edf7]">Reviewed at:</span> {formatDate(proposal.reviewedAt)}</p>
+            <div className="space-y-0.5 border-t border-slate-200/90 dark:border-white/[0.08] pt-2 text-xs text-slate-500 dark:text-[#8b97ad]">
+              <p><span className="font-medium text-slate-950 dark:text-[#eef2f8]">Reviewed by:</span> {agentMap[proposal.reviewedBy] ?? proposal.reviewedBy}</p>
+              <p><span className="font-medium text-slate-950 dark:text-[#eef2f8]">Reviewed at:</span> {formatDate(proposal.reviewedAt)}</p>
               {proposal.ruleId && (
-                <p><span className="font-medium text-[#e6edf7]">Rule ID:</span> <span className="font-mono">{proposal.ruleId}</span></p>
+                <p><span className="font-medium text-slate-950 dark:text-[#eef2f8]">Rule ID:</span> <span className="font-mono">{proposal.ruleId}</span></p>
               )}
             </div>
           )}
@@ -265,7 +265,7 @@ function ProposalRow({ proposal, agentMap, reviewSeq }: ProposalRowProps) {
 
 // ── AgentRateLimitBar — shows proposals used today per agent ──────────────────
 
-/** One #111622 hairline card; one line per agent that proposed today (client-side approximate — server is authoritative). */
+/** One tactile inset card; one line per agent that proposed today (client-side approximate — server is authoritative). */
 function AgentRateLimitBar({ proposals, agentMap }: { proposals: WorktreeProposal[]; agentMap: Record<string, string> }) {
   const today = new Date().toDateString();
   const countByAgent: Record<string, number> = {};
@@ -279,23 +279,23 @@ function AgentRateLimitBar({ proposals, agentMap }: { proposals: WorktreeProposa
   if (agents.length === 0) return null;
 
   return (
-    <div className="space-y-1.5 rounded-md border border-[#242d3f] bg-[#111622] px-3 py-2">
-      <p className="text-[10.5px] uppercase tracking-[0.08em] text-[#8b97ad]">Today's proposal usage</p>
+    <div className="space-y-1.5 tactile-card px-3 py-2 dark:bg-none dark:border-white/[0.08] dark:bg-[#090c12]">
+      <p className="text-[10.5px] uppercase tracking-[0.08em] text-slate-500 dark:text-[#8b97ad]">Today's proposal usage</p>
       {agents.map(([agentId, count]) => {
         const capped = count >= MAX_PROPOSALS_PER_AGENT_PER_DAY;
         return (
           <div key={agentId} className="flex items-center gap-3 text-xs">
-            <span className="flex min-w-0 w-48 items-center gap-1.5 text-[#8b97ad]">
+            <span className="flex min-w-0 w-48 items-center gap-1.5 text-slate-500 dark:text-[#8b97ad]">
               <Bot className="h-3 w-3 shrink-0" />
               <span className="truncate">{agentMap[agentId] ?? agentId}</span>
             </span>
-            <span className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-[#151b28]">
+            <span className="h-1 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-[#151d2b]">
               <span
-                className={cn("block h-full rounded-full transition-all", capped ? "bg-[#f87171]" : "bg-[#2563eb]")}
+                className={cn("block h-full rounded-full transition-all", capped ? "bg-rose-500 dark:bg-[#fb7185]" : "bg-blue-600 dark:bg-[#60a5fa]")}
                 style={{ width: `${Math.min((count / MAX_PROPOSALS_PER_AGENT_PER_DAY) * 100, 100)}%` }}
               />
             </span>
-            <span className={cn("shrink-0 font-mono", capped ? "font-medium text-[#f87171]" : "text-[#8b97ad]")}>
+            <span className={cn("shrink-0 font-mono", capped ? "font-medium text-rose-600 dark:text-[#fb7185]" : "text-slate-500 dark:text-[#8b97ad]")}>
               {count}/{MAX_PROPOSALS_PER_AGENT_PER_DAY}
             </span>
           </div>
@@ -372,7 +372,7 @@ export function WorktreeProposals() {
       {error && <p className="text-sm text-destructive">{error instanceof Error ? error.message : String(error)}</p>}
 
       {/* 1-row cockpit strip: proposal counts double as status-filter shortcuts */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Rule-change proposals by status">
+      <div className="cockpit-strip h-10 w-full gap-0 overflow-hidden rounded-xl border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)]" role="group" aria-label="Rule-change proposals by status">
         <span className="cockpit-cell shrink-0">
           <GitPullRequest className="h-3.5 w-3.5 shrink-0" aria-hidden />
           <span className="uppercase tracking-wide">Proposals</span>
@@ -384,7 +384,7 @@ export function WorktreeProposals() {
           onClick={() => setStatusFilter("all")}
           className={cn("cockpit-cell min-w-0 flex-1 cursor-pointer justify-center transition-colors", statusFilter === "all" ? STRIP_CELL_ACTIVE : STRIP_CELL_IDLE)}
         >
-          <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#5f8dff]" />
+          <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-600 dark:bg-[#60a5fa]" />
           <span className="truncate uppercase tracking-wide">Total</span>
           <b className="ml-1">{allProposals.length}</b>
         </button>
@@ -397,7 +397,7 @@ export function WorktreeProposals() {
             onClick={() => setStatusFilter(s.value)}
             className={cn("cockpit-cell min-w-0 flex-1 cursor-pointer justify-center transition-colors", statusFilter === s.value ? STRIP_CELL_ACTIVE : STRIP_CELL_IDLE)}
           >
-            <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: s.color }} />
+            <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", s.dot)} />
             <span className="truncate uppercase tracking-wide">{s.label}</span>
             <b className="ml-1">{counts[s.value]}</b>
           </button>
@@ -408,19 +408,19 @@ export function WorktreeProposals() {
       </div>
 
       {/* Tight single-row 40px toolbar: visible/total readout · deep-cobalt review CTA. */}
-      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] pl-1.5 pr-1.5">
-        <span className="shrink-0 text-[11px] text-[#8b97ad]">
-          <b className="font-mono text-[#e6edf7]">{filtered.length}</b> of {allProposals.length} shown
+      <div className="cockpit-toolbar tactile-card h-10 w-full rounded-xl pl-1.5 pr-1.5 dark:bg-none dark:border-white/[0.08] dark:bg-[#0e131d]">
+        <span className="shrink-0 text-[11px] text-slate-500 dark:text-[#8b97ad]">
+          <b className="font-mono text-slate-950 dark:text-[#eef2f8]">{filtered.length}</b> of {allProposals.length} shown
         </span>
-        <span className="hidden shrink-0 text-[11px] text-[#8b97ad] sm:block">
-          · <b className="font-mono text-[#e6edf7]">{counts.proposed}</b> awaiting review
+        <span className="hidden shrink-0 text-[11px] text-slate-500 dark:text-[#8b97ad] sm:block">
+          · <b className="font-mono text-slate-950 dark:text-[#eef2f8]">{counts.proposed}</b> awaiting review
         </span>
         <Button
           size="sm"
           variant="outline"
           disabled={!nextPending}
           onClick={reviewNext}
-          className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8] disabled:opacity-45"
+          className="h-7 shrink-0 bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6] disabled:opacity-45"
         >
           Review next
         </Button>
@@ -445,8 +445,8 @@ export function WorktreeProposals() {
 
       {/* Proposal list */}
       {filtered.length > 0 && (
-        <div aria-label="Rule-change proposals" className="overflow-hidden rounded-md border border-[#242d3f] bg-[#111622]">
-          <div className={cn(ROW_TRACKS, "h-7 text-[10.5px] uppercase tracking-[0.08em] text-[#8b97ad]")}>
+        <div aria-label="Rule-change proposals" className="tactile-card overflow-hidden dark:bg-none dark:border-white/[0.08] dark:bg-[#0e131d]">
+          <div className={cn(ROW_TRACKS, "h-7 text-[10.5px] uppercase tracking-[0.08em] text-slate-500 dark:text-[#8b97ad]")}>
             <span>Proposed rule</span>
             <span>Sev.</span>
             <span className="hidden sm:block">Agent</span>

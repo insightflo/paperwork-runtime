@@ -43,14 +43,14 @@ import { HermitGateAndOpsPanel } from "../components/HermitGateAndOpsPanel";
 
 const SEVERITIES: RuleSeverity[] = ["MUST", "SHOULD", "MAY"];
 
-// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
+// Combo 1 tactile cockpit signals: lime/cobalt/amber telemetry on legible light and obsidian dark surfaces.
 const SEVERITY_COLORS: Record<RuleSeverity, string> = {
-  MUST: "bg-[#f87171]/15 text-[#f87171]",
-  SHOULD: "bg-[#fbbf24]/15 text-[#fbbf24]",
-  MAY: "bg-[#5f8dff]/15 text-[#5f8dff]",
+  MUST: "bg-rose-500/10 text-rose-700 dark:bg-[#fb7185]/15 dark:text-[#fb7185]",
+  SHOULD: "bg-amber-500/10 text-amber-700 dark:bg-[#f59e0b]/15 dark:text-[#f59e0b]",
+  MAY: "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/15 dark:text-[#60a5fa]",
 };
 
-const SEVERITY_DOTS: Record<RuleSeverity, string> = { MUST: "bg-[#f87171]", SHOULD: "bg-[#fbbf24]", MAY: "bg-[#5f8dff]" };
+const SEVERITY_DOTS: Record<RuleSeverity, string> = { MUST: "bg-rose-500 dark:bg-[#fb7185]", SHOULD: "bg-amber-500 dark:bg-[#f59e0b]", MAY: "bg-blue-600 dark:bg-[#60a5fa]" };
 
 const RULE_ACTIONS: RuleAction[] = [
   "tool_call",
@@ -301,11 +301,11 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 rounded-md border border-[#242d3f] bg-[#151b28] p-4">
+    <form onSubmit={handleSubmit} className="space-y-3 tactile-card p-4 dark:bg-none dark:border-white/[0.08] dark:bg-[#0e131d]">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]">{initial ? "Edit Rule" : "New Rule"}</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad]">{initial ? "Edit Rule" : "New Rule"}</p>
         <div className="flex shrink-0 gap-2">
-          <Button type="submit" size="sm" variant="outline" className="h-7 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]" disabled={isPending}>
+          <Button type="submit" size="sm" variant="outline" className="h-7 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]" disabled={isPending}>
             {isPending ? "Saving..." : initial ? "Save" : "Create"}
           </Button>
           <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onCancel}>
@@ -315,7 +315,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
       </div>
       {/* Name */}
       <div className="space-y-1.5">
-        <label className="text-xs text-[#8b97ad]">Name</label>
+        <label className="text-xs text-slate-500 dark:text-[#8b97ad]">Name</label>
         <Input
           className="h-8 text-sm"
           value={values.name}
@@ -327,7 +327,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
       {/* Severity + Action row */}
       <div className="flex gap-3">
         <div className="space-y-1.5 w-32 shrink-0">
-          <label className="text-xs text-[#8b97ad]">Severity</label>
+          <label className="text-xs text-slate-500 dark:text-[#8b97ad]">Severity</label>
           <Select value={values.severity} onValueChange={(v) => set("severity", v as RuleSeverity)}>
             <SelectTrigger className="h-8 text-sm">
               <SelectValue />
@@ -340,7 +340,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
           </Select>
         </div>
         <div className="space-y-1.5 flex-1">
-          <label className="text-xs text-[#8b97ad]">Action</label>
+          <label className="text-xs text-slate-500 dark:text-[#8b97ad]">Action</label>
           <Select value={values.action} onValueChange={(v) => set("action", v)}>
             <SelectTrigger className="h-8 text-sm">
               <SelectValue />
@@ -359,7 +359,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
       </div>
       {/* Message */}
       <div className="space-y-1.5">
-        <label className="text-xs text-[#8b97ad]">Violation message</label>
+        <label className="text-xs text-slate-500 dark:text-[#8b97ad]">Violation message</label>
         <Input
           className="h-8 text-sm"
           value={values.message}
@@ -370,7 +370,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
       {/* Predicate section */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-xs text-[#8b97ad]">Predicate</label>
+          <label className="text-xs text-slate-500 dark:text-[#8b97ad]">Predicate</label>
           <Button
             type="button"
             variant="ghost"
@@ -385,7 +385,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
         </div>
         {values.useRawJson ? (
           <textarea
-            className={cn("h-32 w-full resize-y rounded-md border bg-[#0b0e14] px-3 py-2 font-mono text-xs whitespace-pre-wrap focus:outline-none focus:ring-1 focus:ring-ring", jsonError ? "border-destructive" : "border-input")}
+            className={cn("h-32 w-full resize-y rounded-md border bg-white px-3 py-2 font-mono text-xs text-slate-900 whitespace-pre-wrap focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:ring-[#60a5fa]", jsonError ? "border-destructive" : "border-slate-200/90 dark:border-white/[0.1]")}
             value={values.predicateJson}
             onChange={(e) => { set("predicateJson", e.target.value); setJsonError(null); }}
             spellCheck={false}
@@ -394,7 +394,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
           <PredicateFormBuilder clauses={values.clauses} onChange={(c) => set("clauses", c)} />
         )}
         {jsonError && <p className="text-xs text-destructive">{jsonError}</p>}
-        <p className="text-xs text-[#8b97ad]">
+        <p className="text-xs text-slate-500 dark:text-[#8b97ad]">
           Operators: $eq $ne $contains $startsWith $endsWith $in $notIn $matches $gt $lt
         </p>
       </div>
@@ -404,7 +404,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
           type="button"
           variant="ghost"
           size="icon-sm"
-          className={cn(values.enabled ? "text-[#34d399]" : "text-[#8b97ad]")}
+          className={cn(values.enabled ? "text-lime-700 dark:text-[#a3e635]" : "text-slate-500 dark:text-[#8b97ad]")}
           onClick={() => set("enabled", !values.enabled)}
           title={values.enabled ? "Enabled — click to disable" : "Disabled — click to enable"}
         >
@@ -412,7 +412,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
             ? <ToggleRight className="h-4 w-4" />
             : <ToggleLeft className="h-4 w-4" />}
         </Button>
-        <span className="text-xs text-[#8b97ad]">{values.enabled ? "Enabled" : "Disabled"}</span>
+        <span className="text-xs text-slate-500 dark:text-[#8b97ad]">{values.enabled ? "Enabled" : "Disabled"}</span>
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
     </form>
@@ -452,7 +452,7 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
 
   if (editing) {
     return (
-      <div className="border-b border-[#242d3f] p-3 last:border-b-0">
+      <div className="border-b border-slate-200/90 dark:border-white/[0.08] p-3 last:border-b-0">
         <RuleForm
           initial={rule}
           onSubmit={(input) => updateMutation.mutate(input)}
@@ -465,12 +465,12 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
   }
 
   return (
-    <div className={cn("border-b border-[#242d3f] transition-colors last:border-b-0 hover:bg-[#151b28]", !rule.enabled && "opacity-60")}>
+    <div className={cn("border-b border-slate-200/90 dark:border-white/[0.08] transition-colors last:border-b-0 hover:bg-slate-50 dark:hover:bg-[#141b29]", !rule.enabled && "opacity-60")}>
       {/* Row header */}
       <div className={cn(RULE_ROW_TRACKS, "h-10 text-sm")}>
         <span className="flex min-w-0 items-center gap-3">
           <button
-            className="shrink-0 p-0.5 text-[#8b97ad] hover:text-[#e6edf7]"
+            className="shrink-0 p-0.5 text-slate-500 dark:text-[#8b97ad] hover:text-slate-900 dark:hover:text-[#eef2f8]"
             onClick={() => setExpanded((v) => !v)}
             aria-label={expanded ? "Collapse rule" : "Expand rule"}
           >
@@ -478,17 +478,17 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
               ? <ChevronDown className="h-3.5 w-3.5" />
               : <ChevronRight className="h-3.5 w-3.5" />}
           </button>
-          <ShieldCheck className="h-4 w-4 shrink-0 text-[#8b97ad]" />
-          <span className="min-w-0 flex-1 truncate font-medium text-[#e6edf7]">{rule.name}</span>
+          <ShieldCheck className="h-4 w-4 shrink-0 text-slate-500 dark:text-[#8b97ad]" />
+          <span className="min-w-0 flex-1 truncate font-medium text-slate-950 dark:text-[#eef2f8]">{rule.name}</span>
         </span>
         <SeverityBadge severity={rule.severity as RuleSeverity} />
-        <span className="hidden min-w-0 truncate font-mono text-xs text-[#8b97ad] sm:block">{rule.action}</span>
+        <span className="hidden min-w-0 truncate font-mono text-xs text-slate-500 dark:text-[#8b97ad] sm:block">{rule.action}</span>
         {/* Toggle enabled · Edit · Delete */}
         <span className="flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon-sm"
-            className={cn("shrink-0", rule.enabled ? "text-[#34d399]" : "text-[#8b97ad]")}
+            className={cn("shrink-0", rule.enabled ? "text-lime-700 dark:text-[#a3e635]" : "text-slate-500 dark:text-[#8b97ad]")}
             onClick={() => toggleMutation.mutate(!rule.enabled)}
             disabled={toggleMutation.isPending}
             title={rule.enabled ? "Disable" : "Enable"}
@@ -501,7 +501,7 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
           <Button
             variant="ghost"
             size="sm"
-            className="h-6 text-xs text-[#8b97ad] hover:text-[#e6edf7]"
+            className="h-6 text-xs text-slate-500 dark:text-[#8b97ad] hover:text-slate-900 dark:hover:text-[#eef2f8]"
             onClick={() => setEditing(true)}
           >
             Edit
@@ -509,7 +509,7 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
           <Button
             variant="ghost"
             size="icon-sm"
-            className="shrink-0 text-[#8b97ad] hover:text-destructive"
+            className="shrink-0 text-slate-500 dark:text-[#8b97ad] hover:text-destructive"
             onClick={() => deleteMutation.mutate()}
             disabled={deleteMutation.isPending}
             aria-label="Delete rule"
@@ -521,20 +521,20 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="space-y-2 px-10 pb-3 text-xs text-[#8b97ad]">
+        <div className="space-y-2 px-10 pb-3 text-xs text-slate-500 dark:text-[#8b97ad]">
           {rule.message && (
-            <p><span className="font-medium text-[#e6edf7]">Message:</span> {rule.message}</p>
+            <p><span className="font-medium text-slate-950 dark:text-[#eef2f8]">Message:</span> {rule.message}</p>
           )}
           <div>
-            <p className="mb-1 font-medium text-[#e6edf7]">Predicate:</p>
-            <pre className="overflow-x-auto rounded-md border border-[#242d3f] bg-[#0b0e14] p-2 font-mono text-xs whitespace-pre-wrap break-all">
+            <p className="mb-1 font-medium text-slate-950 dark:text-[#eef2f8]">Predicate:</p>
+            <pre className="overflow-x-auto rounded-md border border-slate-200/90 bg-white text-slate-900 dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#eef2f8] p-2 font-mono text-xs whitespace-pre-wrap break-all">
               {JSON.stringify(rule.predicate, null, 2)}
             </pre>
           </div>
           <p>
-            <span className="font-medium text-[#e6edf7]">Version:</span> {rule.version}
+            <span className="font-medium text-slate-950 dark:text-[#eef2f8]">Version:</span> {rule.version}
             {" · "}
-            <span className="font-medium text-[#e6edf7]">Created by:</span> {rule.createdBy}
+            <span className="font-medium text-slate-950 dark:text-[#eef2f8]">Created by:</span> {rule.createdBy}
           </p>
         </div>
       )}
@@ -553,10 +553,10 @@ const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: "rules", label: "승인 가드레일 (Approval Gates)" }, { id: "ops", label: "Hermit Gate & 리소스 콘솔" },
 ];
 
-// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
-const SEGMENT = "flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5";
-const SEGMENT_ACTIVE = "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_0_0_1px_#242d3f]";
-const SEGMENT_IDLE = "text-[#8b97ad] hover:text-[#e6edf7]";
+// Combo 1 segmented-control primitives.
+const SEGMENT = "flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-100/80 p-0.5 dark:border-white/[0.08] dark:bg-[#090c12]";
+const SEGMENT_ACTIVE = "bg-white text-slate-950 shadow-sm dark:bg-[#151d2b] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]";
+const SEGMENT_IDLE = "text-slate-600 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:text-[#eef2f8]";
 
 /** One toolbar segment: 24px tall, never wraps. */
 function Segment({ pressed, onClick, children }: { pressed: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -626,7 +626,7 @@ export function WorktreeRules() {
       {error && <p className="text-sm text-destructive">{error instanceof Error ? error.message : String(error)}</p>}
 
       {/* 1-row cockpit strip: rule counts double as severity-filter shortcuts */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Approval gates by severity">
+      <div className="cockpit-strip h-10 w-full gap-0 overflow-hidden rounded-xl border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)]" role="group" aria-label="Approval gates by severity">
         <span className="cockpit-cell shrink-0">
           <ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden />
           <span className="uppercase tracking-wide">Approval Gates</span>
@@ -643,7 +643,7 @@ export function WorktreeRules() {
             onClick={() => selectSeverity(s)}
             className={cn(
               "cockpit-cell min-w-0 flex-1 cursor-pointer justify-center transition-colors",
-              mainTab === "rules" && severityFilter === s ? "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_-1px_0_#5f8dff]" : "hover:bg-[#151b28] hover:text-[#e6edf7]",
+              mainTab === "rules" && severityFilter === s ? "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_#2563eb] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_#60a5fa]" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]",
             )}
           >
             <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", SEVERITY_DOTS[s])} />
@@ -657,7 +657,7 @@ export function WorktreeRules() {
       </div>
 
       {/* Tight single-row 40px toolbar: sections · severity tabs · visible count · primary action. */}
-      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] pl-1.5 pr-1.5">
+      <div className="cockpit-toolbar tactile-card h-10 w-full rounded-xl pl-1.5 pr-1.5 dark:bg-none dark:border-white/[0.08] dark:bg-[#0e131d]">
         <div role="group" aria-label="Sections" className={SEGMENT}>
           {MAIN_TABS.map((tab) => (
             <Segment key={tab.id} pressed={mainTab === tab.id} onClick={() => setMainTab(tab.id)}>{tab.label}</Segment>
@@ -670,14 +670,14 @@ export function WorktreeRules() {
                 <Segment key={s} pressed={severityFilter === s} onClick={() => setSeverityFilter(s)}>{s === "all" ? "All" : s}</Segment>
               ))}
             </div>
-            <span className="ml-auto hidden shrink-0 text-[11px] text-[#8b97ad] sm:block">
-              <span className="font-mono text-[#e6edf7]">{filtered.length}</span> of {all.length}
+            <span className="ml-auto hidden shrink-0 text-[11px] text-slate-500 dark:text-[#8b97ad] sm:block">
+              <span className="font-mono text-slate-950 dark:text-[#eef2f8]">{filtered.length}</span> of {all.length}
             </span>
             <Button
               size="sm"
               variant="outline"
               aria-pressed={showCreateForm}
-              className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]"
+              className="h-7 shrink-0 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]"
               onClick={() => { setShowCreateForm((v) => !v); setCreateError(null); }}
             >
               <Plus className="h-3.5 w-3.5" />
@@ -691,7 +691,7 @@ export function WorktreeRules() {
 
       {mainTab === "rules" && (
         <>
-          <p className="px-0.5 text-xs text-[#8b97ad]">외부 발행·배포·신고·결제 등 자유 미션에서도 반드시 사람 승인이 필요한 하드 가드레일을 설정합니다. 일반 업무 규정·플레이북은 Wiki → KB 트리에 등록하세요.</p>
+          <p className="px-0.5 text-xs text-slate-500 dark:text-[#8b97ad]">외부 발행·배포·신고·결제 등 자유 미션에서도 반드시 사람 승인이 필요한 하드 가드레일을 설정합니다. 일반 업무 규정·플레이북은 Wiki → KB 트리에 등록하세요.</p>
 
           {/* Create form */}
           {showCreateForm && (
@@ -715,7 +715,7 @@ export function WorktreeRules() {
 
           {/* Rule list */}
           {filtered.length > 0 && (
-            <div aria-label="Worktree rules" className="overflow-hidden rounded-md border border-[#242d3f] bg-[#111622]">
+            <div aria-label="Worktree rules" className="tactile-card overflow-hidden dark:bg-none dark:border-white/[0.08] dark:bg-[#0e131d]">
               {filtered.map((rule) => (
                 <RuleRow key={rule.id} rule={rule} companyId={selectedCompanyId} />
               ))}
