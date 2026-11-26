@@ -74,10 +74,14 @@ const tableCases: TableCase[] = [
   },
   {
     label: "bots", table: bots,
-    columns: ["id", "company_id", "kind", "name", "owner_user_id", "team_id", "agent_id", "callable_by", "status", ...timestampColumns],
+    columns: [
+      "id", "company_id", "kind", "name", "owner_user_id", "team_id", "agent_id", "callable_by", "status",
+      "webhook_url", "token_secret_id", "inbound_token_hash", "last_ping_at", "last_ping_status",
+      ...timestampColumns,
+    ],
     required: ["id", "company_id", "kind", "name", "callable_by", "status", ...timestampColumns],
-    nullable: ["owner_user_id", "team_id", "agent_id"],
-    columnTypes: { team_id: "PgUUID", agent_id: "PgUUID" },
+    nullable: ["owner_user_id", "team_id", "agent_id", "webhook_url", "token_secret_id", "inbound_token_hash", "last_ping_at", "last_ping_status"],
+    columnTypes: { team_id: "PgUUID", agent_id: "PgUUID", token_secret_id: "PgUUID" },
     defaults: { callable_by: "team", status: "active" },
     lookupIndexes: [
       ["bots_company_status_idx", ["company_id", "status"]],
@@ -85,8 +89,9 @@ const tableCases: TableCase[] = [
       ["bots_owner_user_idx", ["owner_user_id"]],
     ],
     checks: {
-      bots_kind_check: ["personal", "team"],
+      bots_kind_check: ["personal", "team", "company"],
       bots_callable_by_check: ["self_only", "team", "company"],
+      bots_last_ping_status_check: ["ok", "error"],
     },
   },
   {
@@ -186,6 +191,7 @@ describe("enterprise bot schema-specific invariants", () => {
     expect(ownershipCheck).toContain("team_id");
     expect(ownershipCheck).toContain("personal");
     expect(ownershipCheck).toContain("team");
+    expect(ownershipCheck).toContain("company");
   });
 
   it("stores only a SHA-256 hex token hash, never a plaintext token column", () => {

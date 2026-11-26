@@ -5,8 +5,11 @@ import { describe, expect, it } from "vitest";
 import { errorHandler } from "../middleware/index.js";
 import { createEnterpriseBotsRouter } from "../routes/enterprise-bots.js";
 import {
+  BOT_CHANNEL_OWNER_APPROVAL_TYPE,
   createBotTerminalChannelService, createTerminalToken, hashTerminalToken,
-  type BotActor, type BotTerminalRecord, type EnterpriseBotStore, type NewBotTerminal,
+  type BotActor, type BotCapabilityRecord, type BotPendingApprovalRecord, type BotTerminalRecord,
+  type BotTerminalChannelServiceOptions, type EnterpriseBotRecord, type EnterpriseBotStore,
+  type NewBotTerminal,
 } from "../services/bot-terminal-channel.js";
 
 const COMPANY = "00000000-0000-4000-8000-000000000001";
@@ -20,20 +23,34 @@ const OWNER = "u-owner";
 const SALES = "u-sales";
 
 const actor = (overrides: Partial<BotActor> = {}): BotActor => ({ userId: SALES, companyId: COMPANY, teamId: TEAM_SALES, role: "member", ...overrides });
-interface MemoryStoreSeed { approvals?: Array<{ botId: string; channelId: string; botOwnerUserId: string }> }
+interface MemoryStoreSeed {
+  approvals?: Array<{ botId: string; channelId: string; botOwnerUserId: string }>;
+  pendingApprovals?: BotPendingApprovalRecord[];
+}
 
 function createMemoryStore(seed: MemoryStoreSeed = {}) {
   const terminals = new Map<string, BotTerminalRecord>();
-  const bots = [
-    { id: BOT_PERSONAL, companyId: COMPANY, kind: "personal" as const, ownerUserId: OWNER, teamId: null, callableBy: "company" as const, status: "active" },
-    { id: BOT_TEAM_HR, companyId: COMPANY, kind: "team" as const, ownerUserId: null, teamId: TEAM_HR, callableBy: "company" as const, status: "active" },
+  const bots = new Map<string, EnterpriseBotRecord>([
+    [BOT_PERSONAL, {
+      id: BOT_PERSONAL, companyId: COMPANY, kind: "personal", name: "Personal Bot",
+      ownerUserId: OWNER, teamId: null, agentId: null, callableBy: "company", status: "active",
+      webhookUrl: null, tokenSecretId: null, inboundTokenHash: null, lastPingAt: null, lastPingStatus: null,
+    }],
+    [BOT_TEAM_HR, {
+      id: BOT_TEAM_HR, companyId: COMPANY, kind: "team", name: "HR Bot",
+      ownerUserId: null, teamId: TEAM_HR, agentId: null, callableBy: "company", status: "active",
+      webhookUrl: null, tokenSecretId: null, inboundTokenHash: null, lastPingAt: null, lastPingStatus: null,
+    }],
+  ]);
+  const capabilities: BotCapabilityRecord[] = [
+    { botId: BOT_PERSONAL, capabilityKey: "inbox.triage", callableBy: "company", dataScope: "company", requiresApproval: false },
+    { botId: BOT_PERSONAL, capabilityKey: "hr.salary.read", callableBy: "company", dataScope: "self", requiresApproval: false },
+    { botId: BOT_PERSONAL, capabilityKey: "hr.salary.export", callableBy: "company", dataScope: "self", requiresApproval: true },
+    { botId: BOT_TEAM_HR, capabilityKey: "hr.records.read", callableBy: "company", dataScope: "team", requiresApproval: false },
   ];
-  const capabilities = [
-    { botId: BOT_PERSONAL, capabilityKey: "inbox.triage", callableBy: "company" as const, dataScope: "company" as const, requiresApproval: false },
-    { botId: BOT_PERSONAL, capabilityKey: "hr.salary.read", callableBy: "company" as const, dataScope: "self" as const, requiresApproval: false },
-    { botId: BOT_PERSONAL, capabilityKey: "hr.salary.export", callableBy: "company" as const, dataScope: "self" as const, requiresApproval: true },
-    { botId: BOT_TEAM_HR, capabilityKey: "hr.records.read", callableBy: "company" as const, dataScope: "team" as const, requiresApproval: false },
-  ];
+  const pendingApprovals = new Map<string, BotPendingApprovalRecord>(
+    (seed.pendingApprovals ?? []).map((a) => [a.id, { ...a }]),
+  );
   const store: EnterpriseBotStore = {
     async createTerminal(input: NewBotTerminal) {
       const record: BotTerminalRecord = { ...input, id: randomUUID(), status: "offline", lastSeenAt: null, revokedAt: null };
@@ -44,21 +61,70 @@ function createMemoryStore(seed: MemoryStoreSeed = {}) {
     getTerminalById: async (id) => { const t = terminals.get(id); return t ? { ...t } : null; },
     async markTerminalSeen(id, seenAt) { const t = terminals.get(id); if (t) Object.assign(t, { status: "online", lastSeenAt: seenAt }); },
     async revokeTerminal(id, revokedAt) { const t = terminals.get(id); if (t) Object.assign(t, { status: "revoked", revokedAt }); },
-    getBot: async (companyId, id) => { const b = bots.find((bot) => bot.id === id); return b && b.companyId === companyId ? b : null; },
+    getBot: async (companyId, id) => { const b = bots.get(id); return b && b.companyId === companyId ? { ...b } : null; },
+    getBotById: async (id) => { const b = bots.get(id); return b ? { ...b } : null; },
+    listBots: async (companyId) => [...bots.values()].filter((b) => b.companyId === companyId).map((b) => ({ ...b })),
+    listBotCapabilities: async (botIds) => capabilities.filter((c) => botIds.includes(c.botId)).map((c) => ({ ...c })),
+    listTerminals: async (companyId) => [...terminals.values()].filter((t) => t.companyId === companyId).map((t) => ({ ...t })),
+    listChannels: async (companyId) => companyId === COMPANY ? [{ id: CHANNEL_SHARED, companyId: COMPANY, kind: "shared", name: "Shared", teamId: null }] : [],
+    listPendingApprovals: async (companyId) => [...pendingApprovals.values()].filter((a) => a.companyId === companyId && a.status === "pending").map((a) => ({ ...a })),
+    async createBot(input, caps) {
+      const bot: EnterpriseBotRecord = {
+        ...input, id: randomUUID(), lastPingAt: null, lastPingStatus: null, createdAt: NOW, updatedAt: NOW,
+      };
+      bots.set(bot.id, bot);
+      const insertedCaps: BotCapabilityRecord[] = caps.map((c) => ({
+        botId: bot.id, capabilityKey: c.capabilityKey, callableBy: c.callableBy,
+        dataScope: c.dataScope ?? "self", requiresApproval: c.requiresApproval ?? false,
+      }));
+      capabilities.push(...insertedCaps);
+      return { bot: { ...bot }, capabilities: insertedCaps };
+    },
+    async updateBot(companyId, botId, patch, caps) {
+      const bot = bots.get(botId);
+      if (!bot || bot.companyId !== companyId) return null;
+      Object.assign(bot, patch);
+      if (caps !== undefined) {
+        for (let i = capabilities.length - 1; i >= 0; i -= 1) {
+          if (capabilities[i].botId === botId) capabilities.splice(i, 1);
+        }
+        capabilities.push(...caps.map((c) => ({
+          botId, capabilityKey: c.capabilityKey, callableBy: c.callableBy,
+          dataScope: c.dataScope ?? "self", requiresApproval: c.requiresApproval ?? false,
+        })));
+      }
+      return { bot: { ...bot }, capabilities: capabilities.filter((c) => c.botId === botId).map((c) => ({ ...c })) };
+    },
+    async deleteBot(companyId, botId) {
+      const bot = bots.get(botId);
+      if (!bot || bot.companyId !== companyId) return false;
+      bots.delete(botId);
+      return true;
+    },
+    async recordBotPing(companyId, botId, pingAt, status) {
+      const bot = bots.get(botId);
+      if (bot && bot.companyId === companyId) Object.assign(bot, { lastPingAt: pingAt, lastPingStatus: status });
+    },
+    async decideApproval(companyId, approvalId, decidedByUserId, status, note, decidedAt) {
+      const a = pendingApprovals.get(approvalId);
+      if (!a || a.companyId !== companyId) return null;
+      Object.assign(a, { status, decidedByUserId, decisionNote: note, decidedAt });
+      return { ...a };
+    },
     getBotCapability: async (botId, capabilityKey) => capabilities.find((c) => c.botId === botId && c.capabilityKey === capabilityKey) ?? null,
     getChannel: async (companyId, id) => id === CHANNEL_SHARED && companyId === COMPANY ? { id, companyId, kind: "shared", teamId: null } : null,
     listChannelMemberIds: async () => [OWNER, SALES, "u-hr", BOT_PERSONAL, BOT_TEAM_HR],
     hasChannelOwnerApproval: async (_companyId, botId, botOwnerUserId, channelId) =>
       (seed.approvals ?? []).some((a) => a.botId === botId && a.channelId === channelId && a.botOwnerUserId === botOwnerUserId),
   };
-  return { store, terminals };
+  return { store, terminals, bots, pendingApprovals };
 }
 
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 const NOW = new Date("2026-01-15T10:00:00.000Z");
-function setup(seed: MemoryStoreSeed = {}) {
+function setup(seed: MemoryStoreSeed = {}, options: BotTerminalChannelServiceOptions = {}) {
   const memory = createMemoryStore(seed);
-  return { ...memory, service: createBotTerminalChannelService(memory.store, { now: () => NOW }) };
+  return { ...memory, service: createBotTerminalChannelService(memory.store, { now: () => NOW, ...options }) };
 }
 
 async function registerPersonalTerminal(service: ReturnType<typeof setup>["service"], owner = OWNER) {
@@ -204,19 +270,25 @@ describe("invokeChannelMention", () => {
   });
 });
 
-function createApp(resolveActor: Parameters<typeof createEnterpriseBotsRouter>[1], seed: MemoryStoreSeed = {}) {
-  const { service, terminals } = setup(seed);
+function createApp(
+  resolveActor: Parameters<typeof createEnterpriseBotsRouter>[1],
+  seed: MemoryStoreSeed = {},
+  options: BotTerminalChannelServiceOptions = {},
+) {
+  const { service, terminals, bots } = setup(seed, options);
   const app = express();
   app.use(express.json());
   app.use("/api", createEnterpriseBotsRouter(service, resolveActor));
   app.use(errorHandler);
-  return { app, service, terminals };
+  return { app, service, terminals, bots };
 }
 
 // Router tests authenticate by header; admins get the admin role so the exec-denied path is exercised.
 const resolveFromHeader = () => (req: Request, _companyId: string) => {
   const user = String(req.headers["x-actor"] ?? "");
-  return user ? actor({ userId: user, role: user === "u-admin" ? "admin" : "member" }) : null;
+  if (!user) return null;
+  const role = user === "u-admin" ? "admin" : user === "u-viewer" ? "viewer" : "member";
+  return actor({ userId: user, role });
 };
 
 describe("enterprise-bots router", () => {
@@ -282,5 +354,133 @@ describe("enterprise-bots router", () => {
     expect(allowed.body).toMatchObject({ outcome: "allowed", bot: { id: BOT_PERSONAL, kind: "personal" }, capability: { capabilityKey: "inbox.triage", dataScope: "company" } });
     await request(app).post(`/api/channels/${randomUUID()}/invoke`).set("x-actor", SALES)
       .send({ companyId: COMPANY, targetBotId: BOT_PERSONAL, executionTarget: "none", capabilityKey: "inbox.triage" }).expect(404);
+  });
+
+  it("blocks viewer role from registering a terminal", async () => {
+    const { app } = createApp(resolveFromHeader());
+    const res = await request(app).post("/api/terminals/register").set("x-actor", "u-viewer")
+      .send({ companyId: COMPANY, kind: "personal_terminal", name: "viewer-term" }).expect(403);
+    expect(res.body.error).toBe("viewer_cannot_register_terminal");
+  });
+
+  it("supports snapshot, OpenBot CRUD, ping (without secret leak), inbound webhook, and approval decisions", async () => {
+    const activityEvents: Array<Record<string, unknown>> = [];
+    const wokenAgents: Array<{ agentId: string; payload: Record<string, unknown> }> = [];
+    const createdIssues: Array<{ title: string }> = [];
+    const approvalId = randomUUID();
+    const secretId = randomUUID();
+    const boundAgentId = randomUUID();
+    const secretVal = "super-secret-webhook-token-xyz";
+
+    let pingMode: "ok" | "fail-secret" = "ok";
+    const { app } = createApp(
+      resolveFromHeader(),
+      {
+        pendingApprovals: [{
+          id: approvalId,
+          companyId: COMPANY,
+          type: BOT_CHANNEL_OWNER_APPROVAL_TYPE,
+          status: "pending",
+          payload: { botId: BOT_PERSONAL, channelId: CHANNEL_SHARED },
+          requestedByUserId: SALES,
+          requestedByAgentId: null,
+          decidedByUserId: null,
+          decisionNote: null,
+          decidedAt: null,
+          createdAt: NOW,
+        }],
+      },
+      {
+        resolveSecret: async (_companyId, id) => (id === secretId ? secretVal : ""),
+        fetchFn: (async (_url: string | URL | Request, init?: RequestInit) => {
+          if (pingMode === "fail-secret") {
+            throw new Error(`connection refused with header Bearer ${secretVal}`);
+          }
+          expect((init?.headers as Record<string, string>)?.authorization).toBe(`Bearer ${secretVal}`);
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        }) as typeof fetch,
+        onInboundActivity: async (input) => { activityEvents.push(input); },
+        wakeAgent: async (agentId, payload) => {
+          wokenAgents.push({ agentId, payload });
+          return { id: "run-1" };
+        },
+        createInboundIssue: async (_companyId, input) => {
+          createdIssues.push({ title: input.title });
+          return { id: "issue-1", identifier: "EB-1" };
+        },
+      },
+    );
+
+    // Non-admin cannot create bot
+    await request(app).post(`/api/companies/${COMPANY}/bots`).set("x-actor", SALES)
+      .send({ kind: "company", name: "External Bot" }).expect(403);
+
+    // Admin creates company OpenBot with webhook & secret
+    const created = await request(app).post(`/api/companies/${COMPANY}/bots`).set("x-actor", "u-admin")
+      .send({
+        kind: "company",
+        name: "OpenBot Alpha",
+        agentId: boundAgentId,
+        webhookUrl: "https://bot.example.com/hook",
+        tokenSecretId: secretId,
+        capabilities: [{ capabilityKey: "alerts.send", callableBy: "company", dataScope: "company" }],
+      }).expect(201);
+    expect(created.body.inboundToken).toMatch(/^pcp_bot_[0-9a-f]{64}$/);
+    expect(created.body.bot).toMatchObject({ kind: "company", name: "OpenBot Alpha", hasInboundToken: true });
+    expect(created.body.bot).not.toHaveProperty("inboundTokenHash");
+    const botId = created.body.bot.id as string;
+    const inboundToken = created.body.inboundToken as string;
+
+    // Snapshot lists bots, terminals, channels, pendingApprovals without hashes
+    const snap = await request(app).get(`/api/companies/${COMPANY}/snapshot`).set("x-actor", SALES).expect(200);
+    expect(snap.body.bots.some((b: { id: string }) => b.id === botId)).toBe(true);
+    expect(snap.body.bots.every((b: Record<string, unknown>) => !("inboundTokenHash" in b))).toBe(true);
+    expect(snap.body.channels).toHaveLength(1);
+    expect(snap.body.pendingApprovals).toHaveLength(1);
+
+    // Ping succeeds and updates lastPingStatus
+    const pingOk = await request(app).post(`/api/companies/${COMPANY}/bots/${botId}/ping`).set("x-actor", "u-admin").expect(200);
+    expect(pingOk.body).toMatchObject({ ok: true, statusCode: 200 });
+    expect(typeof pingOk.body.latencyMs).toBe("number");
+
+    // Ping error redacts secret value
+    pingMode = "fail-secret";
+    const pingErr = await request(app).post(`/api/companies/${COMPANY}/bots/${botId}/ping`).set("x-actor", "u-admin").expect(200);
+    expect(pingErr.body.ok).toBe(false);
+    expect(pingErr.body.error).not.toContain(secretVal);
+    expect(pingErr.body.error).toContain("***REDACTED***");
+
+    // Reject non-http/https webhook URL on PATCH
+    await request(app).patch(`/api/companies/${COMPANY}/bots/${botId}`).set("x-actor", "u-admin")
+      .send({ webhookUrl: "file:///etc/passwd" }).expect(400);
+
+    // Inbound webhook: invalid token -> 401, valid token -> 200 (creates issue, wakes agent, logs activity)
+    await request(app).post(`/api/bots/${botId}/inbound`).send({ title: "x" }).expect(401);
+    await request(app).post(`/api/bots/${botId}/inbound`).set("Authorization", "Bearer pcp_bot_wrong").send({ title: "x" }).expect(401);
+    const inboundRes = await request(app).post(`/api/bots/${botId}/inbound`)
+      .set("Authorization", `Bearer ${inboundToken}`)
+      .send({ event: "alert", title: "Disk 90%", message: "Check node 1" }).expect(200);
+    expect(inboundRes.body).toMatchObject({ ok: true, botId, issueId: "issue-1", wokenAgentId: boundAgentId, runId: "run-1" });
+    expect(createdIssues).toEqual([{ title: "Disk 90%" }]);
+    expect(wokenAgents).toHaveLength(1);
+    expect(activityEvents).toHaveLength(1);
+
+    // Revoke bot via PATCH -> inbound returns 403
+    const patched = await request(app).patch(`/api/companies/${COMPANY}/bots/${botId}`).set("x-actor", "u-admin")
+      .send({ status: "revoked" }).expect(200);
+    expect(patched.body.bot.status).toBe("revoked");
+    const revokedInbound = await request(app).post(`/api/bots/${botId}/inbound`)
+      .set("Authorization", `Bearer ${inboundToken}`)
+      .send({ message: "after revoke" }).expect(403);
+    expect(revokedInbound.body.error).toBe("bot_revoked");
+
+    // Approval decision
+    const decided = await request(app).post(`/api/companies/${COMPANY}/approvals/${approvalId}/decision`)
+      .set("x-actor", "u-admin").send({ decision: "approve", note: "lgtm" }).expect(200);
+    expect(decided.body.approval).toMatchObject({ id: approvalId, status: "approved", decisionNote: "lgtm" });
+
+    // Delete bot
+    await request(app).delete(`/api/companies/${COMPANY}/bots/${botId}`).set("x-actor", "u-admin").expect(200);
+    await request(app).delete(`/api/companies/${COMPANY}/bots/${botId}`).set("x-actor", "u-admin").expect(404);
   });
 });
