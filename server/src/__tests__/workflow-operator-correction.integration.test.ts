@@ -19,6 +19,8 @@ import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.j
 
 const ACTION = "workflow_run.operator_corrected_false_completed";
 const REASON = "Source run was marked complete without producing the required work product.";
+const COMPLETED_AT = new Date("2026-11-20T09:00:00.000Z");
+type MissionStatus = "planning" | "active" | "completed" | "cancelled";
 
 describe("operator correction for false-completed workflow runs", () => {
   let temp: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
@@ -30,7 +32,11 @@ describe("operator correction for false-completed workflow runs", () => {
   }, 60_000);
   afterAll(async () => { await db.$client.end(); await temp.cleanup(); });
 
-  async function seedRun(status: "pending" | "running" | "completed" = "completed") {
+  async function seedRun(
+    status: "pending" | "running" | "completed" = "completed",
+    missionStatus: MissionStatus = "active",
+    stepsJson: Record<string, unknown>[] = [],
+  ) {
     const companyId = randomUUID();
     const missionId = randomUUID();
     const workflowId = randomUUID();
@@ -39,8 +45,11 @@ describe("operator correction for false-completed workflow runs", () => {
     const prefix = randomUUID().replaceAll("-", "").slice(0, 8).toUpperCase();
     await db.insert(companies).values({ id: companyId, name: "Operator correction", issuePrefix: prefix });
     await db.insert(agents).values({ id: ownerAgentId, companyId, name: "Mission owner", role: "operator" });
-    await db.insert(missions).values({ id: missionId, companyId, ownerAgentId, title: "False completed mission", status: "active" });
-    await db.insert(workflowDefinitions).values({ id: workflowId, companyId, name: "Correction workflow", stepsJson: [] });
+    await db.insert(missions).values({
+      id: missionId, companyId, ownerAgentId, title: "False completed mission", status: missionStatus,
+      completedAt: missionStatus === "completed" ? COMPLETED_AT : null,
+    });
+    await db.insert(workflowDefinitions).values({ id: workflowId, companyId, name: "Correction workflow", stepsJson });
     await db.insert(workflowRuns).values({
       id: runId,
       workflowId,
@@ -86,6 +95,7 @@ describe("operator correction for false-completed workflow runs", () => {
     expect(response.body.sourceRunId).toBe(world.runId);
     expect(response.body.replacementRunId).toBe(response.body.runId);
     expect(response.body.replacementRunId).not.toBe(world.runId);
+    expect(response.body.missionReopenedFromCompleted).toBe(false);
 
     const rows = await db.select().from(workflowRuns).where(eq(workflowRuns.missionId, world.missionId));
     expect(rows).toHaveLength(2);
@@ -123,6 +133,85 @@ describe("operator correction for false-completed workflow runs", () => {
       replacementWorkflowRunId: replacement.id,
     });
     expect(await db.select({ id: operatorDecisions.id }).from(operatorDecisions).where(eq(operatorDecisions.companyId, world.companyId))).toEqual([]);
+  });
+
+  it("reopens a completed mission to active in the same transaction so the replacement run can start", async () => {
+    const world = await seedRun("completed", "completed");
+    const [before] = await db.select().from(missions).where(eq(missions.id, world.missionId));
+    expect(before.status).toBe("completed");
+    expect(before.completedAt).toEqual(COMPLETED_AT);
+
+    const response = await request(app(operatorActor(world.companyId))).post(pathFor(world)).send({ reason: REASON });
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    expect(response.body.missionReopenedFromCompleted).toBe(true);
+    expect(response.body.correction.missionReopenedFromCompleted).toBe(true);
+
+    const [mission] = await db.select().from(missions).where(eq(missions.id, world.missionId));
+    expect(mission).toMatchObject({ status: "active", completedAt: null });
+    expect(mission.updatedAt.getTime()).toBeGreaterThanOrEqual(before.updatedAt.getTime());
+
+    // Inside the same transaction trigger creates the run issue and then claimPlainWorkflowStart reads
+    // mission status: both reject a completed mission, so the replacement only leaves `pending`
+    // (startedAt set) because the reopen preceded the trigger.
+    const replacement = (await db.select().from(workflowRuns)
+      .where(eq(workflowRuns.id, response.body.replacementRunId)))[0];
+    expect(replacement.startedAt).not.toBeNull();
+    expect(["running", "completed"]).toContain(replacement.status);
+    expect((replacement.metadata?.operatorFalseCompletedCorrection as Record<string, unknown>).missionReopenedFromCompleted).toBe(true);
+    const source = (await db.select().from(workflowRuns).where(eq(workflowRuns.id, world.runId)))[0];
+    expect(source.status).toBe("completed");
+    expect((source.metadata?.operatorFalseCompletedCorrection as Record<string, unknown>).missionReopenedFromCompleted).toBe(true);
+    const logs = await correctionActivity(world.companyId);
+    expect(logs).toHaveLength(1);
+    expect(logs[0].details).toMatchObject({ missionId: world.missionId, missionReopenedFromCompleted: true });
+  });
+
+  it("rolls the mission reopen back together with a failed replacement run creation", async () => {
+    // A tool step fails run preparation (tools readiness, else the producer-less structural gate),
+    // i.e. after the reopen and before commit: nothing may survive that failure.
+    const world = await seedRun("completed", "completed", [
+      { id: "gate", name: "Gate", agentId: "", type: "tool", qaType: "structural", toolNames: ["v"], dependencies: [] },
+    ]);
+
+    const response = await request(app(operatorActor(world.companyId))).post(pathFor(world)).send({ reason: REASON });
+    expect(response.status, JSON.stringify(response.body)).toBe(500);
+
+    const missionsAfter = await db.select().from(missions).where(eq(missions.id, world.missionId));
+    expect(missionsAfter).toHaveLength(1);
+    expect(missionsAfter[0]).toMatchObject({ status: "completed", completedAt: COMPLETED_AT });
+    expect(await db.select().from(workflowRuns).where(eq(workflowRuns.missionId, world.missionId))).toHaveLength(1);
+    expect(await correctionActivity(world.companyId)).toEqual([]);
+  });
+
+  it.each(["active", "planning"] as const)("leaves a %s mission untouched (missionReopenedFromCompleted: false)", async (missionStatus) => {
+    const world = await seedRun("completed", missionStatus);
+    const response = await request(app(operatorActor(world.companyId))).post(pathFor(world)).send({ reason: REASON });
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    expect(response.body.missionReopenedFromCompleted).toBe(false);
+    expect(response.body.correction.missionReopenedFromCompleted).toBe(false);
+
+    const [mission] = await db.select().from(missions).where(eq(missions.id, world.missionId));
+    expect(mission.completedAt).toBeNull();
+    // A planning mission is activated by the run-start hook, not by the correction itself.
+    expect(mission.status).toBe(missionStatus === "planning" ? "active" : missionStatus);
+    const logs = await correctionActivity(world.companyId);
+    expect(logs).toHaveLength(1);
+    expect(logs[0].details).toMatchObject({ missionReopenedFromCompleted: false });
+  });
+
+  it("rejects a cancelled mission with 409 without mutating the source run or creating a replacement", async () => {
+    const world = await seedRun("completed", "cancelled");
+    const sourceBefore = (await db.select().from(workflowRuns).where(eq(workflowRuns.id, world.runId)))[0];
+
+    const response = await request(app(operatorActor(world.companyId))).post(pathFor(world)).send({ reason: REASON });
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe("workflow_operator_correction_mission_cancelled");
+
+    const rows = await db.select().from(workflowRuns).where(eq(workflowRuns.missionId, world.missionId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual(sourceBefore);
+    expect((await db.select().from(missions).where(eq(missions.id, world.missionId)))[0].status).toBe("cancelled");
+    expect(await correctionActivity(world.companyId)).toEqual([]);
   });
 
   it.each([{}, { reason: "   \n\t  " }])("rejects a blank correction reason with 400 and no writes", async (body) => {
