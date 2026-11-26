@@ -64,6 +64,15 @@ export function Layout() {
   const nextTheme = theme === "dark" ? "light" : "dark";
   const rightPanelWidth = (!isMobile ? (inspector.isExpanded ? 360 : 44) : 0) + (hermesPanelOpen && !isMobile ? 384 : 0);
   const slide = useSidebarSlideController({ isMobile, sidebarOpen, setSidebarOpen, rightPanelWidth });
+  const { setHoveringSubNav, metrics: { subNavBlurPx } } = slide;
+  const subNavHoverApplied = useRef(false);
+  // Hovering only changes the nav blur while it is partly collapsed (blur > 0); in the expanded
+  // default the state update would only re-render Layout and <Outlet />, so it is skipped.
+  const setSubNavHover = (hovering: boolean) => {
+    if (hovering === subNavHoverApplied.current || (hovering && subNavBlurPx === 0)) return;
+    subNavHoverApplied.current = hovering;
+    setHoveringSubNav(hovering);
+  };
 
   const matchedCompany = useMemo(() => {
     if (!companyPrefix) return null;
@@ -220,8 +229,8 @@ export function Layout() {
               data-compact-nav={slide.density.compact ? "true" : undefined}
               className="flex h-full flex-col overflow-hidden transition-[width] duration-100 ease-out"
               style={{ width: slide.effectiveNavWidth }}
-              onPointerEnter={() => slide.setHoveringSubNav(true)}
-              onPointerLeave={() => slide.setHoveringSubNav(false)}
+              onPointerEnter={() => setSubNavHover(true)}
+              onPointerLeave={() => setSubNavHover(false)}
             >
               <div
                 className="flex-1 min-h-0 overflow-hidden bg-sidebar"
