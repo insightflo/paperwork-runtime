@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { agentsApi } from "../api/agents";
 import { ACTIVE_ISSUE_STATUS_FILTER, issuesApi } from "../api/issues";
@@ -10,6 +10,7 @@ import { queryKeys } from "../lib/queryKeys";
 import { EmptyState } from "../components/EmptyState";
 import { ActivityRow } from "../components/ActivityRow";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { CompactPagination, PAGE_SIZE, PAGE_WINDOW_KEY, pageOffset, splitFetchedPage, usePageNumber, useScrollToTopOnPageChange } from "../components/CompactPagination";
 import { OperatorDecisionActivity } from "../components/OperatorDecisionActivity";
 import { History, Search } from "lucide-react";
 import { cn } from "../lib/utils";
@@ -17,7 +18,12 @@ import type { Agent, ActivityEvent } from "@paperclipai/shared";
 
 export type ActivityCategory = "all" | "agent" | "mission" | "decision" | "worktree";
 
-const ACTIVITY_PAGE_SIZE = 50;
+function fetchActivityPage(companyId: string, offset: number) {
+  return api.get<ActivityEvent[]>(`/companies/${companyId}/activity?limit=${PAGE_SIZE + 1}&offset=${offset}`);
+}
+const activityPageKey = (companyId: string, page: number) => [...queryKeys.activity(companyId), PAGE_WINDOW_KEY, PAGE_SIZE, page] as const;
+/** A freshly prefetched next page is not re-requested when the user simply returns to the previous page. */
+const NEXT_PAGE_PREFETCH_STALE_MS = 30_000;
 
 /* ── Cockpit strip + toolbar vocabulary ──
  * Categories carry a micro status dot so the 1-row strip, the 40px tab group and the
@@ -85,32 +91,41 @@ function DiffBadge({ diff }: { diff: ActivityDiffBadge }) {
 export function Activity() {
   const { selectedCompanyId } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
+  const queryClient = useQueryClient();
   const [category, setCategory] = useState<ActivityCategory>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  // Explicit server-backed paging: page resets to 1 whenever the company or a filter changes.
+  const [page, setPage] = usePageNumber(`${selectedCompanyId ?? ""}|${category}|${searchQuery.trim()}`);
+  const listRef = useRef<HTMLDivElement>(null);
+  useScrollToTopOnPageChange(page, listRef);
 
   useEffect(() => {
     setBreadcrumbs([{ label: "Activity" }]);
   }, [setBreadcrumbs]);
 
-  const {
-    data,
-    isLoading,
-    error,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useInfiniteQuery({
-    queryKey: [...queryKeys.activity(selectedCompanyId!), "paged", ACTIVITY_PAGE_SIZE] as const,
-    queryFn: ({ pageParam }) =>
-      api.get<ActivityEvent[]>(
-        `/companies/${selectedCompanyId!}/activity?limit=${ACTIVITY_PAGE_SIZE}&offset=${pageParam}`,
-      ),
+  const { data, isLoading, isFetching, isPlaceholderData, error } = useQuery({
+    queryKey: activityPageKey(selectedCompanyId!, page),
+    queryFn: () => fetchActivityPage(selectedCompanyId!, pageOffset(page)),
     enabled: !!selectedCompanyId,
-    initialPageParam: 0,
-    getNextPageParam: (lastPage, pages) =>
-      lastPage.length === ACTIVITY_PAGE_SIZE ? pages.length * ACTIVITY_PAGE_SIZE : undefined,
     placeholderData: keepPreviousData,
   });
+  const { items: activityEvents, hasMore } = useMemo(() => splitFetchedPage(data), [data]);
+
+  // Rows can vanish between pages (live updates); never strand the user on an empty trailing page.
+  useEffect(() => {
+    if (data && !isPlaceholderData && activityEvents.length === 0 && page > 1) setPage(page - 1);
+  }, [data, isPlaceholderData, activityEvents.length, page, setPage]);
+
+  // Prefetch the next page so Prev/Next feels instant.
+  useEffect(() => {
+    if (!selectedCompanyId || !hasMore || isPlaceholderData) return;
+    const next = page + 1;
+    void queryClient.prefetchQuery({
+      queryKey: activityPageKey(selectedCompanyId, next),
+      queryFn: () => fetchActivityPage(selectedCompanyId, pageOffset(next)),
+      staleTime: NEXT_PAGE_PREFETCH_STALE_MS,
+    });
+  }, [queryClient, selectedCompanyId, hasMore, isPlaceholderData, page]);
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
     queryFn: () => agentsApi.list(selectedCompanyId!),
@@ -147,9 +162,8 @@ export function Activity() {
     return map;
   }, [issues]);
 
-  const activityEvents = useMemo(() => data?.pages.flat() ?? [], [data]);
-
   const categoryCounts = useMemo(() => {
+    // Counts describe the current server page (PAGE_SIZE rows), not the whole log.
     const counts: Record<ActivityCategory, number> = { all: 0, agent: 0, mission: 0, decision: 0, worktree: 0 };
     for (const event of activityEvents) {
       counts.all += 1;
@@ -174,6 +188,7 @@ export function Activity() {
     }
     return events;
   }, [activityEvents, category, searchQuery]);
+  const filterActive = category !== "all" || searchQuery.trim() !== "";
 
   if (!selectedCompanyId) {
     return <EmptyState icon={History} message="Select a company to view activity." />;
@@ -185,7 +200,7 @@ export function Activity() {
   return (
     <div className="space-y-2 tabular-nums">
       {/* 1-row 5-cell cockpit strip: event totals per category double as filter shortcuts */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="활동 유형별 건수">
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label="활동 유형별 건수" title="현재 페이지 기준 건수">
         {CATEGORY_PILLS.map((pill) => {
           const active = category === pill.id;
           return (
@@ -241,12 +256,18 @@ export function Activity() {
 
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
-      {filtered.length === 0 && (
-        <EmptyState icon={History} message={searchQuery || category !== "all" ? "조건에 맞는 활동이 없습니다." : "No activity yet."} />
+      <CompactPagination page={page} count={filtered.length} hasMore={hasMore} loading={isFetching} onPageChange={setPage} />
+
+      {filtered.length === 0 && !isFetching && (
+        <EmptyState icon={History} message={filterActive ? "이 페이지에 조건에 맞는 활동이 없습니다." : "No activity yet."} />
       )}
 
       {filtered.length > 0 && (
-        <div className="divide-y divide-[#242d3f] overflow-hidden rounded-md border border-[#242d3f] bg-[#111622] [&>*]:hover:bg-[#151b28] [&_article]:px-3 [&_article]:py-1.5">
+        <div
+          ref={listRef}
+          aria-busy={isFetching}
+          className={cn("divide-y divide-[#242d3f] overflow-hidden rounded-md border border-[#242d3f] bg-[#111622] transition-opacity [&>*]:hover:bg-[#151b28] [&_article]:px-3 [&_article]:py-1.5", isFetching && "opacity-70")}
+        >
           {filtered.map((event) => {
             const diff = extractActivityDiff(event.details);
             const row = event.action.startsWith("operator_decision.") ? (
@@ -269,19 +290,6 @@ export function Activity() {
               </div>
             ) : row;
           })}
-        </div>
-      )}
-
-      {hasNextPage && (
-        <div className="flex justify-center pt-1">
-          <button
-            type="button"
-            onClick={() => fetchNextPage()}
-            disabled={isFetchingNextPage}
-            className="rounded-md border border-border bg-accent px-3 py-1.5 text-xs font-medium hover:bg-accent/70 disabled:opacity-50"
-          >
-            {isFetchingNextPage ? "불러오는 중…" : "Load More"}
-          </button>
         </div>
       )}
     </div>
