@@ -60,21 +60,21 @@ function formatResetCountdown(resetsAt: string | null): string {
 
 function resourceBarColor(pct: number): string {
   if (pct >= 90) return "bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.55)]";
-  if (pct >= 75) return "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)]";
-  return "bg-[#84cc16] shadow-[0_0_6px_rgba(132,204,22,0.55)]";
+  if (pct >= 75) return "bg-[#d97706] shadow-[0_0_6px_rgba(217,119,6,0.35)] dark:bg-[#f59e0b] dark:shadow-[0_0_6px_rgba(245,158,11,0.5)]";
+  return "bg-[#65a30d] shadow-[0_0_6px_rgba(101,163,13,0.32)] dark:bg-[#a3e635] dark:shadow-[0_0_6px_rgba(163,230,53,0.55)]";
 }
 
 function quotaDotColor(usedPct: number): string {
   if (usedPct >= 90) return "bg-rose-500";
-  if (usedPct >= 70) return "bg-amber-500";
-  return "bg-emerald-500";
+  if (usedPct >= 70) return "bg-[#d97706] dark:bg-[#f59e0b]";
+  return "bg-[#65a30d] dark:bg-[#a3e635]";
 }
 
 function quotaTextColor(usedPct: number | null): string {
   if (usedPct === null) return "text-muted-foreground";
   if (usedPct >= 90) return "text-rose-500 dark:text-rose-400";
-  if (usedPct >= 70) return "text-amber-600 dark:text-amber-400";
-  return "text-emerald-600 dark:text-emerald-400";
+  if (usedPct >= 70) return "text-[#b45309] dark:text-[#f59e0b]";
+  return "text-[#4d7c0f] dark:text-[#a3e635]";
 }
 
 function flattenQuotaCards(results: readonly ProviderQuotaResult[] | undefined): QuotaCardEntry[] {
@@ -140,7 +140,7 @@ export function HealthAndQuotaPanel({
   return (
     <div
       className={cn(
-        "flex flex-col justify-between gap-3 rounded-lg border border-border bg-card p-4 dark:border-[#242d3f] dark:bg-[#0f1117]",
+        "tactile-card border flex flex-col justify-between gap-3 rounded-[12px] border-slate-200/90 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
         className,
       )}
     >
@@ -151,7 +151,7 @@ export function HealthAndQuotaPanel({
             시스템 · 프로바이더 쿼터
           </h3>
           {dgate?.available && (
-            <span className="rounded border border-[#5f8dff]/35 bg-[#5f8dff]/10 px-1.5 py-0.5 font-mono text-[10px] text-[#3b82f6] dark:text-[#5f8dff]">
+            <span className="rounded border border-[#60a5fa]/35 bg-[#60a5fa]/10 px-1.5 py-0.5 font-mono text-[10px] text-[#2563eb] dark:text-[#60a5fa]">
               dgate live
             </span>
           )}
@@ -160,7 +160,7 @@ export function HealthAndQuotaPanel({
         <div
           role="tablist"
           aria-label="텔레메트리 시간 범위"
-          className="inline-flex items-center rounded-md border border-border bg-muted/60 p-0.5 dark:border-[#242d3f] dark:bg-[#090c11]"
+          className="inline-flex items-center rounded-md border border-slate-200/90 bg-slate-100/90 p-0.5 dark:border-white/[0.08] dark:bg-[#07090d]"
         >
           {WINDOW_OPTIONS.map((opt) => {
             const selected = opt.value === activeWindow;
@@ -172,9 +172,9 @@ export function HealthAndQuotaPanel({
                 aria-selected={selected}
                 onClick={() => onWindowChange(opt.value)}
                 className={cn(
-                  "rounded px-2.5 py-1 text-[11px] font-medium transition-all tabular-nums",
+                  "rounded px-2.5 py-1 text-[11px] font-medium transition-colors tabular-nums",
                   selected
-                    ? "bg-background text-foreground shadow-sm ring-1 ring-[#84cc16]/45 dark:bg-[#171f2e] dark:text-[#a3e635]"
+                    ? "bg-white text-slate-950 shadow-sm ring-1 ring-[#a3e635]/60 dark:bg-[#141c2b] dark:text-[#a3e635] dark:ring-[#a3e635]/45"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
@@ -188,17 +188,17 @@ export function HealthAndQuotaPanel({
       {/* Middle Strip: 3 Compact Resource Cards */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {/* CPU Card */}
-        <div className="rounded-md border border-border/80 bg-muted/25 px-3 py-2.5 dark:border-[#242d3f] dark:bg-[#131823]">
+        <div className="rounded-md border border-slate-200/80 bg-slate-50/75 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-[11px] font-medium text-muted-foreground">CPU</span>
             <span className="text-sm font-semibold tabular-nums text-foreground">
               {loading ? "—" : cpuPct !== null ? `${Math.round(cpuPct)}%` : "N/A"}
             </span>
           </div>
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted dark:bg-slate-800/90">
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/[0.08]">
             <div
               className={cn(
-                "h-full rounded-full transition-all duration-300",
+                "h-full rounded-full transition-[width] duration-300",
                 cpuPct !== null ? resourceBarColor(cpuPct) : "bg-muted-foreground/30",
               )}
               style={{ width: `${cpuPct ?? 0}%` }}
@@ -214,17 +214,17 @@ export function HealthAndQuotaPanel({
         </div>
 
         {/* Memory Card */}
-        <div className="rounded-md border border-border/80 bg-muted/25 px-3 py-2.5 dark:border-[#242d3f] dark:bg-[#131823]">
+        <div className="rounded-md border border-slate-200/80 bg-slate-50/75 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-[11px] font-medium text-muted-foreground">메모리</span>
             <span className="text-sm font-semibold tabular-nums text-foreground">
               {loading ? "—" : memPct !== null ? `${Math.round(memPct)}%` : "N/A"}
             </span>
           </div>
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted dark:bg-slate-800/90">
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/[0.08]">
             <div
               className={cn(
-                "h-full rounded-full transition-all duration-300",
+                "h-full rounded-full transition-[width] duration-300",
                 memPct !== null ? resourceBarColor(memPct) : "bg-muted-foreground/30",
               )}
               style={{ width: `${memPct ?? 0}%` }}
@@ -238,16 +238,16 @@ export function HealthAndQuotaPanel({
         </div>
 
         {/* Active Runs Card */}
-        <div className="rounded-md border border-border/80 bg-muted/25 px-3 py-2.5 dark:border-[#242d3f] dark:bg-[#131823]">
+        <div className="rounded-md border border-slate-200/80 bg-slate-50/75 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-[11px] font-medium text-muted-foreground">활성 실행</span>
             <span className="text-sm font-semibold tabular-nums text-foreground">
               {loading ? "—" : activeRuns}
             </span>
           </div>
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted dark:bg-slate-800/90">
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/[0.08]">
             <div
-              className="h-full rounded-full bg-[#22c55e] shadow-[0_0_6px_rgba(34,197,94,0.55)] transition-all duration-300"
+              className="h-full rounded-full bg-[#2563eb] shadow-[0_0_6px_rgba(37,99,235,0.3)] transition-[width] duration-300 dark:bg-[#60a5fa] dark:shadow-[0_0_6px_rgba(96,165,250,0.5)]"
               style={{ width: `${activeRunsPct}%` }}
             />
           </div>
@@ -268,12 +268,12 @@ export function HealthAndQuotaPanel({
             {[0, 1, 2].map((idx) => (
               <div
                 key={idx}
-                className="h-[74px] animate-pulse rounded-md border border-border/70 bg-muted/30 dark:border-[#242d3f] dark:bg-[#131823]"
+                className="h-[74px] animate-pulse rounded-md border border-slate-200/80 bg-slate-100/80 dark:border-white/[0.07] dark:bg-[#07090d]"
               />
             ))}
           </div>
         ) : quotaCards.length === 0 ? (
-          <div className="flex items-center justify-between rounded-md border border-dashed border-border/80 bg-muted/15 px-3 py-3 text-xs text-muted-foreground dark:border-[#242d3f] dark:bg-[#111520]">
+          <div className="flex items-center justify-between rounded-md border border-dashed border-slate-300/90 bg-slate-50/70 px-3 py-3 text-xs text-muted-foreground dark:border-white/[0.1] dark:bg-[#07090d]">
             <span>연결된 프로바이더 쿼터 창이 없습니다.</span>
             <span className="font-mono text-[10px] text-muted-foreground/70">quota-windows</span>
           </div>
@@ -285,7 +285,7 @@ export function HealthAndQuotaPanel({
               return (
                 <div
                   key={card.key}
-                  className="flex flex-col justify-between rounded-md border border-border/80 bg-muted/20 px-3 py-2 dark:border-[#242d3f] dark:bg-[#131823]"
+                  className="flex flex-col justify-between rounded-md border border-slate-200/80 bg-slate-50/75 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -298,8 +298,8 @@ export function HealthAndQuotaPanel({
                     </div>
                     <span
                       className={cn(
-                        "shrink-0 text-base font-bold leading-none tabular-nums",
-                        quotaTextColor(pct),
+                        "text-right font-bold leading-none tabular-nums",
+                        pct === null ? "min-w-0 max-w-[68%] truncate text-[11px]" : "shrink-0 text-base", quotaTextColor(pct),
                       )}
                     >
                       {pct !== null ? `${Math.round(pct)}%` : card.valueLabel ?? "—"}
@@ -324,7 +324,7 @@ export function HealthAndQuotaPanel({
                             "h-2 flex-1 rounded-[2px] transition-colors",
                             isFilled && pct !== null
                               ? quotaDotColor(pct)
-                              : "bg-muted-foreground/15 dark:bg-slate-800/90",
+                              : "bg-slate-300/70 dark:bg-white/[0.08]",
                           )}
                         />
                       );

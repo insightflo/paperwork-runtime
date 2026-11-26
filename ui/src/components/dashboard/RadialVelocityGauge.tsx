@@ -30,9 +30,9 @@ function formatCompactTokens(value: number): string {
 
 function segmentColor(index: number, total: number): string {
   const t = total > 1 ? index / (total - 1) : 0;
-  if (t < 0.45) return "#84cc16"; // neon lime
-  if (t < 0.8) return "#22c55e"; // emerald green
-  return "#10b981"; // bright teal-emerald peak
+  if (t < 0.45) return "var(--pw-cobalt)"; // cobalt baseline (#60a5fa in dark mode)
+  if (t < 0.8) return "var(--pw-lime)"; // neon lime active band (#a3e635 in dark mode)
+  return "var(--pw-amber)"; // amber peak band (#f59e0b in dark mode)
 }
 
 function polarToCartesian(cx: number, cy: number, radius: number, angleDeg: number) {
@@ -84,7 +84,7 @@ export function RadialVelocityGauge({
     return (
       <div
         className={cn(
-          "flex flex-col justify-between rounded-lg border border-border bg-card p-4 dark:border-[#242d3f] dark:bg-[#0f1117]",
+          "tactile-card border flex flex-col justify-between rounded-[12px] border-slate-200/90 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
           className,
         )}
         aria-busy="true"
@@ -115,7 +115,7 @@ export function RadialVelocityGauge({
   return (
     <div
       className={cn(
-        "flex flex-col justify-between rounded-lg border border-border bg-card p-4 dark:border-[#242d3f] dark:bg-[#0f1117]",
+        "tactile-card border flex flex-col justify-between rounded-[12px] border-slate-200/90 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
         className,
       )}
     >
@@ -126,7 +126,7 @@ export function RadialVelocityGauge({
             className={cn(
               "inline-block h-2 w-2 shrink-0 rounded-full",
               isLive
-                ? "bg-[#84cc16] shadow-[0_0_8px_rgba(132,204,22,0.8)]"
+                ? "bg-[#65a30d] shadow-[0_0_8px_rgba(101,163,13,0.35)] dark:bg-[#a3e635] dark:shadow-[0_0_8px_rgba(163,230,53,0.8)]"
                 : "bg-muted-foreground/40",
             )}
           />
@@ -138,15 +138,15 @@ export function RadialVelocityGauge({
           className={cn(
             "inline-flex max-w-[10.5rem] items-center gap-1.5 truncate rounded-full border px-2 py-0.5 text-[10px] font-medium tabular-nums",
             activeWorkers > 0
-              ? "border-[#84cc16]/40 bg-[#84cc16]/10 text-[#65a30d] dark:text-[#a3e635]"
-              : "border-border bg-muted/50 text-muted-foreground dark:border-[#242d3f] dark:bg-[#151b28]",
+              ? "border-[#a3e635]/35 bg-[#a3e635]/12 text-[#4d7c0f] dark:text-[#a3e635]"
+              : "border-slate-200/90 bg-slate-100/80 text-slate-500 dark:border-white/[0.08] dark:bg-[#07090d] dark:text-[#8b97ad]",
           )}
           title={badgeText}
         >
           <span
             className={cn(
               "h-1.5 w-1.5 shrink-0 rounded-full",
-              activeWorkers > 0 ? "bg-[#22c55e]" : "bg-muted-foreground/50",
+              activeWorkers > 0 ? "bg-[#65a30d] dark:bg-[#a3e635]" : "bg-muted-foreground/50",
             )}
           />
           <span className="truncate">{badgeText}</span>
@@ -175,7 +175,7 @@ export function RadialVelocityGauge({
           <path
             d={`M ${polarToCartesian(CX, CY, INNER_R - 7, START_ANGLE_DEG).x.toFixed(1)} ${polarToCartesian(CX, CY, INNER_R - 7, START_ANGLE_DEG).y.toFixed(1)} A ${INNER_R - 7} ${INNER_R - 7} 0 1 1 ${polarToCartesian(CX, CY, INNER_R - 7, START_ANGLE_DEG + SWEEP_ANGLE_DEG).x.toFixed(1)} ${polarToCartesian(CX, CY, INNER_R - 7, START_ANGLE_DEG + SWEEP_ANGLE_DEG).y.toFixed(1)}`}
             fill="none"
-            className="stroke-border/60 dark:stroke-[#242d3f]"
+            className="stroke-slate-300/80 dark:stroke-white/[0.09]"
             strokeWidth={1}
             strokeDasharray="2 4"
           />
@@ -193,7 +193,7 @@ export function RadialVelocityGauge({
                 stroke={isLit ? seg.color : undefined}
                 className={cn(
                   "transition-opacity duration-300",
-                  !isLit && "stroke-muted-foreground/20 dark:stroke-slate-700/55",
+                  !isLit && "stroke-slate-300/75 dark:stroke-white/[0.12]",
                 )}
                 strokeWidth={isLit ? 4.4 : 3.6}
                 strokeLinecap="round"
@@ -238,7 +238,7 @@ export function RadialVelocityGauge({
       </div>
 
       {/* Footer Scale */}
-      <div className="flex items-center justify-between border-t border-border/60 pt-2 text-[10px] text-muted-foreground tabular-nums dark:border-[#242d3f]/80">
+      <div className="flex items-center justify-between border-t border-slate-200/80 pt-2 text-[10px] text-muted-foreground tabular-nums dark:border-white/[0.07]">
         <span>0</span>
         <span className="font-mono text-[10px] text-muted-foreground/80">
           {Math.round(fillRatio * 100)}% of peak

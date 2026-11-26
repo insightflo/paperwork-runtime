@@ -12,9 +12,9 @@ export interface TokenFlowChartProps {
 }
 
 const MODEL_PALETTE = [
-  "#f59e0b", // amber
-  "#10b981", // emerald
-  "#3b82f6", // cobalt
+  "var(--pw-amber)", // amber (#f59e0b in dark mode)
+  "var(--pw-lime)", // neon lime (#a3e635 in dark mode)
+  "var(--pw-cobalt)", // cobalt (#60a5fa in dark mode)
   "#a855f7", // violet
   "#f43f5e", // rose
   "#64748b", // slate
@@ -118,7 +118,7 @@ export function TokenFlowChart({
     return (
       <div
         className={cn(
-          "flex flex-col justify-between rounded-lg border border-border bg-card p-4 dark:border-[#242d3f] dark:bg-[#0f1117]",
+          "tactile-card border flex flex-col justify-between rounded-[12px] border-slate-200/90 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
           className,
         )}
         aria-busy="true"
@@ -157,7 +157,7 @@ export function TokenFlowChart({
   return (
     <div
       className={cn(
-        "flex flex-col justify-between rounded-lg border border-border bg-card p-4 dark:border-[#242d3f] dark:bg-[#0f1117]",
+        "tactile-card border flex flex-col justify-between rounded-[12px] border-slate-200/90 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
         className,
       )}
     >
@@ -165,12 +165,12 @@ export function TokenFlowChart({
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <h3 className="text-xs font-semibold tracking-tight text-foreground">토큰 흐름</h3>
-          <span className="rounded border border-border/80 bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground tabular-nums dark:border-[#242d3f] dark:bg-[#151b28]">
+          <span className="rounded border border-slate-200/90 bg-slate-100/80 px-1.5 py-0.5 text-[10px] text-muted-foreground tabular-nums dark:border-white/[0.08] dark:bg-[#07090d] dark:text-[#8b97ad]">
             {formatCompactTokens(totalWindowTokens)} tok
           </span>
         </div>
         {avgTokensPerBucket > 0 && (
-          <span className="inline-flex items-center gap-1 rounded border border-[#84cc16]/35 bg-[#84cc16]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#65a30d] tabular-nums dark:text-[#a3e635]">
+          <span className="inline-flex items-center gap-1 rounded border border-[#a3e635]/35 bg-[#a3e635]/12 px-1.5 py-0.5 text-[10px] font-medium text-[#4d7c0f] tabular-nums dark:text-[#a3e635]">
             평균 {formatCompactTokens(avgTokensPerBucket)}
           </span>
         )}
@@ -178,12 +178,12 @@ export function TokenFlowChart({
 
       {/* Chart Area */}
       {!hasData ? (
-        <div className="flex h-[216px] items-center justify-center rounded-md border border-dashed border-border/80 bg-muted/15 text-xs text-muted-foreground dark:border-[#242d3f] dark:bg-[#111520]">
+        <div className="flex h-[216px] items-center justify-center rounded-md border border-dashed border-slate-300/90 bg-slate-50/70 text-xs text-muted-foreground dark:border-white/[0.1] dark:bg-[#07090d]">
           선택한 기간의 토큰 흐름 데이터가 없습니다.
         </div>
       ) : (
         <div
-          className="relative w-full"
+          className="relative w-full rounded-md border border-slate-200/75 bg-slate-50/55 px-1 dark:border-white/[0.06] dark:bg-[#07090d]/85"
           onMouseLeave={() => setHoveredIdx(null)}
         >
           <svg
@@ -203,7 +203,7 @@ export function TokenFlowChart({
                     y1={y}
                     x2={SVG_W - PAD_RIGHT}
                     y2={y}
-                    className="stroke-border/70 dark:stroke-[#242d3f]"
+                    className="stroke-slate-200/90 dark:stroke-white/[0.08]"
                     strokeWidth={1}
                     strokeDasharray={ratio === 0 ? undefined : "2 3"}
                   />
@@ -255,7 +255,7 @@ export function TokenFlowChart({
                     height={PLOT_H}
                     className={cn(
                       "transition-colors",
-                      isHovered ? "fill-foreground/[0.06] dark:fill-white/[0.06]" : "fill-transparent",
+                      isHovered ? "fill-[#2563eb]/[0.06] dark:fill-[#60a5fa]/[0.07]" : "fill-transparent",
                     )}
                   />
 
@@ -306,7 +306,7 @@ export function TokenFlowChart({
                   y1={avgY}
                   x2={SVG_W - PAD_RIGHT}
                   y2={avgY}
-                  stroke="#84cc16"
+                  stroke="var(--pw-lime)"
                   strokeWidth={1.25}
                   strokeDasharray="4 4"
                   opacity={0.85}
@@ -317,8 +317,8 @@ export function TokenFlowChart({
                   width={42}
                   height={13}
                   rx={3}
-                  className="fill-card dark:fill-[#0f1117]"
-                  stroke="#84cc16"
+                  className="fill-white dark:fill-[#0e131d]"
+                  stroke="var(--pw-lime)"
                   strokeOpacity={0.6}
                   strokeWidth={0.8}
                 />
@@ -326,7 +326,7 @@ export function TokenFlowChart({
                   x={SVG_W - PAD_RIGHT - 21}
                   y={Math.max(PAD_TOP + 9.5, avgY - 4.5)}
                   textAnchor="middle"
-                  fill="#84cc16"
+                  fill="var(--pw-lime)"
                   className="text-[8.5px] font-semibold"
                 >
                   평균
@@ -339,11 +339,11 @@ export function TokenFlowChart({
           {hoveredBucket && (
             <div
               className={cn(
-                "pointer-events-none absolute top-2 z-20 w-52 rounded-md border border-border bg-popover/95 p-2.5 text-[11px] shadow-lg backdrop-blur-sm dark:border-[#2f3a52] dark:bg-[#111622]/95",
+                "pointer-events-none absolute top-2 z-20 w-52 rounded-md border border-slate-200/90 bg-white/95 p-2.5 text-[11px] shadow-[0_10px_28px_rgba(15,23,42,0.14)] backdrop-blur-sm dark:border-white/[0.09] dark:bg-[#0e131d]/95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.42)]",
                 tooltipOnLeft ? "left-12" : "right-3",
               )}
             >
-              <div className="flex items-center justify-between gap-2 border-b border-border/70 pb-1 dark:border-[#242d3f]">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-200/80 pb-1 dark:border-white/[0.07]">
                 <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
                   {formatBucketTime(hoveredBucket.bucketStart, activeWindow)}
                 </span>
@@ -356,7 +356,7 @@ export function TokenFlowChart({
                 <span>실행 {hoveredBucket.runs}건</span>
               </div>
               {Object.keys(hoveredBucket.byModel ?? {}).length > 0 && (
-                <div className="mt-1.5 space-y-1 border-t border-border/60 pt-1.5 dark:border-[#242d3f]">
+                <div className="mt-1.5 space-y-1 border-t border-slate-200/75 pt-1.5 dark:border-white/[0.07]">
                   {Object.entries(hoveredBucket.byModel)
                     .filter(([, v]) => v > 0)
                     .sort((a, b) => b[1] - a[1])
@@ -387,7 +387,7 @@ export function TokenFlowChart({
 
       {/* Bottom Model Legend */}
       {orderedModels.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 pt-2 dark:border-[#242d3f]/80">
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-200/80 pt-2 dark:border-white/[0.07]">
           {orderedModels.slice(0, 6).map((model) => (
             <span
               key={model}

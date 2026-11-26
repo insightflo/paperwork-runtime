@@ -21,11 +21,11 @@ interface TreemapRect {
 }
 
 const TILE_STYLES = [
-  { bg: "bg-[#3b82f6]/15 dark:bg-[#3b82f6]/18", border: "border-[#3b82f6]/45", accent: "text-[#2563eb] dark:text-[#60a5fa]" },
-  { bg: "bg-[#10b981]/15 dark:bg-[#10b981]/18", border: "border-[#10b981]/45", accent: "text-[#059669] dark:text-[#34d399]" },
-  { bg: "bg-[#f59e0b]/15 dark:bg-[#f59e0b]/18", border: "border-[#f59e0b]/45", accent: "text-[#d97706] dark:text-[#fbbf24]" },
+  { bg: "bg-[#60a5fa]/12 dark:bg-[#60a5fa]/18", border: "border-[#60a5fa]/45", accent: "text-[#2563eb] dark:text-[#60a5fa]" },
+  { bg: "bg-[#a3e635]/14 dark:bg-[#a3e635]/16", border: "border-[#a3e635]/45", accent: "text-[#4d7c0f] dark:text-[#a3e635]" },
+  { bg: "bg-[#f59e0b]/14 dark:bg-[#f59e0b]/18", border: "border-[#f59e0b]/45", accent: "text-[#b45309] dark:text-[#f59e0b]" },
   { bg: "bg-[#a855f7]/15 dark:bg-[#a855f7]/18", border: "border-[#a855f7]/45", accent: "text-[#9333ea] dark:text-[#c084fc]" },
-  { bg: "bg-[#84cc16]/15 dark:bg-[#84cc16]/18", border: "border-[#84cc16]/45", accent: "text-[#65a30d] dark:text-[#a3e635]" },
+  { bg: "bg-[#10b981]/15 dark:bg-[#10b981]/18", border: "border-[#10b981]/45", accent: "text-[#059669] dark:text-[#34d399]" },
   { bg: "bg-[#f43f5e]/15 dark:bg-[#f43f5e]/18", border: "border-[#f43f5e]/45", accent: "text-[#e11d48] dark:text-[#fb7185]" },
   { bg: "bg-[#06b6d4]/15 dark:bg-[#06b6d4]/18", border: "border-[#06b6d4]/45", accent: "text-[#0891b2] dark:text-[#22d3ee]" },
   { bg: "bg-slate-500/15 dark:bg-slate-500/20", border: "border-slate-500/40", accent: "text-slate-600 dark:text-slate-300" },
@@ -122,7 +122,7 @@ export function UsageTreemap({
     return (
       <div
         className={cn(
-          "flex flex-col justify-between rounded-lg border border-border bg-card p-4 dark:border-[#242d3f] dark:bg-[#0f1117]",
+          "tactile-card border flex flex-col justify-between rounded-[12px] border-slate-200/90 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
           className,
         )}
         aria-busy="true"
@@ -144,15 +144,15 @@ export function UsageTreemap({
   return (
     <div
       className={cn(
-        "flex flex-col justify-between rounded-lg border border-border bg-card p-4 dark:border-[#242d3f] dark:bg-[#0f1117]",
+        "tactile-card border flex flex-col justify-between rounded-[12px] border-slate-200/90 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
         className,
       )}
     >
       {/* Header with Project / Agent Toggle */}
       <div className="mb-2.5 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <h3 className="text-xs font-semibold tracking-tight text-foreground">사용량 맵</h3>
-          <span className="rounded border border-border/80 bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground tabular-nums dark:border-[#242d3f] dark:bg-[#151b28]">
+          <h3 className="whitespace-nowrap text-xs font-semibold tracking-tight text-foreground">사용량 맵</h3>
+          <span className="rounded border border-slate-200/90 bg-slate-100/80 px-1.5 py-0.5 text-[10px] text-muted-foreground tabular-nums dark:border-white/[0.08] dark:bg-[#07090d] dark:text-[#8b97ad]">
             {formatCompactTokens(totalTokens)} tok
           </span>
         </div>
@@ -160,7 +160,7 @@ export function UsageTreemap({
         <div
           role="tablist"
           aria-label="사용량 맵 기준"
-          className="inline-flex items-center rounded-md border border-border bg-muted/60 p-0.5 dark:border-[#242d3f] dark:bg-[#090c11]"
+          className="inline-flex shrink-0 items-center rounded-md border border-slate-200/90 bg-slate-100/90 p-0.5 dark:border-white/[0.08] dark:bg-[#07090d]"
         >
           <button
             type="button"
@@ -168,9 +168,9 @@ export function UsageTreemap({
             aria-selected={mode === "project"}
             onClick={() => setMode("project")}
             className={cn(
-              "rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
+              "whitespace-nowrap rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
               mode === "project"
-                ? "bg-background text-foreground shadow-sm ring-1 ring-[#5f8dff]/40 dark:bg-[#171f2e] dark:text-foreground"
+                ? "bg-white text-slate-950 shadow-sm ring-1 ring-[#60a5fa]/45 dark:bg-[#141c2b] dark:text-[#60a5fa]"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -182,9 +182,9 @@ export function UsageTreemap({
             aria-selected={mode === "agent"}
             onClick={() => setMode("agent")}
             className={cn(
-              "rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
+              "whitespace-nowrap rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
               mode === "agent"
-                ? "bg-background text-foreground shadow-sm ring-1 ring-[#5f8dff]/40 dark:bg-[#171f2e] dark:text-foreground"
+                ? "bg-white text-slate-950 shadow-sm ring-1 ring-[#60a5fa]/45 dark:bg-[#141c2b] dark:text-[#60a5fa]"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -195,12 +195,12 @@ export function UsageTreemap({
 
       {/* Treemap Canvas */}
       {rects.length === 0 ? (
-        <div className="flex h-[216px] items-center justify-center rounded-md border border-dashed border-border/80 bg-muted/15 text-xs text-muted-foreground dark:border-[#242d3f] dark:bg-[#111520]">
+        <div className="flex h-[216px] items-center justify-center rounded-md border border-dashed border-slate-300/90 bg-slate-50/70 text-xs text-muted-foreground dark:border-white/[0.1] dark:bg-[#07090d]">
           선택한 기간의 사용량 데이터가 없습니다.
         </div>
       ) : (
         <div
-          className="relative h-[216px] w-full overflow-hidden rounded-md"
+          className="relative h-[216px] w-full overflow-hidden rounded-md border border-slate-200/75 bg-slate-100/65 dark:border-white/[0.06] dark:bg-[#07090d]"
           onMouseLeave={() => setHoveredKey(null)}
         >
           {rects.map((rect) => {
@@ -226,10 +226,10 @@ export function UsageTreemap({
               >
                 <div
                   className={cn(
-                    "flex h-full w-full flex-col justify-between overflow-hidden rounded border p-2 transition-all",
+                    "flex h-full w-full flex-col justify-between overflow-hidden rounded border p-2 transition-[filter,box-shadow,border-color] duration-150",
                     style.bg,
                     style.border,
-                    hoveredKey === tileKey && "ring-1 ring-foreground/40 brightness-110",
+                    hoveredKey === tileKey && "ring-1 ring-[#2563eb]/45 brightness-105 dark:ring-[#60a5fa]/65",
                   )}
                 >
                   {isLarge ? (
@@ -288,7 +288,7 @@ export function UsageTreemap({
       )}
 
       {/* Compact Hover / Top-Item Footer */}
-      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/60 pt-2 text-[10px] text-muted-foreground tabular-nums dark:border-[#242d3f]/80">
+      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-slate-200/80 pt-2 text-[10px] text-muted-foreground tabular-nums dark:border-white/[0.07]">
         {hoveredRect ? (
           <>
             <span className="truncate font-medium text-foreground">
