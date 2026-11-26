@@ -26,13 +26,27 @@ export interface MistologyCardListProps {
   language?: CompanyDefaultLanguage;
 }
 
+const CARD =
+  "tactile-card relative overflow-hidden rounded-[12px] border border-slate-200/90 bg-white p-4 text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.36)]";
+const INSET =
+  "rounded-[10px] border border-slate-200/80 bg-slate-50/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/[0.07] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
+const MUTED = "text-slate-500 dark:text-[#8b97ad]";
+const BODY = "text-slate-600 dark:text-[#aab6ca]";
+
 const KIND_STYLE: Record<string, string> = {
-  constraint: "bg-indigo-500/15 text-indigo-300",
-  success_recipe: "bg-amber-500/15 text-amber-300",
-  failure_mode: "bg-rose-500/15 text-rose-300",
+  constraint: "border-blue-600/25 bg-blue-500/10 text-blue-700 dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa]",
+  success_recipe: "border-lime-600/25 bg-lime-500/10 text-lime-800 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/10 dark:text-[#a3e635]",
+  failure_mode: "border-rose-600/25 bg-rose-500/10 text-rose-700 dark:border-[#f43f5e]/30 dark:bg-[#f43f5e]/10 dark:text-[#fb7185]",
 };
-const FALLBACK_KIND_STYLE = "bg-slate-500/15 text-slate-300";
-const MUTED_BADGE = "rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground";
+const FALLBACK_KIND_STYLE = "border-slate-300/80 bg-slate-500/10 text-slate-600 dark:border-white/[0.09] dark:bg-white/[0.05] dark:text-[#8b97ad]";
+const KIND_RAIL: Record<string, string> = {
+  constraint: "from-blue-500/70 via-blue-500/15 dark:from-[#60a5fa]/85 dark:via-[#60a5fa]/15",
+  success_recipe: "from-lime-500/70 via-lime-500/15 dark:from-[#a3e635]/85 dark:via-[#a3e635]/15",
+  failure_mode: "from-rose-500/70 via-rose-500/15 dark:from-[#f43f5e]/85 dark:via-[#f43f5e]/15",
+};
+const FALLBACK_RAIL = "from-slate-400/70 via-slate-400/15 dark:from-[#627089]/85 dark:via-[#627089]/15";
+const MUTED_BADGE =
+  "rounded-full border border-slate-200/80 bg-slate-50/90 px-2 py-0.5 text-[11px] text-slate-500 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#8b97ad]";
 
 function cardChips(card: KnowledgePatternCardDto): string[] {
   const all = [
@@ -58,30 +72,34 @@ function SummaryGrid({
 }) {
   return (
     <dl className="mt-3 grid gap-2 sm:grid-cols-3">
-      <div className="rounded-md bg-muted/40 p-2.5">
-        <dt className="text-[11px] font-semibold text-rose-300">
+      <div className={cn(INSET, "p-2.5")}>
+        <dt className="text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-700 dark:text-[#fb7185]">
           {L(lang, { en: "What happened", ko: "무슨 문제였나" })}
         </dt>
-        <dd className="mt-1 text-xs leading-relaxed text-muted-foreground">{problem || "-"}</dd>
+        <dd className={cn("mt-1 text-xs leading-relaxed", BODY)}>{problem || "-"}</dd>
       </div>
       {cause ? (
-        <div className="rounded-md bg-muted/40 p-2.5">
-          <dt className="text-[11px] font-semibold text-amber-300">
+        <div className={cn(INSET, "p-2.5")}>
+          <dt className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700 dark:text-[#f59e0b]">
             {L(lang, { en: "Root cause", ko: "원인" })}
           </dt>
-          <dd className="mt-1 text-xs leading-relaxed text-muted-foreground">{cause}</dd>
+          <dd className={cn("mt-1 text-xs leading-relaxed", BODY)}>{cause}</dd>
         </div>
       ) : null}
       {fix ? (
-        <div className="rounded-md bg-muted/40 p-2.5">
-          <dt className="text-[11px] font-semibold text-emerald-300">
+        <div className={cn(INSET, "p-2.5")}>
+          <dt className="text-[10px] font-semibold uppercase tracking-[0.12em] text-lime-800 dark:text-[#a3e635]">
             {L(lang, { en: "Fix / Rule", ko: "해결·규칙" })}
           </dt>
-          <dd className="mt-1 text-xs leading-relaxed text-muted-foreground">{fix}</dd>
+          <dd className={cn("mt-1 text-xs leading-relaxed", BODY)}>{fix}</dd>
         </div>
       ) : null}
     </dl>
   );
+}
+
+function AccentRail({ tone }: { tone: string }) {
+  return <div aria-hidden className={cn("pointer-events-none absolute bottom-4 left-0 top-4 w-px bg-gradient-to-b to-transparent", tone)} />;
 }
 
 function PatternCard({ card, lang }: { card: KnowledgePatternCardDto; lang: CompanyDefaultLanguage }) {
@@ -89,34 +107,37 @@ function PatternCard({ card, lang }: { card: KnowledgePatternCardDto; lang: Comp
   const retireReason = retired ? humanizeRetireReason(card, lang) : null;
   const chips = cardChips(card);
   return (
-    <article className={cn("rounded-lg border bg-card p-4 shadow-sm", retired && "opacity-70")}>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", KIND_STYLE[card.kind] ?? FALLBACK_KIND_STYLE)}>
+    <article className={cn(CARD, "tabular-nums", retired && "opacity-70")}>
+      <AccentRail tone={KIND_RAIL[card.kind] ?? FALLBACK_RAIL} />
+      <div className="relative flex flex-wrap items-center gap-1.5">
+        <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-semibold", KIND_STYLE[card.kind] ?? FALLBACK_KIND_STYLE)}>
           {humanizeKind(card.kind, lang)}
         </span>
         <span className={MUTED_BADGE}>{formatAgeAndTtl(card.createdAt, card.kind, lang)}</span>
         <span className={MUTED_BADGE}>{humanizeSource(card.source, lang)}</span>
         {retireReason ? (
-          <span className="rounded-full bg-slate-500/15 px-2 py-0.5 text-[11px] font-medium text-slate-300">
+          <span className="rounded-full border border-slate-300/80 bg-slate-500/10 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:border-white/[0.09] dark:bg-white/[0.05] dark:text-[#8b97ad]">
             {retireReason}
           </span>
         ) : null}
       </div>
-      <h3 className="mt-2 text-sm font-semibold leading-snug">{humanizeText(card.title, lang)}</h3>
-      <SummaryGrid
-        problem={humanizeText(card.symptoms || card.summary, lang)}
-        cause={humanizeText(card.rootCause, lang)}
-        fix={humanizeText(card.whatWorked, lang)}
-        lang={lang}
-      />
+      <h3 className="relative mt-2 text-sm font-semibold leading-snug text-slate-950 dark:text-[#eef2f8]">{humanizeText(card.title, lang)}</h3>
+      <div className="relative">
+        <SummaryGrid
+          problem={humanizeText(card.symptoms || card.summary, lang)}
+          cause={humanizeText(card.rootCause, lang)}
+          fix={humanizeText(card.whatWorked, lang)}
+          lang={lang}
+        />
+      </div>
       {chips.length > 0 ? (
-        <div className="mt-3">
-          <p className="text-[11px] font-semibold text-muted-foreground">
+        <div className="relative mt-3 border-t border-slate-200/70 pt-2.5 dark:border-white/[0.06]">
+          <p className={cn("text-[10px] font-semibold uppercase tracking-[0.12em]", MUTED)}>
             {L(lang, { en: "Linked code & tags", ko: "연결된 코드·태그" })}
           </p>
-          <div className="mt-1 flex flex-wrap gap-1">
+          <div className="mt-1.5 flex flex-wrap gap-1">
             {chips.map((chip) => (
-              <code key={chip} className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+              <code key={chip} className="rounded-md border border-slate-200/80 bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-600 dark:border-white/[0.08] dark:bg-[#07090d] dark:text-[#8b97ad]">
                 {chip}
               </code>
             ))}
@@ -129,9 +150,10 @@ function PatternCard({ card, lang }: { card: KnowledgePatternCardDto; lang: Comp
 
 function EntryCard({ entry, lang }: { entry: GroupedWikiEntry; lang: CompanyDefaultLanguage }) {
   return (
-    <article className="rounded-lg border bg-card p-4 shadow-sm">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[11px] font-semibold text-rose-300">
+    <article className={cn(CARD, "tabular-nums")}>
+      <AccentRail tone={KIND_RAIL.failure_mode} />
+      <div className="relative flex flex-wrap items-center gap-1.5">
+        <span className={cn("rounded-full border px-2 py-0.5 text-[11px] font-semibold", KIND_STYLE.failure_mode)}>
           {L(lang, { en: "Mistake · Agent", ko: "오답 기록 · 에이전트" })}
         </span>
         <span className={MUTED_BADGE}>
@@ -143,12 +165,14 @@ function EntryCard({ entry, lang }: { entry: GroupedWikiEntry; lang: CompanyDefa
             : L(lang, { en: `Seen ${entry.totalFrequency}x`, ko: `${entry.totalFrequency}회 관측` })}
         </span>
       </div>
-      <SummaryGrid
-        problem={humanizeText(entry.pattern, lang)}
-        cause={humanizeText(entry.cause, lang)}
-        fix={humanizeText(entry.solution, lang)}
-        lang={lang}
-      />
+      <div className="relative">
+        <SummaryGrid
+          problem={humanizeText(entry.pattern, lang)}
+          cause={humanizeText(entry.cause, lang)}
+          fix={humanizeText(entry.solution, lang)}
+          lang={lang}
+        />
+      </div>
     </article>
   );
 }
@@ -158,7 +182,7 @@ export function MistologyCardList({ patterns, entries = [], language }: Mistolog
   const lang = language ?? ctxLang;
   if (patterns.length === 0 && entries.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
+      <p className="tactile-card rounded-[12px] border border-dashed border-slate-300/90 bg-white px-4 py-10 text-center text-sm text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.12] dark:bg-none dark:bg-[#0e131d] dark:text-[#8b97ad] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
         {L(lang, {
           en: "No records in this tab yet — mistakes and rules will appear here automatically.",
           ko: "이 탭에 표시할 기록이 없습니다 — 오답·규약이 자동 수집되면 여기에 카드로 채워집니다.",
@@ -167,7 +191,7 @@ export function MistologyCardList({ patterns, entries = [], language }: Mistolog
     );
   }
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 tabular-nums">
       {patterns.map((card) => (
         <PatternCard key={card.id} card={card} lang={lang} />
       ))}
