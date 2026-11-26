@@ -1,22 +1,10 @@
 import { Router, type Request } from "express";
-import type { Db } from "@paperclipai/db";
-import {
-  addApprovalCommentSchema,
-  createApprovalSchema,
-  requestApprovalRevisionSchema,
-  resolveApprovalSchema,
-  resubmitApprovalSchema,
-} from "@paperclipai/shared";
+import { approvals, type Db } from "@paperclipai/db";
+import { and, desc, eq } from "drizzle-orm";
+import { addApprovalCommentSchema, createApprovalSchema, requestApprovalRevisionSchema, resolveApprovalSchema, resubmitApprovalSchema } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { logger } from "../middleware/logger.js";
-import {
-  agentService,
-  approvalService,
-  heartbeatService,
-  issueApprovalService,
-  logActivity,
-  secretService,
-} from "../services/index.js";
+import { agentService, approvalService, heartbeatService, issueApprovalService, logActivity, secretService } from "../services/index.js";
 import { forbidden, notFound } from "../errors.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
 import { redactEventPayload } from "../redaction.js";
@@ -36,14 +24,7 @@ const DECISION_PENDING_APPROVAL_STATUSES = new Set(["pending", "revision_request
 /** 표시용 해석 스냅숋(원문 폴백 판단은 UI 책임 — null이면 원문만). */
 function serializeSummary(row: CardSummaryRow | null | undefined) {
   if (!row) return null;
-  return {
-    status: row.status,
-    adapterType: row.adapterType,
-    model: row.model,
-    summary: row.summaryJson ?? null,
-    error: row.error ?? null,
-    updatedAt: row.updatedAt,
-  };
+  return { status: row.status, adapterType: row.adapterType, model: row.model, summary: row.summaryJson ?? null, error: row.error ?? null, updatedAt: row.updatedAt };
 }
 
 /** 해석 입력은 운영자가 보는 것과 동일한 재편집본만 쓴다(비밀 원본 미전달). */
@@ -132,6 +113,21 @@ async function logApprovalDecidedEvent(
   });
 }
 
+const DEFAULT_APPROVAL_LIST_LIMIT = 200;
+const MAX_APPROVAL_LIST_LIMIT = 500;
+
+function parseApprovalLimit(value: unknown): number {
+  const parsed = typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0
+    ? Math.min(parsed, MAX_APPROVAL_LIST_LIMIT)
+    : DEFAULT_APPROVAL_LIST_LIMIT;
+}
+
+function parseApprovalOffset(value: unknown): number {
+  const parsed = typeof value === "string" && value.trim() ? Number(value) : NaN;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 0;
+}
+
 export function approvalRoutes(db: Db) {
   const router = Router();
   const svc = approvalService(db);
@@ -146,7 +142,23 @@ export function approvalRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     const status = req.query.status as string | undefined;
-    const result = await svc.list(companyId, status);
+    const limit = parseApprovalLimit(req.query.limit);
+    const offset = parseApprovalOffset(req.query.offset);
+    const canUseBoundedApprovalQuery = typeof (db as { execute?: unknown }).execute === "function";
+    let result;
+    if (!canUseBoundedApprovalQuery) {
+      result = await svc.list(companyId, status);
+    } else {
+      const conditions = [eq(approvals.companyId, companyId)];
+      if (status) conditions.push(eq(approvals.status, status));
+      result = await db
+        .select()
+        .from(approvals)
+        .where(and(...conditions))
+        .orderBy(desc(approvals.createdAt), desc(approvals.id))
+        .limit(limit)
+        .offset(offset);
+    }
     const redacted = result.map((approval) => redactApprovalPayload(approval));
     const summaries = await attachApprovalSummaries(summariesSvc, companyId, redacted);
     res.json(redacted.map((approval, i) => ({ ...approval, humanSummary: summaries[i] ?? null })));

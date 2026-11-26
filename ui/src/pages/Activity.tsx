@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { activityApi } from "../api/activity";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { api } from "../api/client";
 import { agentsApi } from "../api/agents";
-import { issuesApi } from "../api/issues";
+import { ACTIVE_ISSUE_STATUS_FILTER, issuesApi } from "../api/issues";
 import { projectsApi } from "../api/projects";
 import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -17,6 +17,8 @@ import { cn } from "../lib/utils";
 import type { Agent, ActivityEvent } from "@paperclipai/shared";
 
 export type ActivityCategory = "all" | "agent" | "mission" | "decision" | "worktree";
+
+const ACTIVITY_PAGE_SIZE = 50;
 
 const CATEGORY_PILLS: { id: ActivityCategory; label: string }[] = [
   { id: "all", label: "전체" },
@@ -82,10 +84,24 @@ export function Activity() {
     setBreadcrumbs([{ label: "Activity" }]);
   }, [setBreadcrumbs]);
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: queryKeys.activity(selectedCompanyId!),
-    queryFn: () => activityApi.list(selectedCompanyId!),
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: [...queryKeys.activity(selectedCompanyId!), "paged", ACTIVITY_PAGE_SIZE] as const,
+    queryFn: ({ pageParam }) =>
+      api.get<ActivityEvent[]>(
+        `/companies/${selectedCompanyId!}/activity?limit=${ACTIVITY_PAGE_SIZE}&offset=${pageParam}`,
+      ),
     enabled: !!selectedCompanyId,
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) =>
+      lastPage.length === ACTIVITY_PAGE_SIZE ? pages.length * ACTIVITY_PAGE_SIZE : undefined,
+    placeholderData: keepPreviousData,
   });
   const { data: agents } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
@@ -93,8 +109,8 @@ export function Activity() {
     enabled: !!selectedCompanyId,
   });
   const { data: issues } = useQuery({
-    queryKey: queryKeys.issues.list(selectedCompanyId!),
-    queryFn: () => issuesApi.list(selectedCompanyId!),
+    queryKey: queryKeys.issues.list(selectedCompanyId!, { status: ACTIVE_ISSUE_STATUS_FILTER }),
+    queryFn: () => issuesApi.list(selectedCompanyId!, { status: ACTIVE_ISSUE_STATUS_FILTER }),
     enabled: !!selectedCompanyId,
   });
   const { data: projects } = useQuery({
@@ -123,8 +139,10 @@ export function Activity() {
     return map;
   }, [issues]);
 
+  const activityEvents = useMemo(() => data?.pages.flat() ?? [], [data]);
+
   const filtered = useMemo(() => {
-    let events = data ?? [];
+    let events = activityEvents;
     if (category !== "all") {
       events = events.filter((e) => categorizeActivityEvent(e) === category);
     }
@@ -137,7 +155,7 @@ export function Activity() {
       );
     }
     return events;
-  }, [data, category, searchQuery]);
+  }, [activityEvents, category, searchQuery]);
 
   if (!selectedCompanyId) {
     return <EmptyState icon={History} message="Select a company to view activity." />;
@@ -208,6 +226,19 @@ export function Activity() {
               </div>
             ) : row;
           })}
+        </div>
+      )}
+
+      {hasNextPage && (
+        <div className="flex justify-center pt-1">
+          <button
+            type="button"
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
+            className="rounded-md border border-border bg-accent px-3 py-1.5 text-xs font-medium hover:bg-accent/70 disabled:opacity-50"
+          >
+            {isFetchingNextPage ? "불러오는 중…" : "Load More"}
+          </button>
         </div>
       )}
     </div>
