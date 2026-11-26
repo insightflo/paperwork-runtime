@@ -17,9 +17,6 @@ import { SidebarWaitChip, resolveAgentWaitState, type AgentWaitState } from "./S
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { Agent } from "@paperclipai/shared";
 
-/** Idle rows fold away by default once there are more than this many. */
-const IDLE_COLLAPSE_THRESHOLD = 3;
-
 /** running = live run · attention = waiting on a human, a budget pause, an approval or an error · idle = the rest. */
 type AgentActivity = "running" | "attention" | "idle";
 type PinnedActivity = Exclude<AgentActivity, "idle">;
@@ -30,17 +27,17 @@ interface AgentEntry {
   activity: AgentActivity;
 }
 
-const STATUS_DOT: Record<PinnedActivity, { color: string; label: string }> = {
-  running: { color: "var(--pw-emerald, #34d399)", label: "Running" },
-  attention: { color: "var(--pw-amber, #fbbf24)", label: "Needs attention" },
+const STATUS_DOT: Record<PinnedActivity, { color: string; glow: string; label: string }> = {
+  running: { color: "var(--pw-lime, #a3e635)", glow: "var(--pw-lime-glow, rgba(163,230,53,0.42))", label: "Running" },
+  attention: { color: "var(--pw-amber, #f59e0b)", glow: "rgba(245,158,11,0.35)", label: "Needs attention" },
 };
-/** Compact right-aligned pill: never shrinks or wraps, so it cannot collide with the agent name. */
-const COUNT_PILL = "inline-flex h-[18px] shrink-0 tabular-nums items-center gap-1 whitespace-nowrap rounded-full border px-1.5 text-[11px] font-medium leading-none";
-const SUBTLE_PILL = "border-border bg-muted text-muted-foreground dark:border-[#242d3f] dark:bg-[#111622]";
-const AMBER_PILL = "border-amber-500/35 bg-amber-500/15 text-amber-700 dark:text-[var(--pw-amber)]";
-const LIVE_PILL = cn(SUBTLE_PILL, "dark:text-[var(--pw-emerald)]");
+/** Compact right-aligned mono pill: never shrinks or wraps. */
+const COUNT_PILL =
+  "inline-flex h-[16px] shrink-0 tabular-nums items-center gap-1 whitespace-nowrap rounded-[5px] px-1.5 font-mono text-[9.5px] font-medium leading-none";
+const AMBER_PILL = "bg-amber-500/15 text-amber-700 dark:text-[var(--pw-amber)]";
+const LIVE_PILL = "bg-[#65a30d]/12 text-[#4d7c0f] dark:bg-[#a3e635]/14 dark:text-[#a3e635]";
 const IDLE_TOGGLE =
-  "mt-0.5 flex w-full items-center rounded-[9px] text-xs text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground";
+  "mt-1 flex w-full items-center rounded-[7px] font-mono text-[10.5px] text-muted-foreground transition-colors hover:bg-slate-200/50 hover:text-foreground dark:hover:bg-white/[0.04] dark:hover:text-[#eef2f8]";
 
 /** BFS sort: roots first (no reportsTo), then their direct reports, etc. */
 function sortByHierarchy(agents: Agent[]): Agent[] {
@@ -74,12 +71,15 @@ function classifyAgentActivity(agent: Agent, waitState: AgentWaitState | null): 
 function AgentStatusDot({ kind, corner }: { kind: PinnedActivity; corner?: boolean }) {
   const meta = STATUS_DOT[kind];
   return (
-    <span title={meta.label} className={cn("relative flex h-2 w-2 shrink-0", corner && "absolute right-0.5 top-0.5")}>
+    <span title={meta.label} className={cn("relative flex h-1.5 w-1.5 shrink-0", corner && "absolute right-1 top-1")}>
       <span
         className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 motion-reduce:animate-none"
         style={{ backgroundColor: meta.color }}
       />
-      <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: meta.color }} />
+      <span
+        className="relative inline-flex h-1.5 w-1.5 rounded-full"
+        style={{ backgroundColor: meta.color, boxShadow: `0 0 8px ${meta.glow}` }}
+      />
     </span>
   );
 }
@@ -88,66 +88,85 @@ function AgentRow({ entry, to, active, compact }: { entry: AgentEntry; to: strin
   const { isMobile, setSidebarOpen } = useSidebar();
   const { agent, runCount, waitState, activity } = entry;
   const budgetPaused = agent.pauseReason === "budget";
-  // Expanded rows replace the live-run chip with a concise count pill; the mini bar keeps the chip (and skips the dot).
-  const livePill = !compact && waitState?.kind === "live";
+  const livePill = !compact && (waitState?.kind === "live" || (activity === "running" && runCount > 0));
   const showDot = activity !== "idle" && !(compact && waitState);
-  // Pinned by agent status alone (no pending decision card, no budget pause): surface the reason.
   const statusPill =
     !compact && activity === "attention" && !waitState && !budgetPaused
-      ? agent.status === "error" ? "Error" : "Approval"
+      ? agent.status === "error" ? "ERR" : "WAIT"
       : null;
-  const showTrailing = budgetPaused || waitState != null || statusPill != null;
+  const showTrailing = budgetPaused || livePill || waitState != null || statusPill != null;
+  const roleMeta = agent.title || agent.role || agent.adapterType;
+  const rightMeta = activity === "running" ? (runCount > 0 ? `${runCount} run` : "active") : activity === "attention" ? "attention" : "idle";
+
+  if (compact) {
+    return (
+      <NavLink
+        to={to}
+        title={agent.name}
+        aria-label={agent.name}
+        onClick={() => {
+          if (isMobile) setSidebarOpen(false);
+        }}
+        className={cn(
+          "relative mx-auto flex h-8 w-8 items-center justify-center rounded-[8px] border transition-all duration-150",
+          active
+            ? "border-slate-200/90 bg-white text-foreground dark:border-white/[0.08] dark:bg-white/[0.06] dark:text-[#eef2f8]"
+            : "border-transparent text-muted-foreground hover:bg-slate-200/50 hover:text-foreground dark:hover:bg-white/[0.04] dark:hover:text-[#eef2f8]",
+        )}
+      >
+        {showDot && <AgentStatusDot kind={activity} corner />}
+        <AgentIcon icon={agent.icon} className="h-3.5 w-3.5 shrink-0" />
+      </NavLink>
+    );
+  }
 
   return (
     <NavLink
       to={to}
-      title={compact ? agent.name : undefined}
-      aria-label={compact ? agent.name : undefined}
       onClick={() => {
         if (isMobile) setSidebarOpen(false);
       }}
       className={cn(
-        "relative flex items-center text-[13px] font-medium transition-colors",
-        compact ? "justify-center gap-1 px-1.5 py-1.5" : "gap-2 px-3 py-1.5",
+        "block rounded-[8px] border px-2 py-[7px] transition-all duration-150",
         active
-          ? "bg-accent text-foreground"
-          : activity === "idle"
-            ? "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-            : "text-foreground/80 hover:bg-accent/50 hover:text-foreground",
+          ? "border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.95)] dark:border-white/[0.08] dark:bg-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+          : "border-transparent bg-slate-100/60 hover:border-slate-200/90 hover:bg-white dark:bg-white/[0.015] dark:hover:border-white/[0.065] dark:hover:bg-white/[0.045] dark:hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
       )}
     >
-      {showDot && <AgentStatusDot kind={activity} corner={compact} />}
-      <AgentIcon icon={agent.icon} className="shrink-0 h-3.5 w-3.5 text-muted-foreground" />
-      {!compact && (
-        <span className="min-w-0 flex-1">
-          <span className="block truncate">{agent.name}</span>
-          {agent.title && (
-            <span className="block truncate text-[10px] font-normal text-muted-foreground/60 leading-tight">
-              {agent.title}
-            </span>
+      <div className="mb-0.5 flex items-center justify-between gap-1.5">
+        <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] font-medium text-foreground">
+          {showDot ? (
+            <AgentStatusDot kind={activity} />
+          ) : (
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400/50 dark:bg-white/20" />
           )}
+          <span className="truncate">{agent.name}</span>
         </span>
-      )}
-      {showTrailing && (
-        <span className={cn("flex shrink-0 items-center gap-1.5", !compact && "ml-auto")}>
-          {budgetPaused && <BudgetSidebarMarker title="Agent paused by budget" />}
-          {livePill && (
-            <span title={`${runCount} live run${runCount === 1 ? "" : "s"}`} className={cn(COUNT_PILL, LIVE_PILL)}>
-              {runCount} live
-            </span>
-          )}
-          {waitState && !livePill && <SidebarWaitChip state={waitState} provider={agent.adapterType} compact={compact} />}
-          {statusPill && <span className={cn(COUNT_PILL, AMBER_PILL)}>{statusPill}</span>}
-        </span>
-      )}
+        {showTrailing && (
+          <span className="flex shrink-0 items-center gap-1">
+            {budgetPaused && <BudgetSidebarMarker title="Agent paused by budget" />}
+            {livePill && (
+              <span title={`${runCount} live run${runCount === 1 ? "" : "s"}`} className={cn(COUNT_PILL, LIVE_PILL)}>
+                {runCount > 1 ? `${runCount} LIVE` : "LIVE"}
+              </span>
+            )}
+            {waitState && !livePill && <SidebarWaitChip state={waitState} provider={agent.adapterType} compact={false} />}
+            {statusPill && <span className={cn(COUNT_PILL, AMBER_PILL)}>{statusPill}</span>}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center justify-between gap-2 pl-3 font-mono text-[10px] text-muted-foreground">
+        <span className="truncate">{roleMeta}</span>
+        <span className="shrink-0 opacity-75">{rightMeta}</span>
+      </div>
     </NavLink>
   );
 }
 
 export function SidebarAgents() {
   const [open, setOpen] = useState(true);
-  // null = follow the default (collapse once the idle group grows past the threshold); otherwise the user's last toggle.
-  const [idleOpenOverride, setIdleOpenOverride] = useState<boolean | null>(null);
+  // Idle agents stay collapsed by default behind a 1-line `대기 (N)` toggle.
+  const [idleOpen, setIdleOpen] = useState(false);
   const { selectedCompanyId } = useCompany();
   const { openNewAgent } = useDialog();
   const { isMobile } = useSidebar();
@@ -185,9 +204,7 @@ export function SidebarAgents() {
   }, [liveRuns]);
 
   const visibleAgents = useMemo(() => {
-    const filtered = (agents ?? []).filter(
-      (a: Agent) => a.status !== "terminated"
-    );
+    const filtered = (agents ?? []).filter((a: Agent) => a.status !== "terminated");
     return sortByHierarchy(filtered);
   }, [agents]);
 
@@ -211,8 +228,7 @@ export function SidebarAgents() {
     return groups;
   }, [visibleAgents, liveCountByAgent, pendingDecisions]);
 
-  const idleOpen = idleOpenOverride ?? idle.length <= IDLE_COLLAPSE_THRESHOLD;
-  const idleLabel = `Idle (${idle.length})`;
+  const idleLabel = `대기 (${idle.length})`;
   const renderRow = (entry: AgentEntry) => (
     <AgentRow
       key={entry.agent.id}
@@ -224,16 +240,16 @@ export function SidebarAgents() {
   );
 
   return (
-    <Collapsible open={compact ? true : open} onOpenChange={setOpen}>
+    <Collapsible open={compact ? true : open} onOpenChange={setOpen} className="flex min-h-0 flex-1 flex-col">
       {compact ? (
-        <div className="flex justify-center border-t border-sidebar-border pt-1.5">
+        <div className="mb-1 flex justify-center border-t border-sidebar-border pt-1.5">
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               openNewAgent();
             }}
-            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors"
+            className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:bg-accent/50 hover:text-foreground"
             aria-label="New agent"
             title="New agent"
           >
@@ -241,31 +257,28 @@ export function SidebarAgents() {
           </button>
         </div>
       ) : (
-        <div className="group">
-          <div className="flex items-center px-3 py-1.5">
-            <CollapsibleTrigger className="flex items-center gap-1 flex-1 min-w-0">
-              <ChevronRight
-                className={cn(
-                  "h-3 w-3 text-muted-foreground/60 transition-transform opacity-0 group-hover:opacity-100",
-                  open && "rotate-90"
-                )}
-              />
-              <span className="text-[10px] font-medium uppercase tracking-widest font-mono text-muted-foreground/60">
-                Agents
-              </span>
-            </CollapsibleTrigger>
-            {pinned.length > 0 && (
-              <span title={`${pinned.length} active agent${pinned.length === 1 ? "" : "s"}`} className={cn(COUNT_PILL, SUBTLE_PILL, "mr-1")}>
-                {pinned.length}
-              </span>
-            )}
+        <div className="mb-1 flex shrink-0 items-center justify-between px-2">
+          <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-1 text-left">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              실행 중인 에이전트
+            </span>
+          </CollapsibleTrigger>
+          <div className="flex items-center gap-1.5">
+            <span
+              title={`${pinned.length} active agent${pinned.length === 1 ? "" : "s"}`}
+              className="font-mono text-[10px] font-medium tabular-nums text-[#4d7c0f] dark:text-[#a3e635]"
+            >
+              ● {pinned.length}
+            </span>
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 openNewAgent();
               }}
-              className="flex items-center justify-center h-4 w-4 rounded text-muted-foreground/60 hover:text-foreground hover:bg-accent/50 transition-colors"
+              className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:bg-accent/50 hover:text-foreground"
               aria-label="New agent"
+              title="New agent"
             >
               <Plus className="h-3 w-3" />
             </button>
@@ -273,21 +286,21 @@ export function SidebarAgents() {
         </div>
       )}
 
-      <CollapsibleContent>
-        <div className="flex flex-col gap-0.5 mt-0.5">
+      <CollapsibleContent className="flex min-h-0 flex-1 flex-col">
+        <div className="flex flex-col gap-1">
           {pinned.map(renderRow)}
         </div>
         {idle.length > 0 && (
-          <Collapsible open={idleOpen} onOpenChange={setIdleOpenOverride}>
+          <Collapsible open={idleOpen} onOpenChange={setIdleOpen}>
             <CollapsibleTrigger
               aria-label={idleLabel}
               title={idleLabel}
-              className={cn(IDLE_TOGGLE, compact ? "h-7 justify-center" : "h-7 gap-1.5 px-3")}
+              className={cn(IDLE_TOGGLE, compact ? "h-7 justify-center" : "h-7 gap-1.5 px-2")}
             >
-              <ChevronRight className={cn("h-3 w-3 transition-transform", idleOpen && "rotate-90")} />
+              <ChevronRight className={cn("h-3 w-3 transition-transform duration-150", idleOpen && "rotate-90")} />
               <span className="tabular-nums">{compact ? idle.length : idleLabel}</span>
             </CollapsibleTrigger>
-            <CollapsibleContent className="mt-0.5 flex flex-col gap-0.5">
+            <CollapsibleContent className="mt-1 flex flex-col gap-1">
               {idle.map(renderRow)}
             </CollapsibleContent>
           </Collapsible>

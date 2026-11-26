@@ -11,24 +11,24 @@ import {
 } from "./sidebar-slide-physics";
 
 describe("resolveSnapTarget", () => {
-  it("collapses on strong negative velocity below 210px", () => {
-    expect(resolveSnapTarget(180, -0.6)).toEqual({ mode: "collapsed", targetWidth: 0 });
+  it("collapses on strong negative velocity below 184px", () => {
+    expect(resolveSnapTarget(160, -0.6)).toEqual({ mode: "collapsed", targetWidth: 0 });
   });
 
-  it("expands on strong positive velocity above 60px", () => {
+  it("expands on strong positive velocity above 56px", () => {
     expect(resolveSnapTarget(120, 0.9)).toEqual({ mode: "expanded", targetWidth: NAV_EXPANDED_WIDTH_PX });
   });
 
   it("snaps into collapsed/compact/peek/expanded buckets without velocity", () => {
     expect(resolveSnapTarget(40, 0).mode).toBe("collapsed");
     expect(resolveSnapTarget(100, 0)).toEqual({ mode: "compact", targetWidth: NAV_COMPACT_WIDTH_PX });
-    expect(resolveSnapTarget(200, 0)).toEqual({ mode: "peek", targetWidth: NAV_PEEK_WIDTH_PX });
-    expect(resolveSnapTarget(240, 0)).toEqual({ mode: "expanded", targetWidth: NAV_EXPANDED_WIDTH_PX });
+    expect(resolveSnapTarget(168, 0)).toEqual({ mode: "peek", targetWidth: NAV_PEEK_WIDTH_PX });
+    expect(resolveSnapTarget(210, 0)).toEqual({ mode: "expanded", targetWidth: NAV_EXPANDED_WIDTH_PX });
   });
 
   it("projects 140ms of velocity before bucket selection", () => {
-    expect(resolveSnapTarget(200, 0.4).mode).toBe("expanded");
-    expect(resolveSnapTarget(70, -0.4).mode).toBe("collapsed");
+    expect(resolveSnapTarget(168, 0.4).mode).toBe("expanded");
+    expect(resolveSnapTarget(60, -0.4).mode).toBe("collapsed");
   });
 });
 
@@ -37,7 +37,7 @@ describe("shouldAutoCompactSidebar", () => {
     expect(shouldAutoCompactSidebar(1000, RAIL_WIDTH_PX, 0)).toBe(false);
     expect(shouldAutoCompactSidebar(800, RAIL_WIDTH_PX, 360)).toBe(true);
     expect(shouldAutoCompactSidebar(600, RAIL_WIDTH_PX, 0)).toBe(false);
-    expect(shouldAutoCompactSidebar(72 + 360 + CONVERSATION_MIN_WIDTH_PX, RAIL_WIDTH_PX, 360)).toBe(false);
+    expect(shouldAutoCompactSidebar(RAIL_WIDTH_PX + 360 + CONVERSATION_MIN_WIDTH_PX, RAIL_WIDTH_PX, 360)).toBe(false);
   });
 });
 
