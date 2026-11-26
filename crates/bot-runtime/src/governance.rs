@@ -170,6 +170,46 @@ pub struct TerminalRegistrationRequest {
     pub target_team_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalKind {
+    PersonalTerminal,
+    #[default]
+    WorkerNode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalAction {
+    #[default]
+    Exec,
+    Stop,
+    Revoke,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelExecutionTarget {
+    PersonalTerminal,
+    WorkerNode,
+    #[default]
+    None,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BotActorContext {
+    pub bot_kind: BotKind,
+    pub bot_company_id: String,
+    #[serde(default)]
+    pub bot_owner_user_id: Option<String>,
+    #[serde(default)]
+    pub bot_team_id: Option<String>,
+    #[serde(default)]
+    pub bot_approved: bool,
+    #[serde(default)]
+    pub explicit_owner_context: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TerminalCommandRequest {
     pub actor: ActorContext,
@@ -183,6 +223,12 @@ pub struct TerminalCommandRequest {
     pub requires_approval: bool,
     #[serde(default)]
     pub dangerous: bool,
+    #[serde(default)]
+    pub terminal_kind: TerminalKind,
+    #[serde(default)]
+    pub action: TerminalAction,
+    #[serde(default)]
+    pub bot_actor: Option<BotActorContext>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -194,6 +240,14 @@ pub struct ChannelInvokeRequest {
     pub channel_team_id: Option<String>,
     #[serde(default)]
     pub requires_approval: bool,
+    #[serde(default)]
+    pub channel_member_ids: Option<Vec<String>>,
+    #[serde(default)]
+    pub execution_target: ChannelExecutionTarget,
+    #[serde(default)]
+    pub owner_approved: bool,
+    #[serde(default)]
+    pub requests_cross_team_secrets: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -418,18 +472,51 @@ pub fn evaluate_terminal_registration(req: &TerminalRegistrationRequest) -> Gove
     )
 }
 
-/// Evaluates whether `actor` may execute a command on a registered terminal.
+/// Evaluates whether `actor` (or optional `bot_actor`) may execute or control a registered terminal.
+///
+/// Full Node parity:
+/// - `personal_terminal`:
+///   - Bot actors: only a `personal` bot with `explicit_owner_context == true` matching `terminal_owner_user_id`.
+///   - Human actors: owner is allowed; admin/owner may ONLY `stop` or `revoke` another user's terminal
+///     and are denied `exec` with `personal_terminal_exec_denied`.
+/// - `worker_node`:
+///   - `viewer` is always denied (`worker_node_viewer_denied`).
+///   - Bot actors: only approved `team` bot matching `terminal_team_id`, or approved `company` bot.
+///   - Human actors: `owner` allowed; `admin | member` allowed when matching `terminal_team_id`.
 pub fn evaluate_terminal_command(req: &TerminalCommandRequest) -> GovernanceDecision {
     if let Err(denial) = validate_actor(&req.actor) {
         return denial;
     }
-    if is_blank(&req.terminal_company_id) || is_blank(&req.terminal_owner_user_id) {
+    if is_blank(&req.terminal_company_id) {
         return GovernanceDecision::deny(
             "invalid_terminal_context",
-            "terminal company_id and owner_user_id must be non-empty",
+            "terminal company_id must be non-empty",
         );
     }
-    if is_blank(&req.command) {
+    match req.terminal_kind {
+        TerminalKind::PersonalTerminal => {
+            if is_blank(&req.terminal_owner_user_id) {
+                return GovernanceDecision::deny(
+                    "invalid_terminal_context",
+                    "personal_terminal requires a non-empty terminal_owner_user_id",
+                );
+            }
+        }
+        TerminalKind::WorkerNode => {
+            if req
+                .terminal_team_id
+                .as_deref()
+                .filter(|t| !is_blank(t))
+                .is_none()
+            {
+                return GovernanceDecision::deny(
+                    "invalid_terminal_scope",
+                    "worker_node requires a non-empty terminal_team_id",
+                );
+            }
+        }
+    }
+    if req.action == TerminalAction::Exec && is_blank(&req.command) {
         return GovernanceDecision::deny("empty_command", "terminal command must be non-empty");
     }
     if req.actor.company_id != req.terminal_company_id {
@@ -438,35 +525,120 @@ pub fn evaluate_terminal_command(req: &TerminalCommandRequest) -> GovernanceDeci
             "actor and terminal belong to different companies",
         );
     }
+    if let Some(bot_actor) = &req.bot_actor {
+        if is_blank(&bot_actor.bot_company_id)
+            || bot_actor.bot_company_id != req.terminal_company_id
+        {
+            return GovernanceDecision::deny(
+                "company_mismatch",
+                "bot actor and terminal belong to different companies",
+            );
+        }
+        let valid_bot_scope = match bot_actor.bot_kind {
+            BotKind::Company => true,
+            BotKind::Personal => bot_actor
+                .bot_owner_user_id
+                .as_deref()
+                .is_some_and(|u| !is_blank(u)),
+            BotKind::Team => bot_actor
+                .bot_team_id
+                .as_deref()
+                .is_some_and(|t| !is_blank(t)),
+        };
+        if !valid_bot_scope {
+            return GovernanceDecision::deny(
+                "invalid_bot_scope",
+                "bot actor is missing required owner_user_id or team_id for its kind",
+            );
+        }
+    }
     if !req.terminal_active {
         return GovernanceDecision::deny(
             "terminal_inactive",
             "cannot execute commands on an inactive or revoked terminal",
         );
     }
-    if req.actor.role == ActorRole::Viewer {
-        return GovernanceDecision::deny(
-            "viewer_forbidden",
-            "viewer role cannot execute terminal commands",
-        );
-    }
 
-    let same_team = req
-        .terminal_team_id
-        .as_deref()
-        .filter(|t| !is_blank(t))
-        .zip(req.actor.team_id.as_deref().filter(|t| !is_blank(t)))
-        .is_some_and(|(tt, at)| tt == at);
+    match req.terminal_kind {
+        TerminalKind::PersonalTerminal => {
+            if let Some(bot_actor) = &req.bot_actor {
+                let allowed = bot_actor.bot_kind == BotKind::Personal
+                    && bot_actor.explicit_owner_context
+                    && bot_actor.bot_owner_user_id.as_deref()
+                        == Some(req.terminal_owner_user_id.as_str());
+                if !allowed {
+                    return GovernanceDecision::deny(
+                        "personal_terminal_access_denied",
+                        "only the terminal owner's personal bot with explicit_owner_context may access a personal terminal",
+                    );
+                }
+            } else if req.actor.user_id == req.terminal_owner_user_id {
+                if req.actor.role == ActorRole::Viewer {
+                    return GovernanceDecision::deny(
+                        "viewer_forbidden",
+                        "viewer role cannot execute terminal commands",
+                    );
+                }
+            } else if req.actor.role.is_privileged() {
+                match req.action {
+                    TerminalAction::Stop | TerminalAction::Revoke => {}
+                    TerminalAction::Exec => {
+                        return GovernanceDecision::deny(
+                            "personal_terminal_exec_denied",
+                            "admin/owner may only stop or revoke another user's personal terminal, never exec",
+                        );
+                    }
+                }
+            } else {
+                return GovernanceDecision::deny(
+                    "personal_terminal_access_denied",
+                    "actor cannot access another user's personal terminal",
+                );
+            }
+        }
+        TerminalKind::WorkerNode => {
+            if req.actor.role == ActorRole::Viewer {
+                return GovernanceDecision::deny(
+                    "worker_node_viewer_denied",
+                    "viewer role is denied access to worker node terminals",
+                );
+            }
+            if let Some(bot_actor) = &req.bot_actor {
+                let bot_same_team = bot_actor
+                    .bot_team_id
+                    .as_deref()
+                    .filter(|t| !is_blank(t))
+                    .zip(req.terminal_team_id.as_deref().filter(|t| !is_blank(t)))
+                    .is_some_and(|(bt, tt)| bt == tt);
+                let team_allowed =
+                    bot_actor.bot_kind == BotKind::Team && bot_actor.bot_approved && bot_same_team;
+                let company_allowed =
+                    bot_actor.bot_kind == BotKind::Company && bot_actor.bot_approved;
+                if !(team_allowed || company_allowed) {
+                    return GovernanceDecision::deny(
+                        "worker_node_access_denied",
+                        "bot actor is not an approved team/company bot for this worker node",
+                    );
+                }
+            } else {
+                let same_team = req
+                    .terminal_team_id
+                    .as_deref()
+                    .filter(|t| !is_blank(t))
+                    .zip(req.actor.team_id.as_deref().filter(|t| !is_blank(t)))
+                    .is_some_and(|(tt, at)| tt == at);
 
-    let authorized = req.actor.role.is_privileged()
-        || req.actor.user_id == req.terminal_owner_user_id
-        || same_team;
-
-    if !authorized {
-        return GovernanceDecision::deny(
-            "terminal_access_denied",
-            "actor does not own or share a team with this terminal",
-        );
+                let allowed = req.actor.role == ActorRole::Owner
+                    || (matches!(req.actor.role, ActorRole::Admin | ActorRole::Member)
+                        && same_team);
+                if !allowed {
+                    return GovernanceDecision::deny(
+                        "worker_node_access_denied",
+                        "actor does not match worker node team",
+                    );
+                }
+            }
+        }
     }
 
     if req.dangerous || req.requires_approval {
@@ -480,13 +652,25 @@ pub fn evaluate_terminal_command(req: &TerminalCommandRequest) -> GovernanceDeci
 }
 
 /// Evaluates channel-originated bot invocations.
-/// Requires approval when cross-team, company-wide, or explicitly flagged `requires_approval`.
+///
+/// Full Node parity:
+/// - Always fails closed with `cross_team_secrets_denied` when `requests_cross_team_secrets == true`.
+/// - Enforces `channel_member_ids` membership for caller and bot when provided.
+/// - Requires owner approval (`personal_terminal_requires_owner_approval`) when invoking another user's
+///   personal bot targeting `personal_terminal` without `owner_approved == true`.
+/// - Requires approval when cross-team, company-wide, or explicitly flagged `requires_approval`.
 pub fn evaluate_channel_invoke(req: &ChannelInvokeRequest) -> GovernanceDecision {
     if is_blank(&req.channel_company_id) {
         return GovernanceDecision::deny(
             "invalid_channel_context",
             "channel_company_id must be non-empty",
         );
+    }
+    if let Err(denial) = validate_actor(&req.actor) {
+        return denial;
+    }
+    if let Err(denial) = validate_bot(&req.bot) {
+        return denial;
     }
     if req.channel_company_id != req.actor.company_id
         || req.channel_company_id != req.bot.company_id
@@ -497,7 +681,69 @@ pub fn evaluate_channel_invoke(req: &ChannelInvokeRequest) -> GovernanceDecision
         );
     }
 
-    if let Err(denial) = check_bot_base_access(&req.actor, &req.bot) {
+    match req.bot.status {
+        BotStatus::Revoked => {
+            return GovernanceDecision::deny(
+                "bot_revoked",
+                "revoked bots cannot be dispatched",
+            );
+        }
+        BotStatus::Paused => {
+            return GovernanceDecision::deny(
+                "bot_paused",
+                "paused bots cannot be dispatched",
+            );
+        }
+        BotStatus::Active => {}
+    }
+
+    if req.actor.role == ActorRole::Viewer {
+        return GovernanceDecision::deny(
+            "viewer_forbidden",
+            "viewer role is not permitted to invoke bots",
+        );
+    }
+
+    if let Some(members) = &req.channel_member_ids {
+        if members.iter().any(|m| is_blank(m)) {
+            return GovernanceDecision::deny(
+                "invalid_channel_context",
+                "channel_member_ids must not contain blank entries",
+            );
+        }
+        if !members.iter().any(|m| m == &req.actor.user_id) {
+            return GovernanceDecision::deny(
+                "caller_not_channel_member",
+                "caller is not a member of the channel",
+            );
+        }
+        if !members.iter().any(|m| m == &req.bot.bot_id) {
+            return GovernanceDecision::deny(
+                "bot_not_channel_member",
+                "bot is not a member of the channel",
+            );
+        }
+    }
+
+    if req.requests_cross_team_secrets {
+        return GovernanceDecision::deny(
+            "cross_team_secrets_denied",
+            "cross-team secrets are strictly denied in channel invocations",
+        );
+    }
+
+    let is_delegated_personal_terminal = req.bot.kind == BotKind::Personal
+        && req.execution_target == ChannelExecutionTarget::PersonalTerminal
+        && req.actor.user_id != req.bot.owner_user_id;
+
+    if is_delegated_personal_terminal {
+        if !req.owner_approved {
+            return GovernanceDecision::require_approval(
+                "personal_terminal_requires_owner_approval",
+                "invoking another user's personal bot targeting personal_terminal requires owner approval",
+            );
+        }
+    } else if let Err(denial) = check_bot_base_access(&req.actor, &req.bot) {
         return denial;
     }
 
@@ -768,6 +1014,9 @@ mod tests {
             command: "status".into(),
             requires_approval: false,
             dangerous: false,
+            terminal_kind: TerminalKind::WorkerNode,
+            action: TerminalAction::Exec,
+            bot_actor: None,
         });
         assert!(!inactive.allowed);
         assert_eq!(inactive.reason_code, "terminal_inactive");
@@ -781,10 +1030,184 @@ mod tests {
             command: "deploy --prod".into(),
             requires_approval: false,
             dangerous: true,
+            terminal_kind: TerminalKind::WorkerNode,
+            action: TerminalAction::Exec,
+            bot_actor: None,
         });
         assert!(!approval.allowed);
         assert!(approval.requires_approval);
         assert_eq!(approval.effect, DecisionEffect::RequireApproval);
+    }
+
+    #[test]
+    fn personal_terminal_denies_admin_exec_allows_admin_stop_revoke_and_owner_bot() {
+        let base_personal = |a: ActorContext, action: TerminalAction, bot_actor: Option<BotActorContext>| {
+            TerminalCommandRequest {
+                actor: a,
+                terminal_company_id: "co-1".into(),
+                terminal_owner_user_id: "u-owner".into(),
+                terminal_team_id: Some("team-a".into()),
+                terminal_active: true,
+                command: "ls -la".into(),
+                requires_approval: false,
+                dangerous: false,
+                terminal_kind: TerminalKind::PersonalTerminal,
+                action,
+                bot_actor,
+            }
+        };
+
+        // Admin cannot exec on another user's personal terminal
+        let admin_exec = evaluate_terminal_command(&base_personal(
+            actor(ActorRole::Admin, "u-admin", Some("team-a")),
+            TerminalAction::Exec,
+            None,
+        ));
+        assert!(!admin_exec.allowed);
+        assert_eq!(admin_exec.reason_code, "personal_terminal_exec_denied");
+
+        // Owner role (company owner != terminal owner) also cannot exec on another user's personal terminal
+        let owner_exec = evaluate_terminal_command(&base_personal(
+            actor(ActorRole::Owner, "u-co-owner", Some("team-a")),
+            TerminalAction::Exec,
+            None,
+        ));
+        assert!(!owner_exec.allowed);
+        assert_eq!(owner_exec.reason_code, "personal_terminal_exec_denied");
+
+        // Admin/owner MAY stop or revoke another user's personal terminal
+        assert!(evaluate_terminal_command(&base_personal(
+            actor(ActorRole::Admin, "u-admin", Some("team-a")),
+            TerminalAction::Stop,
+            None,
+        ))
+        .allowed);
+        assert!(evaluate_terminal_command(&base_personal(
+            actor(ActorRole::Owner, "u-co-owner", Some("team-a")),
+            TerminalAction::Revoke,
+            None,
+        ))
+        .allowed);
+
+        // Terminal owner may exec
+        assert!(evaluate_terminal_command(&base_personal(
+            actor(ActorRole::Member, "u-owner", Some("team-a")),
+            TerminalAction::Exec,
+            None,
+        ))
+        .allowed);
+
+        // Personal bot with explicit_owner_context == true matching owner may exec
+        let bot_ok = evaluate_terminal_command(&base_personal(
+            actor(ActorRole::Member, "u-owner", Some("team-a")),
+            TerminalAction::Exec,
+            Some(BotActorContext {
+                bot_kind: BotKind::Personal,
+                bot_company_id: "co-1".into(),
+                bot_owner_user_id: Some("u-owner".into()),
+                bot_team_id: None,
+                bot_approved: false,
+                explicit_owner_context: true,
+            }),
+        ));
+        assert!(bot_ok.allowed);
+
+        // Personal bot WITHOUT explicit_owner_context is denied
+        let bot_no_ctx = evaluate_terminal_command(&base_personal(
+            actor(ActorRole::Member, "u-owner", Some("team-a")),
+            TerminalAction::Exec,
+            Some(BotActorContext {
+                bot_kind: BotKind::Personal,
+                bot_company_id: "co-1".into(),
+                bot_owner_user_id: Some("u-owner".into()),
+                bot_team_id: None,
+                bot_approved: false,
+                explicit_owner_context: false,
+            }),
+        ));
+        assert!(!bot_no_ctx.allowed);
+        assert_eq!(bot_no_ctx.reason_code, "personal_terminal_access_denied");
+    }
+
+    #[test]
+    fn worker_node_enforces_viewer_team_matching_and_approved_bots() {
+        let worker_req = |a: ActorContext, bot_actor: Option<BotActorContext>| TerminalCommandRequest {
+            actor: a,
+            terminal_company_id: "co-1".into(),
+            terminal_owner_user_id: "u-owner".into(),
+            terminal_team_id: Some("team-a".into()),
+            terminal_active: true,
+            command: "uname -a".into(),
+            requires_approval: false,
+            dangerous: false,
+            terminal_kind: TerminalKind::WorkerNode,
+            action: TerminalAction::Exec,
+            bot_actor,
+        };
+
+        // Viewer denied
+        let viewer = evaluate_terminal_command(&worker_req(
+            actor(ActorRole::Viewer, "u-view", Some("team-a")),
+            None,
+        ));
+        assert!(!viewer.allowed);
+        assert_eq!(viewer.reason_code, "worker_node_viewer_denied");
+
+        // Admin in different team denied; owner in different team allowed
+        let admin_wrong_team = evaluate_terminal_command(&worker_req(
+            actor(ActorRole::Admin, "u-admin", Some("team-b")),
+            None,
+        ));
+        assert!(!admin_wrong_team.allowed);
+        assert_eq!(admin_wrong_team.reason_code, "worker_node_access_denied");
+
+        assert!(evaluate_terminal_command(&worker_req(
+            actor(ActorRole::Owner, "u-owner2", Some("team-b")),
+            None,
+        ))
+        .allowed);
+
+        // Approved team bot matching team allowed; unapproved denied
+        assert!(evaluate_terminal_command(&worker_req(
+            actor(ActorRole::Member, "u-m", Some("team-b")),
+            Some(BotActorContext {
+                bot_kind: BotKind::Team,
+                bot_company_id: "co-1".into(),
+                bot_owner_user_id: None,
+                bot_team_id: Some("team-a".into()),
+                bot_approved: true,
+                explicit_owner_context: false,
+            }),
+        ))
+        .allowed);
+
+        let unapproved_bot = evaluate_terminal_command(&worker_req(
+            actor(ActorRole::Member, "u-m", Some("team-a")),
+            Some(BotActorContext {
+                bot_kind: BotKind::Company,
+                bot_company_id: "co-1".into(),
+                bot_owner_user_id: None,
+                bot_team_id: None,
+                bot_approved: false,
+                explicit_owner_context: false,
+            }),
+        ));
+        assert!(!unapproved_bot.allowed);
+        assert_eq!(unapproved_bot.reason_code, "worker_node_access_denied");
+
+        // Approved company bot allowed
+        assert!(evaluate_terminal_command(&worker_req(
+            actor(ActorRole::Member, "u-m", Some("team-a")),
+            Some(BotActorContext {
+                bot_kind: BotKind::Company,
+                bot_company_id: "co-1".into(),
+                bot_owner_user_id: None,
+                bot_team_id: None,
+                bot_approved: true,
+                explicit_owner_context: false,
+            }),
+        ))
+        .allowed);
     }
 
     #[test]
@@ -802,6 +1225,10 @@ mod tests {
             channel_company_id: "co-1".into(),
             channel_team_id: Some("team-a".into()),
             requires_approval: false,
+            channel_member_ids: Some(vec!["u-2".into(), "bot-1".into()]),
+            execution_target: ChannelExecutionTarget::WorkerNode,
+            owner_approved: false,
+            requests_cross_team_secrets: false,
         });
         assert!(ok.allowed);
         assert!(!ok.requires_approval);
@@ -813,6 +1240,10 @@ mod tests {
             channel_company_id: "co-1".into(),
             channel_team_id: Some("team-b".into()),
             requires_approval: false,
+            channel_member_ids: None,
+            execution_target: ChannelExecutionTarget::None,
+            owner_approved: false,
+            requests_cross_team_secrets: false,
         });
         assert!(!cross_team.allowed);
         assert!(cross_team.requires_approval);
@@ -831,6 +1262,10 @@ mod tests {
             channel_company_id: "co-1".into(),
             channel_team_id: Some("team-a".into()),
             requires_approval: false,
+            channel_member_ids: None,
+            execution_target: ChannelExecutionTarget::None,
+            owner_approved: false,
+            requests_cross_team_secrets: false,
         });
         assert!(!company_ch.allowed);
         assert!(company_ch.requires_approval);
@@ -843,10 +1278,88 @@ mod tests {
             channel_company_id: "co-1".into(),
             channel_team_id: Some("team-a".into()),
             requires_approval: true,
+            channel_member_ids: None,
+            execution_target: ChannelExecutionTarget::None,
+            owner_approved: false,
+            requests_cross_team_secrets: false,
         });
         assert!(!explicit.allowed);
         assert!(explicit.requires_approval);
         assert_eq!(explicit.reason_code, "channel_approval_required");
+    }
+
+    #[test]
+    fn channel_invoke_enforces_cross_team_secrets_and_personal_terminal_owner_approval() {
+        let personal_bot = bot(
+            BotKind::Personal,
+            CallableBy::SelfOnly,
+            DataScope::SelfScope,
+            BotStatus::Active,
+        );
+
+        // Cross-team secrets ALWAYS denied
+        let cross_secrets = evaluate_channel_invoke(&ChannelInvokeRequest {
+            actor: actor(ActorRole::Owner, "u-owner", Some("team-a")),
+            bot: personal_bot.clone(),
+            channel_company_id: "co-1".into(),
+            channel_team_id: Some("team-a".into()),
+            requires_approval: false,
+            channel_member_ids: Some(vec!["u-owner".into(), "bot-1".into()]),
+            execution_target: ChannelExecutionTarget::PersonalTerminal,
+            owner_approved: true,
+            requests_cross_team_secrets: true,
+        });
+        assert!(!cross_secrets.allowed);
+        assert!(!cross_secrets.requires_approval);
+        assert_eq!(cross_secrets.reason_code, "cross_team_secrets_denied");
+
+        // Another user invoking personal_bot targeting personal_terminal without owner_approved -> require approval
+        let needs_owner = evaluate_channel_invoke(&ChannelInvokeRequest {
+            actor: actor(ActorRole::Member, "u-other", Some("team-a")),
+            bot: personal_bot.clone(),
+            channel_company_id: "co-1".into(),
+            channel_team_id: Some("team-a".into()),
+            requires_approval: false,
+            channel_member_ids: Some(vec!["u-other".into(), "bot-1".into()]),
+            execution_target: ChannelExecutionTarget::PersonalTerminal,
+            owner_approved: false,
+            requests_cross_team_secrets: false,
+        });
+        assert!(!needs_owner.allowed);
+        assert!(needs_owner.requires_approval);
+        assert_eq!(
+            needs_owner.reason_code,
+            "personal_terminal_requires_owner_approval"
+        );
+
+        // With owner_approved == true -> allowed
+        let approved = evaluate_channel_invoke(&ChannelInvokeRequest {
+            actor: actor(ActorRole::Member, "u-other", Some("team-a")),
+            bot: personal_bot.clone(),
+            channel_company_id: "co-1".into(),
+            channel_team_id: Some("team-a".into()),
+            requires_approval: false,
+            channel_member_ids: Some(vec!["u-other".into(), "bot-1".into()]),
+            execution_target: ChannelExecutionTarget::PersonalTerminal,
+            owner_approved: true,
+            requests_cross_team_secrets: false,
+        });
+        assert!(approved.allowed);
+
+        // Missing caller from channel_member_ids -> denied
+        let not_member = evaluate_channel_invoke(&ChannelInvokeRequest {
+            actor: actor(ActorRole::Member, "u-outsider", Some("team-a")),
+            bot: personal_bot,
+            channel_company_id: "co-1".into(),
+            channel_team_id: Some("team-a".into()),
+            requires_approval: false,
+            channel_member_ids: Some(vec!["u-owner".into(), "bot-1".into()]),
+            execution_target: ChannelExecutionTarget::PersonalTerminal,
+            owner_approved: true,
+            requests_cross_team_secrets: false,
+        });
+        assert!(!not_member.allowed);
+        assert_eq!(not_member.reason_code, "caller_not_channel_member");
     }
 
     #[test]
@@ -862,6 +1375,10 @@ mod tests {
             channel_company_id: "co-1".into(),
             channel_team_id: Some("team-a".into()),
             requires_approval: true,
+            channel_member_ids: Some(vec!["u-2".into(), "bot-1".into()]),
+            execution_target: ChannelExecutionTarget::WorkerNode,
+            owner_approved: false,
+            requests_cross_team_secrets: false,
         });
         let raw = serde_json::to_string(&req).unwrap();
         let parsed: PolicyEvalRequest = serde_json::from_str(&raw).unwrap();

@@ -9,20 +9,34 @@
 //!   and never prints raw tokens.
 //! - `heartbeat --server <url> --terminal-id <id> [--status <status>] [--hostname <name>]`:
 //!   Sends a terminal heartbeat using `PAPERWORK_TERMINAL_TOKEN`.
-//! - `daemon --server <url> --terminal-id <id> [--interval-secs <n>] [--max-iterations <n>]`:
+//! - `daemon --server <url> --terminal-id <id> [--interval-secs <n>] [--max-iterations <n>] [--socket <path>] [--state-file <path>]`:
 //!   Runs a terminal heartbeat daemon loop using `PAPERWORK_TERMINAL_TOKEN`.
 //! - `inbound --server <url> --bot-id <id>`:
 //!   Reads a JSON payload from stdin and posts it to the bot inbound endpoint using `PAPERWORK_BOT_TOKEN`.
+//! - `ctl <status|drain|shutdown> [--socket <path>] [--terminal-id <id>]`:
+//!   Sends a local JSON-over-UDS control command to a running `paperwork-bot daemon`.
+//! - `doctor [--server <url>] [--terminal-id <id>] [--socket-dir <path>]`:
+//!   Runs local diagnostics (token env presence/prefix without printing it, UDS dir `0700` check,
+//!   `/compatibility` reachability, and process-supervisor self-test) and outputs a JSON summary.
 
 use paperwork_bot_runtime::client::{
-    run_heartbeat_daemon, send_bot_inbound, send_terminal_heartbeat, BackoffConfig,
-    HeartbeatDaemonConfig, ShutdownSignal, ENV_BOT_TOKEN, ENV_TERMINAL_TOKEN,
+    check_compatibility, run_heartbeat_daemon, send_bot_inbound, send_terminal_heartbeat,
+    BackoffConfig, HeartbeatDaemonConfig, ShutdownSignal, DAEMON_VERSION, ENV_BOT_TOKEN,
+    ENV_TERMINAL_TOKEN, PROTOCOL_VERSION,
 };
+#[cfg(unix)]
+use paperwork_bot_runtime::control_sock::{
+    default_control_socket_dir, default_control_socket_path, ensure_and_validate_socket_dir,
+    send_control_command, ControlCommand,
+};
+#[cfg(unix)]
+use paperwork_bot_runtime::executor::supervisor_self_test;
 use paperwork_bot_runtime::governance::{evaluate_policy, PolicyEvalRequest};
 use paperwork_bot_runtime::token::{redact_secrets, validate_token_prefix, verify_token_sha256};
 use serde_json::{json, Value};
 use std::env;
 use std::io::{self, Read};
+use std::path::PathBuf;
 use std::process;
 use std::time::Duration;
 
@@ -91,7 +105,10 @@ fn cmd_heartbeat(args: &[String]) -> Result<Value, String> {
     let hostname = find_flag(args, "--hostname");
     let timeout_secs: u64 = find_flag(args, "--timeout-secs")
         .as_deref()
-        .map(|s| s.parse::<u64>().map_err(|_| "invalid --timeout-secs".to_string()))
+        .map(|s| {
+            s.parse::<u64>()
+                .map_err(|_| "invalid --timeout-secs".to_string())
+        })
         .transpose()?
         .unwrap_or(10);
 
@@ -120,13 +137,22 @@ fn cmd_daemon(args: &[String]) -> Result<Value, String> {
     let terminal_id = require_flag(args, "--terminal-id")?;
     let interval_secs: u64 = find_flag(args, "--interval-secs")
         .as_deref()
-        .map(|s| s.parse::<u64>().map_err(|_| "invalid --interval-secs".to_string()))
+        .map(|s| {
+            s.parse::<u64>()
+                .map_err(|_| "invalid --interval-secs".to_string())
+        })
         .transpose()?
         .unwrap_or(15);
     let max_iterations: Option<usize> = find_flag(args, "--max-iterations")
         .as_deref()
-        .map(|s| s.parse::<usize>().map_err(|_| "invalid --max-iterations".to_string()))
+        .map(|s| {
+            s.parse::<usize>()
+                .map_err(|_| "invalid --max-iterations".to_string())
+        })
         .transpose()?;
+    let state_path = find_flag(args, "--state-file").map(PathBuf::from);
+    let control_socket_path = find_flag(args, "--socket").map(PathBuf::from);
+    let skip_compat = args.iter().any(|a| a == "--skip-compatibility");
 
     let cfg = HeartbeatDaemonConfig {
         base_url: server,
@@ -136,6 +162,9 @@ fn cmd_daemon(args: &[String]) -> Result<Value, String> {
         timeout: Duration::from_secs(10),
         backoff: BackoffConfig::default(),
         max_iterations,
+        state_path,
+        control_socket_path,
+        check_compatibility_on_start: !skip_compat,
     };
 
     let shutdown = ShutdownSignal::new();
@@ -148,7 +177,10 @@ fn cmd_inbound(args: &[String]) -> Result<Value, String> {
     let bot_id = require_flag(args, "--bot-id")?;
     let timeout_secs: u64 = find_flag(args, "--timeout-secs")
         .as_deref()
-        .map(|s| s.parse::<u64>().map_err(|_| "invalid --timeout-secs".to_string()))
+        .map(|s| {
+            s.parse::<u64>()
+                .map_err(|_| "invalid --timeout-secs".to_string())
+        })
         .transpose()?
         .unwrap_or(15);
 
@@ -166,8 +198,162 @@ fn cmd_inbound(args: &[String]) -> Result<Value, String> {
     }))
 }
 
+#[cfg(unix)]
+fn cmd_ctl(args: &[String]) -> Result<Value, String> {
+    let Some(action_raw) = args.first() else {
+        return Err(
+            "usage: paperwork-bot ctl <status|drain|shutdown> [--socket <path>] [--terminal-id <id>]"
+                .to_string(),
+        );
+    };
+    let command = ControlCommand::parse(action_raw).map_err(|e| e.to_string())?;
+    let rest = &args[1..];
+    let timeout_secs: u64 = find_flag(rest, "--timeout-secs")
+        .as_deref()
+        .map(|s| {
+            s.parse::<u64>()
+                .map_err(|_| "invalid --timeout-secs".to_string())
+        })
+        .transpose()?
+        .unwrap_or(5);
+
+    let socket_path = if let Some(p) = find_flag(rest, "--socket") {
+        PathBuf::from(p)
+    } else if let Some(tid) = find_flag(rest, "--terminal-id") {
+        default_control_socket_path(&tid).map_err(|e| e.to_string())?
+    } else {
+        return Err("ctl requires either --socket <path> or --terminal-id <id>".to_string());
+    };
+
+    let resp = send_control_command(&socket_path, command, Duration::from_secs(timeout_secs))
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(resp).map_err(|e| format!("failed to serialize ctl response: {e}"))
+}
+
+#[cfg(not(unix))]
+fn cmd_ctl(_args: &[String]) -> Result<Value, String> {
+    Err("ctl UDS control plane is only supported on Unix platforms".to_string())
+}
+
+fn cmd_doctor(args: &[String]) -> Result<Value, String> {
+    let server = find_flag(args, "--server");
+    let terminal_id = find_flag(args, "--terminal-id").unwrap_or_else(|| "doctor-check".into());
+    let socket_dir_flag = find_flag(args, "--socket-dir").map(PathBuf::from);
+    let timeout_secs: u64 = find_flag(args, "--timeout-secs")
+        .as_deref()
+        .map(|s| {
+            s.parse::<u64>()
+                .map_err(|_| "invalid --timeout-secs".to_string())
+        })
+        .transpose()?
+        .unwrap_or(5);
+
+    // 1. Token env presence & prefix check (NEVER prints raw token)
+    let raw_token = env::var(ENV_TERMINAL_TOKEN)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let token_kind = raw_token.as_deref().and_then(validate_token_prefix);
+    let token_ok = raw_token.is_some() && token_kind.is_some();
+    let token_check = json!({
+        "ok": token_ok,
+        "envVar": ENV_TERMINAL_TOKEN,
+        "present": raw_token.is_some(),
+        "tokenKind": token_kind,
+    });
+
+    // 2. UDS dir 0700 validation
+    #[cfg(unix)]
+    let (uds_ok, uds_check) = {
+        let dir_res = match socket_dir_flag {
+            Some(d) => Ok(d),
+            None => default_control_socket_dir(&terminal_id),
+        };
+        match dir_res.and_then(|d| ensure_and_validate_socket_dir(&d)) {
+            Ok(canonical) => (
+                true,
+                json!({
+                    "ok": true,
+                    "dir": canonical.to_string_lossy(),
+                    "mode": "0700",
+                }),
+            ),
+            Err(e) => (
+                false,
+                json!({
+                    "ok": false,
+                    "error": redact_secrets(&e.to_string()),
+                }),
+            ),
+        }
+    };
+    #[cfg(not(unix))]
+    let (uds_ok, uds_check) = (false, json!({ "ok": false, "error": "unix required" }));
+
+    // 3. /api/enterprise-bots/compatibility reachability
+    let (compat_ok, compat_check) = match server.as_deref() {
+        Some(url) => match check_compatibility(
+            url,
+            raw_token.as_deref(),
+            Duration::from_secs(timeout_secs),
+        ) {
+            Ok(res) => (
+                res.reachable,
+                json!({
+                    "ok": res.reachable,
+                    "status": res.status,
+                    "protocolVersion": res.protocol_version,
+                    "daemonVersion": res.daemon_version,
+                }),
+            ),
+            Err(e) => (
+                false,
+                json!({
+                    "ok": false,
+                    "error": e.to_string(),
+                }),
+            ),
+        },
+        None => (
+            true,
+            json!({
+                "ok": true,
+                "skipped": true,
+                "reason": "no --server flag provided",
+            }),
+        ),
+    };
+
+    // 4. process-supervisor self-test
+    #[cfg(unix)]
+    let (sup_ok, sup_check) = match supervisor_self_test() {
+        Ok(()) => (true, json!({ "ok": true })),
+        Err(e) => (
+            false,
+            json!({
+                "ok": false,
+                "error": redact_secrets(&e.to_string()),
+            }),
+        ),
+    };
+    #[cfg(not(unix))]
+    let (sup_ok, sup_check) = (false, json!({ "ok": false, "error": "unix required" }));
+
+    Ok(json!({
+        "ok": token_ok && uds_ok && compat_ok && sup_ok,
+        "daemonVersion": DAEMON_VERSION,
+        "protocolVersion": PROTOCOL_VERSION,
+        "checks": {
+            "tokenEnv": token_check,
+            "controlSocketDir": uds_check,
+            "compatibility": compat_check,
+            "processSupervisor": sup_check,
+        }
+    }))
+}
+
 fn usage() -> &'static str {
-    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound> [flags]"
+    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound|ctl|doctor> [flags]"
 }
 
 fn run(args: &[String]) -> Result<Value, String> {
@@ -181,6 +367,8 @@ fn run(args: &[String]) -> Result<Value, String> {
         "heartbeat" => cmd_heartbeat(rest),
         "daemon" => cmd_daemon(rest),
         "inbound" => cmd_inbound(rest),
+        "ctl" => cmd_ctl(rest),
+        "doctor" => cmd_doctor(rest),
         "-h" | "--help" | "help" => Ok(json!({ "usage": usage() })),
         other => Err(format!("unknown subcommand {other:?}; {}", usage())),
     }
@@ -217,7 +405,28 @@ mod tests {
     #[test]
     fn help_and_unknown_subcommand_work() {
         let help = run(&["--help".to_string()]).unwrap();
-        assert!(help["usage"].as_str().unwrap().contains("paperwork-bot"));
+        let usage_str = help["usage"].as_str().unwrap();
+        assert!(usage_str.contains("paperwork-bot"));
+        assert!(usage_str.contains("ctl"));
+        assert!(usage_str.contains("doctor"));
         assert!(run(&["unknown-cmd".to_string()]).is_err());
+    }
+
+    #[test]
+    fn doctor_outputs_structured_json_without_leaking_tokens() {
+        let dir = env::temp_dir().join(format!("pwork-doc-test-{}", process::id()));
+        let res = run(&[
+            "doctor".to_string(),
+            "--socket-dir".to_string(),
+            dir.to_string_lossy().into_owned(),
+        ])
+        .unwrap();
+        assert!(res["checks"]["processSupervisor"]["ok"].as_bool().unwrap());
+        assert!(res["checks"]["controlSocketDir"]["ok"].as_bool().unwrap());
+        assert!(res["checks"]["compatibility"]["skipped"].as_bool().unwrap());
+        let serialized = res.to_string();
+        assert!(!serialized.contains("pcp_term_"));
+        assert!(!serialized.contains("pcp_bot_"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

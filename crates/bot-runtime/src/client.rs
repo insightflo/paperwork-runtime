@@ -5,20 +5,27 @@
 //! - Bot tokens are read ONLY from `PAPERWORK_BOT_TOKEN`.
 //! - Tokens are never accepted as CLI arguments and all error strings are redacted.
 
+#[cfg(unix)]
+use crate::control_sock::{ControlSocketServer, DaemonTelemetry};
+use crate::state::{now_unix_secs, save_state_atomic, PersistedDaemonState};
 use crate::token::redact_secrets;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Map, Value};
 use std::env;
 use std::fmt;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub const ENV_TERMINAL_TOKEN: &str = "PAPERWORK_TERMINAL_TOKEN";
 pub const ENV_BOT_TOKEN: &str = "PAPERWORK_BOT_TOKEN";
+pub const PROTOCOL_VERSION: &str = "1.0";
+pub const DAEMON_VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const COMPATIBILITY_PATH: &str = "/api/enterprise-bots/compatibility";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientError {
@@ -53,11 +60,23 @@ impl HttpResponse {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompatibilityResult {
+    pub reachable: bool,
+    pub status: u16,
+    pub protocol_version: String,
+    pub daemon_version: String,
+    pub body: Value,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BackoffConfig {
     pub initial_ms: u64,
     pub max_ms: u64,
     pub multiplier: u32,
+    /// Bounded symmetric jitter percentage (0..=50). 0 disables jitter.
+    pub jitter_percent: u8,
 }
 
 impl Default for BackoffConfig {
@@ -66,6 +85,7 @@ impl Default for BackoffConfig {
             initial_ms: 1_000,
             max_ms: 30_000,
             multiplier: 2,
+            jitter_percent: 20,
         }
     }
 }
@@ -86,6 +106,7 @@ impl BackoffState {
                 initial_ms: initial,
                 max_ms,
                 multiplier: config.multiplier.max(1),
+                jitter_percent: config.jitter_percent.min(50),
             },
             current_ms: initial,
             attempts: 0,
@@ -93,13 +114,48 @@ impl BackoffState {
     }
 
     pub fn next_delay(&mut self) -> Duration {
-        let delay = Duration::from_millis(self.current_ms);
+        let seed = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0)
+            ^ u64::from(std::process::id()).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            ^ u64::from(self.attempts).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        self.next_delay_with_seed(seed)
+    }
+
+    /// Deterministic jittered exponential backoff step for testing and reproducible scheduling.
+    pub fn next_delay_with_seed(&mut self, seed: u64) -> Duration {
+        let base_ms = self.current_ms;
         self.attempts = self.attempts.saturating_add(1);
         self.current_ms = self
             .current_ms
             .saturating_mul(u64::from(self.config.multiplier))
             .min(self.config.max_ms);
-        delay
+
+        let delay_ms = if self.config.jitter_percent == 0 {
+            base_ms
+        } else {
+            let max_delta = base_ms
+                .saturating_mul(u64::from(self.config.jitter_percent))
+                / 100;
+            if max_delta == 0 {
+                base_ms
+            } else {
+                // SplitMix64 mixing step for uniform-ish zero-dependency jitter.
+                let mut z = seed.wrapping_add(0x9E37_79B9_7F4A_7C15);
+                z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+                z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+                z ^= z >> 31;
+                let span = max_delta.saturating_mul(2).saturating_add(1);
+                let offset = z % span;
+                base_ms
+                    .saturating_sub(max_delta)
+                    .saturating_add(offset)
+                    .clamp(1, self.config.max_ms)
+            }
+        };
+
+        Duration::from_millis(delay_ms)
     }
 
     pub fn reset(&mut self) {
@@ -157,7 +213,9 @@ fn validate_path_segment(label: &str, segment: &str) -> Result<(), ClientError> 
         || trimmed.contains("..")
         || trimmed.contains('?')
         || trimmed.contains('#')
-        || trimmed.bytes().any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
+        || trimmed
+            .bytes()
+            .any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
     {
         return Err(ClientError::new(format!(
             "invalid {label}: must be a single safe URL path segment"
@@ -168,7 +226,9 @@ fn validate_path_segment(label: &str, segment: &str) -> Result<(), ClientError> 
 
 pub fn terminal_heartbeat_path(terminal_id: &str) -> Result<String, ClientError> {
     validate_path_segment("terminal_id", terminal_id)?;
-    Ok(format!("/api/enterprise-bots/terminals/{terminal_id}/heartbeat"))
+    Ok(format!(
+        "/api/enterprise-bots/terminals/{terminal_id}/heartbeat"
+    ))
 }
 
 pub fn bot_inbound_path(bot_id: &str) -> Result<String, ClientError> {
@@ -237,6 +297,63 @@ fn parse_http_url(base_url: &str) -> Result<ParsedHttpUrl, ClientError> {
     })
 }
 
+fn connect_http(parsed: &ParsedHttpUrl, timeout: Duration) -> Result<TcpStream, ClientError> {
+    let addr = (parsed.host.as_str(), parsed.port)
+        .to_socket_addrs()
+        .map_err(|e| ClientError::new(format!("DNS resolution failed: {e}")))?
+        .next()
+        .ok_or_else(|| ClientError::new("could not resolve server address"))?;
+
+    let stream = TcpStream::connect_timeout(&addr, timeout)
+        .map_err(|e| ClientError::new(format!("TCP connect failed: {e}")))?;
+    let _ = stream.set_read_timeout(Some(timeout));
+    let _ = stream.set_write_timeout(Some(timeout));
+    Ok(stream)
+}
+
+fn format_host_header(parsed: &ParsedHttpUrl) -> String {
+    if parsed.port == 80 {
+        parsed.host.clone()
+    } else {
+        format!("{}:{}", parsed.host, parsed.port)
+    }
+}
+
+/// Performs a synchronous HTTP/1.1 GET with optional Bearer token.
+pub fn http_get_json(
+    base_url: &str,
+    path: &str,
+    bearer_token: Option<&str>,
+    timeout: Duration,
+) -> Result<HttpResponse, ClientError> {
+    let parsed = parse_http_url(base_url)?;
+    let full_path = format!("{}{}", parsed.base_path, path);
+    let mut stream = connect_http(&parsed, timeout)?;
+    let host_header = format_host_header(&parsed);
+
+    let auth_header = match bearer_token.map(str::trim).filter(|t| !t.is_empty()) {
+        Some(tok) => format!("Authorization: Bearer {tok}\r\n"),
+        None => String::new(),
+    };
+
+    let request_buf = format!(
+        "GET {full_path} HTTP/1.1\r\nHost: {host_header}\r\nAccept: application/json\r\n{auth_header}Connection: close\r\n\r\n"
+    )
+    .into_bytes();
+
+    stream
+        .write_all(&request_buf)
+        .and_then(|_| stream.flush())
+        .map_err(|e| ClientError::new(format!("HTTP write failed: {e}")))?;
+
+    let mut raw_response = Vec::new();
+    stream
+        .read_to_end(&mut raw_response)
+        .map_err(|e| ClientError::new(format!("HTTP read failed: {e}")))?;
+
+    parse_http_response(&raw_response)
+}
+
 /// Performs a synchronous HTTP/1.1 POST with JSON body and Bearer token.
 pub fn http_post_json(
     base_url: &str,
@@ -253,22 +370,8 @@ pub fn http_post_json(
     let body_bytes = serde_json::to_vec(payload)
         .map_err(|e| ClientError::new(format!("failed to serialize JSON payload: {e}")))?;
 
-    let addr = (parsed.host.as_str(), parsed.port)
-        .to_socket_addrs()
-        .map_err(|e| ClientError::new(format!("DNS resolution failed: {e}")))?
-        .next()
-        .ok_or_else(|| ClientError::new("could not resolve server address"))?;
-
-    let mut stream = TcpStream::connect_timeout(&addr, timeout)
-        .map_err(|e| ClientError::new(format!("TCP connect failed: {e}")))?;
-    let _ = stream.set_read_timeout(Some(timeout));
-    let _ = stream.set_write_timeout(Some(timeout));
-
-    let host_header = if parsed.port == 80 {
-        parsed.host.clone()
-    } else {
-        format!("{}:{}", parsed.host, parsed.port)
-    };
+    let mut stream = connect_http(&parsed, timeout)?;
+    let host_header = format_host_header(&parsed);
 
     let mut request_buf = format!(
         "POST {full_path} HTTP/1.1\r\nHost: {host_header}\r\nContent-Type: application/json\r\nAccept: application/json\r\nAuthorization: Bearer {bearer_token}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -313,8 +416,9 @@ fn parse_http_response(raw: &[u8]) -> Result<HttpResponse, ClientError> {
 }
 
 fn read_env_token(var_name: &str) -> Result<String, ClientError> {
-    let val = env::var(var_name)
-        .map_err(|_| ClientError::new(format!("missing required environment variable {var_name}")))?;
+    let val = env::var(var_name).map_err(|_| {
+        ClientError::new(format!("missing required environment variable {var_name}"))
+    })?;
     let trimmed = val.trim().to_string();
     if trimmed.is_empty() {
         return Err(ClientError::new(format!(
@@ -322,6 +426,45 @@ fn read_env_token(var_name: &str) -> Result<String, ClientError> {
         )));
     }
     Ok(trimmed)
+}
+
+/// Calls `GET /api/enterprise-bots/compatibility` to perform the daemon compatibility handshake.
+pub fn check_compatibility(
+    base_url: &str,
+    bearer_token: Option<&str>,
+    timeout: Duration,
+) -> Result<CompatibilityResult, ClientError> {
+    let resp = http_get_json(base_url, COMPATIBILITY_PATH, bearer_token, timeout)?;
+    let parsed_body = serde_json::from_str::<Value>(&resp.body)
+        .unwrap_or_else(|_| Value::String(redact_secrets(&resp.body)));
+    Ok(CompatibilityResult {
+        reachable: resp.is_success(),
+        status: resp.status,
+        protocol_version: PROTOCOL_VERSION.to_string(),
+        daemon_version: DAEMON_VERSION.to_string(),
+        body: parsed_body,
+    })
+}
+
+/// Enriches a heartbeat payload with runtime telemetry fields.
+pub fn build_enriched_heartbeat_payload(
+    base_payload: &Value,
+    uptime_secs: u64,
+    last_rtt_ms: Option<u64>,
+    active_children: usize,
+) -> Value {
+    let mut obj = match base_payload {
+        Value::Object(map) => map.clone(),
+        _ => Map::new(),
+    };
+    obj.insert("os".to_string(), json!(std::env::consts::OS));
+    obj.insert("arch".to_string(), json!(std::env::consts::ARCH));
+    obj.insert("daemonVersion".to_string(), json!(DAEMON_VERSION));
+    obj.insert("protocolVersion".to_string(), json!(PROTOCOL_VERSION));
+    obj.insert("uptimeSecs".to_string(), json!(uptime_secs));
+    obj.insert("lastRttMs".to_string(), json!(last_rtt_ms));
+    obj.insert("activeChildren".to_string(), json!(active_children));
+    Value::Object(obj)
 }
 
 /// Sends a single terminal heartbeat using ONLY `PAPERWORK_TERMINAL_TOKEN`.
@@ -333,7 +476,8 @@ pub fn send_terminal_heartbeat(
 ) -> Result<HttpResponse, ClientError> {
     let token = read_env_token(ENV_TERMINAL_TOKEN)?;
     let path = terminal_heartbeat_path(terminal_id)?;
-    http_post_json(base_url, &path, &token, payload, timeout)
+    let enriched = build_enriched_heartbeat_payload(payload, 0, None, 0);
+    http_post_json(base_url, &path, &token, &enriched, timeout)
 }
 
 /// Sends an inbound bot dispatch payload using ONLY `PAPERWORK_BOT_TOKEN`.
@@ -357,6 +501,9 @@ pub struct HeartbeatDaemonConfig {
     pub timeout: Duration,
     pub backoff: BackoffConfig,
     pub max_iterations: Option<usize>,
+    pub state_path: Option<PathBuf>,
+    pub control_socket_path: Option<PathBuf>,
+    pub check_compatibility_on_start: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -365,9 +512,12 @@ pub struct DaemonSummary {
     pub successes: usize,
     pub failures: usize,
     pub stopped_cleanly: bool,
+    pub compatibility_ok: Option<bool>,
+    pub last_rtt_ms: Option<u64>,
 }
 
-/// Runs a terminal heartbeat loop with exponential backoff and cooperative shutdown.
+/// Runs a terminal heartbeat loop with jittered exponential backoff, enriched telemetry,
+/// optional compatibility handshake, optional UDS control plane, and atomic `state.json` persistence.
 /// Reads the bearer token exclusively from `PAPERWORK_TERMINAL_TOKEN`.
 pub fn run_heartbeat_daemon(
     config: &HeartbeatDaemonConfig,
@@ -384,15 +534,49 @@ fn run_heartbeat_daemon_with_token(
     token: &str,
     shutdown: &ShutdownSignal,
 ) -> Result<DaemonSummary, ClientError> {
+    let compatibility_ok = if config.check_compatibility_on_start {
+        Some(
+            check_compatibility(&config.base_url, Some(token), config.timeout)
+                .map(|r| r.reachable)
+                .unwrap_or(false),
+        )
+    } else {
+        None
+    };
+
+    #[cfg(unix)]
+    let telemetry = Arc::new(DaemonTelemetry::new(&config.terminal_id));
+
+    #[cfg(unix)]
+    let _control_server = match &config.control_socket_path {
+        Some(sock_path) => Some(
+            ControlSocketServer::start(sock_path, telemetry.clone(), shutdown.clone())
+                .map_err(|e| ClientError::new(e.to_string()))?,
+        ),
+        None => None,
+    };
+
+    let started = Instant::now();
     let mut backoff = BackoffState::new(config.backoff);
+    let mut consecutive_failures: u32 = 0;
+    let mut last_rtt_ms: Option<u64> = None;
+    let mut last_heartbeat_at: Option<u64> = None;
+
     let mut summary = DaemonSummary {
         iterations: 0,
         successes: 0,
         failures: 0,
         stopped_cleanly: true,
+        compatibility_ok,
+        last_rtt_ms: None,
     };
 
     while !shutdown.is_triggered() {
+        #[cfg(unix)]
+        if telemetry.is_draining() && telemetry.active_children() == 0 {
+            break;
+        }
+
         if let Some(max) = config.max_iterations {
             if summary.iterations >= max {
                 break;
@@ -400,25 +584,62 @@ fn run_heartbeat_daemon_with_token(
         }
         summary.iterations += 1;
 
-        let ok = match http_post_json(
-            &config.base_url,
-            path,
-            token,
+        #[cfg(unix)]
+        let active_children = telemetry.active_children();
+        #[cfg(not(unix))]
+        let active_children = 0usize;
+
+        let enriched = build_enriched_heartbeat_payload(
             &config.payload,
-            config.timeout,
-        ) {
+            started.elapsed().as_secs(),
+            last_rtt_ms,
+            active_children,
+        );
+
+        let req_start = Instant::now();
+        let ok = match http_post_json(&config.base_url, path, token, &enriched, config.timeout) {
             Ok(resp) if resp.is_success() => true,
             Ok(_) | Err(_) => false,
         };
+        let rtt_ms = req_start.elapsed().as_millis() as u64;
 
         let wait_duration = if ok {
             summary.successes += 1;
+            consecutive_failures = 0;
+            last_rtt_ms = Some(rtt_ms);
+            last_heartbeat_at = Some(now_unix_secs());
+            summary.last_rtt_ms = last_rtt_ms;
             backoff.reset();
+            #[cfg(unix)]
+            {
+                telemetry.record_rtt_ms(rtt_ms);
+                telemetry.set_backoff_attempts(0);
+                telemetry.set_consecutive_failures(0);
+            }
             config.interval
         } else {
             summary.failures += 1;
-            backoff.next_delay()
+            consecutive_failures = consecutive_failures.saturating_add(1);
+            let delay = backoff.next_delay();
+            #[cfg(unix)]
+            {
+                telemetry.set_backoff_attempts(backoff.attempts());
+                telemetry.set_consecutive_failures(consecutive_failures);
+            }
+            delay
         };
+
+        if let Some(state_path) = &config.state_path {
+            let persisted = PersistedDaemonState {
+                terminal_id: config.terminal_id.clone(),
+                server_url: config.base_url.clone(),
+                protocol_version: PROTOCOL_VERSION.to_string(),
+                last_heartbeat_at,
+                last_rtt_ms,
+                consecutive_failures,
+            };
+            let _ = save_state_atomic(state_path, &persisted);
+        }
 
         if let Some(max) = config.max_iterations {
             if summary.iterations >= max {
@@ -437,7 +658,7 @@ fn run_heartbeat_daemon_with_token(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use crate::state::load_state;
     use std::net::TcpListener;
 
     #[test]
@@ -461,6 +682,7 @@ mod tests {
             initial_ms: 100,
             max_ms: 350,
             multiplier: 2,
+            jitter_percent: 0,
         });
         assert_eq!(b.next_delay(), Duration::from_millis(100));
         assert_eq!(b.next_delay(), Duration::from_millis(200));
@@ -470,6 +692,22 @@ mod tests {
         b.reset();
         assert_eq!(b.attempts(), 0);
         assert_eq!(b.next_delay(), Duration::from_millis(100));
+    }
+
+    #[test]
+    fn backoff_with_jitter_stays_within_bounds() {
+        let mut b = BackoffState::new(BackoffConfig {
+            initial_ms: 1_000,
+            max_ms: 4_000,
+            multiplier: 2,
+            jitter_percent: 25,
+        });
+        let d1 = b.next_delay_with_seed(42).as_millis() as u64;
+        assert!((750..=1_250).contains(&d1), "d1={d1}");
+        let d2 = b.next_delay_with_seed(99).as_millis() as u64;
+        assert!((1_500..=2_500).contains(&d2), "d2={d2}");
+        let d3 = b.next_delay_with_seed(7).as_millis() as u64;
+        assert!((3_000..=4_000).contains(&d3), "d3={d3}");
     }
 
     #[test]
@@ -507,19 +745,42 @@ mod tests {
     }
 
     #[test]
-    fn daemon_loop_completes_cleanly_with_max_iterations() {
+    fn daemon_loop_checks_compatibility_sends_telemetry_and_persists_state() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
 
         let handle = thread::spawn(move || {
+            // 1. Compatibility handshake GET
+            {
+                let (mut sock, _) = listener.accept().unwrap();
+                let mut buf = [0u8; 2048];
+                let n = sock.read(&mut buf).unwrap();
+                let req = String::from_utf8_lossy(&buf[..n]).into_owned();
+                assert!(req.starts_with("GET /api/enterprise-bots/compatibility HTTP/1.1"));
+                let resp = "HTTP/1.1 200 OK\r\nContent-Length: 27\r\nConnection: close\r\n\r\n{\"protocolVersion\":\"1.0\"}";
+                let _ = sock.write_all(resp.as_bytes());
+            }
+            // 2. Two enriched heartbeat POSTs
             for _ in 0..2 {
                 let (mut sock, _) = listener.accept().unwrap();
-                let mut buf = [0u8; 1024];
-                let _ = sock.read(&mut buf);
+                let mut buf = [0u8; 4096];
+                let n = sock.read(&mut buf).unwrap();
+                let req = String::from_utf8_lossy(&buf[..n]).into_owned();
+                assert!(req.contains("\"daemonVersion\""));
+                assert!(req.contains("\"protocolVersion\""));
+                assert!(req.contains("\"uptimeSecs\""));
+                assert!(req.contains("\"activeChildren\""));
                 let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}";
                 let _ = sock.write_all(resp.as_bytes());
             }
         });
+
+        let state_dir = std::env::temp_dir().join(format!(
+            "pwork-daemon-test-{}-{}",
+            std::process::id(),
+            now_unix_secs()
+        ));
+        let state_path = state_dir.join("state.json");
 
         let cfg = HeartbeatDaemonConfig {
             base_url: format!("http://{addr}"),
@@ -531,8 +792,12 @@ mod tests {
                 initial_ms: 10,
                 max_ms: 50,
                 multiplier: 2,
+                jitter_percent: 10,
             },
             max_iterations: Some(2),
+            state_path: Some(state_path.clone()),
+            control_socket_path: None,
+            check_compatibility_on_start: true,
         };
         let path = terminal_heartbeat_path(&cfg.terminal_id).unwrap();
         let shutdown = ShutdownSignal::new();
@@ -544,6 +809,14 @@ mod tests {
         assert_eq!(summary.successes, 2);
         assert_eq!(summary.failures, 0);
         assert!(summary.stopped_cleanly);
+        assert_eq!(summary.compatibility_ok, Some(true));
+        assert!(summary.last_rtt_ms.is_some());
+
+        let persisted = load_state(&state_path).unwrap().expect("state.json saved");
+        assert_eq!(persisted.terminal_id, "t-1");
+        assert_eq!(persisted.consecutive_failures, 0);
+        assert!(persisted.last_heartbeat_at.is_some());
+        let _ = std::fs::remove_dir_all(&state_dir);
     }
 
     #[test]
