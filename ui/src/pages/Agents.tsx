@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
 import { heartbeatsApi } from "../api/heartbeats";
+import { dashboardApi } from "../api/dashboard";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
@@ -13,9 +14,24 @@ import { agentStatusDot, agentStatusDotDefault } from "../lib/status-colors";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { relativeTime, cn, agentRouteRef, agentUrl } from "../lib/utils";
+import {
+  AgentTelemetryCard,
+  filterTelemetryAgents,
+  type AgentLiveRunSummary,
+  type AgentUsageSummary,
+  type TelemetryStatusFilter,
+} from "../components/agents/AgentTelemetryCard";
 import { Button } from "@/components/ui/button";
-import { Bot, Plus, List, GitBranch, SlidersHorizontal, Search } from "lucide-react";
-import { AGENT_ROLE_LABELS, type Agent } from "@paperclipai/shared";
+import {
+  Bot,
+  Plus,
+  List,
+  GitBranch,
+  LayoutGrid,
+  SlidersHorizontal,
+  Search,
+} from "lucide-react";
+import { AGENT_ROLE_LABELS, type Agent, type HeartbeatRun } from "@paperclipai/shared";
 
 const adapterLabels: Record<string, string> = {
   claude_local: "Claude",
@@ -34,40 +50,26 @@ const adapterLabels: Record<string, string> = {
 
 const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;
 
-type FilterTab = "all" | "active" | "paused" | "error";
+type ViewMode = "cards" | "list" | "org";
 
-// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
-const CONTROL = "h-7 rounded-md border border-[#242d3f] bg-[#0b0e14] px-2 text-xs text-[#e6edf7] outline-none focus:border-[#5f8dff] placeholder:text-[#5c6a84]";
-const STATUS_TABS: { value: FilterTab; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "active", label: "Active" },
-  { value: "paused", label: "Paused" },
-  { value: "error", label: "Error" },
+const CONTROL =
+  "h-8 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground outline-none transition-colors focus:border-primary placeholder:text-muted-foreground dark:border-white/[0.09] dark:bg-[#07090d] dark:text-[#eef2f8] dark:focus:border-[#60a5fa] dark:placeholder:text-[#627089]";
+
+const STATUS_TABS: { value: TelemetryStatusFilter; label: string; route?: string }[] = [
+  { value: "all", label: "전체", route: "/agents/all" },
+  { value: "running", label: "실행 중", route: "/agents/active" },
+  { value: "idle", label: "대기" },
+  { value: "attention", label: "오류/일시정지", route: "/agents/error" },
 ];
-/** Explicit column tracks: status dot | name+role (flexes, truncates) | adapter | heartbeat | status pill (max-content, never wraps). */
+
+/** Explicit column tracks for compact list view. */
 const ROW_TRACKS =
   "grid grid-cols-[0.875rem_minmax(0,1fr)_max-content] items-center gap-x-3 sm:grid-cols-[0.875rem_minmax(0,1fr)_7rem_4.5rem_max-content]";
 
-function matchesFilter(status: string, tab: FilterTab, showTerminated: boolean): boolean {
-  if (status === "terminated") return showTerminated;
-  if (tab === "all") return true;
-  if (tab === "active") return status === "active" || status === "running" || status === "idle";
-  if (tab === "paused") return status === "paused";
-  if (tab === "error") return status === "error";
-  return true;
-}
-
-function matchesQuery(haystack: string, query: string): boolean {
-  const q = query.trim().toLowerCase();
-  return q === "" || haystack.toLowerCase().includes(q);
-}
-
-function agentHaystack(agent: Agent): string {
-  return [agent.name, agent.title ?? "", roleLabels[agent.role] ?? agent.role, adapterLabels[agent.adapterType] ?? agent.adapterType, agent.status.replace("_", " ")].join(" ");
-}
-
-function filterAgents(agents: Agent[], tab: FilterTab, showTerminated: boolean, query: string): Agent[] {
-  return agents.filter((a) => matchesFilter(a.status, tab, showTerminated) && matchesQuery(agentHaystack(a), query));
+function statusFilterFromPath(pathSegment: string): TelemetryStatusFilter {
+  if (pathSegment === "active") return "running";
+  if (pathSegment === "paused" || pathSegment === "error") return "attention";
+  return "all";
 }
 
 function filterOrgTree(nodes: OrgNode[], accept: (node: OrgNode) => boolean): OrgNode[] {
@@ -78,17 +80,43 @@ function filterOrgTree(nodes: OrgNode[], accept: (node: OrgNode) => boolean): Or
   }, []);
 }
 
-/** One cell of the 1-row fleet telemetry strip: label (with micro status dot) / bold value / muted sub. */
-function FleetCell({ to, label, value, sub, dot }: { to: string; label: string; value: number; sub: string; dot: string }) {
+/** One cell of the 1-row fleet telemetry strip (Combo 1 obsidian + specular top border). */
+function FleetCell({
+  label,
+  value,
+  sub,
+  dot,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  sub: string;
+  dot: string;
+  active?: boolean;
+  onClick: () => void;
+}) {
   return (
-    <Link to={to} className="flex min-w-0 flex-col gap-0.5 px-3 py-2 no-underline text-inherit transition-colors hover:bg-[#151b28]">
-      <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-[#8b97ad]">
-        <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex min-w-0 cursor-pointer flex-col gap-0.5 px-3.5 py-2.5 text-left transition-colors",
+        "hover:bg-muted/50 dark:hover:bg-[#141b2a]",
+        active && "bg-muted/70 dark:bg-[#121826]",
+      )}
+    >
+      <span className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-muted-foreground dark:text-[#9aa7bd]">
+        <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />
         <span className="truncate">{label}</span>
       </span>
-      <span className="truncate text-xl font-bold leading-tight tabular-nums text-[#e6edf7]">{value}</span>
-      <span className="truncate text-[11px] tabular-nums text-[#8b97ad]">{sub}</span>
-    </Link>
+      <span className="truncate font-mono text-xl font-bold leading-tight tabular-nums text-foreground dark:text-[#eef2f8]">
+        {value}
+      </span>
+      <span className="truncate text-[11px] tabular-nums text-muted-foreground dark:text-[#627089]">
+        {sub}
+      </span>
+    </button>
   );
 }
 
@@ -99,14 +127,25 @@ export function Agents() {
   const navigate = useNavigate();
   const location = useLocation();
   const { isMobile } = useSidebar();
+
   const pathSegment = location.pathname.split("/").pop() ?? "all";
-  const tab: FilterTab = (pathSegment === "all" || pathSegment === "active" || pathSegment === "paused" || pathSegment === "error") ? pathSegment : "all";
-  const [view, setView] = useState<"list" | "org">("org");
-  const forceListView = isMobile;
-  const effectiveView: "list" | "org" = forceListView ? "list" : view;
+  const [statusFilter, setStatusFilter] = useState<TelemetryStatusFilter>(() =>
+    statusFilterFromPath(pathSegment),
+  );
+
+  useEffect(() => {
+    if (pathSegment === "active") setStatusFilter("running");
+    else if (pathSegment === "paused" || pathSegment === "error") setStatusFilter("attention");
+    else if (pathSegment === "all") setStatusFilter("all");
+  }, [pathSegment]);
+
+  const [view, setView] = useState<ViewMode>("cards");
+  const effectiveView: ViewMode = isMobile && view === "org" ? "cards" : view;
   const [showTerminated, setShowTerminated] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [adapterFilter, setAdapterFilter] = useState("all");
+  const [roleFilter, setRoleFilter] = useState("all");
 
   const { data: agents, isLoading, error } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
@@ -120,27 +159,80 @@ export function Agents() {
     enabled: !!selectedCompanyId && effectiveView === "org",
   });
 
-  const { data: runs } = useQuery({
+  const { data: liveRuns } = useQuery({
     queryKey: queryKeys.liveRuns(selectedCompanyId!),
     queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!),
     enabled: !!selectedCompanyId,
     refetchInterval: 15_000,
   });
 
-  // Map agentId -> first live run + live run count
+  const { data: recentRuns } = useQuery({
+    queryKey: [...queryKeys.heartbeats(selectedCompanyId!), "agents-telemetry"] as const,
+    queryFn: () => heartbeatsApi.list(selectedCompanyId!, undefined, 120),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 30_000,
+  });
+
+  const { data: telemetry } = useQuery({
+    queryKey: [...queryKeys.dashboard(selectedCompanyId!), "telemetry", "24h"] as const,
+    queryFn: () => dashboardApi.telemetry(selectedCompanyId!, "24h"),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 30_000,
+  });
+
+  // Map agentId -> live run summary
   const liveRunByAgent = useMemo(() => {
-    const map = new Map<string, { runId: string; liveCount: number }>();
-    for (const r of runs ?? []) {
+    const map = new Map<string, AgentLiveRunSummary>();
+    for (const r of liveRuns ?? []) {
       if (r.status !== "running" && r.status !== "queued") continue;
       const existing = map.get(r.agentId);
       if (existing) {
         existing.liveCount += 1;
         continue;
       }
-      map.set(r.agentId, { runId: r.id, liveCount: 1 });
+      map.set(r.agentId, {
+        runId: r.id,
+        liveCount: 1,
+        status: r.status,
+        startedAt: r.startedAt,
+        triggerDetail: r.triggerDetail,
+        invocationSource: r.invocationSource,
+        issueId: r.issueId ?? null,
+      });
     }
     return map;
-  }, [runs]);
+  }, [liveRuns]);
+
+  const liveAgentIds = useMemo(() => new Set(liveRunByAgent.keys()), [liveRunByAgent]);
+
+  // Group recent heartbeat runs per agent (newest first)
+  const recentRunsByAgent = useMemo(() => {
+    const map = new Map<string, HeartbeatRun[]>();
+    for (const run of recentRuns ?? []) {
+      const bucket = map.get(run.agentId);
+      if (bucket) {
+        bucket.push(run);
+      } else {
+        map.set(run.agentId, [run]);
+      }
+    }
+    return map;
+  }, [recentRuns]);
+
+  // Map agentId -> 24h usage share from dashboard telemetry
+  const usageShareByAgent = useMemo(() => {
+    const map = new Map<string, AgentUsageSummary>();
+    for (const share of telemetry?.agentShares ?? []) {
+      if (!share.id) continue;
+      map.set(share.id, {
+        tokens: share.tokens,
+        costCents: share.costCents,
+        runs: share.runs,
+        sharePct: share.sharePct,
+      });
+    }
+    return map;
+  }, [telemetry]);
 
   const agentMap = useMemo(() => {
     const map = new Map<string, Agent>();
@@ -148,18 +240,39 @@ export function Agents() {
     return map;
   }, [agents]);
 
+  const adapterOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of agents ?? []) set.add(a.adapterType);
+    return Array.from(set).sort((a, b) =>
+      (adapterLabels[a] ?? a).localeCompare(adapterLabels[b] ?? b),
+    );
+  }, [agents]);
+
+  const roleOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of agents ?? []) set.add(a.role);
+    return Array.from(set).sort((a, b) =>
+      (roleLabels[a] ?? a).localeCompare(roleLabels[b] ?? b),
+    );
+  }, [agents]);
+
   const fleet = useMemo(() => {
     const list = (agents ?? []).filter((a) => showTerminated || a.status !== "terminated");
     const count = (status: string) => list.filter((a) => a.status === status).length;
     const running = count("running");
+    const active = count("active") + running;
+    const errors = count("error");
+    const approvals = count("pending_approval");
+    const paused = count("paused");
     return {
       total: list.length,
-      active: count("active") + running,
+      active,
       running,
-      errors: count("error"),
-      approvals: count("pending_approval"),
+      errors,
+      approvals,
       idle: count("idle"),
-      paused: count("paused"),
+      paused,
+      attention: errors + paused + approvals,
       live: liveRunByAgent.size,
     };
   }, [agents, showTerminated, liveRunByAgent]);
@@ -167,6 +280,28 @@ export function Agents() {
   useEffect(() => {
     setBreadcrumbs([{ label: "Agents" }]);
   }, [setBreadcrumbs]);
+
+  const filtered = useMemo(
+    () =>
+      filterTelemetryAgents(agents ?? [], {
+        status: statusFilter,
+        query,
+        adapter: adapterFilter,
+        role: roleFilter,
+        showTerminated,
+        liveAgentIds,
+        roleLabels,
+        adapterLabels,
+      }),
+    [agents, statusFilter, query, adapterFilter, roleFilter, showTerminated, liveAgentIds],
+  );
+
+  const filteredIdSet = useMemo(() => new Set(filtered.map((a) => a.id)), [filtered]);
+
+  const filteredOrg = useMemo(
+    () => filterOrgTree(orgTree ?? [], (node) => filteredIdSet.has(node.id)),
+    [orgTree, filteredIdSet],
+  );
 
   if (!selectedCompanyId) {
     return <EmptyState icon={Bot} message="Select a company to view agents." />;
@@ -176,125 +311,294 @@ export function Agents() {
     return <PageSkeleton variant="list" />;
   }
 
-  const filtered = filterAgents(agents ?? [], tab, showTerminated, query);
-  const filteredOrg = filterOrgTree(orgTree ?? [], (node) => {
-    if (!matchesQuery([node.name, roleLabels[node.role] ?? node.role, node.status.replace("_", " ")].join(" "), query)) return false;
-    const agent = agentMap.get(node.id);
-    return agent ? matchesFilter(agent.status, tab, showTerminated) : matchesFilter(node.status, tab, showTerminated);
-  });
+  const handleStatusSelect = (next: TelemetryStatusFilter) => {
+    setStatusFilter(next);
+    const tabDef = STATUS_TABS.find((t) => t.value === next);
+    if (tabDef?.route) {
+      navigate(tabDef.route);
+    }
+  };
+
+  const activeExtraFilterCount =
+    (showTerminated ? 1 : 0) +
+    (adapterFilter !== "all" ? 1 : 0) +
+    (roleFilter !== "all" ? 1 : 0);
 
   return (
-    <div className="space-y-3 tabular-nums">
+    <div className="mx-auto w-full space-y-4 tabular-nums">
       {/* 1-row 4-column fleet telemetry strip */}
-      <section aria-label="Fleet telemetry" className="grid grid-cols-2 divide-x divide-[#242d3f] rounded-md border border-[#242d3f] bg-[#111622] lg:grid-cols-4">
-        <FleetCell to="/agents/all" label="Total" value={fleet.total} dot="bg-[#5f8dff]" sub={`${fleet.live} live · ${fleet.paused} paused`} />
-        <FleetCell to="/agents/active" label="Active / Running" value={fleet.active} dot={cn("bg-[#34d399]", fleet.running > 0 && "animate-pulse")} sub={`${fleet.running} running · ${fleet.active - fleet.running} ready`} />
-        <FleetCell to="/agents/error" label="Attention / Blocked" value={fleet.errors + fleet.approvals} dot={fleet.errors + fleet.approvals > 0 ? "bg-[#f87171]" : "bg-[#4a5670]"} sub={`${fleet.errors} error · ${fleet.approvals} approval`} />
-        <FleetCell to="/agents/active" label="Idle" value={fleet.idle} dot="bg-[#fbbf24]" sub={`${fleet.paused} paused`} />
+      <section
+        aria-label="Fleet telemetry"
+        className="grid grid-cols-2 divide-x divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm lg:grid-cols-4 dark:divide-white/[0.07] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.095)]"
+      >
+        <FleetCell
+          label="전체 에이전트"
+          value={fleet.total}
+          dot="bg-blue-500 dark:bg-[#60a5fa]"
+          sub={`라이브 ${fleet.live} · 일시정지 ${fleet.paused}`}
+          active={statusFilter === "all"}
+          onClick={() => handleStatusSelect("all")}
+        />
+        <FleetCell
+          label="실행 중 / 활성"
+          value={fleet.active}
+          dot={cn(
+            "bg-lime-500 dark:bg-[#a3e635]",
+            (fleet.running > 0 || fleet.live > 0) && "animate-pulse",
+          )}
+          sub={`실행 ${fleet.running} · 준비 ${Math.max(0, fleet.active - fleet.running)}`}
+          active={statusFilter === "running"}
+          onClick={() => handleStatusSelect("running")}
+        />
+        <FleetCell
+          label="대기"
+          value={fleet.idle}
+          dot="bg-amber-500 dark:bg-[#f59e0b]"
+          sub={`대기 중 ${fleet.idle}`}
+          active={statusFilter === "idle"}
+          onClick={() => handleStatusSelect("idle")}
+        />
+        <FleetCell
+          label="오류 / 일시정지"
+          value={fleet.attention}
+          dot={
+            fleet.errors > 0
+              ? "bg-rose-500 dark:bg-[#fb7185]"
+              : fleet.attention > 0
+                ? "bg-amber-500 dark:bg-[#f59e0b]"
+                : "bg-slate-400 dark:bg-[#627089]"
+          }
+          sub={`오류 ${fleet.errors} · 정지 ${fleet.paused} · 승인 ${fleet.approvals}`}
+          active={statusFilter === "attention"}
+          onClick={() => handleStatusSelect("attention")}
+        />
       </section>
 
-      {/* Tight single-row 40px filter / search / action toolbar. Filters scroll; actions stay pinned. */}
-      <div className="flex h-10 items-center gap-2 rounded-md border border-[#242d3f] bg-[#111622] pl-2 pr-1.5">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto overflow-y-hidden">
-          {isMobile ? (
-            <select aria-label="Filter agents by status" value={tab} onChange={(e) => navigate(`/agents/${e.target.value}`)} className={cn(CONTROL, "shrink-0")}>
-              {STATUS_TABS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-            </select>
-          ) : (
-            <div role="group" aria-label="Filter agents by status" className="flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5">
-              {STATUS_TABS.map((item) => {
-                const active = tab === item.value;
-                return (
-                  <button
-                    key={item.value}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => navigate(`/agents/${item.value}`)}
+      {/* Widescreen primary toolbar: status strip + search + adapter/role filters + view toggle + new agent */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-2.5 py-2 shadow-sm dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          {/* Status filter strip */}
+          <div
+            role="group"
+            aria-label="에이전트 상태 필터"
+            className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5 dark:border-white/[0.07] dark:bg-[#07090d]"
+          >
+            {STATUS_TABS.map((item) => {
+              const active = statusFilter === item.value;
+              const badgeCount =
+                item.value === "all"
+                  ? fleet.total
+                  : item.value === "running"
+                    ? fleet.active
+                    : item.value === "idle"
+                      ? fleet.idle
+                      : fleet.attention;
+              return (
+                <button
+                  key={item.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => handleStatusSelect(item.value)}
+                  className={cn(
+                    "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs font-medium whitespace-nowrap transition-colors",
+                    active
+                      ? "bg-background text-foreground shadow-xs dark:bg-[#151d2e] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
+                      : "text-muted-foreground hover:text-foreground dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]",
+                  )}
+                >
+                  <span>{item.label}</span>
+                  <span
                     className={cn(
-                      "h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors",
-                      active ? "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_0_0_1px_#242d3f]" : "text-[#8b97ad] hover:text-[#e6edf7]"
+                      "rounded px-1 font-mono text-[10px] tabular-nums",
+                      active
+                        ? "bg-primary/10 text-primary dark:bg-[#a3e635]/15 dark:text-[#a3e635]"
+                        : "bg-muted text-muted-foreground dark:bg-white/[0.05] dark:text-[#627089]",
                     )}
                   >
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          <label className="flex shrink-0 items-center gap-1.5">
-            <Search className="h-3.5 w-3.5 shrink-0 text-[#8b97ad]" aria-hidden />
+                    {badgeCount}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Search input */}
+          <label className="relative flex min-w-[180px] flex-1 max-w-xs items-center">
+            <Search
+              className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted-foreground dark:text-[#627089]"
+              aria-hidden
+            />
             <input
               type="search"
-              aria-label="Search agents"
-              placeholder="Search name, role, adapter"
+              aria-label="에이전트 검색"
+              placeholder="이름, 역할, 어댑터, 모델 검색"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className={cn(CONTROL, "w-56")}
+              className={cn(CONTROL, "w-full pl-8")}
             />
           </label>
-          <span className="hidden shrink-0 text-[11px] text-[#8b97ad] sm:block">
-            <span className="font-mono text-[#e6edf7]">{filtered.length}</span> agent{filtered.length !== 1 ? "s" : ""}
+
+          {/* Adapter filter */}
+          <select
+            aria-label="어댑터 필터"
+            value={adapterFilter}
+            onChange={(e) => setAdapterFilter(e.target.value)}
+            className={cn(CONTROL, "hidden sm:block")}
+          >
+            <option value="all">전체 어댑터</option>
+            {adapterOptions.map((adapter) => (
+              <option key={adapter} value={adapter}>
+                {adapterLabels[adapter] ?? adapter}
+              </option>
+            ))}
+          </select>
+
+          {/* Role filter */}
+          <select
+            aria-label="역할 필터"
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value)}
+            className={cn(CONTROL, "hidden md:block")}
+          >
+            <option value="all">전체 역할</option>
+            {roleOptions.map((role) => (
+              <option key={role} value={role}>
+                {roleLabels[role] ?? role}
+              </option>
+            ))}
+          </select>
+
+          <span className="hidden text-[11px] text-muted-foreground xl:inline dark:text-[#627089]">
+            표시{" "}
+            <span className="font-mono font-semibold text-foreground dark:text-[#eef2f8]">
+              {filtered.length}
+            </span>
+            명
           </span>
         </div>
 
+        {/* Right controls: extra filters + view toggle + New Agent */}
         <div className="flex shrink-0 items-center gap-1.5">
-          {/* Filters */}
           <div className="relative">
             <button
               type="button"
               className={cn(
-                "flex h-7 items-center gap-1.5 rounded-md border border-[#242d3f] bg-[#0b0e14] px-2 text-xs transition-colors",
-                filtersOpen || showTerminated ? "text-[#e6edf7] bg-[#151b28]" : "text-[#8b97ad] hover:text-[#e6edf7]"
+                "flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs transition-colors dark:border-white/[0.09] dark:bg-[#07090d]",
+                filtersOpen || activeExtraFilterCount > 0
+                  ? "text-foreground dark:bg-[#151d2e] dark:text-[#eef2f8]"
+                  : "text-muted-foreground hover:text-foreground dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]",
               )}
               aria-expanded={filtersOpen}
               onClick={() => setFiltersOpen(!filtersOpen)}
             >
-              <SlidersHorizontal className="h-3 w-3" />
-              Filters
-              {showTerminated && <span className="ml-0.5 rounded bg-[#5f8dff]/15 px-1 font-mono text-[10px] tabular-nums text-[#5f8dff]">1</span>}
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">옵션</span>
+              {activeExtraFilterCount > 0 && (
+                <span className="rounded bg-blue-500/15 px-1 font-mono text-[10px] tabular-nums text-blue-600 dark:bg-[#60a5fa]/20 dark:text-[#60a5fa]">
+                  {activeExtraFilterCount}
+                </span>
+              )}
             </button>
             {filtersOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1 w-48 rounded-md border border-[#242d3f] bg-[#151b28] p-1 shadow-lg">
+              <div className="absolute right-0 top-full z-50 mt-1.5 w-56 rounded-lg border border-border bg-popover p-1.5 shadow-lg dark:border-white/[0.12] dark:bg-[#121826]">
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs text-[#e6edf7] hover:bg-[#1b2433]"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-muted dark:text-[#eef2f8] dark:hover:bg-white/[0.06]"
                   onClick={() => setShowTerminated(!showTerminated)}
                 >
-                  <span className={cn(
-                    "flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-[#242d3f]",
-                    showTerminated && "bg-[#e6edf7]"
-                  )}>
-                    {showTerminated && <span className="text-[10px] leading-none text-[#0b0e14]">&#10003;</span>}
+                  <span
+                    className={cn(
+                      "flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-border dark:border-white/20",
+                      showTerminated && "bg-foreground dark:bg-[#a3e635] dark:border-[#a3e635]",
+                    )}
+                  >
+                    {showTerminated && (
+                      <span className="text-[10px] leading-none text-background dark:text-[#07090d]">
+                        &#10003;
+                      </span>
+                    )}
                   </span>
-                  Show terminated
+                  종료된 에이전트 포함
                 </button>
+                {(adapterFilter !== "all" || roleFilter !== "all" || query.trim() !== "") && (
+                  <button
+                    type="button"
+                    className="mt-1 flex w-full items-center justify-center rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground dark:border-white/[0.08] dark:text-[#9aa7bd] dark:hover:bg-white/[0.06]"
+                    onClick={() => {
+                      setAdapterFilter("all");
+                      setRoleFilter("all");
+                      setQuery("");
+                      setFiltersOpen(false);
+                    }}
+                  >
+                    검색/필터 초기화
+                  </button>
+                )}
               </div>
             )}
           </div>
-          {/* View toggle */}
-          {!forceListView && (
-            <div className="flex items-center overflow-hidden rounded-md border border-[#242d3f] bg-[#0b0e14]">
+
+          {/* View toggle: 텔레메트리 카드 (default) ↔ 목록 ↔ 조직도 */}
+          <div
+            role="group"
+            aria-label="보기 전환"
+            className="flex items-center overflow-hidden rounded-lg border border-border bg-muted/40 p-0.5 dark:border-white/[0.08] dark:bg-[#07090d]"
+          >
+            <button
+              type="button"
+              aria-label="텔레메트리 카드 보기"
+              aria-pressed={effectiveView === "cards"}
+              className={cn(
+                "inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
+                effectiveView === "cards"
+                  ? "bg-background text-foreground shadow-xs dark:bg-[#151d2e] dark:text-[#a3e635]"
+                  : "text-muted-foreground hover:text-foreground dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]",
+              )}
+              onClick={() => setView("cards")}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              <span className="hidden lg:inline">텔레메트리 카드</span>
+            </button>
+            <button
+              type="button"
+              aria-label="목록 보기"
+              aria-pressed={effectiveView === "list"}
+              className={cn(
+                "inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
+                effectiveView === "list"
+                  ? "bg-background text-foreground shadow-xs dark:bg-[#151d2e] dark:text-[#eef2f8]"
+                  : "text-muted-foreground hover:text-foreground dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]",
+              )}
+              onClick={() => setView("list")}
+            >
+              <List className="h-3.5 w-3.5" />
+              <span className="hidden lg:inline">목록</span>
+            </button>
+            {!isMobile && (
               <button
                 type="button"
-                aria-label="List view"
-                aria-pressed={effectiveView === "list"}
-                className={cn("flex h-7 w-7 items-center justify-center transition-colors", effectiveView === "list" ? "bg-[#151b28] text-[#e6edf7]" : "text-[#8b97ad] hover:text-[#e6edf7]")}
-                onClick={() => setView("list")}
-              >
-                <List className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                aria-label="Org chart view"
+                aria-label="조직도 보기"
                 aria-pressed={effectiveView === "org"}
-                className={cn("flex h-7 w-7 items-center justify-center transition-colors", effectiveView === "org" ? "bg-[#151b28] text-[#e6edf7]" : "text-[#8b97ad] hover:text-[#e6edf7]")}
+                className={cn(
+                  "inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
+                  effectiveView === "org"
+                    ? "bg-background text-foreground shadow-xs dark:bg-[#151d2e] dark:text-[#eef2f8]"
+                    : "text-muted-foreground hover:text-foreground dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]",
+                )}
                 onClick={() => setView("org")}
               >
                 <GitBranch className="h-3.5 w-3.5" />
+                <span className="hidden xl:inline">조직도</span>
               </button>
-            </div>
-          )}
-          <Button size="sm" variant="outline" onClick={openNewAgent} className="h-7 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]">
+            )}
+          </div>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={openNewAgent}
+            className="h-8 border-transparent bg-[#2563eb] px-3 text-xs font-semibold text-[#f8fafc] hover:bg-[#1d4fd8]"
+          >
             <Plus className="h-3.5 w-3.5" />
             New Agent
           </Button>
@@ -312,9 +616,46 @@ export function Agents() {
         />
       )}
 
-      {/* List view */}
+      {/* Wide 2–3 column Agent Telemetry Card Grid (Primary Reading Zone) */}
+      {effectiveView === "cards" && filtered.length > 0 && (
+        <section
+          aria-label="에이전트 텔레메트리 카드"
+          className={cn(
+            "grid gap-4",
+            filtered.length === 1
+              ? "grid-cols-1 max-w-2xl"
+              : "grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3",
+          )}
+        >
+          {filtered.map((agent) => {
+            const ref = agentRouteRef(agent);
+            const live = liveRunByAgent.get(agent.id);
+            return (
+              <AgentTelemetryCard
+                key={agent.id}
+                agent={agent}
+                roleLabel={roleLabels[agent.role] ?? agent.role}
+                adapterLabel={adapterLabels[agent.adapterType] ?? agent.adapterType}
+                detailHref={agentUrl(agent)}
+                liveRun={live}
+                liveRunHref={live ? `/agents/${ref}/runs/${live.runId}` : undefined}
+                recentRuns={recentRunsByAgent.get(agent.id) ?? []}
+                usageShare={usageShareByAgent.get(agent.id) ?? null}
+              />
+            );
+          })}
+        </section>
+      )}
+
+      {effectiveView === "cards" && agents && agents.length > 0 && filtered.length === 0 && (
+        <div className="rounded-xl border border-dashed border-border bg-card/50 py-10 text-center text-sm text-muted-foreground dark:border-white/[0.1] dark:bg-[#0e131d]/60 dark:text-[#9aa7bd]">
+          선택한 필터에 해당하는 에이전트가 없습니다.
+        </div>
+      )}
+
+      {/* Compact List view */}
       {effectiveView === "list" && filtered.length > 0 && (
-        <div className="overflow-hidden rounded-md border border-[#242d3f] bg-[#111622] divide-y divide-[#242d3f]">
+        <div className="overflow-hidden rounded-xl border border-border bg-card divide-y divide-border dark:border-white/[0.08] dark:bg-[#0e131d] dark:divide-white/[0.065]">
           {filtered.map((agent) => (
             <AgentRow
               key={agent.id}
@@ -333,39 +674,54 @@ export function Agents() {
       )}
 
       {effectiveView === "list" && agents && agents.length > 0 && filtered.length === 0 && (
-        <p className="text-sm text-muted-foreground text-center py-8">
-          No agents match the selected filter.
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          선택한 필터에 해당하는 에이전트가 없습니다.
         </p>
       )}
 
       {/* Org chart view */}
       {effectiveView === "org" && filteredOrg.length > 0 && (
-        <div className="overflow-hidden rounded-md border border-[#242d3f] bg-[#111622] divide-y divide-[#242d3f]">
+        <div className="overflow-hidden rounded-xl border border-border bg-card divide-y divide-border dark:border-white/[0.08] dark:bg-[#0e131d] dark:divide-white/[0.065]">
           {filteredOrg.map((node) => (
-            <OrgTreeNode key={node.id} node={node} depth={0} agentMap={agentMap} liveRunByAgent={liveRunByAgent} />
+            <OrgTreeNode
+              key={node.id}
+              node={node}
+              depth={0}
+              agentMap={agentMap}
+              liveRunByAgent={liveRunByAgent}
+            />
           ))}
         </div>
       )}
 
       {effectiveView === "org" && orgTree && orgTree.length > 0 && filteredOrg.length === 0 && (
-        <p className="text-sm text-muted-foreground text-center py-8">
-          No agents match the selected filter.
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          선택한 필터에 해당하는 에이전트가 없습니다.
         </p>
       )}
 
       {effectiveView === "org" && orgTree && orgTree.length === 0 && (
-        <p className="text-sm text-muted-foreground text-center py-8">
-          No organizational hierarchy defined.
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          정의된 조직 계층 구조가 없습니다.
         </p>
       )}
     </div>
   );
 }
 
-type LiveRun = { runId: string; liveCount: number };
-
-/** Fixed-track grid row: name/role flex+truncate, adapter/heartbeat fixed, status pill sized to content so nothing collides or wraps. */
-function AgentRow({ to, name, sub, dot, adapter, heartbeat, status, live, agentRef, style }: {
+/** Fixed-track grid row for compact list / org views. */
+function AgentRow({
+  to,
+  name,
+  sub,
+  dot,
+  adapter,
+  heartbeat,
+  status,
+  live,
+  agentRef,
+  style,
+}: {
   to: string;
   name: string;
   sub: string;
@@ -373,30 +729,66 @@ function AgentRow({ to, name, sub, dot, adapter, heartbeat, status, live, agentR
   adapter: string | null;
   heartbeat: string | null;
   status: string;
-  live?: LiveRun;
+  live?: AgentLiveRunSummary;
   agentRef: string;
   style?: CSSProperties;
 }) {
   return (
-    <Link to={to} style={style} className={cn(ROW_TRACKS, "w-full px-3 py-2 text-left no-underline text-inherit transition-colors hover:bg-[#151b28]")}>
+    <Link
+      to={to}
+      style={style}
+      className={cn(
+        ROW_TRACKS,
+        "w-full px-3.5 py-2.5 text-left no-underline text-inherit transition-colors hover:bg-muted/50 dark:hover:bg-[#141b2a]",
+      )}
+    >
       <span className="relative flex h-2.5 w-2.5">
         <span className={`absolute inline-flex h-full w-full rounded-full ${dot}`} />
       </span>
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-sm font-medium text-[#e6edf7]">{name}</span>
-        <span className="truncate text-xs text-[#8b97ad]">{sub}</span>
+        <span className="truncate text-sm font-medium text-foreground dark:text-[#eef2f8]">
+          {name}
+        </span>
+        <span className="truncate text-xs text-muted-foreground dark:text-[#9aa7bd]">{sub}</span>
       </span>
-      {adapter && <span title={adapter} className="hidden truncate text-xs font-mono text-[#8b97ad] sm:block">{adapter}</span>}
-      {heartbeat && <span className="hidden truncate text-right text-xs text-[#8b97ad] sm:block">{heartbeat}</span>}
+      {adapter && (
+        <span
+          title={adapter}
+          className="hidden truncate font-mono text-xs text-muted-foreground sm:block dark:text-[#9aa7bd]"
+        >
+          {adapter}
+        </span>
+      )}
+      {heartbeat && (
+        <span className="hidden truncate text-right text-xs text-muted-foreground sm:block dark:text-[#627089]">
+          {heartbeat}
+        </span>
+      )}
       <span className="flex items-center justify-end gap-2">
-        {live && <LiveRunIndicator agentRef={agentRef} runId={live.runId} liveCount={live.liveCount} />}
+        {live && (
+          <LiveRunIndicator
+            agentRef={agentRef}
+            runId={live.runId}
+            liveCount={live.liveCount}
+          />
+        )}
         <StatusBadge status={status} />
       </span>
     </Link>
   );
 }
 
-function OrgTreeNode({ node, depth, agentMap, liveRunByAgent }: { node: OrgNode; depth: number; agentMap: Map<string, Agent>; liveRunByAgent: Map<string, LiveRun> }) {
+function OrgTreeNode({
+  node,
+  depth,
+  agentMap,
+  liveRunByAgent,
+}: {
+  node: OrgNode;
+  depth: number;
+  agentMap: Map<string, Agent>;
+  liveRunByAgent: Map<string, AgentLiveRunSummary>;
+}) {
   const agent = agentMap.get(node.id);
   return (
     <div style={{ paddingLeft: depth * 24 }}>
@@ -412,9 +804,15 @@ function OrgTreeNode({ node, depth, agentMap, liveRunByAgent }: { node: OrgNode;
         agentRef={agent ? agentRouteRef(agent) : node.id}
       />
       {node.reports.length > 0 && (
-        <div className="border-l border-[#242d3f] ml-4">
+        <div className="ml-4 border-l border-border dark:border-white/[0.08]">
           {node.reports.map((child) => (
-            <OrgTreeNode key={child.id} node={child} depth={depth + 1} agentMap={agentMap} liveRunByAgent={liveRunByAgent} />
+            <OrgTreeNode
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              agentMap={agentMap}
+              liveRunByAgent={liveRunByAgent}
+            />
           ))}
         </div>
       )}
@@ -422,16 +820,24 @@ function OrgTreeNode({ node, depth, agentMap, liveRunByAgent }: { node: OrgNode;
   );
 }
 
-function LiveRunIndicator({ agentRef, runId, liveCount }: { agentRef: string; runId: string; liveCount: number }) {
+function LiveRunIndicator({
+  agentRef,
+  runId,
+  liveCount,
+}: {
+  agentRef: string;
+  runId: string;
+  liveCount: number;
+}) {
   return (
     <Link
       to={`/agents/${agentRef}/runs/${runId}`}
-      className="flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-600 no-underline transition-colors hover:bg-blue-500/20 dark:text-blue-400"
+      className="flex items-center gap-1.5 rounded-full bg-lime-500/12 px-2 py-0.5 text-[11px] font-medium text-lime-700 no-underline transition-colors hover:bg-lime-500/20 dark:bg-[#a3e635]/15 dark:text-[#a3e635]"
       onClick={(e) => e.stopPropagation()}
     >
       <span className="relative flex h-2 w-2">
-        <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+        <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-lime-400 opacity-75 dark:bg-[#a3e635]" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-lime-500 dark:bg-[#a3e635]" />
       </span>
       Live{liveCount > 1 ? ` (${liveCount})` : ""}
     </Link>
