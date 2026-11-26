@@ -9,13 +9,17 @@
 //   failed/aborted/timed-out 종결과 아직 failed 인 스텝은 카드가 여전히 유효한 에스컬레이션이므로
 //   유지한다. 판정은 구조화된 상태(stepRun.status, run.status)만 쓴다(자연어 불가).
 //   툴 실패 카드가 아닌 오너 액션(source issue 복구 unblock 등)은 link event 가 없어 건드리지 않는다.
+//   [결정 카드 정리] 닫힌 카드에 앵커된(operatorDecisions.issueId = 카드 이슈) pending 사람 입력 카드는 같은
+//   패스에서 cancelled 처리한다 — 종결 앵커에 매달린 카드는 응답해도 후속이 없고 미션당 pending 1장
+//   유니크 인덱스를 계속 점유한다. 판정은 구조화된 컬럼만 쓰고 품질 연결 카드(qualityActionId)는
+//   전용 경로(T5) 계약대로 제외한다. 취소는 continuation/wakeup 을 만들지 않는다.
 // 호출부: (a) workflow sync 꼬리(running→completed 전환·스텝 성공을 본 패스에서 반영)와
 //   (b) run 취소 정리(cleanupCancelledWorkflowRun — 취소된 run 은 sync 본문을 소유하지 않으므로).
 // [규칙 7-8] 새 실행 경로 없음 — 기존 issueService.update/addComment + activity log 만 호출.
 //   호출부는 try/catch 로 감싼다. 실패한 카드는 다음 호출에 재시도된다.
 
 import { and, eq, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
-import { issues, workflowStepRuns, workflowTransitionEvents, type Db } from "@paperclipai/db";
+import { activityLog, issues, operatorDecisions, workflowStepRuns, workflowTransitionEvents, type Db } from "@paperclipai/db";
 import { logger } from "../../middleware/logger.js";
 import { logActivity } from "../activity-log.js";
 import { issueService } from "../issues.js";
@@ -24,7 +28,11 @@ import { loadCompanySystemLanguage, type SystemLanguage } from "../missions/syst
 
 export const TOOL_RECOVERY_TARGET_EVENT_TYPE = "owner_tool_recovery_target_v1";
 export const TOOL_FAILURE_OWNER_ACTION_SETTLED_ACTION = "mission.owner_action_settled_from_tool_recovery";
+export const TOOL_FAILURE_DECISION_CANCEL_ACTION = "operator_decision.cancelled";
 const CLOSEOUT_ACTOR_ID = "tool-failure-owner-action-closeout";
+// 기존 스윕(stale sweep·dead-card sweep)과 같은 `system:` 주체 식별자 계약 — 카드 뷰가 그대로 표시한다.
+const DECISION_CANCEL_ACTOR_ID = "system:tool-failure-owner-action-closeout";
+const DECISION_CANCEL_REASON = "owner_action_settled_from_tool_recovery";
 const CLOSED_ISSUE_STATUSES = ["done", "cancelled"];
 
 export type ToolFailureOwnerActionCloseoutReason =
@@ -79,6 +87,53 @@ export interface ToolFailureOwnerActionCloseoutResult {
     readonly status: "done" | "cancelled";
     readonly reason: ToolFailureOwnerActionCloseoutReason;
   }>;
+  /** Pending operator decisions anchored to a card closed in this pass, cancelled with it. */
+  readonly cancelledDecisions: ReadonlyArray<{
+    readonly issueId: string;
+    readonly operatorDecisionId: string;
+    readonly reason: ToolFailureOwnerActionCloseoutReason;
+  }>;
+}
+
+/** Pending→cancelled CAS in one transaction, with the shared `operator_decision.cancelled` audit row. */
+async function cancelDecisionsAnchoredToCard(
+  db: Db,
+  input: { readonly companyId: string; readonly missionId: string; readonly issueId: string; readonly reason: ToolFailureOwnerActionCloseoutReason },
+): Promise<string[]> {
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    const cancelled = await tx.update(operatorDecisions)
+      .set({ status: "cancelled", cancelledAt: now, updatedAt: now })
+      .where(and(
+        eq(operatorDecisions.companyId, input.companyId),
+        eq(operatorDecisions.issueId, input.issueId),
+        eq(operatorDecisions.status, "pending"),
+        isNull(operatorDecisions.qualityActionId),
+      ))
+      .returning({ id: operatorDecisions.id, requestKey: operatorDecisions.requestKey });
+    if (cancelled.length === 0) return [];
+    await tx.insert(activityLog).values(cancelled.map((row) => ({
+      companyId: input.companyId,
+      actorType: "user",
+      actorId: DECISION_CANCEL_ACTOR_ID,
+      agentId: null,
+      action: TOOL_FAILURE_DECISION_CANCEL_ACTION,
+      entityType: "operator_decision",
+      entityId: row.id,
+      details: {
+        schemaVersion: 1,
+        operatorDecisionId: row.id,
+        requestKey: row.requestKey,
+        cancelledByActorType: "user",
+        cancelledByActorId: DECISION_CANCEL_ACTOR_ID,
+        cancelledAt: now.toISOString(),
+        reason: DECISION_CANCEL_REASON,
+        issueId: input.issueId,
+        missionId: input.missionId,
+      },
+    })));
+    return cancelled.map((row) => row.id);
+  });
 }
 
 /**
@@ -89,7 +144,8 @@ export async function closeStaleToolFailureOwnerActions(
   input: ToolFailureOwnerActionCloseoutInput,
 ): Promise<ToolFailureOwnerActionCloseoutResult> {
   const { db, run } = input;
-  if (!run.missionId) return { closed: [] };
+  const empty: ToolFailureOwnerActionCloseoutResult = { closed: [], cancelledDecisions: [] };
+  if (!run.missionId) return empty;
 
   const links = await db
     .select({ issueId: workflowTransitionEvents.issueId, stepRunId: workflowTransitionEvents.workflowStepRunId })
@@ -103,7 +159,7 @@ export async function closeStaleToolFailureOwnerActions(
       ),
     ));
   const linkedIssueIds = Array.from(new Set(links.map((link) => link.issueId).filter((id): id is string => id !== null)));
-  if (linkedIssueIds.length === 0) return { closed: [] };
+  if (linkedIssueIds.length === 0) return empty;
 
   const openCards = await db
     .select({ id: issues.id, status: issues.status })
@@ -116,7 +172,7 @@ export async function closeStaleToolFailureOwnerActions(
       isNull(issues.hiddenAt),
       notInArray(issues.status, CLOSED_ISSUE_STATUSES),
     ));
-  if (openCards.length === 0) return { closed: [] };
+  if (openCards.length === 0) return empty;
 
   const stepRunRows = input.stepRuns
     ?? await db.select({ id: workflowStepRuns.id, workflowRunId: workflowStepRuns.workflowRunId, status: workflowStepRuns.status })
@@ -126,6 +182,7 @@ export async function closeStaleToolFailureOwnerActions(
     .map((stepRun) => [stepRun.id, stepRun]));
   const service = issueService(db);
   const closed: Array<ToolFailureOwnerActionCloseoutResult["closed"][number]> = [];
+  const cancelledDecisions: Array<ToolFailureOwnerActionCloseoutResult["cancelledDecisions"][number]> = [];
   for (const card of openCards) {
     // One card ↔ one step run (owner-tool identity contract); a link without a step run id
     // (damaged header) can still be closed by the run-level verdict only.
@@ -139,6 +196,17 @@ export async function closeStaleToolFailureOwnerActions(
       if (updated?.status !== verdict.status) continue;
       const language = await loadCompanySystemLanguage(db, run.companyId);
       await service.addComment(card.id, buildToolFailureOwnerActionCloseoutComment({ language, reason: verdict.reason }), {});
+      // The card is closed: its anchored pending human-input cards can no longer produce a follow-up.
+      // Independent try — a failed cancel is logged (the card itself stays closed; the periodic dead-card
+      // sweep is the backstop for terminal anchors) and never breaks the closeout.
+      let decisionIds: string[] = [];
+      try {
+        decisionIds = await cancelDecisionsAnchoredToCard(db, {
+          companyId: run.companyId, missionId: run.missionId, issueId: card.id, reason: verdict.reason,
+        });
+      } catch (err) {
+        logger.warn({ err, issueId: card.id, workflowRunId: run.id }, "tool-failure owner action decision cancel skipped");
+      }
       await logActivity(db, {
         companyId: run.companyId,
         actorType: "system",
@@ -153,13 +221,15 @@ export async function closeStaleToolFailureOwnerActions(
           workflowRunId: run.id,
           runStatus: run.status,
           stepRunIds,
+          operatorDecisionsCancelled: decisionIds,
         },
       });
       closed.push({ issueId: card.id, previousStatus: card.status, status: verdict.status, reason: verdict.reason });
+      cancelledDecisions.push(...decisionIds.map((operatorDecisionId) => ({ issueId: card.id, operatorDecisionId, reason: verdict.reason })));
     } catch (err) {
       // Concurrent closeout/handback conflict: retried on the next sync. Never breaks the caller.
       logger.warn({ err, issueId: card.id, workflowRunId: run.id }, "tool-failure owner action closeout skipped");
     }
   }
-  return { closed };
+  return { closed, cancelledDecisions };
 }

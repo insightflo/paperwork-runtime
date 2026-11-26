@@ -3,45 +3,31 @@
 // [purpose] 툴 스텝 실패로 만들어진 오너 액션 카드(`[Owner Action] Tool step failed`)의
 //   "상황 해소 시 자동 종결" 검증.
 //   (1) 링크된 스텝이 이후 completed — 카드 done(재시도/재실행 성공으로 대체됨).
-//   (2) 런 completed — 남은 카드 done. (3) 런 cancelled(취소 정리 경로) — 카드 cancelled.
+//   (2) 런 completed — 남은 카드 done. (3) 런 cancelled(취소 정리 경로) — 카드 cancelled + 앵커된 pending 사람 카드도 cancelled.
 //   (4) 런 failed + 스텝 failed — 카드는 여전히 유효한 에스컬레이션이므로 유지.
 //   (5) 툴 실패 카드가 아닌 오너 액션(source 복구 unblock), 다른 런의 카드, 숨김·이미 닫힌 카드,
 //       일반 이슈는 건드리지 않는다. 감사 기록(link event)은 보존되고 코멘트·activity log 가 1회씩 남는다(멱등).
+//   사람 입력 카드(operator decision) 정리의 범위 검증은 tool-failure-owner-action-closeout-decisions.test.ts.
 
-import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  activityLog,
-  agents,
-  companies,
-  createDb,
-  issueComments,
-  issues,
-  missions,
-  workflowDefinitions,
-  workflowRuns,
-  workflowStepRuns,
-  workflowTransitionEvents,
-} from "@paperclipai/db";
+import { activityLog, createDb, issues, workflowTransitionEvents } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import {
+  type Db, UNBLOCK, addDecision, addIssue, addToolFailureCard, closeoutRecords, decisionStatuses,
+  linkCard, readRun, runRef, seedRun, seedTenant, statuses,
+} from "./helpers/tool-failure-closeout-fixture.js";
 import { syncWorkflowRunState } from "../services/workflow/dag-engine.js";
 import { cancelWorkflowRunWithCleanup } from "../services/workflow/workflow-cancellation.js";
 import {
-  TOOL_FAILURE_OWNER_ACTION_SETTLED_ACTION,
+  TOOL_FAILURE_DECISION_CANCEL_ACTION,
   TOOL_RECOVERY_TARGET_EVENT_TYPE,
   classifyToolFailureOwnerActionCloseout,
   closeStaleToolFailureOwnerActions,
 } from "../services/workflow/tool-failure-owner-action-closeout.js";
-
-type Db = ReturnType<typeof createDb>;
-type Tenant = { companyId: string; ownerId: string; missionId: string };
-type Seed = Tenant & { runId: string; stepRunId: string; stepIssueId: string; sourceIssueId: string };
-
-const UNBLOCK = "mission_main_executor_unblock";
 
 describe("tool-failure owner action closeout verdict (pure)", () => {
   it("closes as done when the linked step completed, whatever the run status", () => {
@@ -70,88 +56,6 @@ describe("tool-failure owner action closeout verdict (pure)", () => {
 const support = await getEmbeddedPostgresTestSupport();
 const describeDb = support.supported ? describe : describe.skip;
 if (!support.supported) console.warn(`Skip tool-failure owner action closeout tests: ${support.reason ?? "unsupported"}`);
-
-async function seedTenant(db: Db, label: string): Promise<Tenant> {
-  const companyId = randomUUID();
-  const ownerId = randomUUID();
-  const missionId = randomUUID();
-  await db.insert(companies).values({
-    id: companyId, name: `${label} company`, issuePrefix: `TF${companyId.replaceAll("-", "").slice(0, 6).toUpperCase()}`,
-    requireBoardApprovalForNewAgents: false,
-  });
-  await db.insert(agents).values({
-    id: ownerId, companyId, name: `${label} owner`, role: "mission_owner", status: "active",
-    adapterType: "codex_local", adapterConfig: {}, runtimeConfig: {}, permissions: {},
-  });
-  await db.insert(missions).values({ id: missionId, companyId, ownerAgentId: ownerId, title: `${label} mission`, status: "active" });
-  return { companyId, ownerId, missionId };
-}
-
-async function addIssue(db: Db, tenant: Tenant, title: string, status: string, extra: Partial<typeof issues.$inferInsert> = {}) {
-  const [row] = await db.insert(issues).values({
-    companyId: tenant.companyId, missionId: tenant.missionId, title, status, assigneeAgentId: tenant.ownerId,
-    ...(status === "done" ? { completedAt: new Date() } : {}),
-    ...(status === "cancelled" ? { cancelledAt: new Date() } : {}),
-    ...extra,
-  }).returning({ id: issues.id });
-  return row!.id;
-}
-
-async function addToolFailureCard(db: Db, tenant: Tenant, sourceIssueId: string, status = "todo", extra: Partial<typeof issues.$inferInsert> = {}) {
-  return addIssue(db, tenant, "[Owner Action] Tool step failed: step-0", status, {
-    originKind: UNBLOCK, originId: sourceIssueId, parentId: sourceIssueId, priority: "high", ...extra,
-  });
-}
-
-async function linkCard(db: Db, tenant: Tenant, runId: string, stepRunId: string | null, cardId: string) {
-  await db.insert(workflowTransitionEvents).values({
-    companyId: tenant.companyId, missionId: tenant.missionId, issueId: cardId,
-    workflowRunId: runId, workflowStepRunId: stepRunId, layer: "mission_owner_recovery",
-    eventType: TOOL_RECOVERY_TARGET_EVENT_TYPE, idempotencyKey: `owner-tool-card-test:${randomUUID()}`,
-    payload: { schemaVersion: 1, kind: "tool_step", workflowRunId: runId, stepRunId },
-  });
-}
-
-async function seedRun(db: Db, tenant: Tenant, stepStatus: string, issueStatus: string, runStatus = "running"): Promise<Seed> {
-  const sourceIssueId = await addIssue(db, tenant, "oversight", "in_progress", { originKind: "mission_main_executor_oversight" });
-  const stepIssueId = await addIssue(db, tenant, "tool step issue", issueStatus);
-  const workflowId = randomUUID(), runId = randomUUID();
-  await db.insert(workflowDefinitions).values({
-    id: workflowId, companyId: tenant.companyId, name: `closeout-${runId}`,
-    stepsJson: [{ id: "step-0", name: "Step 0", type: "agent", agentId: tenant.ownerId, dependencies: [] }],
-  });
-  await db.insert(workflowRuns).values({
-    id: runId, workflowId, companyId: tenant.companyId, missionId: tenant.missionId, status: runStatus,
-    triggeredBy: "test", startedAt: new Date(),
-  });
-  const [stepRun] = await db.insert(workflowStepRuns).values({
-    workflowRunId: runId, stepId: "step-0", issueId: stepIssueId, status: stepStatus,
-    startedAt: stepStatus === "pending" ? null : new Date(),
-    completedAt: ["completed", "failed"].includes(stepStatus) ? new Date() : null,
-  }).returning({ id: workflowStepRuns.id });
-  return { ...tenant, runId, stepRunId: stepRun!.id, stepIssueId, sourceIssueId };
-}
-
-async function readRun(db: Db, runId: string) {
-  return (await db.select({ status: workflowRuns.status }).from(workflowRuns).where(eq(workflowRuns.id, runId)))[0]!;
-}
-
-function runRef(seed: Seed, status: string) {
-  return { id: seed.runId, status, companyId: seed.companyId, missionId: seed.missionId };
-}
-
-async function statuses(db: Db, ids: string[]) {
-  const rows = await db.select({ id: issues.id, status: issues.status }).from(issues).where(inArray(issues.id, ids));
-  return new Map(rows.map((row) => [row.id, row.status]));
-}
-
-async function closeoutRecords(db: Db, companyId: string, issueIds: string[]) {
-  const comments = await db.select().from(issueComments).where(inArray(issueComments.issueId, issueIds));
-  const activities = await db.select().from(activityLog).where(and(
-    eq(activityLog.companyId, companyId), eq(activityLog.action, TOOL_FAILURE_OWNER_ACTION_SETTLED_ACTION),
-  ));
-  return { comments, activities };
-}
 
 describeDb("tool-failure owner action closeout", () => {
   let db: Db;
@@ -196,22 +100,33 @@ describeDb("tool-failure owner action closeout", () => {
     expect(second.activities).toHaveLength(1);
   });
 
-  it("cancels the card when the run is cancelled and keeps it when the run fails with the step unresolved", async () => {
+  it("cancels the card and its anchored pending decision when the run is cancelled; keeps both when the run fails", async () => {
     const cancelled = await seedRun(db, await seedTenant(db, "cancelled"), "failed", "in_progress");
     const cancelledCard = await addToolFailureCard(db, cancelled, cancelled.sourceIssueId, "blocked");
     await linkCard(db, cancelled, cancelled.runId, cancelled.stepRunId, cancelledCard);
+    const cancelledDecision = await addDecision(db, cancelled, cancelledCard);
     const failed = await seedRun(db, await seedTenant(db, "failed"), "failed", "cancelled");
     const failedCard = await addToolFailureCard(db, failed, failed.sourceIssueId);
     await linkCard(db, failed, failed.runId, failed.stepRunId, failedCard);
+    const failedDecision = await addDecision(db, failed, failedCard);
 
     expect(await cancelWorkflowRunWithCleanup(db, cancelled.runId, cancelled.companyId)).toBe(true);
     expect((await readRun(db, cancelled.runId)).status).toBe("cancelled");
     expect((await syncWorkflowRunState(db, failed.runId)).status).toBe("failed");
     expect((await statuses(db, [cancelledCard, failedCard])).get(cancelledCard)).toBe("cancelled");
     expect((await statuses(db, [cancelledCard, failedCard])).get(failedCard)).toBe("todo");
+    const decisions = await decisionStatuses(db, [cancelledDecision.id, failedDecision.id]);
+    expect(decisions.get(cancelledDecision.id)).toMatchObject({ status: "cancelled" });
+    expect(decisions.get(cancelledDecision.id)!.cancelledAt).toBeInstanceOf(Date);
+    expect(decisions.get(failedDecision.id)).toMatchObject({ status: "pending", cancelledAt: null });
 
     const records = await closeoutRecords(db, cancelled.companyId, [cancelledCard]);
     expect(records.activities.map((activity) => activity.details?.reason)).toEqual(["run_cancelled"]);
+    const cancels = await db.select().from(activityLog).where(and(
+      eq(activityLog.companyId, cancelled.companyId), eq(activityLog.action, TOOL_FAILURE_DECISION_CANCEL_ACTION)));
+    expect(cancels).toHaveLength(1);
+    expect(cancels[0]).toMatchObject({ entityId: cancelledDecision.id, actorId: "system:tool-failure-owner-action-closeout" });
+    expect(cancels[0]!.details).toMatchObject({ operatorDecisionId: cancelledDecision.id, issueId: cancelledCard, missionId: cancelled.missionId });
   });
 
   it("closes as done when the run completed even if the step was skipped", async () => {
@@ -264,13 +179,13 @@ describeDb("tool-failure owner action closeout", () => {
 
     expect(await closeStaleToolFailureOwnerActions({
       db, run: { ...runRef(seed, "completed"), missionId: null }, stepRuns: [],
-    })).toEqual({ closed: [] });
+    })).toEqual({ closed: [], cancelledDecisions: [] });
     expect(await closeStaleToolFailureOwnerActions({
       db, run: runRef(seed, "running"), stepRuns: [{ id: seed.stepRunId, workflowRunId: seed.runId, status: "failed" }],
-    })).toEqual({ closed: [] });
+    })).toEqual({ closed: [], cancelledDecisions: [] });
     expect(await closeStaleToolFailureOwnerActions({
       db, run: runRef(seed, "failed"), stepRuns: [{ id: seed.stepRunId, workflowRunId: seed.runId, status: "failed" }],
-    })).toEqual({ closed: [] });
+    })).toEqual({ closed: [], cancelledDecisions: [] });
     expect((await statuses(db, [cardId])).get(cardId)).toBe("todo");
   });
 });
