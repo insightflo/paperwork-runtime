@@ -18,15 +18,15 @@ const PILL = "inline-flex items-center rounded-full border px-2 py-0.5 text-[11p
 const MAX_ROWS = 8;
 
 const DECISION_STYLE: Record<HarnessLedgerEntry["decision"], string> = {
-  approved: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  rejected: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
-  deferred: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  approved: "border-lime-500/30 bg-lime-500/10 text-lime-700 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/10 dark:text-[#a3e635]",
+  rejected: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-rose-400/35 dark:bg-rose-500/10 dark:text-rose-300",
+  deferred: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]",
 };
 
 const VERDICT_STYLE = {
-  winner: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  rejected: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
-  pending: "border-border bg-muted/40 text-muted-foreground",
+  winner: "border-lime-500/30 bg-lime-500/10 text-lime-700 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/10 dark:text-[#a3e635]",
+  rejected: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-rose-400/35 dark:bg-rose-500/10 dark:text-rose-300",
+  pending: "border-slate-200/80 bg-slate-100/80 text-slate-600 dark:border-white/[0.07] dark:bg-[#07090d] dark:text-[#8b97ad]",
 } as const;
 
 type VerdictLabel = keyof typeof VERDICT_STYLE;
@@ -64,12 +64,12 @@ export function HarnessLedgerHistory({
             return (
               <li
                 key={entry.id}
-                className="flex flex-wrap items-center gap-1.5 rounded-md border border-border/60 bg-muted/20 px-2.5 py-1.5"
+                className="flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200/80 bg-slate-50/75 px-2.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
               >
                 <span className={cn(PILL, "font-medium", DECISION_STYLE[entry.decision])}>
                   {entry.decision}
                 </span>
-                <span className={cn(PILL, "border-border bg-background font-mono text-muted-foreground")}>
+                <span className={cn(PILL, "border-slate-200/80 bg-white font-mono text-muted-foreground dark:border-white/[0.07] dark:bg-[#0e131d]")}>
                   {entry.component.replace(/_/g, " ")}
                 </span>
                 <span className="text-[11px] font-mono text-muted-foreground">{`R${entry.round}`}</span>
@@ -86,7 +86,7 @@ export function HarnessLedgerHistory({
                     type="button"
                     disabled={evaluatingId === entry.id}
                     onClick={() => onEvaluate(entry.id)}
-                    className="ml-auto rounded border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-50"
+                    className="ml-auto rounded border border-blue-500/35 bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-700 hover:bg-blue-500/15 disabled:opacity-50 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa] dark:hover:bg-[#60a5fa]/15"
                   >
                     Evaluate
                   </button>

@@ -38,14 +38,14 @@ export interface HarnessProposalsCardProps {
 }
 
 const SEVERITY_STYLE: Record<HarnessProposal["severity"], string> = {
-  high: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
-  medium: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  low: "border-border bg-muted/40 text-muted-foreground",
+  high: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-rose-400/35 dark:bg-rose-500/10 dark:text-rose-300",
+  medium: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]",
+  low: "border-slate-200/80 bg-slate-100/80 text-slate-600 dark:border-white/[0.07] dark:bg-[#07090d] dark:text-[#8b97ad]",
 };
 
 const CRITIC_GATE_STYLE = {
-  pass: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  flagged: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+  pass: "border-lime-500/30 bg-lime-500/10 text-lime-700 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/10 dark:text-[#a3e635]",
+  flagged: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-rose-400/35 dark:bg-rose-500/10 dark:text-rose-300",
 } as const;
 
 const PILL = "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]";
@@ -55,12 +55,12 @@ function ProposalRow({ item, onDecide }: { item: HarnessProposal; onDecide?: Dec
   const [overrideReason, setOverrideReason] = useState("");
   const approveBlocked = flagged && overrideReason.trim().length < 10;
   return (
-    <li className="space-y-1 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+    <li className="space-y-1 rounded-lg border border-slate-200/80 bg-slate-50/75 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
       <div className="flex flex-wrap items-center gap-1.5">
         <span className={cn(PILL, "font-medium", SEVERITY_STYLE[item.severity])}>
           {item.severity}
         </span>
-        <span className={cn(PILL, "border-border bg-background font-mono text-muted-foreground")}>
+        <span className={cn(PILL, "border-slate-200/80 bg-white font-mono text-muted-foreground dark:border-white/[0.07] dark:bg-[#0e131d]")}>
           {item.component.replace(/_/g, " ")}
         </span>
         <span className={cn(PILL, "font-medium", flagged ? CRITIC_GATE_STYLE.flagged : CRITIC_GATE_STYLE.pass)}>
@@ -88,14 +88,14 @@ function ProposalRow({ item, onDecide }: { item: HarnessProposal; onDecide?: Dec
             type="button"
             disabled={approveBlocked}
             onClick={() => onDecide(item, "approved", overrideReason.trim() || undefined)}
-            className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-300"
+            className="rounded border border-lime-500/40 bg-lime-500/10 px-2 py-0.5 text-[11px] font-medium text-lime-700 hover:bg-lime-500/20 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#a3e635]/40 dark:bg-[#a3e635]/10 dark:text-[#a3e635] dark:hover:bg-[#a3e635]/15"
           >
             Approve (Record)
           </button>
           <button
             type="button"
             onClick={() => onDecide(item, "rejected")}
-            className="rounded border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-700 hover:bg-rose-500/20 dark:text-rose-300"
+            className="rounded border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-[11px] font-medium text-rose-700 hover:bg-rose-500/20 dark:border-rose-400/40 dark:text-rose-300"
           >
             Reject
           </button>
@@ -106,7 +106,7 @@ function ProposalRow({ item, onDecide }: { item: HarnessProposal; onDecide?: Dec
               onChange={(e) => setOverrideReason(e.target.value)}
               placeholder="Override reason (min 10 chars)..."
               aria-label="Override reason"
-              className="min-w-0 flex-1 rounded border border-border bg-background px-2 py-0.5 text-[11px] text-foreground placeholder:text-muted-foreground"
+              className="min-w-0 flex-1 rounded border border-slate-200/90 bg-white px-2 py-0.5 text-[11px] text-foreground placeholder:text-muted-foreground dark:border-white/[0.09] dark:bg-[#0e131d] dark:text-[#edf2fb] dark:placeholder:text-[#627089]"
             />
           )}
         </div>
@@ -136,26 +136,26 @@ function HarnessProposalsView({
   const visible = hideFlagged ? proposals.filter((p) => p.critic.pass) : proposals;
 
   return (
-    <section aria-label="Harness proposals" className="space-y-3 rounded-lg border bg-card p-4 shadow-sm">
+    <section aria-label="Harness proposals" className="space-y-3 tactile-card dark:bg-[#0e131d] dark:[background-image:none] p-4 tabular-nums">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <ClipboardList className="h-4 w-4 text-muted-foreground" />
+          <ClipboardList className="h-4 w-4 text-blue-600 dark:text-[#60a5fa]" />
           <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Harness Proposals
           </h3>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
           {result && (
-            <span className={cn(PILL, "border-border bg-background font-mono text-muted-foreground")}>
+            <span className={cn(PILL, "border-blue-500/30 bg-blue-500/10 font-mono text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa]")}>
               {`Round ${result.round}/${result.totalRounds} · Budget ${result.budget}`}
             </span>
           )}
           {result?.stallFlag && (
-            <span className={cn(PILL, "font-medium border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300")}>
+            <span className={cn(PILL, "font-medium border-amber-500/30 bg-amber-500/10 text-amber-700 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]")}>
               Stalled
             </span>
           )}
-          <span className={cn(PILL, "font-medium border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300")}>
+          <span className={cn(PILL, "font-medium border-lime-500/30 bg-lime-500/10 text-lime-700 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/10 dark:text-[#a3e635]")}>
             Approval Required (No Auto-Apply)
           </span>
         </div>
@@ -174,7 +174,7 @@ function HarnessProposalsView({
           <label className="flex w-fit items-center gap-1.5 text-[11px] text-muted-foreground">
             <input
               type="checkbox"
-              className="h-3 w-3"
+              className="h-3 w-3 accent-lime-500 dark:accent-[#a3e635]"
               checked={hideFlagged}
               onChange={(e) => setHideFlagged(e.target.checked)}
             />
@@ -182,7 +182,7 @@ function HarnessProposalsView({
           </label>
           {visible.length === 0 ? (
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              <CheckCircle2 className="h-3.5 w-3.5 text-lime-600 dark:text-[#a3e635]" />
               {proposals.length === 0
                 ? "No proposals generated for this round."
                 : "All proposals hidden by the critic filter."}

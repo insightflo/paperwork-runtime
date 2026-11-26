@@ -21,9 +21,9 @@ export interface HarnessDiagnosisCardProps {
 }
 
 const SEVERITY_STYLE: Record<HarnessBottleneck["severity"], string> = {
-  high: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
-  medium: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  low: "border-border bg-muted/40 text-muted-foreground",
+  high: "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-rose-400/35 dark:bg-rose-500/10 dark:text-rose-300",
+  medium: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]",
+  low: "border-slate-200/80 bg-slate-100/80 text-slate-600 dark:border-white/[0.07] dark:bg-[#07090d] dark:text-[#8b97ad]",
 };
 
 function formatDurationMs(ms: number): string {
@@ -41,7 +41,7 @@ function formatRate(rate: number): string {
 
 function BottleneckRow({ item }: { item: HarnessBottleneck }) {
   return (
-    <li className="space-y-1 rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+    <li className="space-y-1 rounded-lg border border-slate-200/80 bg-slate-50/75 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
       <div className="flex flex-wrap items-center gap-1.5">
         <span
           className={cn(
@@ -51,7 +51,7 @@ function BottleneckRow({ item }: { item: HarnessBottleneck }) {
         >
           {item.severity}
         </span>
-        <span className="inline-flex items-center rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-mono text-muted-foreground">
+        <span className="inline-flex items-center rounded-full border border-slate-200/80 bg-white px-2 py-0.5 text-[11px] font-mono text-muted-foreground dark:border-white/[0.07] dark:bg-[#0e131d]">
           {item.component.replace(/_/g, " ")}
         </span>
         <span className="text-[11px] font-mono text-muted-foreground">{item.metric}</span>
@@ -89,10 +89,10 @@ function HarnessDiagnosisView({ windowHours, data, isLoading, error }: ViewProps
     : [];
 
   return (
-    <section aria-label="Harness diagnosis" className="space-y-3 rounded-lg border bg-card p-4 shadow-sm">
+    <section aria-label="Harness diagnosis" className="space-y-3 tactile-card dark:bg-[#0e131d] dark:[background-image:none] p-4 tabular-nums">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <Activity className="h-4 w-4 text-muted-foreground" />
+          <Activity className="h-4 w-4 text-blue-600 dark:text-[#60a5fa]" />
           <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Harness Diagnosis
           </h3>
@@ -113,7 +113,7 @@ function HarnessDiagnosisView({ windowHours, data, isLoading, error }: ViewProps
           <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
             {metrics.map((m) => (
               <div key={m.label} className="min-w-0">
-                <p className="truncate text-sm font-semibold tabular-nums">{m.value}</p>
+                <p className="truncate text-sm font-semibold tabular-nums text-slate-950 dark:text-[#edf2fb]">{m.value}</p>
                 <p className="text-[11px] text-muted-foreground">{m.label}</p>
               </div>
             ))}
@@ -121,7 +121,7 @@ function HarnessDiagnosisView({ windowHours, data, isLoading, error }: ViewProps
 
           {bottlenecks.length === 0 ? (
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              <CheckCircle2 className="h-3.5 w-3.5 text-lime-600 dark:text-[#a3e635]" />
               No bottlenecks detected in this window.
             </p>
           ) : (
