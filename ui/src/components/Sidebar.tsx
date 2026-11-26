@@ -50,7 +50,8 @@ interface SidebarProps {
 
 /** Creation actions: icon tiles in the mini bar, otherwise one compact "+ Work | + Mission" row instead of two stacked buttons. */
 const CREATE_TILE = "mx-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground";
-const CREATE_BAR = "mb-0.5 grid grid-cols-2 overflow-hidden rounded-[9px] border bg-card dark:border-[#242d3f] dark:bg-[#111622]";
+const CREATE_BAR =
+  "mb-0.5 grid grid-cols-2 overflow-hidden rounded-[9px] border border-border/80 bg-card shadow-xs dark:border-[var(--pw-hairline)] dark:bg-[#0d1118] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]";
 const CREATE_SEGMENT = "flex h-7 items-center justify-center gap-1 text-xs font-semibold text-foreground transition-colors hover:bg-accent/60";
 
 export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact }: SidebarProps) {
@@ -125,9 +126,9 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
 
   return (
     <aside className="w-full h-full min-h-0 border-r border-sidebar-border bg-sidebar flex flex-col">
-      {/* Top bar: Company name (bold) + Search + Compact mini-bar toggle */}
+      {/* Top bar: Company name (bold) + live pulse chip + Search + Compact mini-bar toggle */}
       {compact ? (
-        <div className="flex items-center justify-center gap-1 px-2 h-12 shrink-0">
+        <div className="flex items-center justify-center gap-1 px-2 h-12 shrink-0 border-b border-sidebar-border">
           {selectedCompany?.brandColor && (
             <div
               className="w-3 h-3 rounded-sm shrink-0"
@@ -157,16 +158,25 @@ export function Sidebar({ onOpenHermes, hermesPanelOpen = false, onToggleCompact
           </Button>
         </div>
       ) : (
-        <div className="flex items-center gap-1 px-3 h-12 shrink-0">
+        <div className="flex items-center gap-1.5 px-3 h-12 shrink-0 border-b border-sidebar-border">
           {selectedCompany?.brandColor && (
             <div
-              className="w-4 h-4 rounded-sm shrink-0 ml-1"
+              className="w-3.5 h-3.5 rounded-[4px] shrink-0 ring-1 ring-black/10 dark:ring-white/15"
               style={{ backgroundColor: selectedCompany.brandColor }}
             />
           )}
-          <span className="flex-1 text-sm font-bold text-foreground truncate pl-1">
+          <span className="flex-1 text-[13px] font-semibold tracking-[-0.01em] text-foreground truncate">
             {selectedCompany?.name ?? "Select company"}
           </span>
+          {liveRunCount > 0 && (
+            <span
+              title={`${liveRunCount} live run${liveRunCount === 1 ? "" : "s"}`}
+              className="inline-flex items-center gap-1.5 rounded-full border border-[#65a30d]/30 bg-[#65a30d]/10 px-2 py-0.5 font-mono text-[10px] font-semibold tabular-nums text-[#4d7c0f] dark:border-[#a3e635]/30 dark:bg-[#a3e635]/14 dark:text-[#a3e635] shrink-0"
+            >
+              <span className="pw-live-dot" />
+              {liveRunCount}
+            </span>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"
