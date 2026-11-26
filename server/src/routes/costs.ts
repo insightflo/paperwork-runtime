@@ -18,7 +18,7 @@ import {
   logActivity,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
-import { fetchAllQuotaWindows } from "../services/quota-windows.js";
+import { createQuotaWindowsCache, parseForceRefresh } from "../services/quota-windows-cache.js";
 import { badRequest } from "../errors.js";
 
 export function costRoutes(db: Db) {
@@ -32,6 +32,8 @@ export function costRoutes(db: Db) {
   const budgets = budgetService(db, budgetHooks);
   const companies = companyService(db);
   const agents = agentService(db);
+  // Slow upstream quota poll (10s+) behind a 60s UI poll → per-company single-flight SWR cache.
+  const quotaWindows = createQuotaWindowsCache();
 
   router.post("/companies/:companyId/cost-events", validate(createCostEventSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -216,7 +218,9 @@ export function costRoutes(db: Db) {
       res.status(404).json({ error: "Company not found" });
       return;
     }
-    const results = await fetchAllQuotaWindows();
+    const results = await quotaWindows.get(companyId, {
+      forceRefresh: parseForceRefresh(req.query.refresh ?? req.query.forceRefresh),
+    });
     res.json(results);
   });
 
