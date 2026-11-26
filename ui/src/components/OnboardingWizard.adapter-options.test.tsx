@@ -22,6 +22,10 @@ const newAgentSource = readFileSync(
   new URL("../pages/NewAgent.tsx", import.meta.url),
   "utf8",
 );
+const newAgentDialogSource = readFileSync(
+  new URL("./NewAgentDialog.tsx", import.meta.url),
+  "utf8",
+);
 
 const DELETED_ADAPTERS = [
   "cursor",
@@ -103,5 +107,11 @@ describe("NewAgent submission", () => {
     expect(newAgentSource).toContain(
       "adapterType: configValues.adapterType",
     );
+  });
+});
+
+describe("NewAgentDialog adapter options", () => {
+  it("contains no openclaw_gateway option", () => {
+    expect(newAgentDialogSource).not.toContain(quoted("openclaw_gateway"));
   });
 });
