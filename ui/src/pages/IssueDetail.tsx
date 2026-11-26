@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "@/lib/router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { issuesApi } from "../api/issues";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { ACTIVE_ISSUE_STATUS_FILTER, issuesApi } from "../api/issues";
 import { activityApi } from "../api/activity";
 import { heartbeatsApi } from "../api/heartbeats";
 import { agentsApi } from "../api/agents";
@@ -287,10 +287,13 @@ export function IssueDetail() {
     return (linkedRuns ?? []).filter((r) => !liveIds.has(r.runId));
   }, [linkedRuns, liveRuns, activeRun]);
 
-  const { data: allIssues } = useQuery({
-    queryKey: queryKeys.issues.list(selectedCompanyId!),
-    queryFn: () => issuesApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
+  // Only the Sub-items tab reads this list, so active rows load lazily when that tab opens
+  // instead of pulling the full company issue list on every detail page open.
+  const { data: allIssues, error: allIssuesError } = useQuery({
+    queryKey: queryKeys.issues.list(selectedCompanyId!, { status: ACTIVE_ISSUE_STATUS_FILTER }),
+    queryFn: () => issuesApi.list(selectedCompanyId!, { status: ACTIVE_ISSUE_STATUS_FILTER }),
+    enabled: !!selectedCompanyId && detailTab === "subissues",
+    placeholderData: keepPreviousData,
   });
 
   const { data: agents } = useQuery({
@@ -448,6 +451,7 @@ export function IssueDetail() {
     queryClient.invalidateQueries({ queryKey: queryKeys.issues.activeRun(issueId!) });
     if (selectedCompanyId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId, { status: ACTIVE_ISSUE_STATUS_FILTER }) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.listTouchedByMe(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.listUnreadTouchedByMe(selectedCompanyId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId) });
@@ -973,7 +977,11 @@ export function IssueDetail() {
         </TabsContent>
 
         <TabsContent value="subissues">
-          {childIssues.length === 0 ? (
+          {allIssuesError ? (
+            <p className="text-xs text-destructive">{allIssuesError.message}</p>
+          ) : !allIssues ? (
+            <p className="text-xs text-muted-foreground">Loading sub-items…</p>
+          ) : childIssues.length === 0 ? (
             <p className="text-xs text-muted-foreground">No sub-items.</p>
           ) : (
             <div className="overflow-hidden rounded-md border border-border/80 bg-card/60 divide-y divide-border/60">
