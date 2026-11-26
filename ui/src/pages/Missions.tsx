@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "@/lib/router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   missionsApi,
   type MissionListFilters,
+  type MissionListItem,
   type MissionStatus,
   type MissionWorkflowRun,
   type MissionWorkflowStep,
@@ -19,12 +20,35 @@ import { queryKeys } from "../lib/queryKeys";
 import { formatCents } from "../lib/utils";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
+import { CompactPagination } from "../components/CompactPagination";
+import {
+  BUCKET_LABELS,
+  MissionFleetRadar,
+  formatMissionShortKey,
+  getMissionRadarBucket,
+  getMissionWorkflowTag,
+  matchesMissionRadarFilters,
+  sortMissionsByAttentionPriority,
+  type MissionRadarBucket,
+  type RadarStatusBucket,
+} from "../components/missions/MissionFleetRadar";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { INSPECTOR_TOGGLE_EVENT } from "../components/PropertiesPanel";
 import { normalizeQueueItems, queueItemLabel } from "../components/QueuePanel";
 import {
-  Inbox, MessageSquare, PanelRightOpen, Plus, RefreshCw, Rocket, ShieldCheck, UserRoundCheck, X,
+  AlertTriangle,
+  Inbox,
+  MessageSquare,
+  PanelRightOpen,
+  Pause,
+  Play,
+  Plus,
+  RefreshCw,
+  Rocket,
+  ShieldCheck,
+  UserRoundCheck,
+  X,
 } from "lucide-react";
 
 const STATUS_TABS: { label: string; value: MissionStatus | "all" }[] = [
@@ -44,18 +68,36 @@ const SORT_OPTIONS = [
   { value: "status:asc", label: "Status" },
 ] as const;
 
-// Dark control-cockpit palette (mirrors the approved Linear+Datadog mockup).
 const DOT = {
-  emerald: "bg-[#34d399]", cobalt: "bg-[#5f8dff]", amber: "bg-[#fbbf24]",
-  crimson: "bg-[#f87171]", muted: "bg-[#4a5670]",
+  emerald: "bg-[#34d399]",
+  lime: "bg-[#a3e635]",
+  cobalt: "bg-[#5f8dff]",
+  amber: "bg-[#fbbf24]",
+  crimson: "bg-[#f87171]",
+  muted: "bg-[#4a5670]",
 } as const;
-const STEP_DOT: Record<MissionWorkflowStep["status"], string> = {
-  completed: DOT.emerald, running: DOT.cobalt, failed: DOT.crimson, skipped: DOT.muted, pending: DOT.muted,
+
+const BUCKET_DOT_CLASS: Record<MissionRadarBucket, string> = {
+  need: "bg-[#f43f5e] shadow-[0_0_8px_rgba(244,63,94,0.85)] animate-pulse",
+  run: "bg-[#a3e635] shadow-[0_0_8px_rgba(163,230,53,0.8)] animate-pulse",
+  wait: "bg-[#f59e0b] shadow-[0_0_6px_rgba(245,158,11,0.65)]",
+  done: "bg-[#60a5fa]/70",
 };
+
+const STEP_DOT: Record<MissionWorkflowStep["status"], string> = {
+  completed: "bg-[#a3e635] dark:shadow-[0_0_5px_rgba(163,230,53,0.55)]",
+  running: "bg-[#60a5fa] animate-pulse dark:shadow-[0_0_7px_rgba(96,165,250,0.8)]",
+  failed: "bg-[#f43f5e] animate-pulse dark:shadow-[0_0_7px_rgba(244,63,94,0.8)]",
+  skipped: "bg-muted-foreground/40",
+  pending: "bg-muted-foreground/30",
+};
+
 const CONTROL_CLASS =
-  "h-7 rounded-md border border-[#242d3f] bg-[#0b0e14] px-2 text-xs text-[#e6edf7] outline-none focus:border-[#5f8dff]";
+  "h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-[#5f8dff] dark:border-[#242d3f] dark:bg-[#0b0e14] dark:text-[#e6edf7]";
+
 const ROW_GRID =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 sm:grid-cols-[minmax(0,1fr)_auto_8rem_10rem]";
+  "grid grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-x-2.5 sm:grid-cols-[10px_minmax(0,1fr)_5.5rem_7.5rem_7.75rem]";
+
 const PILL_CLASS =
   "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium no-underline transition-colors hover:brightness-110";
 const PILL_STYLE = {
@@ -72,7 +114,23 @@ const QUICK_LINKS = [
 function formatDateTime(date: Date | string | null | undefined): string {
   if (!date) return "—";
   return new Intl.DateTimeFormat("en-US", {
-    month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(date));
+}
+
+function formatCompactTime(date: Date | string | null | undefined): string {
+  if (!date) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
   }).format(new Date(date));
 }
 
@@ -103,7 +161,7 @@ function pickPreviewRun(runs: MissionWorkflowRun[] | undefined): MissionWorkflow
   return latest.find((run) => run.status === "running" || run.status === "pending") ?? latest[0];
 }
 
-/** `j`/`k` step over the visible rows; clamps at both ends and enters from the first/last row. */
+/** Step over visible rows; clamps at both ends and enters from the first/last row. */
 function stepSelection(ids: string[], current: string | null, delta: 1 | -1): string | null {
   if (ids.length === 0) return null;
   const index = current ? ids.indexOf(current) : -1;
@@ -116,25 +174,106 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return Boolean(element && (element.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(element.tagName)));
 }
 
-function count(noun: string, count: number): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+function count(noun: string, value: number): string {
+  return `${value} ${noun}${value === 1 ? "" : "s"}`;
 }
 
 function KpiCell(props: { to: string; label: string; value: string; sub: string; dot: string }) {
   return (
-    <Link to={props.to} className="flex min-w-0 flex-col gap-0.5 px-3 py-2 no-underline text-inherit transition-colors hover:bg-[#151b28]">
+    <Link
+      to={props.to}
+      className="flex min-w-0 flex-col gap-0.5 px-3 py-2 no-underline text-inherit transition-colors hover:bg-[#151b28]"
+    >
       <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-[#8b97ad]">
         <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${props.dot}`} />
         <span className="truncate">{props.label}</span>
       </span>
-      <span className="truncate text-xl font-semibold leading-tight tabular-nums text-[#e6edf7]">{props.value}</span>
+      <span className="truncate text-xl font-semibold leading-tight tabular-nums text-[#e6edf7]">
+        {props.value}
+      </span>
       <span className="truncate text-[11px] tabular-nums text-[#8b97ad]">{props.sub}</span>
     </Link>
   );
 }
 
 function ToolbarField({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="flex shrink-0 items-center gap-1.5 text-xs text-[#8b97ad]"><span>{label}</span>{children}</label>;
+  return (
+    <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground dark:text-[#8b97ad]">
+      <span>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+/** Compact step-progress dots (●●●◐○○) for scannable 44px rows. */
+function RowStepDots({
+  bucket,
+  status,
+  steps,
+}: {
+  bucket: MissionRadarBucket;
+  status: MissionStatus;
+  steps?: MissionWorkflowStep[];
+}) {
+  if (steps && steps.length > 0) {
+    const completed = steps.filter((s) => s.status === "completed").length;
+    return (
+      <span
+        className="hidden items-center gap-1 sm:inline-flex"
+        title={`${completed}/${steps.length} steps`}
+        data-step-dots
+      >
+        <span className="inline-flex items-center gap-0.5">
+          {steps.slice(0, 6).map((s) => (
+            <span
+              key={s.stepId}
+              aria-hidden
+              className={`h-1.5 w-1.5 rounded-full ${STEP_DOT[s.status]}`}
+            />
+          ))}
+        </span>
+        <span className="font-mono text-[10px] font-bold text-muted-foreground tabular-nums">
+          {completed}/{steps.length}
+        </span>
+      </span>
+    );
+  }
+
+  // Status-derived compact 5-dot progress gauge when per-row workflow runs are not yet expanded.
+  const dotStates: Array<"done" | "active" | "need" | "wait" | "idle"> =
+    status === "completed"
+      ? ["done", "done", "done", "done", "done"]
+      : status === "cancelled"
+        ? ["idle", "idle", "idle", "idle", "idle"]
+        : bucket === "need"
+          ? ["done", "done", "need", "idle", "idle"]
+          : status === "active"
+            ? ["done", "done", "active", "idle", "idle"]
+            : status === "paused"
+              ? ["done", "wait", "idle", "idle", "idle"]
+              : ["wait", "idle", "idle", "idle", "idle"];
+
+  const cls = {
+    done: "bg-[#a3e635]",
+    active: "bg-[#a3e635] animate-pulse shadow-[0_0_6px_rgba(163,230,53,0.7)]",
+    need: "bg-[#f43f5e] animate-pulse shadow-[0_0_6px_rgba(244,63,94,0.8)]",
+    wait: "bg-[#f59e0b]",
+    idle: "bg-muted-foreground/25 dark:bg-white/[0.12]",
+  };
+
+  return (
+    <span
+      className="hidden items-center gap-1 sm:inline-flex"
+      title={BUCKET_LABELS[bucket]}
+      data-step-dots
+    >
+      <span className="inline-flex items-center gap-0.5">
+        {dotStates.map((state, idx) => (
+          <span key={idx} aria-hidden className={`h-1.5 w-1.5 rounded-full ${cls[state]}`} />
+        ))}
+      </span>
+    </span>
+  );
 }
 
 export function Missions() {
@@ -143,8 +282,17 @@ export function Missions() {
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Permanent Live Inspector by default (Combo 4 58/42 Split View); toggleable via toolbar.
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [radarStatus, setRadarStatus] = useState<RadarStatusBucket>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [workflowFilter, setWorkflowFilter] = useState("all");
+  const [localPage, setLocalPage] = useState(1);
+  const [mutatingMissionId, setMutatingMissionId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const statusFilter = (searchParams.get("status") as MissionStatus | null) ?? "all";
   const ownerAgentId = searchParams.get("ownerAgentId") ?? "all";
@@ -174,7 +322,11 @@ export function Missions() {
   );
 
   const {
-    data: missions, isLoading, isFetching: isMissionsFetching, error, refetch: refetchMissions,
+    data: missions,
+    isLoading,
+    isFetching: isMissionsFetching,
+    error,
+    refetch: refetchMissions,
   } = useQuery({
     queryKey: queryKeys.missions.list(selectedCompanyId!, missionFilters),
     queryFn: () => missionsApi.list(selectedCompanyId!, missionFilters),
@@ -215,25 +367,121 @@ export function Missions() {
     retry: false,
   });
 
-  // Split-inspector preview: workflow runs of the selected mission only.
-  const selectedMission = useMemo(
-    () => missions?.find((mission) => mission.id === previewId) ?? null,
-    [missions, previewId],
+  const agentMap = useMemo(
+    () => (agents ? Object.fromEntries(agents.map((a) => [a.id, a.name])) : {}),
+    [agents],
   );
+  const queueItems = useMemo(() => normalizeQueueItems(queueRaw), [queueRaw]);
+  const pendingCards = useMemo(() => pending?.data ?? [], [pending]);
+
+  // Identify missions that need immediate operator attention from pending decisions.
+  const { attentionMissionIds, attentionReasons } = useMemo(() => {
+    const ids = new Set<string>();
+    const reasons = new Map<string, string>();
+    for (const card of pendingCards) {
+      const mId = card.sourceContext?.missionId ?? card.continuation?.missionId ?? null;
+      if (mId) {
+        ids.add(mId);
+        if (!reasons.has(mId)) {
+          reasons.set(mId, card.title);
+        }
+      }
+    }
+    return { attentionMissionIds: ids, attentionReasons: reasons };
+  }, [pendingCards]);
+
+  // Fleet-wide missions for live radar counts & status mosaic.
+  const fleetMissions = useMemo(
+    () => (allMissions && allMissions.length > 0 ? allMissions : (missions ?? [])),
+    [allMissions, missions],
+  );
+
+  const shortKeyById = useMemo(() => {
+    const map = new Map<string, string>();
+    fleetMissions.forEach((m, idx) => map.set(m.id, formatMissionShortKey(idx)));
+    (missions ?? []).forEach((m, idx) => {
+      if (!map.has(m.id)) map.set(m.id, formatMissionShortKey(idx));
+    });
+    return map;
+  }, [fleetMissions, missions]);
+
+  const hasClientRadarFilter =
+    radarStatus !== "all" || searchQuery.trim().length > 0 || workflowFilter !== "all";
+
+  // When a client-side radar filter/search is active, filter across the full fleet and paginate cleanly.
+  const filteredClientMissions = useMemo(() => {
+    const source = hasClientRadarFilter ? fleetMissions : (missions ?? []);
+    const matched = hasClientRadarFilter
+      ? source.filter((mission) =>
+          matchesMissionRadarFilters(
+            mission,
+            shortKeyById.get(mission.id) ?? "",
+            { radarStatus, searchQuery, workflowFilter },
+            attentionMissionIds,
+            agentMap,
+          ),
+        )
+      : source;
+    return sortMissionsByAttentionPriority(matched, attentionMissionIds);
+  }, [
+    hasClientRadarFilter,
+    fleetMissions,
+    missions,
+    shortKeyById,
+    radarStatus,
+    searchQuery,
+    workflowFilter,
+    attentionMissionIds,
+    agentMap,
+  ]);
+
+  const activePage = hasClientRadarFilter ? localPage : page;
+  const visibleMissions = useMemo(() => {
+    if (!hasClientRadarFilter) return filteredClientMissions;
+    const start = (localPage - 1) * pageSize;
+    return filteredClientMissions.slice(start, start + pageSize);
+  }, [hasClientRadarFilter, filteredClientMissions, localPage, pageSize]);
+
+  const hasNextPage = hasClientRadarFilter
+    ? localPage * pageSize < filteredClientMissions.length
+    : (missions?.length ?? 0) >= pageSize;
+
+  // Permanent Live Inspector selection: falls back to the top-priority visible mission for 0ms readiness.
+  const activeMissionId = useMemo(() => {
+    if (previewId) {
+      const existsInVisible = visibleMissions.some((m) => m.id === previewId);
+      const existsInFleet = fleetMissions.some((m) => m.id === previewId);
+      if (existsInVisible || existsInFleet) return previewId;
+    }
+    return visibleMissions[0]?.id ?? null;
+  }, [previewId, visibleMissions, fleetMissions]);
+
+  const selectedMission = useMemo(
+    () =>
+      visibleMissions.find((m) => m.id === activeMissionId) ??
+      fleetMissions.find((m) => m.id === activeMissionId) ??
+      null,
+    [visibleMissions, fleetMissions, activeMissionId],
+  );
+
   const { data: previewRuns, isLoading: previewLoading } = useQuery({
-    queryKey: queryKeys.missions.workflowRuns(previewId ?? ""),
-    queryFn: () => missionsApi.listWorkflowRuns(previewId!),
+    queryKey: queryKeys.missions.workflowRuns(selectedMission?.id ?? ""),
+    queryFn: () => missionsApi.listWorkflowRuns(selectedMission!.id),
     enabled: Boolean(selectedCompanyId) && inspectorOpen && Boolean(selectedMission),
   });
+  const { data: previewIssues } = useQuery({
+    queryKey: queryKeys.missions.issues(selectedMission?.id ?? ""),
+    queryFn: () => missionsApi.listIssues(selectedMission!.id),
+    enabled: Boolean(selectedCompanyId) && inspectorOpen && Boolean(selectedMission),
+  });
+
   const previewRun = useMemo(() => pickPreviewRun(previewRuns), [previewRuns]);
   const totalSteps = previewRun?.progress.totalSteps ?? 0;
   const completedSteps = previewRun?.progress.completedSteps ?? 0;
   const steps = previewRun?.steps ?? [];
   const progressPct = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+  const linkedIssues = Array.isArray(previewIssues) ? previewIssues : [];
 
-  const agentMap = agents ? Object.fromEntries(agents.map((a) => [a.id, a.name])) : {};
-  const hasPreviousPage = page > 1;
-  const hasNextPage = (missions?.length ?? 0) >= pageSize;
   const currentSortValue = `${sortBy}:${sortOrder}`;
   const refreshCurrentTab = () => {
     if (!selectedCompanyId) return;
@@ -253,33 +501,99 @@ export function Missions() {
         params.set(key, value);
       }
     }
-
     if (options?.resetPage) {
       params.delete("page");
     }
-
     setSearchParams(params);
   };
 
+  const handlePageChange = (nextPage: number) => {
+    const safePage = Math.max(1, nextPage);
+    if (hasClientRadarFilter) {
+      setLocalPage(safePage);
+    } else {
+      updateSearchParams({ page: String(safePage) });
+    }
+  };
+
   const previewMission = useCallback((id: string | null) => {
+    setActionError(null);
     setPreviewId(id);
     setInspectorOpen(true);
   }, []);
-  const moveSelection = useCallback(
-    (delta: 1 | -1) => {
-      previewMission(stepSelection(missions?.map((mission) => mission.id) ?? [], previewId, delta));
+
+  const handleJumpToMission = useCallback(
+    (mission: MissionListItem) => {
+      const shortKey = shortKeyById.get(mission.id) ?? "";
+      const matched = matchesMissionRadarFilters(
+        mission,
+        shortKey,
+        { radarStatus, searchQuery, workflowFilter },
+        attentionMissionIds,
+        agentMap,
+      );
+      if (!matched) {
+        setRadarStatus("all");
+        setSearchQuery("");
+        setWorkflowFilter("all");
+        setLocalPage(1);
+      }
+      previewMission(mission.id);
     },
-    [missions, previewId, previewMission],
+    [shortKeyById, radarStatus, searchQuery, workflowFilter, attentionMissionIds, agentMap, previewMission],
   );
 
-  // j/k move the preview across rows; Esc closes the preview while focus is inside it or on a row.
+  const handleToggleMissionStatus = useCallback(
+    async (mission: MissionListItem) => {
+      if (!selectedCompanyId || mutatingMissionId) return;
+      const nextStatus: MissionStatus = mission.status === "active" ? "paused" : "active";
+      setActionError(null);
+      setMutatingMissionId(mission.id);
+      try {
+        await missionsApi.update(mission.id, { status: nextStatus });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.missions.list(selectedCompanyId) });
+        void refetchMissions();
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setMutatingMissionId(null);
+      }
+    },
+    [selectedCompanyId, mutatingMissionId, queryClient, refetchMissions],
+  );
+
+  const moveSelection = useCallback(
+    (delta: 1 | -1) => {
+      const ids = visibleMissions.map((mission) => mission.id);
+      previewMission(stepSelection(ids, activeMissionId, delta));
+    },
+    [visibleMissions, activeMissionId, previewMission],
+  );
+
+  // ↑/↓ and j/k step across rows; / focuses search; Esc closes preview when focused inside it or on a row.
   useEffect(() => {
-    if (!missions?.length) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || isTypingTarget(event.target)) return;
-      if (event.key === "j" || event.key === "k") {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isTypingTarget(event.target)) {
+        if (event.key === "Escape" && event.target === searchInputRef.current) {
+          setSearchQuery("");
+          setLocalPage(1);
+          searchInputRef.current?.blur();
+        }
+        return;
+      }
+      if (event.key === "/") {
         event.preventDefault();
-        moveSelection(event.key === "j" ? 1 : -1);
+        searchInputRef.current?.focus();
+        return;
+      }
+      if (!visibleMissions.length) return;
+      if (event.key === "ArrowDown" || event.key === "j") {
+        event.preventDefault();
+        moveSelection(1);
+      } else if (event.key === "ArrowUp" || event.key === "k") {
+        event.preventDefault();
+        moveSelection(-1);
       } else if (
         event.key === "Escape" &&
         inspectorOpen &&
@@ -290,20 +604,24 @@ export function Missions() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [inspectorOpen, missions, moveSelection]);
+  }, [inspectorOpen, visibleMissions.length, moveSelection]);
 
   const countByStatus = (status: MissionStatus) =>
     (allMissions ?? []).filter((mission) => mission.status === status).length;
-  const queueItems = useMemo(() => normalizeQueueItems(queueRaw), [queueRaw]);
-  const pendingCards = useMemo(() => pending?.data ?? [], [pending]);
   const waitsLoaded = pending !== undefined || queueRaw !== undefined;
   const waitCount = pendingCards.length + queueItems.length;
   const waitChips = [
     ...pendingCards.slice(0, 6).map((card) => ({
-      id: `decision-${card.id}`, kind: "Decision", label: card.title, to: "/human-operator",
+      id: `decision-${card.id}`,
+      kind: "Decision",
+      label: card.title,
+      to: "/human-operator",
     })),
     ...queueItems.slice(0, 6).map((item) => ({
-      id: `queue-${item.id}`, kind: "Queued", label: queueItemLabel(item), to: "/worktree/rules",
+      id: `queue-${item.id}`,
+      kind: "Queued",
+      label: queueItemLabel(item),
+      to: "/worktree/rules",
     })),
   ];
 
@@ -315,16 +633,17 @@ export function Missions() {
     return <PageSkeleton variant="list" />;
   }
 
-  const hasSummary = Boolean(summary);
   const loadState = (failed: boolean) => (failed ? "Load failed" : "Loading");
   const spendBudgetCents = summary?.costs.monthBudgetCents ?? 0;
-  const spendPct = summary && spendBudgetCents > 0
-    ? Math.round((summary.costs.monthSpendCents / spendBudgetCents) * 100)
-    : 0;
+  const spendPct =
+    summary && spendBudgetCents > 0
+      ? Math.round((summary.costs.monthSpendCents / spendBudgetCents) * 100)
+      : 0;
   const activeMissions = allMissions ? countByStatus("active") : null;
   const kpis = [
     {
-      to: "/agents", label: "Active agents",
+      to: "/agents",
+      label: "Active agents",
       value: summary ? String(summary.agents.running) : "—",
       sub: summary
         ? `${summary.agents.active + summary.agents.running + summary.agents.paused + summary.agents.error} enabled`
@@ -332,31 +651,51 @@ export function Missions() {
       dot: summary && summary.agents.running > 0 ? DOT.emerald : DOT.muted,
     },
     {
-      to: "/issues", label: "Running work",
+      to: "/issues",
+      label: "Running work",
       value: summary ? String(summary.tasks.inProgress) : "—",
       sub: summary ? `${summary.tasks.blocked} blocked` : loadState(summaryError),
       dot: summary?.tasks.blocked ? DOT.amber : summary?.tasks.inProgress ? DOT.emerald : DOT.muted,
     },
     {
-      to: "/missions", label: "Active missions",
+      to: "/missions",
+      label: "Active missions",
       value: activeMissions === null ? "—" : String(activeMissions),
-      sub: activeMissions === null
-        ? loadState(allMissionsError)
-        : `${countByStatus("planning")} planning · ${countByStatus("paused")} paused`,
+      sub:
+        activeMissions === null
+          ? loadState(allMissionsError)
+          : `${countByStatus("planning")} planning · ${countByStatus("paused")} paused`,
       dot: activeMissions ? DOT.emerald : DOT.muted,
     },
     {
-      to: "/costs", label: "Monthly spend",
+      to: "/costs",
+      label: "Monthly spend",
       value: summary ? formatCents(summary.costs.monthSpendCents) : "—",
       sub: !summary
         ? loadState(summaryError)
-        : spendBudgetCents > 0 ? `of ${formatCents(spendBudgetCents)} · ${spendPct}%` : "No budget",
-      dot: !summary || spendBudgetCents <= 0 ? DOT.muted : spendPct >= 100 ? DOT.crimson : spendPct >= 80 ? DOT.amber : DOT.emerald,
+        : spendBudgetCents > 0
+          ? `of ${formatCents(spendBudgetCents)} · ${spendPct}%`
+          : "No budget",
+      dot:
+        !summary || spendBudgetCents <= 0
+          ? DOT.muted
+          : spendPct >= 100
+            ? DOT.crimson
+            : spendPct >= 80
+              ? DOT.amber
+              : DOT.emerald,
     },
     {
-      to: "/human-operator", label: "Waiting / blocked",
-      value: waitsLoaded ? String(waitCount) : summary ? String(summary.pendingApprovals + summary.budgets.pendingApprovals) : "—",
-      sub: waitsLoaded ? `${count("decision", pendingCards.length)} · ${count("queued", queueItems.length)}` : loadState(pendingError || queueError),
+      to: "/human-operator",
+      label: "Waiting / blocked",
+      value: waitsLoaded
+        ? String(waitCount)
+        : summary
+          ? String(summary.pendingApprovals + summary.budgets.pendingApprovals)
+          : "—",
+      sub: waitsLoaded
+        ? `${count("decision", pendingCards.length)} · ${count("queued", queueItems.length)}`
+        : loadState(pendingError || queueError),
       dot: waitCount > 0 ? DOT.amber : DOT.muted,
     },
   ];
@@ -364,7 +703,19 @@ export function Missions() {
     ? `${waitCount} waiting on humans`
     : pendingError || queueError
       ? "Queue unavailable"
-      : waitsLoaded ? "All clear — nothing waiting" : "Checking queue…";
+      : waitsLoaded
+        ? "All clear — nothing waiting"
+        : "Checking queue…";
+
+  const selectedBucket = selectedMission
+    ? getMissionRadarBucket(selectedMission, attentionMissionIds)
+    : null;
+  const selectedReason = selectedMission ? attentionReasons.get(selectedMission.id) : undefined;
+  const canToggleStatus =
+    selectedMission &&
+    (selectedMission.status === "active" ||
+      selectedMission.status === "paused" ||
+      selectedMission.status === "planning");
 
   return (
     <div className="space-y-3 tabular-nums">
@@ -392,7 +743,10 @@ export function Missions() {
             ))}
             <button
               type="button"
-              onClick={() => typeof window !== "undefined" && window.dispatchEvent(new CustomEvent(INSPECTOR_TOGGLE_EVENT))}
+              onClick={() =>
+                typeof window !== "undefined" &&
+                window.dispatchEvent(new CustomEvent(INSPECTOR_TOGGLE_EVENT))
+              }
               className={`${PILL_CLASS} hidden cursor-pointer md:inline-flex`}
               style={PILL_STYLE}
             >
@@ -404,7 +758,9 @@ export function Missions() {
 
         {/* 1-row 5-column cockpit strip */}
         <div className="grid grid-cols-2 lg:grid-cols-5 divide-x divide-[#242d3f] bg-[#111622] border border-[#242d3f] rounded-md">
-          {kpis.map((kpi) => <KpiCell key={kpi.label} {...kpi} />)}
+          {kpis.map((kpi) => (
+            <KpiCell key={kpi.label} {...kpi} />
+          ))}
         </div>
 
         {/* Single-line escalation / queue ticker */}
@@ -412,7 +768,7 @@ export function Missions() {
           role="status"
           className="flex h-8 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap rounded-md border border-[#fbbf24]/35 bg-[#fbbf24]/7 px-3 text-xs"
         >
-          <span className="flex shrink-0 items-center gap-1.5 font-semibold text-[#fde68a]">
+          <span className="flex shrink-0 items-center gap-1.5 font-semibold text-amber-800 dark:text-[#fde68a]">
             <Inbox className="h-3.5 w-3.5" />
             {tickerStatus}
           </span>
@@ -421,29 +777,61 @@ export function Missions() {
               key={chip.id}
               to={chip.to}
               title={chip.label}
-              className="max-w-56 shrink-0 truncate rounded border border-[#242d3f] bg-[#0b0e14] px-2 py-0.5 text-[11px] no-underline text-inherit transition-colors hover:border-[#fbbf24]"
+              className="max-w-56 shrink-0 truncate rounded border border-border bg-background px-2 py-0.5 text-[11px] no-underline text-inherit transition-colors hover:border-[#fbbf24] dark:border-[#242d3f] dark:bg-[#0b0e14]"
             >
-              <span className="font-semibold text-[#fbbf24]">{chip.kind}</span> {chip.label}
+              <span className="font-semibold text-amber-700 dark:text-[#fbbf24]">{chip.kind}</span>{" "}
+              {chip.label}
             </Link>
           ))}
           {waitCount > waitChips.length && (
-            <span className="shrink-0 text-[11px] text-[#fde68a]">+{waitCount - waitChips.length} more</span>
+            <span className="shrink-0 text-[11px] text-amber-800 dark:text-[#fde68a]">
+              +{waitCount - waitChips.length} more
+            </span>
           )}
           {waitCount > 0 && (
-            <Link to="/human-operator" className="ml-auto shrink-0 font-semibold text-[#fde68a] no-underline hover:underline">
+            <Link
+              to="/human-operator"
+              className="ml-auto shrink-0 font-semibold text-amber-800 no-underline hover:underline dark:text-[#fde68a]"
+            >
               Review →
             </Link>
           )}
         </div>
       </section>
 
-      {/* Single-row unified filter toolbar (40px): filters scroll horizontally, actions stay pinned. */}
-      <div className="flex h-10 items-center gap-2 rounded-md border border-[#242d3f] bg-[#111622] pl-2 pr-1.5">
+      {/* Combo 4 Fleet Mission Radar: Status chips with live counts, search, workflow filter & visual status mosaic */}
+      <MissionFleetRadar
+        missions={fleetMissions}
+        attentionMissionIds={attentionMissionIds}
+        attentionReasons={attentionReasons}
+        agentMap={agentMap}
+        radarStatus={radarStatus}
+        onRadarStatusChange={(next) => {
+          setRadarStatus(next);
+          setLocalPage(1);
+        }}
+        searchQuery={searchQuery}
+        onSearchQueryChange={(next) => {
+          setSearchQuery(next);
+          setLocalPage(1);
+        }}
+        workflowFilter={workflowFilter}
+        onWorkflowFilterChange={(next) => {
+          setWorkflowFilter(next);
+          setLocalPage(1);
+        }}
+        selectedMissionId={activeMissionId}
+        onJumpToMission={handleJumpToMission}
+        searchInputRef={searchInputRef}
+      />
+
+      {/* Single-row unified server filter toolbar (40px): filters scroll horizontally, actions stay pinned. */}
+      <div className="flex h-10 items-center gap-2 rounded-lg border border-border/80 bg-card/85 pl-2 pr-1.5 dark:border-white/[0.08] dark:bg-[#111622] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
           <div
             role="group"
             aria-label="Filter missions by status"
-            className="flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5"
+            className="flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-muted/60 p-0.5 dark:border-[#242d3f] dark:bg-[#0b0e14]"
           >
             {STATUS_TABS.map((tab) => {
               const active = statusFilter === tab.value;
@@ -452,9 +840,13 @@ export function Missions() {
                   key={tab.value}
                   type="button"
                   aria-pressed={active}
-                  onClick={() => updateSearchParams({ status: tab.value === "all" ? null : tab.value }, { resetPage: true })}
+                  onClick={() =>
+                    updateSearchParams({ status: tab.value === "all" ? null : tab.value }, { resetPage: true })
+                  }
                   className={`h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors ${
-                    active ? "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_0_0_1px_#242d3f]" : "text-[#8b97ad] hover:text-[#e6edf7]"
+                    active
+                      ? "bg-background text-foreground shadow-xs dark:bg-[#151b28] dark:text-[#e6edf7] dark:shadow-[inset_0_0_0_1px_#242d3f]"
+                      : "text-muted-foreground hover:text-foreground dark:text-[#8b97ad] dark:hover:text-[#e6edf7]"
                   }`}
                 >
                   {tab.label}
@@ -467,13 +859,18 @@ export function Missions() {
             aria-label="Main executor"
             value={ownerAgentId}
             onChange={(e) =>
-              updateSearchParams({ ownerAgentId: e.target.value === "all" ? null : e.target.value }, { resetPage: true })
+              updateSearchParams(
+                { ownerAgentId: e.target.value === "all" ? null : e.target.value },
+                { resetPage: true },
+              )
             }
             className={`${CONTROL_CLASS} w-36 shrink-0`}
           >
             <option value="all">All executors</option>
             {(agents ?? []).map((agent) => (
-              <option key={agent.id} value={agent.id}>{agent.name}</option>
+              <option key={agent.id} value={agent.id}>
+                {agent.name}
+              </option>
             ))}
           </select>
 
@@ -507,7 +904,9 @@ export function Missions() {
             className={`${CONTROL_CLASS} w-36 shrink-0`}
           >
             {SORT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
             ))}
           </select>
         </div>
@@ -516,18 +915,18 @@ export function Missions() {
           type="button"
           aria-pressed={inspectorOpen}
           aria-label="Toggle mission preview pane"
-          title="Mission preview pane (j/k to browse)"
+          title="Mission live inspector (↑/↓ or j/k to browse)"
           onClick={() => {
             if (inspectorOpen) {
               setInspectorOpen(false);
             } else {
-              previewMission(previewId ?? stepSelection(missions?.map((mission) => mission.id) ?? [], null, 1));
+              previewMission(activeMissionId ?? stepSelection(visibleMissions.map((m) => m.id), null, 1));
             }
           }}
           className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border transition-colors ${
             inspectorOpen
               ? "border-[#5f8dff]/50 bg-[#2563eb]/15 text-[#5f8dff]"
-              : "border-[#242d3f] text-[#8b97ad] hover:bg-[#151b28] hover:text-[#e6edf7]"
+              : "border-border text-muted-foreground hover:bg-accent hover:text-foreground dark:border-[#242d3f] dark:text-[#8b97ad] dark:hover:bg-[#151b28] dark:hover:text-[#e6edf7]"
           }`}
         >
           <PanelRightOpen className="h-3.5 w-3.5" />
@@ -554,77 +953,387 @@ export function Missions() {
         </Button>
       </div>
 
-      {missions && missions.length === 0 && (
-        <EmptyState
-          icon={Rocket}
-          message="No missions match the current filters."
-          action="Create Mission"
-          onAction={openNewMission}
-        />
+      {visibleMissions.length === 0 && (
+        <div className="space-y-2">
+          <EmptyState
+            icon={Rocket}
+            message={
+              hasClientRadarFilter
+                ? "No missions match the current radar filter or search query."
+                : "No missions match the current filters."
+            }
+            action={hasClientRadarFilter ? "Reset Radar Filters" : "Create Mission"}
+            onAction={
+              hasClientRadarFilter
+                ? () => {
+                    setRadarStatus("all");
+                    setSearchQuery("");
+                    setWorkflowFilter("all");
+                    setLocalPage(1);
+                  }
+                : openNewMission
+            }
+          />
+        </div>
       )}
 
       <span className="sr-only" aria-live="polite">
         {selectedMission ? `Previewing ${selectedMission.title}` : ""}
       </span>
 
-      {missions && missions.length > 0 && (
-        <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_23.5rem]">
-          {/* Quick-preview split inspector: right pane on xl, stacked above the list below xl. */}
+      {/* 58/42 Split View: Left High-Density 44px List + Right Permanent Live Inspector */}
+      {visibleMissions.length > 0 && (
+        <div
+          data-mission-split
+          className={`grid min-w-0 gap-3 ${
+            inspectorOpen ? "lg:grid-cols-[minmax(0,58fr)_minmax(0,42fr)]" : "grid-cols-1"
+          }`}
+        >
+          {/* Left Pane (58%): High-Density 44px Scannable Mission List + CompactPagination */}
+          <div className="flex min-w-0 flex-col gap-2.5">
+            <div className="overflow-hidden rounded-xl border border-border/80 bg-card/90 shadow-sm dark:border-white/[0.08] dark:bg-gradient-to-b dark:from-[#161b27]/85 dark:to-[#10141d]/95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+              <div className="flex items-center justify-between gap-2 border-b border-border/70 px-3 py-1.5 text-[11px] text-muted-foreground dark:border-white/[0.07]">
+                <div className="flex items-center gap-2 truncate">
+                  <span className="font-semibold text-foreground dark:text-[#eef1f6]">
+                    {hasClientRadarFilter ? `${filteredClientMissions.length}건 필터됨` : `${visibleMissions.length}건 표시`}
+                  </span>
+                  <span aria-hidden>·</span>
+                  <span className="truncate">우선 정렬: 개입 필요 → 실행 중 → 대기 → 완료</span>
+                </div>
+                {hasClientRadarFilter && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRadarStatus("all");
+                      setSearchQuery("");
+                      setWorkflowFilter("all");
+                      setLocalPage(1);
+                    }}
+                    className="shrink-0 cursor-pointer text-[11px] font-semibold text-[#60a5fa] hover:underline"
+                  >
+                    필터 초기화
+                  </button>
+                )}
+              </div>
+
+              <div
+                className={`${ROW_GRID} border-b border-border/70 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground dark:border-white/[0.07]`}
+              >
+                <span aria-hidden />
+                <span>Mission</span>
+                <span className="hidden sm:block">Steps</span>
+                <span className="hidden sm:block">Main executor</span>
+                <span className="hidden justify-self-end sm:block">Updated</span>
+              </div>
+
+              <div role="listbox" aria-label="Mission list">
+                {visibleMissions.map((mission) => {
+                  const bucket = getMissionRadarBucket(mission, attentionMissionIds);
+                  const shortKey = shortKeyById.get(mission.id) ?? "M--";
+                  const reason = attentionReasons.get(mission.id);
+                  const isSelected = mission.id === activeMissionId && inspectorOpen;
+                  const workflowTag = getMissionWorkflowTag(mission);
+
+                  return (
+                    <div
+                      key={mission.id}
+                      role="option"
+                      aria-selected={isSelected}
+                      data-mission-row={mission.id}
+                      data-selected={isSelected || undefined}
+                      data-radar-bucket={bucket}
+                      onClick={() => previewMission(mission.id)}
+                      className={`${ROW_GRID} relative min-h-[44px] cursor-pointer border-b border-border/60 px-3 py-1.5 text-sm transition-colors last:border-b-0 dark:border-white/[0.05] ${
+                        isSelected
+                          ? "bg-[#60a5fa]/12 shadow-[inset_2px_0_0_#60a5fa]"
+                          : bucket === "need"
+                            ? "bg-[#f43f5e]/[0.06] hover:bg-[#f43f5e]/[0.11]"
+                            : "hover:bg-accent/50 dark:hover:bg-white/[0.04]"
+                      } ${bucket === "done" ? "opacity-75" : ""}`}
+                    >
+                      <span
+                        aria-hidden
+                        className={`h-2 w-2 shrink-0 rounded-full ${BUCKET_DOT_CLASS[bucket]}`}
+                      />
+
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="shrink-0 font-mono text-[10px] font-bold text-muted-foreground">
+                            {shortKey}
+                          </span>
+                          <Link
+                            to={`/missions/${mission.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="min-w-0 truncate text-[13px] font-semibold text-foreground no-underline hover:underline dark:text-[#eef1f6]"
+                          >
+                            {mission.title}
+                          </Link>
+                          <span className="hidden shrink-0 items-center gap-1 rounded border border-border/70 bg-muted/50 px-1.5 py-0 text-[10px] font-medium text-muted-foreground md:inline-flex dark:border-white/[0.08] dark:bg-white/[0.04]">
+                            {mission.project?.color && (
+                              <span
+                                aria-hidden
+                                className="h-1.5 w-1.5 rounded-full"
+                                style={{ backgroundColor: mission.project.color }}
+                              />
+                            )}
+                            <span className="max-w-[7rem] truncate">{workflowTag}</span>
+                          </span>
+                        </div>
+                        {reason && (
+                          <span className="truncate text-[10.5px] font-medium text-rose-600 dark:text-[#ffb3c1]">
+                            개입 필요 · {reason}
+                          </span>
+                        )}
+                      </div>
+
+                      <RowStepDots
+                        bucket={bucket}
+                        status={mission.status}
+                        steps={mission.id === selectedMission?.id ? steps : undefined}
+                      />
+
+                      <div className="hidden min-w-0 items-center gap-1.5 sm:flex">
+                        <span className="min-w-0 truncate text-xs text-muted-foreground">
+                          {agentMap[mission.ownerAgentId] ?? "—"}
+                        </span>
+                      </div>
+
+                      <div className="hidden items-center justify-end gap-1.5 sm:flex">
+                        <span className="text-[11px] tabular-nums text-muted-foreground">
+                          {formatCompactTime(mission.updatedAt ?? mission.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Explicit Pagination (CompactPagination + Per-Page + Keyboard Hint) */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CompactPagination
+                page={activePage}
+                count={visibleMissions.length}
+                hasMore={hasNextPage}
+                loading={isMissionsFetching}
+                pageSize={pageSize}
+                labels={{
+                  list: "Missions pagination",
+                  prev: "Previous",
+                  next: "Next",
+                  page: "Page",
+                  showing: "Showing",
+                  loading: "Loading…",
+                }}
+                onPageChange={handlePageChange}
+                className="flex-1 rounded-lg border-border/80 bg-card/85 text-foreground dark:border-white/[0.08] dark:bg-[#111622]"
+              />
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <label className="flex items-center gap-1.5">
+                  <span>Per page</span>
+                  <select
+                    aria-label="Missions per page"
+                    value={String(pageSize)}
+                    onChange={(e) => {
+                      setLocalPage(1);
+                      updateSearchParams({ pageSize: e.target.value }, { resetPage: true });
+                    }}
+                    className={CONTROL_CLASS}
+                  >
+                    {PAGE_SIZE_OPTIONS.map((option) => (
+                      <option key={option} value={String(option)}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span className="hidden items-center gap-1 text-[10.5px] xl:inline-flex">
+                  <kbd className="rounded border border-border px-1 font-mono text-[9.5px] dark:border-white/[0.14]">
+                    ↑
+                  </kbd>
+                  <kbd className="rounded border border-border px-1 font-mono text-[9.5px] dark:border-white/[0.14]">
+                    ↓
+                  </kbd>
+                  <span>선택</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Pane (42%): Permanent Live Inspector with 0ms switch */}
           {inspectorOpen && (
             <section
               aria-label="Mission preview"
               data-mission-preview
-              className="order-first flex min-w-0 flex-col gap-3 self-start rounded-md border border-border/80 bg-card/60 p-3 xl:order-none xl:sticky xl:top-0 xl:max-h-[calc(100vh-7rem)] xl:overflow-y-auto"
+              className="flex min-w-0 flex-col gap-3 self-start rounded-xl border border-border/80 bg-card/95 p-3.5 shadow-sm lg:sticky lg:top-0 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto dark:border-white/[0.08] dark:bg-gradient-to-b dark:from-[#161b27]/95 dark:to-[#10141d]/98 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_18px_40px_-24px_rgba(0,0,0,0.9)]"
             >
               {selectedMission ? (
                 <>
-                  <div className="flex items-start gap-2">
-                    <StatusBadge status={selectedMission.status} />
-                    <h2 className="min-w-0 flex-1 truncate text-sm font-semibold" title={selectedMission.title}>
+                  {/* Inspector Header */}
+                  <div className="space-y-1.5 border-b border-border/70 pb-2.5 dark:border-white/[0.07]">
+                    <div className="flex items-center gap-1.5">
+                      {selectedBucket && (
+                        <span
+                          aria-hidden
+                          className={`h-2 w-2 shrink-0 rounded-full ${BUCKET_DOT_CLASS[selectedBucket]}`}
+                        />
+                      )}
+                      <StatusBadge status={selectedMission.status} />
+                      <span className="font-mono text-[10.5px] font-bold text-muted-foreground">
+                        {shortKeyById.get(selectedMission.id) ?? "M--"}
+                      </span>
+                      <span className="truncate rounded border border-border/70 bg-muted/50 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground dark:border-white/[0.08] dark:bg-white/[0.04]">
+                        {getMissionWorkflowTag(selectedMission)}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="Close mission preview"
+                        onClick={() => setInspectorOpen(false)}
+                        className="ml-auto flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <h2
+                      className="text-sm font-bold leading-snug text-foreground dark:text-[#eef1f6]"
+                      title={selectedMission.title}
+                    >
                       {selectedMission.title}
                     </h2>
-                    <button
-                      type="button"
-                      aria-label="Close mission preview"
-                      onClick={() => setInspectorOpen(false)}
-                      className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      {selectedMission.description?.trim() || "No description."}
+                    </p>
                   </div>
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    {selectedMission.description?.trim() || "No description."}
-                  </p>
-                  <dl className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-                    <dt className="text-muted-foreground">Main executor</dt>
-                    <dd className="truncate">{agentMap[selectedMission.ownerAgentId] ?? "—"}</dd>
-                    <dt className="text-muted-foreground">Project</dt>
-                    <dd className="truncate">{selectedMission.project?.name ?? "—"}</dd>
-                    <dt className="text-muted-foreground">Created</dt>
-                    <dd>{formatDateTime(selectedMission.createdAt)}</dd>
-                    <dt className="text-muted-foreground">Updated</dt>
-                    <dd>{formatDateTime(selectedMission.updatedAt)}</dd>
+
+                  {/* Attention Alert Callout (when pending decision exists) */}
+                  {selectedReason && (
+                    <div className="flex items-center gap-2 rounded-lg border border-[#f43f5e]/45 bg-[#f43f5e]/10 px-2.5 py-2 text-xs">
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-[#f43f5e]" />
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-rose-700 dark:text-[#ffb3c1]">
+                          개입 필요 · 승인/결정 대기
+                        </div>
+                        <div className="truncate text-[11px] text-muted-foreground">{selectedReason}</div>
+                      </div>
+                      <Link
+                        to="/human-operator"
+                        className="shrink-0 rounded-md bg-[#f43f5e] px-2 py-1 text-[11px] font-bold text-white no-underline hover:brightness-110"
+                      >
+                        결정함 →
+                      </Link>
+                    </div>
+                  )}
+
+                  {/* Compact KV Metrics Grid */}
+                  <dl className="grid grid-cols-2 gap-1.5 text-xs">
+                    <div className="rounded-lg border border-border/60 bg-muted/40 px-2.5 py-1.5 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                      <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Main executor
+                      </dt>
+                      <dd className="truncate font-semibold text-foreground dark:text-[#eef1f6]">
+                        {agentMap[selectedMission.ownerAgentId] ?? "—"}
+                      </dd>
+                    </div>
+                    <div className="rounded-lg border border-border/60 bg-muted/40 px-2.5 py-1.5 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                      <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Step progress
+                      </dt>
+                      <dd className="font-mono font-semibold text-foreground tabular-nums dark:text-[#eef1f6]">
+                        {completedSteps}/{totalSteps} · {progressPct}%
+                      </dd>
+                    </div>
+                    <div className="rounded-lg border border-border/60 bg-muted/40 px-2.5 py-1.5 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                      <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Created
+                      </dt>
+                      <dd className="truncate text-[11px] tabular-nums text-foreground dark:text-[#eef1f6]">
+                        {formatDateTime(selectedMission.createdAt)}
+                      </dd>
+                    </div>
+                    <div className="rounded-lg border border-border/60 bg-muted/40 px-2.5 py-1.5 dark:border-white/[0.06] dark:bg-white/[0.03]">
+                      <dt className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Updated
+                      </dt>
+                      <dd className="truncate text-[11px] tabular-nums text-foreground dark:text-[#eef1f6]">
+                        {formatDateTime(selectedMission.updatedAt)}
+                      </dd>
+                    </div>
                   </dl>
+
+                  {/* Action Controls */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      to={`/missions/${selectedMission.id}`}
+                      className="inline-flex flex-1 items-center justify-center rounded-lg border border-[#a3e635]/60 bg-[#a3e635] px-3 py-1.5 text-xs font-bold text-[#0b0f05] no-underline transition-all hover:brightness-105"
+                    >
+                      Open Full Mission →
+                    </Link>
+                    {canToggleStatus && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={mutatingMissionId === selectedMission.id}
+                        onClick={() => void handleToggleMissionStatus(selectedMission)}
+                        className="h-8 gap-1.5 px-2.5 text-xs font-semibold"
+                      >
+                        {selectedMission.status === "active" ? (
+                          <>
+                            <Pause className="h-3.5 w-3.5" />
+                            일시정지
+                          </>
+                        ) : (
+                          <>
+                            <Play className="h-3.5 w-3.5" />
+                            재개
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                  {actionError && <p className="text-xs text-destructive">{actionError}</p>}
+
+                  {/* Step Pipeline Progress Preview */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between gap-2 text-xs">
-                      <span className="text-muted-foreground">Step progress</span>
-                      <span>{completedSteps}/{totalSteps} · {progressPct}%</span>
+                      <span className="font-semibold text-muted-foreground">
+                        {previewRun?.workflowName ? `Workflow · ${previewRun.workflowName}` : "Step progress"}
+                      </span>
+                      <span className="font-mono text-[11px] font-bold tabular-nums">
+                        {completedSteps}/{totalSteps} · {progressPct}%
+                      </span>
                     </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-[#242d3f]">
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted dark:bg-[#242d3f]">
                       <div
-                        className={`h-full rounded-full transition-[width] ${totalSteps > 0 && completedSteps === totalSteps ? DOT.emerald : DOT.cobalt}`}
+                        className={`h-full rounded-full transition-[width] ${
+                          totalSteps > 0 && completedSteps === totalSteps ? DOT.lime : DOT.cobalt
+                        }`}
                         style={{ width: `${progressPct}%` }}
                       />
                     </div>
                     {previewLoading ? (
                       <p className="text-xs text-muted-foreground">Loading steps…</p>
                     ) : steps.length > 0 ? (
-                      <ol className="max-h-64 space-y-0.5 overflow-y-auto">
+                      <ol className="max-h-52 space-y-1 overflow-y-auto pt-1">
                         {steps.map((step) => (
-                          <li key={step.stepId} className="flex min-w-0 items-center gap-2 text-xs">
-                            <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${STEP_DOT[step.status]}`} />
-                            <span className="min-w-0 flex-1 truncate" title={step.name}>{step.name}</span>
-                            <span className="shrink-0 text-[11px] uppercase text-muted-foreground">{step.status}</span>
+                          <li
+                            key={step.stepId}
+                            className="flex min-w-0 items-center gap-2 rounded-md border border-border/50 bg-muted/30 px-2 py-1 text-xs dark:border-white/[0.05] dark:bg-white/[0.02]"
+                          >
+                            <span
+                              aria-hidden
+                              className={`h-2 w-2 shrink-0 rounded-full ${STEP_DOT[step.status]}`}
+                            />
+                            <span className="min-w-0 flex-1 truncate font-medium" title={step.name}>
+                              {step.name}
+                            </span>
+                            {step.issue?.identifier && (
+                              <span className="shrink-0 font-mono text-[10px] text-[#60a5fa]">
+                                {step.issue.identifier}
+                              </span>
+                            )}
+                            <span className="shrink-0 font-mono text-[10px] uppercase text-muted-foreground">
+                              {step.status}
+                            </span>
                           </li>
                         ))}
                       </ol>
@@ -632,109 +1341,44 @@ export function Missions() {
                       <p className="text-xs text-muted-foreground">No workflow run yet.</p>
                     )}
                   </div>
-                  <Link
-                    to={`/missions/${selectedMission.id}`}
-                    className="inline-flex items-center justify-center rounded-md border border-border bg-background/60 px-3 py-1.5 text-xs font-medium no-underline text-inherit transition-colors hover:bg-accent/50"
-                  >
-                    Open Full Mission →
-                  </Link>
+
+                  {/* Linked Issues Preview */}
+                  {linkedIssues.length > 0 && (
+                    <div className="space-y-1.5 border-t border-border/70 pt-2.5 dark:border-white/[0.07]">
+                      <div className="flex items-center justify-between text-[11px] font-semibold text-muted-foreground">
+                        <span>Linked issues</span>
+                        <span className="font-mono tabular-nums">{linkedIssues.length}</span>
+                      </div>
+                      <ul className="space-y-1">
+                        {linkedIssues.slice(0, 5).map((issue) => (
+                          <li key={issue.id}>
+                            <Link
+                              to={`/issues/${issue.identifier ?? issue.id}`}
+                              className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/30 px-2 py-1 text-xs no-underline text-inherit transition-colors hover:bg-accent/50 dark:border-white/[0.05] dark:bg-white/[0.02]"
+                            >
+                              {issue.identifier && (
+                                <span className="shrink-0 font-mono text-[10px] font-bold text-[#60a5fa]">
+                                  {issue.identifier}
+                                </span>
+                              )}
+                              <span className="min-w-0 flex-1 truncate">{issue.title}</span>
+                              <span className="shrink-0 font-mono text-[10px] uppercase text-muted-foreground">
+                                {issue.status}
+                              </span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </>
               ) : (
                 <p className="py-6 text-center text-xs text-muted-foreground">
-                  Select a mission row or press j/k to preview it.
+                  Select a mission row or press ↑/↓ to inspect it.
                 </p>
               )}
             </section>
           )}
-
-          <div className="min-w-0 space-y-3">
-            <div className="overflow-hidden rounded-md border border-border/80 bg-card/60">
-              <div className={`${ROW_GRID} border-b border-border/80 px-3 py-1.5 text-[11px] uppercase tracking-wide text-muted-foreground`}>
-                <span>Mission</span>
-                <span>Status</span>
-                <span className="hidden sm:block">Main executor</span>
-                <span className="hidden justify-self-end sm:block">Created</span>
-              </div>
-              {missions.map((mission) => {
-                const isPreviewed = mission.id === previewId && inspectorOpen;
-                return (
-                  <div
-                    key={mission.id}
-                    data-mission-row={mission.id}
-                    data-selected={isPreviewed || undefined}
-                    onClick={() => previewMission(mission.id)}
-                    className={`${ROW_GRID} cursor-pointer border-b border-border/60 px-3 py-2 text-sm transition-colors last:border-b-0 ${
-                      isPreviewed ? "bg-[#2563eb]/15 shadow-[inset_2px_0_0_#5f8dff]" : "hover:bg-accent/50"
-                    }`}
-                  >
-                    <Link
-                      to={`/missions/${mission.id}`}
-                      className="flex min-w-0 items-center gap-2 no-underline text-inherit hover:no-underline"
-                    >
-                      <Rocket className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 truncate font-medium">{mission.title}</span>
-                      {mission.project && (
-                        <span className="inline-flex min-w-0 max-w-[9rem] items-center gap-1.5 rounded-full border border-border/80 bg-background/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                          <span
-                            aria-hidden
-                            className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                            style={{ backgroundColor: mission.project.color ?? "#6366f1" }}
-                          />
-                          <span className="truncate">{mission.project.name}</span>
-                        </span>
-                      )}
-                    </Link>
-                    <StatusBadge status={mission.status} />
-                    <span className="hidden min-w-0 truncate text-xs text-muted-foreground sm:block">
-                      {agentMap[mission.ownerAgentId] ?? "—"}
-                    </span>
-                    <span className="hidden justify-self-end text-xs tabular-nums text-muted-foreground sm:block">
-                      {formatDateTime(mission.createdAt)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-              <span className="text-muted-foreground tabular-nums">
-                Page {page}
-                {missionFilters.offset !== undefined && missionFilters.limit !== undefined
-                  ? ` • Showing ${missionFilters.offset + 1}-${missionFilters.offset + (missions?.length ?? 0)}`
-                  : ""}
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span>Per page</span>
-                  <select
-                    value={String(pageSize)}
-                    onChange={(e) => updateSearchParams({ pageSize: e.target.value }, { resetPage: true })}
-                    className={CONTROL_CLASS}
-                  >
-                    {PAGE_SIZE_OPTIONS.map((option) => (
-                      <option key={option} value={String(option)}>{option}</option>
-                    ))}
-                  </select>
-                </label>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!hasPreviousPage}
-                  onClick={() => updateSearchParams({ page: String(page - 1) })}
-                >
-                  Previous
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!hasNextPage}
-                  onClick={() => updateSearchParams({ page: String(page + 1) })}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          </div>
         </div>
       )}
     </div>

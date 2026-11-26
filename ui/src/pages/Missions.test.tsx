@@ -47,7 +47,11 @@ vi.mock("@tanstack/react-query", () => ({
     const settled = (data: unknown) => ({ data, isLoading: false, isFetching: false, error: null, refetch: vi.fn() });
 
     if (queryKey[0] === "missions") {
-      return settled(queryKey[1] === "detail" ? (queryKey[2] === "mission-1" ? [WORKFLOW_RUN] : []) : MISSIONS);
+      if (queryKey[1] === "detail") {
+        if (queryKey[3] === "issues") return settled([]);
+        return settled(queryKey[2] === "mission-1" ? [WORKFLOW_RUN] : []);
+      }
+      return settled(MISSIONS);
     }
     if (queryKey[0] === "agents") {
       return settled([{ id: "agent-1", name: "Rocket QA" }]);
@@ -105,12 +109,17 @@ vi.mock("@/components/StatusBadge", () => ({
 }));
 
 vi.mock("lucide-react", () => ({
+  AlertTriangle: () => <span>AlertTriangle</span>,
   Inbox: () => <span>Inbox</span>,
+  Loader2: () => <span>Loader2</span>,
   MessageSquare: () => <span>MessageSquare</span>,
   PanelRightOpen: () => <span>PanelRightOpen</span>,
+  Pause: () => <span>Pause</span>,
+  Play: () => <span>Play</span>,
   Plus: () => <span>Plus</span>,
   RefreshCw: () => <span>RefreshCw</span>,
   Rocket: () => <span>Rocket</span>,
+  Search: () => <span>Search</span>,
   ShieldCheck: () => <span>ShieldCheck</span>,
   UserRoundCheck: () => <span>UserRoundCheck</span>,
   X: () => <span>X</span>,
@@ -219,7 +228,7 @@ describe("Missions", () => {
 
     expect(html).toContain("All executors");
     expect(html).toContain("Recently updated");
-    expect(html).toContain("Page 2");
+    expect(html).toMatch(/Page\s*(?:<[^>]+>)?2/);
     expect(html).toContain("Previous");
     expect(html).toContain("Next");
   });
@@ -301,7 +310,8 @@ describe("Missions", () => {
 
   it("opens the split preview pane from a row with summary, step checklist, and the full-mission link", async () => {
     const container = await mount();
-    expect(container.querySelector("[data-mission-preview]")).toBeNull();
+    // Permanent Live Inspector starts open on the top-priority active mission (mission-2).
+    expect(container.querySelector("[data-mission-preview]")).not.toBeNull();
 
     const row = container.querySelector('[data-mission-row="mission-1"]') as HTMLElement;
     await act(async () => { row.click(); });
@@ -320,22 +330,24 @@ describe("Missions", () => {
     expect(observedQueryKeys).toContainEqual(["missions", "detail", "mission-1", "workflow-runs"]);
   });
 
-  it("moves the preview with j/k, ignores typing targets, and closes on Esc or the toolbar toggle", async () => {
+  it("moves the preview with j/k and ArrowUp/ArrowDown, ignores typing targets, and closes on Esc or the toolbar toggle", async () => {
     const container = await mount();
+    // Active mission (mission-2) is prioritized above planning mission (mission-1).
+    expect(selectedRow(container)).toBe("mission-2");
 
     await press("j");
     expect(selectedRow(container)).toBe("mission-1");
     await press("j");
-    expect(selectedRow(container)).toBe("mission-2");
-    await press("j");
-    expect(selectedRow(container)).toBe("mission-2");
-    await press("k");
     expect(selectedRow(container)).toBe("mission-1");
     await press("k");
+    expect(selectedRow(container)).toBe("mission-2");
+    await press("ArrowDown");
     expect(selectedRow(container)).toBe("mission-1");
+    await press("ArrowUp");
+    expect(selectedRow(container)).toBe("mission-2");
 
     await press("j", container.querySelector('input[type="date"]')!);
-    expect(selectedRow(container)).toBe("mission-1");
+    expect(selectedRow(container)).toBe("mission-2");
 
     await press("Escape", document.body);
     expect(container.querySelector("[data-mission-preview]")).not.toBeNull();
@@ -344,7 +356,7 @@ describe("Missions", () => {
 
     const toggle = container.querySelector('button[aria-label="Toggle mission preview pane"]') as HTMLElement;
     await act(async () => { toggle.click(); });
-    expect(container.querySelector("[data-mission-preview]")?.textContent).toContain("Launch readiness");
+    expect(container.querySelector("[data-mission-preview]")?.textContent).toContain("Weekly digest");
     await act(async () => { toggle.click(); });
     expect(container.querySelector("[data-mission-preview]")).toBeNull();
   });
