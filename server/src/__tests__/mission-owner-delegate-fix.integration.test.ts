@@ -11,7 +11,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { and, eq } from "drizzle-orm";
 import {
   agentToolGrants, agentWakeupRequests, agents, companies, createDb, heartbeatRuns, issues, issueWorkProducts,
@@ -19,6 +19,7 @@ import {
   workflowStepRuns, workflowTerminalDecisions, workflowTransitionEvents } from "@paperclipai/db";
 import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { admittedProducer } from "./helpers/admitted-producer.js";
+import { drainHeartbeatRuns } from "./helpers/cap-override-fixtures.js";
 import { workProductService } from "../services/work-products.js";
 import { missionPlanArtifactService } from "../services/mission-plan-artifacts.js";
 import { executeCoreWorkflowTool } from "../services/workflow/core-tool-executor.js";
@@ -32,6 +33,15 @@ import { submitMissionPlanQaVerdict } from "../services/missions/mission-plan-qa
 import { completeWorkflowIssue, registerWorkflowArtifact } from "../services/workflow/agent-api.js";
 import { selectSameRunWorkProduct } from "../services/workflow/workproduct-same-run.js";
 import { verifySeedProductBytes } from "../services/workflow/workflow-seed-evidence.js";
+import { waitForHeartbeatExecutionsToDrain } from "../services/heartbeat-execution-tracker.js";
+
+// 어댑터만 recording stub(나머지 전부 운영 경로) — 백그라운드 하트비트가 process 어댑터 command 누락으로
+// 실패하며 qa-validate 스텝을 경합 실패시키는 레이스를 차단한다.
+const { executeSpy } = vi.hoisted(() => ({ executeSpy: vi.fn() }));
+vi.mock("../adapters/index.js", () => ({
+  getServerAdapter: vi.fn(() => ({ supportsLocalAgentJwt: false, execute: executeSpy })),
+  runningProcesses: new Map(),
+}));
 
 const TOOL_COMMAND = `node -e "console.log(JSON.stringify({status:'success',attempt:'delegate-fix-stage7-current'}))" --`;
 const record = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -46,6 +56,8 @@ beforeAll(async () => {
   temp = await startEmbeddedPostgresTestDatabase("owner-delegate-fix-");
   db = createDb(temp.connectionString);
   root = await realpath(await mkdtemp(path.join(os.tmpdir(), "owner-delegate-fix-")));
+  executeSpy.mockResolvedValue({ exitCode: 0, signal: null, timedOut: false, errorMessage: null, usage: null,
+    provider: "test", model: "test-model", resultJson: null, runtimeServices: [] });
   // app.ts 운영 executor 와 동일한 결합: 큐 claim → 코어 도구 실행 → 결과 완료 기록.
   setWorkflowToolStepExecutor(async (request) => {
     const coreResult = await executeCoreWorkflowTool({ db, companyId: request.companyId, agentId: request.agentId, agentName: request.agentName,
@@ -58,7 +70,17 @@ beforeAll(async () => {
     return { accepted: true as const };
   });
 }, 60000);
-afterAll(async () => { setWorkflowToolStepExecutor(null); await temp?.cleanup(); await rm(root, { recursive: true, force: true }); });
+afterAll(async () => {
+  await Promise.all([
+    waitForHeartbeatExecutionsToDrain(db, 90_000),
+    drainHeartbeatRuns(db, 240_000),
+  ]);
+  await waitForHeartbeatExecutionsToDrain(db, 15_000);
+  setWorkflowToolStepExecutor(null);
+  await db.$client.end({ timeout: 5 });
+  await temp?.cleanup();
+  await rm(root, { recursive: true, force: true });
+}, 270_000);
 
 /** [QA loop 세계] collector(tool) → producer(agent, back-edge) → QA(독립 agent) 의 실구조 run + 공식 반려 판정. */
 async function qaWorld(options: { findings: Array<{ id: string; summary: string; layer: "artifact" | "source_data" }>;
