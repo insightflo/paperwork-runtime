@@ -17,6 +17,7 @@ import { Button } from "../components/ui/button";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useCompany } from "../context/CompanyContext";
 import { queryKeys } from "../lib/queryKeys";
+import { cn } from "../lib/utils";
 import { L, useCompanyLanguage } from "../lib/companyLanguage";
 import {
   selectHumanOperatorSurface,
@@ -26,10 +27,18 @@ import {
   type HumanOperatorSurfaceSection,
 } from "../lib/human-operator-surface";
 
+/* ── Cockpit vocabulary (shared with Work/Issues/Approvals): 1-row strip, 40px toolbar, hairline rows, semantic pills.
+ * Every data-* hook and label string below is a test/audit contract. */
+const HAIRLINE_ROW = "rounded-md border border-[#242d3f] bg-[#111622] transition-colors hover:bg-[#151b28]";
+const PILL_CLASS = "inline-flex h-5 shrink-0 items-center rounded-full px-2 text-[10px] font-semibold uppercase tracking-wide";
+const BADGE_PILL = cn(PILL_CLASS, "border border-[#242d3f] bg-[#0b0e14] text-[#8b97ad]");
+const ATTENTION_TONE = { needed: "bg-[#fbbf24]/15 text-[#fbbf24]", none: "bg-[#34d399]/15 text-[#34d399]", unknown: "bg-[#8b97ad]/15 text-[#8b97ad]" } as const;
+const EVIDENCE_TEXT = "whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-[#b6c2d6]";
+const TAB_CLASS =
+  "h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors aria-pressed:bg-[#151b28] aria-pressed:text-[#e6edf7] aria-pressed:shadow-[inset_0_0_0_1px_#242d3f] text-[#8b97ad] hover:text-[#e6edf7]";
+
 function formatRequestTime(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false,
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
 }
 
 function missionLink(request: MissionHumanOperatorRequest): string {
@@ -37,50 +46,44 @@ function missionLink(request: MissionHumanOperatorRequest): string {
   return `/missions/${request.missionId}${query}`;
 }
 
-function requestStateLabel(
-  lang: ReturnType<typeof useCompanyLanguage>,
-  state: HumanOperatorRequestStateV1 | null,
-  problem: HumanOperatorRequestStateProblem | null,
-  hasCard: boolean,
-): string {
-  if (problem === "legacy") return L(lang, { en: "Decision state not provided by this server", ko: "이 서버 응답에 결정 상태가 없습니다" });
-  if (problem === "malformed") return L(lang, { en: "Decision state format is unknown", ko: "결정 상태 형식을 확인할 수 없습니다" });
-  if (problem === "scope-conflict") return L(lang, { en: "Request scope needs review", ko: "요청 범위를 확인해야 합니다" });
-  if (problem === "card-conflict") return L(lang, { en: "Decision/card details conflict", ko: "결정과 카드 정보가 일치하지 않습니다" });
-  if (problem === "duplicate-decision") return L(lang, { en: "Decision identity is ambiguous", ko: "결정 연결이 모호합니다" });
-  if (!state) return L(lang, { en: "Decision state is unknown", ko: "결정 상태를 알 수 없습니다" });
-  if (state.identity === "missing") return L(lang, { en: "No exact decision found", ko: "정확히 연결된 결정을 찾지 못했습니다" });
-  if (state.identity === "ambiguous") return L(lang, { en: "Decision link is ambiguous", ko: "결정 연결이 모호합니다" });
-  if (state.identity === "unsupported") return L(lang, { en: "Unsupported decision record", ko: "지원하지 않는 결정 기록입니다" });
-  if (state.decision?.status === "pending") {
-    return hasCard
-      ? L(lang, { en: "Direction pending", ko: "방향 선택 대기" })
-      : L(lang, { en: "Direction pending · card not loaded", ko: "방향 결정 대기 · 카드 미조회" });
-  }
-  if (state.decision?.status === "resolved") return L(lang, { en: "Direction decided", ko: "방향 결정됨" });
-  return L(lang, { en: "Direction cancelled", ko: "방향 결정 취소됨" });
+const REQUEST_STATE_LABELS = {
+  legacy: { en: "Decision state not provided by this server", ko: "이 서버 응답에 결정 상태가 없습니다" }, malformed: { en: "Decision state format is unknown", ko: "결정 상태 형식을 확인할 수 없습니다" },
+  "scope-conflict": { en: "Request scope needs review", ko: "요청 범위를 확인해야 합니다" }, "card-conflict": { en: "Decision/card details conflict", ko: "결정과 카드 정보가 일치하지 않습니다" },
+  "duplicate-decision": { en: "Decision identity is ambiguous", ko: "결정 연결이 모호합니다" }, unknown: { en: "Decision state is unknown", ko: "결정 상태를 알 수 없습니다" },
+  missing: { en: "No exact decision found", ko: "정확히 연결된 결정을 찾지 못했습니다" }, ambiguous: { en: "Decision link is ambiguous", ko: "결정 연결이 모호합니다" },
+  unsupported: { en: "Unsupported decision record", ko: "지원하지 않는 결정 기록입니다" }, pending: { en: "Direction pending", ko: "방향 선택 대기" },
+  "pending-nocard": { en: "Direction pending · card not loaded", ko: "방향 결정 대기 · 카드 미조회" }, resolved: { en: "Direction decided", ko: "방향 결정됨" },
+  cancelled: { en: "Direction cancelled", ko: "방향 결정 취소됨" },
+} as const;
+
+function requestStateLabel(lang: ReturnType<typeof useCompanyLanguage>, state: HumanOperatorRequestStateV1 | null,
+  problem: HumanOperatorRequestStateProblem | null, hasCard: boolean): string {
+  if (problem) return L(lang, REQUEST_STATE_LABELS[problem]);
+  if (!state) return L(lang, REQUEST_STATE_LABELS.unknown);
+  if (state.identity !== "exact") return L(lang, REQUEST_STATE_LABELS[state.identity]);
+  if (state.decision?.status === "pending") return L(lang, hasCard ? REQUEST_STATE_LABELS.pending : REQUEST_STATE_LABELS["pending-nocard"]);
+  if (state.decision?.status === "resolved") return L(lang, REQUEST_STATE_LABELS.resolved);
+  return L(lang, REQUEST_STATE_LABELS.cancelled);
 }
 
+const CONTINUATION_LABELS: Record<string, { en: string; ko: string }> = {
+  pending: { en: "Follow-up pending", ko: "후속 실행 대기" }, dispatching: { en: "Follow-up dispatching", ko: "후속 실행 전달 중" }, blocked: { en: "Follow-up blocked", ko: "후속 실행 차단" },
+  exhausted: { en: "Follow-up attempts exhausted", ko: "후속 실행 시도 한도 도달" }, queued: { en: "Follow-up queued", ko: "후속 실행 대기열" }, deferred: { en: "Follow-up deferred", ko: "후속 실행 대기" },
+  running: { en: "Follow-up running", ko: "후속 실행 중" }, coalesced: { en: "Follow-up joined an existing run", ko: "기존 실행에 연결됨" }, completed: { en: "Follow-up completed", ko: "후속 실행 완료" },
+  skipped: { en: "Follow-up skipped", ko: "후속 실행 건너뜀" }, failed: { en: "Follow-up failed", ko: "후속 실행 실패" }, cancelled: { en: "Follow-up cancelled", ko: "후속 실행 취소" },
+  timed_out: { en: "Follow-up timed out", ko: "후속 실행 시간 초과" }, agent_unrunnable: { en: "Target agent cannot run", ko: "대상 에이전트를 실행할 수 없음" },
+  assignee_changed: { en: "Issue assignee changed", ko: "이슈 담당자가 변경됨" }, issue_terminal: { en: "Issue is terminal", ko: "이슈가 종료 상태임" },
+};
+
 function continuationStatusLabel(lang: ReturnType<typeof useCompanyLanguage>, status: string): string {
-  const labels: Record<string, { en: string; ko: string }> = {
-    pending: { en: "Follow-up pending", ko: "후속 실행 대기" },
-    dispatching: { en: "Follow-up dispatching", ko: "후속 실행 전달 중" },
-    blocked: { en: "Follow-up blocked", ko: "후속 실행 차단" },
-    exhausted: { en: "Follow-up attempts exhausted", ko: "후속 실행 시도 한도 도달" },
-    queued: { en: "Follow-up queued", ko: "후속 실행 대기열" },
-    deferred: { en: "Follow-up deferred", ko: "후속 실행 대기" },
-    running: { en: "Follow-up running", ko: "후속 실행 중" },
-    coalesced: { en: "Follow-up joined an existing run", ko: "기존 실행에 연결됨" },
-    completed: { en: "Follow-up completed", ko: "후속 실행 완료" },
-    skipped: { en: "Follow-up skipped", ko: "후속 실행 건너뜀" },
-    failed: { en: "Follow-up failed", ko: "후속 실행 실패" },
-    cancelled: { en: "Follow-up cancelled", ko: "후속 실행 취소" },
-    timed_out: { en: "Follow-up timed out", ko: "후속 실행 시간 초과" },
-    agent_unrunnable: { en: "Target agent cannot run", ko: "대상 에이전트를 실행할 수 없음" },
-    assignee_changed: { en: "Issue assignee changed", ko: "이슈 담당자가 변경됨" },
-    issue_terminal: { en: "Issue is terminal", ko: "이슈가 종료 상태임" },
-  };
-  return labels[status] ? L(lang, labels[status]!) : L(lang, { en: "Follow-up state unknown", ko: "후속 실행 상태를 알 수 없음" });
+  const label = CONTINUATION_LABELS[status];
+  return label ? L(lang, label) : L(lang, { en: "Follow-up state unknown", ko: "후속 실행 상태를 알 수 없음" });
+}
+
+function AttentionPill({ value }: { value: "needed" | "none" | "unknown" }) {
+  const lang = useCompanyLanguage();
+  const text = { needed: { en: "Follow-up attention needed", ko: "후속 실행 확인 필요" }, none: { en: "No follow-up attention reported", ko: "후속 실행 주의 신호 없음" }, unknown: { en: "Attention unknown", ko: "주의 여부 미확인" } }[value];
+  return <span data-human-operator-attention={value} className={cn(PILL_CLASS, ATTENTION_TONE[value])}>{L(lang, text)}</span>;
 }
 
 function RequestDecisionState({ state }: { state: HumanOperatorRequestStateV1 }) {
@@ -90,54 +93,42 @@ function RequestDecisionState({ state }: { state: HumanOperatorRequestStateV1 })
   const result = decision.result;
   const continuation = state.continuation;
   return (
-    <section data-human-operator-request-state={decision.status} className="mt-3 space-y-2 border-t border-border pt-3 text-sm">
-      <dl className="grid gap-x-2 gap-y-1 sm:grid-cols-[max-content_1fr]">
-        <dt className="font-medium">{L(lang, { en: "Owner action issue", ko: "조치 소유 이슈" })}</dt>
-        <dd data-owner-action-issue-id>{state.ownerActionIssueId}</dd>
-        <dt className="font-medium">{L(lang, { en: "Source/navigation issue", ko: "원천·탐색 이슈" })}</dt>
-        <dd data-source-issue-id>{state.sourceIssueId ?? L(lang, { en: "None recorded", ko: "기록된 원천 이슈 없음" })}</dd>
+    <section data-human-operator-request-state={decision.status} className="mt-2 space-y-1.5 border-t border-[#242d3f] pt-2 text-xs">
+      <dl className="grid gap-x-3 gap-y-0.5 sm:grid-cols-[max-content_1fr]">
+        <dt className="text-[#8b97ad]">{L(lang, { en: "Owner action issue", ko: "조치 소유 이슈" })}</dt>
+        <dd data-owner-action-issue-id className={EVIDENCE_TEXT}>{state.ownerActionIssueId}</dd>
+        <dt className="text-[#8b97ad]">{L(lang, { en: "Source/navigation issue", ko: "원천·탐색 이슈" })}</dt>
+        <dd data-source-issue-id className={EVIDENCE_TEXT}>{state.sourceIssueId ?? L(lang, { en: "None recorded", ko: "기록된 원천 이슈 없음" })}</dd>
       </dl>
       {decision.status === "resolved" && result && (
-        <div data-human-operator-decision-result className="space-y-1">
-          <p><span className="font-medium">{L(lang, { en: "Selected result", ko: "선택 결과" })}:</span> {result.actionId} · {result.outcome}</p>
+        <div data-human-operator-decision-result className={EVIDENCE_TEXT}>
+          <p><span className="font-semibold text-[#e6edf7]">{L(lang, { en: "Selected result", ko: "선택 결과" })}:</span> {result.actionId} · {result.outcome}</p>
           {result.selectedOptionIds.length > 0 && <p>{L(lang, { en: "Selected options", ko: "선택 항목" })}: {result.selectedOptionIds.join(", ")}</p>}
           {result.comment && <p>{L(lang, { en: "Recorded comment", ko: "기록된 메모" })}: {result.comment}</p>}
         </div>
       )}
-      {decision.status === "cancelled" && <p>{L(lang, { en: "This decision was cancelled.", ko: "이 결정은 취소되었습니다." })}</p>}
+      {decision.status === "cancelled" && <p className="text-[#8b97ad]">{L(lang, { en: "This decision was cancelled.", ko: "이 결정은 취소되었습니다." })}</p>}
       {decision.status !== "pending" && (
-        <div data-human-operator-continuation className="space-y-1">
-          <p className="font-medium">{L(lang, { en: "Native follow-up state", ko: "후속 실행 상태" })}</p>
+        <div data-human-operator-continuation className="space-y-0.5">
+          <p className="font-semibold text-[#e6edf7]">{L(lang, { en: "Native follow-up state", ko: "후속 실행 상태" })}</p>
           {!continuation
-            ? <p>{decision.continuationMode === "none"
-              ? L(lang, { en: "No automatic follow-up is expected.", ko: "자동 후속 실행 대상이 아닙니다." })
-              : L(lang, { en: "Follow-up evidence needs review.", ko: "후속 실행 증거 확인 필요" })}</p>
-            : <>
+            ? <p className={EVIDENCE_TEXT}>{decision.continuationMode === "none" ? L(lang, { en: "No automatic follow-up is expected.", ko: "자동 후속 실행 대상이 아닙니다." }) : L(lang, { en: "Follow-up evidence needs review.", ko: "후속 실행 증거 확인 필요" })}</p>
+            : <div className={EVIDENCE_TEXT}>
               <p>{continuationStatusLabel(lang, continuation.effectiveStatus)} · {continuation.state}</p>
               <p>{L(lang, { en: "Attempts", ko: "시도" })}: {continuation.attemptCount}/{continuation.maxAttempts} · {L(lang, { en: "Manual retries", ko: "수동 재시도" })}: {continuation.manualRetryCount}/{continuation.maxManualRetries}</p>
-              {continuation.errorCode && <p>{L(lang, { en: "Error code", ko: "오류 코드" })}: {continuation.errorCode}</p>}
+              {continuation.errorCode && <p className="text-[#f87171]">{L(lang, { en: "Error code", ko: "오류 코드" })}: {continuation.errorCode}</p>}
               {continuation.retryHint && <p>{L(lang, { en: "Read-only diagnostic hint", ko: "읽기 전용 진단 참고" })}: {continuation.retryHint}</p>}
-              {continuation.state === "accepted" && <p>{L(lang, { en: "Accepted delivery does not mean the mission or owner work is complete.", ko: "실행 접수는 미션 완료나 오너 작업 소비를 뜻하지 않습니다." })}</p>}
-            </>}
+              {continuation.state === "accepted" && <p className="text-[#8b97ad]">{L(lang, { en: "Accepted delivery does not mean the mission or owner work is complete.", ko: "실행 접수는 미션 완료나 오너 작업 소비를 뜻하지 않습니다." })}</p>}
+            </div>}
         </div>
       )}
     </section>
   );
 }
 
-function HumanOperatorRow({
-  request,
-  card,
-  requestState,
-  requestStateProblem,
-  scope,
-  onResolve,
-}: {
-  request: MissionHumanOperatorRequest;
-  card: OperatorDecisionView | null;
-  requestState: HumanOperatorRequestStateV1 | null;
-  requestStateProblem: HumanOperatorRequestStateProblem | null;
-  scope: HumanOperatorScope;
+function HumanOperatorRow({ request, card, requestState, requestStateProblem, scope, onResolve }: {
+  request: MissionHumanOperatorRequest; card: OperatorDecisionView | null; requestState: HumanOperatorRequestStateV1 | null;
+  requestStateProblem: HumanOperatorRequestStateProblem | null; scope: HumanOperatorScope;
   onResolve: (decisionId: string, input: ResolveOperatorDecisionInput) => Promise<unknown>;
 }) {
   const lang = useCompanyLanguage();
@@ -159,31 +150,37 @@ function HumanOperatorRow({
       }}
     />
   ) : null;
+  const requestReasons = (<>
+    {requestState && requestState.identity !== "exact" && requestState.reasonCode && (
+      <p data-human-operator-request-reason className={cn(EVIDENCE_TEXT, "text-[#8b97ad]")}>{L(lang, { en: "Reason", ko: "사유 코드" })}: {requestState.reasonCode}</p>
+    )}
+    {requestStateProblem && <p data-human-operator-request-reason className={cn(EVIDENCE_TEXT, "text-[#8b97ad]")}>{L(lang, { en: "Request state is shown as unknown.", ko: "요청 상태를 미확인으로 표시했습니다." })}</p>}
+  </>);
+  const evidenceBody = (<>
+    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8b97ad]">{evidenceHeading}</p>
+    <p className="whitespace-pre-line font-mono text-xs leading-relaxed text-[#b6c2d6]">{request.summary}</p>
+    {summaryPanel}
+    {requestReasons}
+  </>);
 
   // 상태 A — 대기 중 요청 + 선택 카드 연결: 선택 카드(OperatorDecisionCard) 1장만 펼쳐 노출하고
   // '과거 요청 증거' 블록(원문 요약·메타데이터·미션 링크)은 같은 카드 안 기본 접힘 details 로 보존한다.
   if (card) {
     return (
-      <li data-human-operator-lifecycle={scope.lifecycle} className="rounded-md border border-border/80 bg-card/60 p-4 [&>article]:border-0 [&>article]:bg-transparent [&>article]:p-0">
-        <details data-human-operator-evidence-fold className="mb-2 border-b border-border pb-2 text-xs">
-          <summary className="flex cursor-pointer flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            <span data-human-input-card-badge className="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{cardStatusBadge}</span>
+      <li data-human-operator-lifecycle={scope.lifecycle} className={cn(HAIRLINE_ROW, "p-2 [&>article]:rounded-md [&>article]:border-0 [&>article]:bg-transparent [&>article]:p-0")}>
+        <details data-human-operator-evidence-fold className="mb-1.5 border-b border-[#242d3f] pb-1.5 text-xs">
+          <summary className="flex min-w-0 cursor-pointer flex-wrap items-center gap-2 text-xs text-[#8b97ad]">
+            <span data-human-input-card-badge className={BADGE_PILL}>{cardStatusBadge}</span>
             <span>{L(lang, { en: "Show request evidence", ko: "과거 요청 증거 보기" })}</span>
-            <span>{formatRequestTime(request.timestamp)}</span>
+            <span className="font-mono tabular-nums">{formatRequestTime(request.timestamp)}</span>
           </summary>
-          <div className="mt-2 space-y-2">
+          <div className="mt-2 space-y-1.5">
             {/* details 안 첫 번째 a[href] 가 missionLink(request)여야 기존 링크 계약이 유지된다. */}
-            <Link to={missionLink(request)} className="inline-flex items-center gap-1 text-xs font-medium underline">
+            <Link to={missionLink(request)} className="inline-flex items-center gap-1 text-xs font-medium text-[#5f8dff] underline">
               {L(lang, { en: "Open mission", ko: "미션 열기" })}<ExternalLink className="h-3 w-3" />
             </Link>
-            <h2 className="text-sm font-semibold text-foreground">{request.title}</h2>
-            <p className="text-xs font-medium text-muted-foreground">{evidenceHeading}</p>
-            <p className="whitespace-pre-line text-sm text-muted-foreground">{request.summary}</p>
-            {summaryPanel}
-            {requestState && requestState.identity !== "exact" && requestState.reasonCode && (
-              <p data-human-operator-request-reason className="mt-1 text-xs text-muted-foreground">{L(lang, { en: "Reason", ko: "사유 코드" })}: {requestState.reasonCode}</p>
-            )}
-            {requestStateProblem && <p data-human-operator-request-reason className="mt-1 text-xs text-muted-foreground">{L(lang, { en: "Request state is shown as unknown.", ko: "요청 상태를 미확인으로 표시했습니다." })}</p>}
+            <h2 className="min-w-0 truncate text-sm font-semibold text-[#e6edf7]">{request.title}</h2>
+            {evidenceBody}
             {requestState?.identity === "exact" && requestStateProblem === null && <RequestDecisionState state={requestState} />}
           </div>
         </details>
@@ -192,7 +189,7 @@ function HumanOperatorRow({
     );
   }
 
-  // 상태 B — 해소(resolved/cancelled)된 요청: 본문 카드를 펼치지 않고 1줄 이력(summary)로 접고
+  // 상태 B — 해소(resolved/cancelled)된 요청: 본문 카드를 펼쳐지지 않고 1줄 이력(summary)로 접고
   // 상세 증거·후속 실행 상태는 기본 접힘 details 안에 그대로 보존한다(감사 필드·버튼 계약 무변경).
   const decisionState = requestState?.identity === "exact" ? requestState.decision : null;
   if (requestState && decisionState && (decisionState.status === "resolved" || decisionState.status === "cancelled")) {
@@ -203,27 +200,23 @@ function HumanOperatorRow({
         ? `· ${result.actionId} · ${result.outcome}${result.selectedOptionIds.length > 0 && !(result.selectedOptionIds.length === 1 && result.selectedOptionIds[0] === result.actionId) ? ` (${result.selectedOptionIds.join(", ")})` : ""}`
         : "";
     return (
-      <li data-human-operator-lifecycle={scope.lifecycle} className="rounded-md border border-border/80 bg-card/60 px-4 py-2.5">
+      <li data-human-operator-lifecycle={scope.lifecycle} className={cn(HAIRLINE_ROW, "px-3 py-1.5")}>
         <details data-human-operator-history-fold>
-          <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-sm">
-            <span className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={scope.missionStatus ?? "unknown"} />
-              <span data-human-input-card-badge className="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{cardStatusBadge}</span>
-              <span className="font-medium text-foreground">{request.title}</span>
-              {resultSummary && <span className="text-xs text-muted-foreground">{resultSummary}</span>}
-              {requestState.attention === true && <span data-human-operator-attention="needed" className="text-xs text-amber-700">{L(lang, { en: "Follow-up attention needed", ko: "후속 실행 확인 필요" })}</span>}
-              {requestState.attention === false && <span data-human-operator-attention="none" className="text-xs text-muted-foreground">{L(lang, { en: "No follow-up attention reported", ko: "후속 실행 주의 신호 없음" })}</span>}
-              {requestState.attention === null && <span data-human-operator-attention="unknown" className="text-xs text-amber-700">{L(lang, { en: "Attention unknown", ko: "주의 여부 미확인" })}</span>}
-            </span>
-            <span className="text-xs text-muted-foreground">{formatRequestTime(decisionState.resolvedAt ?? decisionState.cancelledAt ?? request.timestamp)}</span>
+          <summary className="flex min-w-0 cursor-pointer items-center gap-2 text-xs">
+            <StatusBadge status={scope.missionStatus ?? "unknown"} />
+            <span data-human-input-card-badge className={BADGE_PILL}>{cardStatusBadge}</span>
+            <span className="min-w-0 truncate font-medium text-[#e6edf7]">{request.title}</span>
+            {resultSummary && <span className="shrink-0 font-mono text-[11px] text-[#8b97ad]">{resultSummary}</span>}
+            {requestState.attention === true && <AttentionPill value="needed" />}
+            {requestState.attention === false && <AttentionPill value="none" />}
+            {requestState.attention === null && <AttentionPill value="unknown" />}
+            <span className="ml-auto shrink-0 font-mono text-[11px] text-[#8b97ad]">{formatRequestTime(decisionState.resolvedAt ?? decisionState.cancelledAt ?? request.timestamp)}</span>
           </summary>
-          <div className="mt-3 space-y-2">
+          <div className="mt-2 space-y-1.5 border-t border-[#242d3f] pt-2">
             <Button asChild variant="outline" size="sm" className="w-full shrink-0 lg:w-auto">
               <Link to={missionLink(request)}>{L(lang, { en: "Open mission", ko: "미션 열기" })}<ExternalLink className="ml-1.5 h-3.5 w-3.5" /></Link>
             </Button>
-            <p className="text-xs font-medium text-muted-foreground">{evidenceHeading}</p>
-            <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{request.summary}</p>
-            {summaryPanel}
+            {evidenceBody}
             <RequestDecisionState state={requestState} />
           </div>
         </details>
@@ -233,28 +226,19 @@ function HumanOperatorRow({
 
   // 상태 C — 카드 미연결·상태 미확인(legacy/malformed/missing/ambiguous/unsupported) 행은 기존 렌더링 유지.
   return (
-    <li data-human-operator-lifecycle={scope.lifecycle} className="rounded-md border border-border/80 bg-card/60 p-4 [&>article]:border-0 [&>article]:bg-transparent">
+    <li data-human-operator-lifecycle={scope.lifecycle} className={cn(HAIRLINE_ROW, "p-3 [&>article]:border-0 [&>article]:bg-transparent")}>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 space-y-2">
+        <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={request.severity ?? "attention"} />
             <StatusBadge status={scope.missionStatus ?? "unknown"} />
-            <span data-human-input-card-badge className="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">{cardStatusBadge}</span>
-            {(!requestState || requestState.attention === null) && <span data-human-operator-attention="unknown" className="text-xs text-amber-700">{L(lang, { en: "Attention unknown", ko: "주의 여부 미확인" })}</span>}
-            {requestState && requestState.attention !== null && <span data-human-operator-attention={requestState.attention ? "needed" : "none"} className="text-xs text-muted-foreground">{requestState.attention
-              ? L(lang, { en: "Follow-up attention needed", ko: "후속 실행 확인 필요" })
-              : L(lang, { en: "No follow-up attention reported", ko: "후속 실행 주의 신호 없음" })}</span>}
-            <span className="text-xs text-muted-foreground">{formatRequestTime(request.timestamp)}</span>
+            <span data-human-input-card-badge className={BADGE_PILL}>{cardStatusBadge}</span>
+            {(!requestState || requestState.attention === null) ? <AttentionPill value="unknown" /> : <AttentionPill value={requestState.attention ? "needed" : "none"} />}
+            <span className="font-mono text-[11px] text-[#8b97ad]">{formatRequestTime(request.timestamp)}</span>
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-foreground">{request.title}</h2>
-            <p className="mt-1 text-xs font-medium text-muted-foreground">{evidenceHeading}</p>
-            <p className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{request.summary}</p>
-            {summaryPanel}
-            {requestState && requestState.identity !== "exact" && requestState.reasonCode && (
-              <p data-human-operator-request-reason className="mt-1 text-xs text-muted-foreground">{L(lang, { en: "Reason", ko: "사유 코드" })}: {requestState.reasonCode}</p>
-            )}
-            {requestStateProblem && <p data-human-operator-request-reason className="mt-1 text-xs text-muted-foreground">{L(lang, { en: "Request state is shown as unknown.", ko: "요청 상태를 미확인으로 표시했습니다." })}</p>}
+            <h2 className="min-w-0 truncate text-sm font-semibold text-[#e6edf7]">{request.title}</h2>
+            <div className="mt-1 space-y-1">{evidenceBody}</div>
           </div>
         </div>
         <Button asChild variant="outline" size="sm" className="w-full shrink-0 lg:w-auto">
@@ -291,9 +275,7 @@ export function HumanOperator() {
   const missionsQuery = useQuery({
     queryKey: selectedCompanyId ? queryKeys.missions.list(selectedCompanyId) : ["missions"],
     queryFn: () => missionsApi.list(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
-    staleTime: 30_000,
-    refetchInterval: 30_000,
+    enabled: !!selectedCompanyId, staleTime: 30_000, refetchInterval: 30_000,
   });
   const pendingQuery = useQuery({
     queryKey: selectedCompanyId ? queryKeys.operatorDecisions.list(selectedCompanyId, "pending") : ["operator-decisions", "pending"],
@@ -335,12 +317,9 @@ export function HumanOperator() {
 
   async function refreshDecisionSurfaces() {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: queryKeys.operatorDecisions.list(selectedCompanyId!, "pending") }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.missions.humanOperatorRequests(selectedCompanyId!) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.missions.list(selectedCompanyId!) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.sidebarBadges(selectedCompanyId!) }),
-      queryClient.invalidateQueries({ queryKey: queryKeys.activity(selectedCompanyId!) }),
-    ]);
+      queryKeys.operatorDecisions.list(selectedCompanyId!, "pending"), queryKeys.missions.humanOperatorRequests(selectedCompanyId!),
+      queryKeys.missions.list(selectedCompanyId!), queryKeys.sidebarBadges(selectedCompanyId!), queryKeys.activity(selectedCompanyId!),
+    ].map((queryKey) => queryClient.invalidateQueries({ queryKey })));
     setFocusAfterSuccess(true);
   }
 
@@ -361,6 +340,11 @@ export function HumanOperator() {
     { lifecycle: "unknown", title: L(lang, { en: "Mission status unknown", ko: "미션 상태를 알 수 없음" }), data: surface.unknown },
     { lifecycle: "unscoped", title: L(lang, { en: "Unscoped work", ko: "미션 범위가 없는 작업" }), data: surface.unscoped },
   ];
+  const sectionCount = (s: HumanOperatorSurfaceSection) => s.cards.length + s.requests.length;
+  // Active is always shown (it owns the empty-state heading); other groups only when they hold rows.
+  const visibleSections = sections.filter((s) => s.lifecycle === "active" || sectionCount(s.data) > 0);
+  const pendingCardCount = sections.reduce((n, s) => n + s.data.cards.length, 0);
+  const attentionCount = sections.reduce((n, s) => n + s.data.requests.filter((r) => r.requestState?.attention === true).length, 0);
   const missionStatusNotice = missionsQuery.isLoading
     ? L(lang, { en: "Loading the complete company mission list; scoped items remain visible as unknown until it loads.", ko: "회사 전체 미션 목록을 불러오는 중입니다. 완료될 때까지 범위가 있는 항목은 상태 미확인으로 표시됩니다." })
     : missionsQuery.isError
@@ -371,59 +355,75 @@ export function HumanOperator() {
   const displayedLabel = surface.pendingPageIncomplete
     ? L(lang, { en: `At least ${surface.displayedCount} ${surface.displayedCount === 1 ? "item" : "items"} displayed; more pending cards exist.`, ko: `항목 ${surface.displayedCount}개 이상 표시 중이며, 대기 카드가 더 있습니다.` })
     : L(lang, { en: `${surface.displayedCount} ${surface.displayedCount === 1 ? "item" : "items"} displayed`, ko: `항목 ${surface.displayedCount}개 표시 중` });
-  const recentWindowNotice = L(lang, {
-    en: "Showing a bounded recent request window; this is not a total or a count of all pending work.",
-    ko: "최근 요청 일부 표시이며 전체 요청 또는 전체 대기 수가 아닙니다.",
-  });
+  const recentWindowNotice = L(lang, { en: "Showing a bounded recent request window; this is not a total or a count of all pending work.", ko: "최근 요청 일부 표시이며 전체 요청 또는 전체 대기 수가 아닙니다." });
+  const stripCells = [
+    { label: L(lang, { en: "Pending cards", ko: "대기 카드" }), value: pendingCardCount, dot: cn("bg-[#fbbf24]", pendingCardCount > 0 && "animate-pulse") },
+    { label: L(lang, { en: "Requests", ko: "요청" }), value: requests.length, dot: "bg-[#5f8dff]" },
+    { label: L(lang, { en: "Attention", ko: "주의 필요" }), value: attentionCount, dot: attentionCount > 0 ? "bg-[#f87171]" : "bg-[#4a5670]" },
+    { label: L(lang, { en: "Active/planning", ko: "활성/계획" }), value: surface.activeCount, dot: "bg-[#34d399]" },
+  ];
 
   return (
-    <div className="space-y-4 tabular-nums">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold">Human Operator</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Structured decisions, mission escalations, and input requests needing operator attention.
-          </p>
-          <p data-human-operator-recent-window className="mt-1 text-xs text-muted-foreground">{recentWindowNotice}</p>
-          <p className="mt-1 text-xs font-medium text-foreground">{displayedLabel}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {L(lang, {
-              en: `${surface.activeCount} active/planning item${surface.activeCount === 1 ? "" : "s"} displayed`,
-              ko: `활성/계획 미션 항목 ${surface.activeCount}개 표시 중`,
-            })}
-          </p>
+    <div className="space-y-2 tabular-nums">
+      {/* 1-row 5-cell cockpit strip: human queue telemetry */}
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label={L(lang, { en: "Human operator queue", ko: "사람 운영자 대기열" })}>
+        {stripCells.map((cell) => (
+          <div key={cell.label} className="cockpit-cell min-w-0 flex-1 justify-center">
+            <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.dot}`} />
+            <span className="truncate uppercase tracking-wide">{cell.label}</span>
+            <b className="ml-1">{cell.value}</b>
+          </div>
+        ))}
+        <div className="cockpit-cell min-w-0 shrink-0">
+          <span className="truncate uppercase tracking-wide">{L(lang, { en: "Displayed", ko: "표시" })}</span>
+          <b className="ml-1 text-[#5f8dff]">{surface.displayedCount}</b>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void refreshAll()} disabled={isFetching}>
+      </div>
+
+      {/* Tight 40px toolbar: lifecycle section tabs · bounded-window notices · refresh action */}
+      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-2">
+        <div role="group" aria-label={L(lang, { en: "Jump to a mission group", ko: "미션 그룹으로 이동" })} className="flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5">
+          {visibleSections.map((s) => (
+            <button key={s.lifecycle} type="button" className={TAB_CLASS}
+              onClick={() => document.getElementById(`human-operator-${s.lifecycle}-heading`)?.scrollIntoView?.({ block: "start" })}>
+              {s.title} <span className="ml-1 font-mono text-[10px] text-[#8b97ad]">{sectionCount(s.data)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="ml-2 flex min-w-0 flex-1 items-center gap-2 text-[11px]">
+          <p className="shrink-0 font-semibold text-[#e6edf7]">{displayedLabel}</p>
+          <p data-human-operator-recent-window className="min-w-0 truncate text-[#8b97ad]" title={recentWindowNotice}>{recentWindowNotice}</p>
+        </div>
+        <Button variant="outline" size="sm" className="ml-2 h-7 shrink-0 border-[#242d3f] bg-[#151b28] px-2.5 text-xs text-[#e6edf7] hover:bg-[#1a2131]" onClick={() => void refreshAll()} disabled={isFetching}>
           <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
           {isFetching ? "Refreshing" : "Refresh"}
         </Button>
       </div>
 
-      {error && <div className="flex items-center gap-2 border border-destructive/40 p-3 text-sm text-destructive" role="alert">
-        <AlertTriangle className="h-4 w-4 shrink-0" />
-        <span>{error instanceof Error ? error.message : "Failed to load Human Operator work."}</span>
+      {error && <div className="flex items-center gap-2 rounded-md border border-[#f87171]/40 bg-[#f87171]/10 p-3 text-sm text-[#f87171]" role="alert">
+        <AlertTriangle className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate">{error instanceof Error ? error.message : "Failed to load Human Operator work."}</span>
       </div>}
 
-      {missionStatusNotice && <p className="text-xs text-muted-foreground" role={missionsQuery.isError ? "alert" : "status"}>{missionStatusNotice}</p>}
+      {missionStatusNotice && <p className="truncate text-xs text-[#8b97ad]" role={missionsQuery.isError ? "alert" : "status"}>{missionStatusNotice}</p>}
 
-      {sections.map(({ lifecycle, title, note, data }) => {
-        const sectionCount = data.cards.length + data.requests.length;
-        if (lifecycle !== "active" && sectionCount === 0) return null;
+      {visibleSections.map(({ lifecycle, title, note, data }) => {
+        const count = sectionCount(data);
         const headingId = `human-operator-${lifecycle}-heading`;
         return (
-          <section key={lifecycle} aria-labelledby={headingId} className="space-y-2">
-            <h2 id={headingId} className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              {title} <span className="text-xs font-normal text-muted-foreground tabular-nums">({sectionCount} displayed)</span>
+          <section key={lifecycle} aria-labelledby={headingId} className="scroll-mt-2 space-y-1.5">
+            <h2 id={headingId} className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8b97ad]">
+              {title} <b className="font-mono text-[10px] font-medium text-[#5f8dff]">{count}</b>
+              <span className="sr-only">{L(lang, { en: `${count} displayed`, ko: `${count}개 표시` })}</span>
             </h2>
-            {note && sectionCount > 0 && <p className="text-sm text-muted-foreground">{note}</p>}
+            {note && count > 0 && <p className="text-xs text-[#8b97ad]">{note}</p>}
             {data.cards.length > 0 && (
-              <div aria-label={L(lang, { en: "Pending Interactive Cards", ko: "대기 중인 인터랙티브 카드" })} className="space-y-2 [&>article]:rounded-md [&>article]:border-border/80 [&>article]:bg-card/60">
-                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{L(lang, { en: "Pending Interactive Cards", ko: "대기 중인 인터랙티브 카드" })}</h3>
+              <div aria-label={L(lang, { en: "Pending Interactive Cards", ko: "대기 중인 인터랙티브 카드" })} className="space-y-1.5 [&>article]:rounded-md [&>article]:border-[#242d3f] [&>article]:bg-[#111622]">
+                <h3 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#8b97ad]">{L(lang, { en: "Pending Interactive Cards", ko: "대기 중인 인터랙티브 카드" })}</h3>
                 {data.cards.map(({ decision }) => <OperatorDecisionCard key={decision.id} decision={decision} onResolve={resolveDecision} />)}
               </div>
             )}
             {lifecycle === "active" && <ExternalAutomationApprovals />}
-            {data.requests.length > 0 && <ul className="space-y-2">{data.requests.map(({ request, card, requestState, requestStateProblem, scope }) => (
+            {data.requests.length > 0 && <ul className="space-y-1.5">{data.requests.map(({ request, card, requestState, requestStateProblem, scope }) => (
               <HumanOperatorRow
                 key={request.id}
                 request={request}
@@ -435,7 +435,7 @@ export function HumanOperator() {
               />
             ))}</ul>}
             {surface.displayedCount === 0 && lifecycle === "active" && (
-              <h3 data-human-operator-empty-heading tabIndex={-1} className="text-sm font-medium">
+              <h3 data-human-operator-empty-heading tabIndex={-1} className="text-sm font-medium text-[#e6edf7]">
                 {L(lang, { en: "No requests in this recent window.", ko: "최근 요청 범위에 표시할 요청이 없습니다." })}
               </h3>
             )}
