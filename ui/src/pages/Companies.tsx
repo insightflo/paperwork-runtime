@@ -5,37 +5,32 @@ import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { companiesApi } from "../api/companies";
 import { queryKeys } from "../lib/queryKeys";
-import { formatCents, relativeTime } from "../lib/utils";
+import { cn, formatCents, relativeTime } from "../lib/utils";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Pencil,
-  Check,
-  X,
-  Plus,
-  MoreHorizontal,
-  Trash2,
-  Users,
-  CircleDot,
-  DollarSign,
-  Calendar,
-} from "lucide-react";
+import { Calendar, Check, CircleDot, DollarSign, MoreHorizontal, Pencil, Plus, Trash2, Users, X } from "lucide-react";
+
+// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
+const CARD = "rounded-md border border-[#242d3f] bg-[#151b28] transition-colors";
+const CARD_SELECTED = "border-[#5f8dff]/50 bg-[#111622] shadow-[inset_2px_0_0_#5f8dff]";
+const CARD_IDLE = "hover:bg-[#1a2131]";
+const ICON = "h-3.5 w-3.5 shrink-0 text-[#8b97ad]";
+const STAT = "flex min-w-0 items-center gap-1.5 text-xs text-[#8b97ad]";
+const CELL = "cockpit-cell min-w-0 flex-1 justify-center";
+const PILL = "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium";
+const STATUS_PILL: Record<string, string> = {
+  active: "bg-[#34d399]/15 text-[#34d399]",
+  paused: "bg-[#fbbf24]/15 text-[#fbbf24]",
+};
+const PILL_IDLE = "bg-[#0b0e14] text-[#8b97ad] shadow-[inset_0_0_0_1px_#242d3f]";
+const HOVER_ICON = "text-[#8b97ad] opacity-0 group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100";
+const PRIMARY_CTA = "h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]";
 
 export function Companies() {
-  const {
-    companies,
-    selectedCompanyId,
-    setSelectedCompanyId,
-    loading,
-    error,
-  } = useCompany();
+  const { companies, selectedCompanyId, setSelectedCompanyId, loading, error } = useCompany();
   const { openOnboarding } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
@@ -51,8 +46,7 @@ export function Companies() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const editMutation = useMutation({
-    mutationFn: ({ id, newName }: { id: string; newName: string }) =>
-      companiesApi.update(id, { name: newName }),
+    mutationFn: ({ id, newName }: { id: string; newName: string }) => companiesApi.update(id, { name: newName }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
       setEditingId(null);
@@ -87,25 +81,43 @@ export function Companies() {
     setEditName("");
   }
 
+  const activeCount = companies.filter((company) => company.status === "active").length;
+  const pausedCount = companies.filter((company) => company.status === "paused").length;
+  const totalAgents = companies.reduce((sum, company) => sum + (stats?.[company.id]?.agentCount ?? 0), 0);
+  const totalIssues = companies.reduce((sum, company) => sum + (stats?.[company.id]?.issueCount ?? 0), 0);
+  const totalSpent = companies.reduce((sum, company) => sum + company.spentMonthlyCents, 0);
+  const budgeted = companies.filter((company) => company.budgetMonthlyCents > 0);
+  const selectedCompany = companies.find((company) => company.id === selectedCompanyId);
+
   return (
-    <div className="space-y-6 tabular-nums">
-      <div className="flex items-center justify-between gap-3 rounded-md border border-border/80 bg-card/60 px-3 py-2">
-        <div className="flex items-baseline gap-2">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Companies</h2>
-          <span className="text-xs font-medium text-muted-foreground tabular-nums">{companies.length}</span>
-        </div>
-        <Button size="sm" onClick={() => openOnboarding()}>
-          <Plus className="h-3.5 w-3.5 mr-1.5" />
+    <div className="space-y-2 tabular-nums">
+      {/* 1-row cockpit strip: roster, status and spend totals (selects the company when a name is shown) */}
+      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Companies summary">
+        <div className={CELL}><span className="truncate uppercase tracking-wide">Active</span><b className="ml-1 text-[#34d399]">{activeCount}</b></div>
+        <div className={CELL}><span className="truncate uppercase tracking-wide">Paused</span><b className="ml-1 text-[#fbbf24]">{pausedCount}</b></div>
+        <div className={CELL}><Users className="h-3 w-3 text-[#5f8dff]" aria-hidden /><span className="truncate uppercase tracking-wide">Agents</span><b className="ml-1">{stats ? totalAgents : "—"}</b></div>
+        <div className={CELL}><CircleDot className="h-3 w-3 text-[#5f8dff]" aria-hidden /><span className="truncate uppercase tracking-wide">Work items</span><b className="ml-1">{stats ? totalIssues : "—"}</b></div>
+        <div className={CELL}><span className="truncate uppercase tracking-wide">Monthly spend</span><b className="ml-1 font-mono">{formatCents(totalSpent)}</b></div>
+        <div className={cn(CELL, "shrink-0")}><span className="truncate uppercase tracking-wide">Budgeted</span><b className="ml-1">{budgeted.length}</b><span className="truncate">/ {companies.length}</span></div>
+        <div className={cn(CELL, "max-w-[14rem] shrink-[2]")}><span className="truncate uppercase tracking-wide">Selected</span><b className="ml-1 truncate font-mono">{selectedCompany?.name ?? "—"}</b></div>
+      </div>
+
+      {/* Tight 40px toolbar: section title · count · primary action */}
+      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] px-3">
+        <h2 className="truncate text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]">Companies</h2>
+        <span className="font-mono text-sm font-semibold text-[#e6edf7]">{companies.length}</span>
+        <Button size="sm" variant="outline" onClick={() => openOnboarding()} className={cn(PRIMARY_CTA, "ml-auto")}>
+          <Plus className="h-3.5 w-3.5" />
           New Company
         </Button>
       </div>
 
-      <div className="h-6">
-        {loading && <p className="text-sm text-muted-foreground">Loading companies...</p>}
-        {error && <p className="text-sm text-destructive">{error.message}</p>}
+      <div className="h-6 text-xs">
+        {loading && <p className="text-[#8b97ad]">Loading companies...</p>}
+        {error && <p className="text-destructive">{error.message}</p>}
       </div>
 
-      <div className="grid gap-4">
+      <div className="grid gap-2">
         {companies.map((company) => {
           const selected = company.id === selectedCompanyId;
           const isEditing = editingId === company.id;
@@ -113,18 +125,15 @@ export function Companies() {
           const companyStats = stats?.[company.id];
           const agentCount = companyStats?.agentCount ?? 0;
           const issueCount = companyStats?.issueCount ?? 0;
-          const budgetPct =
-            company.budgetMonthlyCents > 0
-              ? Math.round(
-                  (company.spentMonthlyCents / company.budgetMonthlyCents) * 100,
-                )
-              : 0;
+          const budgetPct = company.budgetMonthlyCents > 0
+            ? Math.round((company.spentMonthlyCents / company.budgetMonthlyCents) * 100) : 0;
 
           return (
             <div
               key={company.id}
               role="button"
               tabIndex={0}
+              aria-pressed={selected}
               onClick={() => setSelectedCompanyId(company.id)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
@@ -132,13 +141,15 @@ export function Companies() {
                   setSelectedCompanyId(company.id);
                 }
               }}
-              className={`group text-left rounded-md border border-border/80 bg-card/60 p-5 transition-colors cursor-pointer ${
-                selected ? "ring-1 ring-primary" : "hover:border-muted-foreground/30"
-              }`}
+              className={cn(
+                "group cursor-pointer text-left outline-none focus-visible:ring-1 focus-visible:ring-[#5f8dff]",
+                CARD,
+                selected ? CARD_SELECTED : CARD_IDLE,
+              )}
             >
               {/* Header row: name + menu */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-3 px-4 pt-3">
+                <div className="min-w-0 flex-1">
                   {isEditing ? (
                     <div
                       className="flex items-center gap-2"
@@ -147,7 +158,8 @@ export function Companies() {
                       <Input
                         value={editName}
                         onChange={(e) => setEditName(e.target.value)}
-                        className="h-7 text-sm"
+                        aria-label="Company name"
+                        className="h-7 w-64 max-w-full border-[#242d3f] bg-[#0b0e14] text-sm text-[#e6edf7]"
                         autoFocus
                         onKeyDown={(e) => {
                           if (e.key === "Enter") saveEdit();
@@ -159,31 +171,25 @@ export function Companies() {
                         size="icon-xs"
                         onClick={saveEdit}
                         disabled={editMutation.isPending}
+                        aria-label="Save company name"
                       >
-                        <Check className="h-3.5 w-3.5 text-green-500" />
+                        <Check className="h-3.5 w-3.5 text-[#34d399]" />
                       </Button>
-                      <Button variant="ghost" size="icon-xs" onClick={cancelEdit}>
-                        <X className="h-3.5 w-3.5 text-muted-foreground" />
+                      <Button variant="ghost" size="icon-xs" onClick={cancelEdit} aria-label="Cancel rename">
+                        <X className="h-3.5 w-3.5 text-[#8b97ad]" />
                       </Button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-base">{company.name}</h3>
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                          company.status === "active"
-                            ? "bg-green-500/10 text-green-600 dark:text-green-400"
-                            : company.status === "paused"
-                              ? "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400"
-                              : "bg-muted text-muted-foreground"
-                        }`}
-                      >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <h3 className="min-w-0 truncate text-sm font-semibold text-[#e6edf7]">{company.name}</h3>
+                      <span className={cn(PILL, STATUS_PILL[company.status] ?? PILL_IDLE)}>
                         {company.status}
                       </span>
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="text-muted-foreground opacity-0 group-hover:opacity-100"
+                        className={HOVER_ICON}
+                        aria-label={`Rename ${company.name}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           startEdit(company.id, company.name);
@@ -194,9 +200,7 @@ export function Companies() {
                     </div>
                   )}
                   {company.description && !isEditing && (
-                    <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                      {company.description}
-                    </p>
+                    <p className="mt-1 line-clamp-2 text-xs text-[#8b97ad]">{company.description}</p>
                   )}
                 </div>
 
@@ -207,7 +211,8 @@ export function Companies() {
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="text-muted-foreground opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100"
+                        className={HOVER_ICON}
+                        aria-label={`Company actions for ${company.name}`}
                       >
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
@@ -232,58 +237,49 @@ export function Companies() {
                 </div>
               </div>
 
-              {/* Stats row */}
-              <div className="flex items-center gap-3 sm:gap-5 mt-4 text-sm text-muted-foreground flex-wrap tabular-nums">
-                <div className="flex items-center gap-1.5">
-                  <Users className="h-3.5 w-3.5" />
-                  <span>
-                    {agentCount} {agentCount === 1 ? "agent" : "agents"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <CircleDot className="h-3.5 w-3.5" />
-                  <span>
-                    {issueCount} {issueCount === 1 ? "work item" : "work items"}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 tabular-nums">
-                  <DollarSign className="h-3.5 w-3.5" />
-                  <span>
-                    {formatCents(company.spentMonthlyCents)}
-                    {company.budgetMonthlyCents > 0
-                      ? <> / {formatCents(company.budgetMonthlyCents)} <span className="text-xs">({budgetPct}%)</span></>
-                      : <span className="text-xs ml-1">Unlimited budget</span>}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5 ml-auto">
-                  <Calendar className="h-3.5 w-3.5" />
-                  <span>Created {relativeTime(company.createdAt)}</span>
-                </div>
+              {/* Stats row: hairline track under the name, bold tabular figures */}
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-[#242d3f] px-4 py-2">
+                <span className={STAT}><Users className={ICON} aria-hidden /><b className="font-semibold text-[#e6edf7]">{agentCount}</b>{agentCount === 1 ? "agent" : "agents"}</span>
+                <span className={STAT}><CircleDot className={ICON} aria-hidden /><b className="font-semibold text-[#e6edf7]">{issueCount}</b>{issueCount === 1 ? "work item" : "work items"}</span>
+                <span className={STAT}>
+                  <DollarSign className={ICON} aria-hidden />
+                  <b className="font-mono font-semibold text-[#e6edf7]">{formatCents(company.spentMonthlyCents)}</b>
+                  {company.budgetMonthlyCents > 0 ? (
+                    <span className="truncate font-mono text-[#8b97ad]">
+                      / {formatCents(company.budgetMonthlyCents)} · {budgetPct}%
+                    </span>
+                  ) : (
+                    <span className="truncate">Unlimited budget</span>
+                  )}
+                </span>
+                <span className={cn(STAT, "ml-auto")}><Calendar className={ICON} aria-hidden /><span className="truncate">Created {relativeTime(company.createdAt)}</span></span>
               </div>
 
               {/* Delete confirmation */}
               {isConfirmingDelete && (
                 <div
-                  className="mt-4 flex items-center justify-between bg-destructive/5 border border-destructive/20 rounded-md px-4 py-3"
+                  className="mt-3 flex items-center justify-between gap-4 border-t border-[#f87171]/30 bg-[#f87171]/5 px-4 py-2.5"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <p className="text-sm text-destructive font-medium">
+                  <p className="min-w-0 truncate text-xs font-medium text-[#f87171]">
                     Delete this company and all its data? This cannot be undone.
                   </p>
-                  <div className="flex items-center gap-2 ml-4 shrink-0">
+                  <div className="flex shrink-0 items-center gap-2">
                     <Button
                       variant="ghost"
-                      size="sm"
+                      size="xs"
                       onClick={() => setConfirmDeleteId(null)}
                       disabled={deleteMutation.isPending}
+                      className="h-7 border border-[#242d3f] text-xs text-[#e6edf7]"
                     >
                       Cancel
                     </Button>
                     <Button
                       variant="destructive"
-                      size="sm"
+                      size="xs"
                       onClick={() => deleteMutation.mutate(company.id)}
                       disabled={deleteMutation.isPending}
+                      className="h-7 bg-[#f87171] px-2.5 text-xs text-[#0b0e14]"
                     >
                       {deleteMutation.isPending ? "Deleting…" : "Delete"}
                     </Button>
