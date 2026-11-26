@@ -25,11 +25,21 @@ function actionPath(target: ApprovalTarget, action: string) {
     ? `/companies/${target.companyId}/workflow-replacements/${target.id}/${action}`
     : `/approvals/${typeof target === "string" ? target : target.id}/${action}`;
 }
+/** Positional `status` string stays supported; the object form adds an optional paging window. */
+export type ApprovalListFilter =
+  | string
+  | { status?: string; limit?: number; offset?: number };
+
 export const approvalsApi = {
-  list: (companyId: string, status?: string) =>
-    api.get<Approval[]>(
-      `/companies/${companyId}/approvals${status ? `?status=${encodeURIComponent(status)}` : ""}`,
-    ),
+  list: (companyId: string, filter?: ApprovalListFilter) => {
+    const filters = typeof filter === "string" ? { status: filter } : filter;
+    const params = new URLSearchParams();
+    if (filters?.status) params.set("status", filters.status);
+    if (filters?.limit !== undefined) params.set("limit", String(filters.limit));
+    if (filters?.offset !== undefined) params.set("offset", String(filters.offset));
+    const qs = params.toString();
+    return api.get<Approval[]>(`/companies/${companyId}/approvals${qs ? `?${qs}` : ""}`);
+  },
   create: (companyId: string, data: Record<string, unknown>) =>
     api.post<Approval>(`/companies/${companyId}/approvals`, data),
   get: (id: string) => api.get<Approval>(`/approvals/${id}`),
