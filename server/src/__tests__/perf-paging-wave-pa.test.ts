@@ -11,16 +11,12 @@ const mockIssueService = vi.hoisted(() => ({
   getById: vi.fn(),
   getByIdentifier: vi.fn(),
 }));
-const mockActivityService = vi.hoisted(() => ({
-  runsForIssue: vi.fn(),
-}));
 const mockMissionService = vi.hoisted(() => ({
   readCompanyId: vi.fn(),
 }));
 
 vi.mock("../services/index.js", () => ({
   accessService: () => ({ canUser: vi.fn(), hasPermission: vi.fn() }),
-  activityService: () => mockActivityService,
   agentService: () => ({ getById: vi.fn() }),
   documentService: () => ({}),
   executionWorkspaceService: () => ({ getById: vi.fn() }),
@@ -126,19 +122,17 @@ describe("perf paging wave PA", () => {
 
   it("forwards run pagination from the issue runs endpoint", async () => {
     const issueId = "11111111-1111-4111-8111-111111111111";
+    const chain = makeSelectChain();
+    const db = { select: vi.fn(() => chain) };
     mockIssueService.getById.mockResolvedValue({ id: issueId, companyId: "company-1" });
-    mockActivityService.runsForIssue.mockResolvedValue([]);
 
-    const res = await request(createApp(issueRoutes({} as any, {} as any))).get(
+    const res = await request(createApp(issueRoutes(db as any, {} as any))).get(
       `/api/issues/${issueId}/runs?limit=500&offset=3`,
     );
 
     expect(res.status).toBe(200);
-    expect(mockActivityService.runsForIssue).toHaveBeenCalledWith(
-      "company-1",
-      issueId,
-      { limit: 100, offset: 3 },
-    );
+    expect(chain.limit).toHaveBeenCalledWith(100);
+    expect(chain.offset).toHaveBeenCalledWith(3);
   });
 
   it("defaults runsForIssue to limit 20 and offset 0", async () => {

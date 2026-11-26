@@ -24,7 +24,6 @@ import { validate } from "../middleware/validate.js";
 import { hermesOpsMutationGuard } from "../middleware/hermes-ops-mutation-guard.js";
 import {
   accessService,
-  activityService,
   agentService,
   executionWorkspaceService,
   goalService,
@@ -57,6 +56,7 @@ import { resolveAgentWorkProductRouteGuard } from "../services/issue-execution-c
 import { handleDelegatedArtifactHandback } from "../services/delegated-artifact-handback.js";
 import { completeUnblockActionWithSourceHandback } from "../services/missions/owner-action-completion.js";
 import { standaloneIssueExecutionContractService } from "../services/standalone-issue-execution-contract.js";
+import { activityService } from "../services/activity.js";
 
 const MAX_ISSUE_COMMENT_LIMIT = 500;
 // [목적] 목록 페이지 윈도우 상한. 기본 limit은 두지 않고(전체 보드 절단 방지) 호출자가 넘길 때만 적용한다.
