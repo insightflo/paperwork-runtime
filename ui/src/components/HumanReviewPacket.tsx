@@ -3,10 +3,19 @@ import { AlertTriangle, ArrowUpRight, CheckCircle2, HelpCircle, XCircle } from "
 import { Link } from "../lib/router";
 import { L, useCompanyLanguage } from "../lib/companyLanguage";
 
+const REVIEW_CARD_CLASS =
+  "tactile-card mt-3 rounded-[12px] border border-slate-200/90 bg-white text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
+const REVIEW_LABEL_CLASS =
+  "text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8f9db3]";
+const AMBER_NOTICE_CLASS =
+  "rounded-[10px] border border-amber-300/70 bg-amber-50/85 text-amber-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
+const INSET_PANEL_CLASS =
+  "rounded-[10px] border border-slate-200/80 bg-slate-50/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.07] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
+
 function SourceLink({ href, children }: { href: string; children: React.ReactNode }) {
   return href.startsWith("/")
-    ? <Link to={href} className="inline-flex items-center gap-1 font-medium">{children}<ArrowUpRight className="h-3 w-3" /></Link>
-    : <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium">{children}<ArrowUpRight className="h-3 w-3" /></a>;
+    ? <Link to={href} className="inline-flex items-center gap-1 font-medium text-blue-700 transition-colors hover:text-blue-900 dark:text-[#60a5fa] dark:hover:text-[#93c5fd]">{children}<ArrowUpRight className="h-3 w-3" /></Link>
+    : <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-blue-700 transition-colors hover:text-blue-900 dark:text-[#60a5fa] dark:hover:text-[#93c5fd]">{children}<ArrowUpRight className="h-3 w-3" /></a>;
 }
 
 /**
@@ -142,12 +151,12 @@ export function HumanReviewSymptomBlock({ packet }: { packet: HumanReviewPacketV
   const notices = extractPrerequisiteNotices(packet);
   return (
     <div data-testid="human-review-symptom">
-      <p className="text-xs font-semibold text-muted-foreground">{L(lang, { en: "Symptom", ko: "증상" })}</p>
-      <p className="mt-1 line-clamp-2 whitespace-pre-line text-sm">{normalizeCompactSymptom(packet.symptom ?? "").join("\n")}</p>
+      <p className={REVIEW_LABEL_CLASS}>{L(lang, { en: "Symptom", ko: "증상" })}</p>
+      <p className="mt-1 line-clamp-2 whitespace-pre-line text-sm text-slate-800 dark:text-[#edf2fb]">{normalizeCompactSymptom(packet.symptom ?? "").join("\n")}</p>
       {notices.length > 0 && (
         <div
           data-testid="human-review-prerequisite-notice"
-          className="mt-2 rounded-sm border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5 text-xs text-muted-foreground"
+          className={`mt-2 px-2.5 py-1.5 text-xs ${AMBER_NOTICE_CLASS}`}
         >
           {notices.map((notice) => (
             <p key={notice}>{notice}</p>
@@ -164,11 +173,11 @@ export function HumanReviewInterpretationBlock({ packet, optionLabels }: { packe
   const lang = useCompanyLanguage();
   const advisory = extractAdvisoryNotice(packet.interpretation);
   return (
-    <div data-testid="human-review-interpretation" className="border-l-2 border-primary bg-primary/5 p-2">
-      <p className="text-xs font-semibold text-muted-foreground">{L(lang, { en: "Plain-language read", ko: "쉬운 해석" })}</p>
-      <p className="mt-1 text-sm font-medium">{formatCompactInterpretation(packet, optionLabels)}</p>
+    <div data-testid="human-review-interpretation" className="rounded-r-[10px] border border-slate-200/80 border-l-2 border-l-blue-600 bg-blue-50/70 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/[0.07] dark:border-l-[#60a5fa] dark:bg-[#60a5fa]/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+      <p className={REVIEW_LABEL_CLASS}>{L(lang, { en: "Plain-language read", ko: "쉬운 해석" })}</p>
+      <p className="mt-1 text-sm font-medium text-slate-900 dark:text-[#edf2fb]">{formatCompactInterpretation(packet, optionLabels)}</p>
       {advisory && (
-        <p data-testid="human-review-interpretation-notice" className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{advisory}</p>
+        <p data-testid="human-review-interpretation-notice" className="mt-1.5 text-xs leading-relaxed text-slate-500 dark:text-[#8f9db3]">{advisory}</p>
       )}
     </div>
   );
@@ -180,10 +189,10 @@ export function HumanReviewEvidenceChips({ packet }: { packet: HumanReviewPacket
   if (packet.evidence.length === 0) return null;
   return (
     <div data-testid="human-review-evidence-chips">
-      <p className="text-xs font-semibold text-muted-foreground">{L(lang, { en: "Detailed evidence", ko: "상세 근거" })}</p>
+      <p className={REVIEW_LABEL_CLASS}>{L(lang, { en: "Detailed evidence", ko: "상세 근거" })}</p>
       <ul className="mt-1.5 flex flex-wrap gap-2">
         {packet.evidence.map((item) => (
-          <li key={`${item.href}:${item.location}`} className="inline-flex items-center gap-1 rounded-sm border border-border bg-background px-2 py-1 text-xs" data-testid="human-review-evidence-chip">
+          <li key={`${item.href}:${item.location}`} className="inline-flex items-center gap-1 rounded-full border border-slate-200/85 bg-slate-50/85 px-2.5 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#aeb9ca] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]" data-testid="human-review-evidence-chip">
             <SourceLink href={item.href}>{item.label}</SourceLink>
           </li>
         ))}
@@ -195,17 +204,17 @@ export function HumanReviewEvidenceChips({ packet }: { packet: HumanReviewPacket
 export function HumanReviewPacket({ packet, variant = "full" }: { packet: HumanReviewPacketValue | null; variant?: "full" | "compact" }) {
   const lang = useCompanyLanguage();
   if (!packet) return (
-    <section className="mt-3 border border-amber-500/50 bg-amber-500/10 p-4" data-testid="human-review-incomplete">
-      <div className="flex gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" /><div>
-        <h3 className="text-sm font-semibold">{L(lang, { en: "Insufficient review information to approve", ko: "판단 정보가 부족해 승인할 수 없습니다" })}</h3>
-        <p className="mt-1 text-sm text-muted-foreground">{L(lang, { en: "Ask the requester to provide the decision subject, exact source locations, interpretation, approval/rejection/error impacts and next steps.", ko: "판단 주제, 근거 원본의 정확한 위치, 해석, 승인·거절·오판 영향과 다음 단계를 요청자에게 보완받아야 합니다." })}</p>
+    <section className="mt-3 rounded-[12px] border border-amber-300/80 bg-amber-50/90 p-4 text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_1px_2px_rgba(15,23,42,0.04)] dark:border-[#f59e0b]/40 dark:bg-[#f59e0b]/10 dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]" data-testid="human-review-incomplete">
+      <div className="flex gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-[#f59e0b]" /><div>
+        <h3 className="text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">{L(lang, { en: "Insufficient review information to approve", ko: "판단 정보가 부족해 승인할 수 없습니다" })}</h3>
+        <p className="mt-1 text-sm text-amber-900/80 dark:text-[#d6c7a8]">{L(lang, { en: "Ask the requester to provide the decision subject, exact source locations, interpretation, approval/rejection/error impacts and next steps.", ko: "판단 주제, 근거 원본의 정확한 위치, 해석, 승인·거절·오판 영향과 다음 단계를 요청자에게 보완받아야 합니다." })}</p>
       </div></div>
     </section>
   );
   // [사람 카드 축소 Stage 4] 신형(symptom 있는) 패킷은 고정 축소 레이아웃만 표시한다.
   if (hasCompactSymptom(packet)) {
     return (
-      <section className="mt-3 space-y-3 border border-border bg-background p-4" data-testid="human-review-packet" data-packet-layout="compact-symptom">
+      <section className={`${REVIEW_CARD_CLASS} space-y-3 p-4`} data-testid="human-review-packet" data-packet-layout="compact-symptom">
         <HumanReviewSymptomBlock packet={packet} />
         <HumanReviewInterpretationBlock packet={packet} />
         <HumanReviewEvidenceChips packet={packet} />
@@ -216,36 +225,45 @@ export function HumanReviewPacket({ packet, variant = "full" }: { packet: HumanR
   //   별도 '검토 필요' 안내 블록에만 표시한다 — #717 축소 카드의 전제 안내줄과 같은 규칙.
   const prerequisiteNotices = extractPrerequisiteNotices(packet);
   return (
-    <section className="mt-3 space-y-4 border border-border bg-background p-4" data-testid="human-review-packet">
-      <div><p className="text-xs font-semibold text-muted-foreground">{L(lang, { en: "What is being decided?", ko: "무엇을 판단하나요?" })}</p><h3 className="mt-1 text-base font-semibold">{packet.decisionSubject}</h3></div>
+    <section className={`${REVIEW_CARD_CLASS} space-y-4 p-4`} data-testid="human-review-packet">
+      <div><p className={REVIEW_LABEL_CLASS}>{L(lang, { en: "What is being decided?", ko: "무엇을 판단하나요?" })}</p><h3 className="mt-1 text-base font-semibold tracking-tight text-slate-950 dark:text-[#edf2fb]">{packet.decisionSubject}</h3></div>
       {variant === "compact" && prerequisiteNotices.length > 0 && (
         <div
           data-testid="human-review-prerequisite-notice"
-          className="rounded-sm border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5 text-xs text-muted-foreground"
+          className={`px-2.5 py-1.5 text-xs ${AMBER_NOTICE_CLASS}`}
         >
           {prerequisiteNotices.map((notice) => (
             <p key={notice}>{notice}</p>
           ))}
         </div>
       )}
-      <div><p className="text-xs font-semibold text-muted-foreground">{L(lang, { en: "Current interpretation", ko: "현재 해석" })}</p><p className="mt-1 whitespace-pre-line text-sm">{packet.interpretation}</p></div>
+      <div><p className={REVIEW_LABEL_CLASS}>{L(lang, { en: "Current interpretation", ko: "현재 해석" })}</p><p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-800 dark:text-[#d7e0ec]">{packet.interpretation}</p></div>
       <div>
-        <p className="text-xs font-semibold text-muted-foreground">{L(lang, { en: "Evidence & source location", ko: "판단 근거와 원본 위치" })}</p>
-        <ul className="mt-2 space-y-2">{packet.evidence.map((item) => <li key={`${item.href}:${item.location}`} className="border-l-2 border-primary/40 pl-3 text-sm">
-          <SourceLink href={item.href}>{item.label}</SourceLink><p className="mt-0.5 text-xs text-muted-foreground">{L(lang, { en: "Source location", ko: "원본 위치" })}: {item.location}</p>{item.description && <p className="mt-0.5 whitespace-pre-line text-xs">{item.description}</p>}
+        <p className={REVIEW_LABEL_CLASS}>{L(lang, { en: "Evidence & source location", ko: "판단 근거와 원본 위치" })}</p>
+        <ul className="mt-2 space-y-2">{packet.evidence.map((item) => <li key={`${item.href}:${item.location}`} className="rounded-r-[10px] border border-slate-200/80 border-l-2 border-l-blue-600/70 bg-slate-50/70 py-2 pl-3 pr-3 text-sm dark:border-white/[0.07] dark:border-l-[#60a5fa]/70 dark:bg-white/[0.025]">
+          <SourceLink href={item.href}>{item.label}</SourceLink><p className="mt-0.5 text-xs text-slate-500 dark:text-[#8f9db3]">{L(lang, { en: "Source location", ko: "원본 위치" })}: {item.location}</p>{item.description && <p className="mt-0.5 whitespace-pre-line text-xs">{item.description}</p>}
         </li>)}</ul>
       </div>
       {/* [compact] 운영자 결정 카드에서는 승인하면/거절하면/잘못 판단하면 + 확인할 내용 블록이
           공간만 차지한다고 하여 제거했다(2026-10-20 운영자 요청). 승인 흐름(ApprovalCard 등)은 full 유지. */}
       {variant === "full" && (
         <div className="grid gap-2 md:grid-cols-3">
-          <div className="border border-green-600/30 bg-green-600/5 p-3"><p className="flex items-center gap-1 text-xs font-semibold"><CheckCircle2 className="h-3.5 w-3.5" />{L(lang, { en: "If approved", ko: "승인하면" })}</p><p className="mt-1 text-xs">{packet.impact.ifApproved}</p></div>
-          <div className="border border-border p-3"><p className="flex items-center gap-1 text-xs font-semibold"><XCircle className="h-3.5 w-3.5" />{L(lang, { en: "If rejected", ko: "거절하면" })}</p><p className="mt-1 text-xs">{packet.impact.ifRejected}</p></div>
-          <div className="border border-destructive/30 bg-destructive/5 p-3"><p className="flex items-center gap-1 text-xs font-semibold"><AlertTriangle className="h-3.5 w-3.5" />{L(lang, { en: "If wrong", ko: "잘못 판단하면" })}</p><p className="mt-1 text-xs">{packet.impact.ifWrong}</p></div>
+          <div className="rounded-[10px] border border-lime-300/80 bg-lime-50/85 p-3 text-lime-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-[#a3e635]/30 dark:bg-[#a3e635]/10 dark:text-[#d9f99d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"><p className="flex items-center gap-1 text-xs font-semibold"><CheckCircle2 className="h-3.5 w-3.5 text-lime-700 dark:text-[#a3e635]" />{L(lang, { en: "If approved", ko: "승인하면" })}</p><p className="mt-1 text-xs text-lime-950/80 dark:text-[#d9f99d]/90">{packet.impact.ifApproved}</p></div>
+          <div className="rounded-[10px] border border-blue-200/90 bg-blue-50/80 p-3 text-blue-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/10 dark:text-[#bfdbfe] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"><p className="flex items-center gap-1 text-xs font-semibold"><XCircle className="h-3.5 w-3.5 text-blue-700 dark:text-[#60a5fa]" />{L(lang, { en: "If rejected", ko: "거절하면" })}</p><p className="mt-1 text-xs text-blue-950/80 dark:text-[#bfdbfe]/90">{packet.impact.ifRejected}</p></div>
+          <div className="rounded-[10px] border border-rose-300/80 bg-rose-50/85 p-3 text-rose-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-[#f43f5e]/35 dark:bg-[#f43f5e]/10 dark:text-[#fda4af] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"><p className="flex items-center gap-1 text-xs font-semibold"><AlertTriangle className="h-3.5 w-3.5 text-rose-700 dark:text-[#f43f5e]" />{L(lang, { en: "If wrong", ko: "잘못 판단하면" })}</p><p className="mt-1 text-xs text-rose-950/80 dark:text-[#fda4af]/90">{packet.impact.ifWrong}</p></div>
         </div>
       )}
-      {variant === "full" && (packet.unresolvedFacts.length > 0 || packet.questions.length > 0) && <div className="border border-amber-500/30 bg-amber-500/5 p-3 text-sm"><p className="flex items-center gap-1 font-semibold"><HelpCircle className="h-4 w-4" />{L(lang, { en: "To confirm", ko: "확인할 내용" })}</p><ul className="mt-1 list-disc pl-5">{[...packet.unresolvedFacts, ...packet.questions].map((item) => <li key={item}>{item}</li>)}</ul></div>}
-      <dl className="grid gap-2 text-sm sm:grid-cols-2"><div><dt className="text-xs font-semibold text-muted-foreground">{L(lang, { en: "Next step", ko: "다음 단계" })}</dt><dd>{packet.recommendedNextStep}</dd></div><div><dt className="text-xs font-semibold text-muted-foreground">{L(lang, { en: "Required reviewer", ko: "필요한 검토자" })}</dt><dd>{packet.requiredReviewer}</dd></div></dl>
+      {variant === "full" && (packet.unresolvedFacts.length > 0 || packet.questions.length > 0) && <div className={`${AMBER_NOTICE_CLASS} p-3 text-sm`}><p className="flex items-center gap-1 font-semibold"><HelpCircle className="h-4 w-4 text-amber-700 dark:text-[#f59e0b]" />{L(lang, { en: "To confirm", ko: "확인할 내용" })}</p><ul className="mt-1 list-disc pl-5">{[...packet.unresolvedFacts, ...packet.questions].map((item) => <li key={item}>{item}</li>)}</ul></div>}
+      <dl className="grid gap-2 text-sm sm:grid-cols-2">
+        <div className={`${INSET_PANEL_CLASS} px-3 py-2`}>
+          <dt className={REVIEW_LABEL_CLASS}>{L(lang, { en: "Next step", ko: "다음 단계" })}</dt>
+          <dd className="mt-1 text-slate-800 dark:text-[#edf2fb]">{packet.recommendedNextStep}</dd>
+        </div>
+        <div className={`${INSET_PANEL_CLASS} px-3 py-2`}>
+          <dt className={REVIEW_LABEL_CLASS}>{L(lang, { en: "Required reviewer", ko: "필요한 검토자" })}</dt>
+          <dd className="mt-1 text-slate-800 dark:text-[#edf2fb]">{packet.requiredReviewer}</dd>
+        </div>
+      </dl>
     </section>
   );
 }
