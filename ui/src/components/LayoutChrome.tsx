@@ -43,13 +43,13 @@ export function readRememberedInstanceSettingsPath(): string {
 }
 
 export function readRememberedHermesPanelOpen(): boolean {
-  if (typeof window === "undefined") return true;
+  if (typeof window === "undefined") return false;
   try {
     const raw = window.localStorage.getItem(HERMES_PANEL_MEMORY_KEY);
     if (raw !== null) return raw === "true";
-    return !window.matchMedia("(max-width: 767px)").matches;
+    return false;
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -93,44 +93,64 @@ export function SidebarFooterBar(props: {
   withBackground?: boolean;
 }) {
   return (
-    <div className={cn("border-t border-r border-border/80 bg-sidebar/95 px-3 py-2", props.withBackground && "backdrop-blur-sm")}>
-      <div className="flex items-center gap-1">
-        <a
-          href="https://docs.paperclip.ing/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex min-w-0 flex-1 items-center gap-2.5 rounded-sm px-3 py-2 text-[13px] font-medium text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
-        >
-          <BookOpen className="h-4 w-4 shrink-0" />
-          <span className="truncate">Documentation</span>
-        </a>
-        <AppVersionBadge version={props.healthVersion} />
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0 rounded-sm border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground"
-          asChild
-        >
-          <Link
-            to={props.instanceSettingsTarget}
-            aria-label="Instance settings"
-            title="Instance settings"
-            onClick={props.onCloseMobile}
+    <div
+      className={cn(
+        "border-t border-r border-sidebar-border bg-sidebar px-2.5 py-1.5",
+        props.withBackground && "backdrop-blur-sm",
+      )}
+    >
+      <div className="flex items-center justify-between gap-1.5 font-mono text-[10.5px] text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-[#4d7c0f] dark:text-[#a3e635]">
+            <span className="pw-live-dot" />
+            <span className="truncate">READY</span>
+          </span>
+          <AppVersionBadge version={props.healthVersion} />
+        </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-7 w-7 shrink-0 rounded-md border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground dark:hover:border-white/[0.08] dark:hover:bg-white/[0.05]"
+            asChild
           >
-            <Settings className="h-4 w-4" />
-          </Link>
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0 rounded-sm border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground"
-          onClick={props.onToggleTheme}
-          aria-label={`Switch to ${props.nextTheme} mode`}
-          title={`Switch to ${props.nextTheme} mode`}
-        >
-          {props.theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </Button>
+            <a
+              href="https://docs.paperclip.ing/"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Documentation"
+              title="Documentation"
+            >
+              <BookOpen className="h-3.5 w-3.5" />
+            </a>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="h-7 w-7 shrink-0 rounded-md border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground dark:hover:border-white/[0.08] dark:hover:bg-white/[0.05]"
+            asChild
+          >
+            <Link
+              to={props.instanceSettingsTarget}
+              aria-label="Instance settings"
+              title="Instance settings"
+              onClick={props.onCloseMobile}
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="h-7 w-7 shrink-0 rounded-md border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground dark:hover:border-white/[0.08] dark:hover:bg-white/[0.05]"
+            onClick={props.onToggleTheme}
+            aria-label={`Switch to ${props.nextTheme} mode`}
+            title={`Switch to ${props.nextTheme} mode`}
+          >
+            {props.theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -184,8 +204,8 @@ export function DesktopHermesAside(props: {
   return (
     <aside
       className={cn(
-        "hidden min-h-0 md:flex shrink-0 overflow-hidden border-l border-border/80 bg-sidebar/95 backdrop-blur-sm transition-[width] duration-150 ease-out",
-        props.open ? "w-96" : "w-12",
+        "hidden min-h-0 md:flex shrink-0 overflow-hidden border-l border-sidebar-border bg-sidebar transition-[width] duration-150 ease-out dark:bg-[#090c12]",
+        props.open ? "w-96" : "w-10",
       )}
     >
       {props.open ? (
@@ -199,13 +219,13 @@ export function DesktopHermesAside(props: {
       ) : (
         <button
           type="button"
-          className="flex h-full w-12 flex-col items-center gap-2 px-2 py-3 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+          className="flex h-full w-10 flex-col items-center gap-2 px-1.5 py-3 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground dark:hover:bg-white/[0.04]"
           onClick={props.onOpen}
           aria-label="Open Hermes chat"
           title="Open Hermes chat"
         >
-          <Bot className="h-4 w-4" />
-          <span className="text-[11px] font-medium uppercase tracking-wide [writing-mode:vertical-rl]">Hermes</span>
+          <Bot className="h-4 w-4 text-[#2563eb] dark:text-[#60a5fa]" />
+          <span className="font-mono text-[10px] font-medium uppercase tracking-widest [writing-mode:vertical-rl]">Hermes</span>
         </button>
       )}
     </aside>

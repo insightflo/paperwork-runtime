@@ -93,18 +93,13 @@ const STEP_DOT: Record<MissionWorkflowStep["status"], string> = {
 };
 
 const CONTROL_CLASS =
-  "h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground outline-none focus:border-[#5f8dff] dark:border-[#242d3f] dark:bg-[#0b0e14] dark:text-[#e6edf7]";
+  "h-7 rounded-md border border-slate-200/90 bg-slate-50/80 px-2 text-xs text-slate-900 outline-none transition-colors focus:border-[#60a5fa] focus:bg-white dark:border-white/[0.1] dark:bg-[#07090d] dark:text-[#eef2f8] dark:focus:border-[#60a5fa]";
 
 const ROW_GRID =
   "grid grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-x-2.5 sm:grid-cols-[10px_minmax(0,1fr)_5.5rem_7.5rem_7.75rem]";
 
 const PILL_CLASS =
-  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium no-underline transition-colors hover:brightness-110";
-const PILL_STYLE = {
-  backgroundColor: "var(--openbot-surface-25d-raised)",
-  borderColor: "var(--openbot-surface-25d-border)",
-  color: "var(--openbot-text-secondary)",
-};
+  "tactile-card inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 no-underline shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#9aa7bd] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] dark:hover:border-white/[0.16] dark:hover:bg-[#141b2a] dark:hover:text-[#eef2f8]";
 const QUICK_LINKS = [
   { icon: UserRoundCheck, label: "결정함", to: "/human-operator" },
   { icon: ShieldCheck, label: "Hermit Gate · 실행 규칙", to: "/worktree/rules" },
@@ -182,16 +177,16 @@ function KpiCell(props: { to: string; label: string; value: string; sub: string;
   return (
     <Link
       to={props.to}
-      className="flex min-w-0 flex-col gap-0.5 px-3 py-2 no-underline text-inherit transition-colors hover:bg-[#151b28]"
+      className="flex min-w-0 flex-col gap-0.5 px-3.5 py-2.5 no-underline text-inherit transition-colors hover:bg-slate-50/90 dark:hover:bg-[#141b2a]"
     >
-      <span className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-[#8b97ad]">
+      <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-[#9aa7bd]">
         <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${props.dot}`} />
         <span className="truncate">{props.label}</span>
       </span>
-      <span className="truncate text-xl font-semibold leading-tight tabular-nums text-[#e6edf7]">
+      <span className="truncate font-mono text-xl font-semibold leading-tight tabular-nums text-slate-950 dark:text-[#eef2f8]">
         {props.value}
       </span>
-      <span className="truncate text-[11px] tabular-nums text-[#8b97ad]">{props.sub}</span>
+      <span className="truncate text-[11px] tabular-nums text-slate-500 dark:text-[#627089]">{props.sub}</span>
     </Link>
   );
 }
@@ -522,27 +517,6 @@ export function Missions() {
     setInspectorOpen(true);
   }, []);
 
-  const handleJumpToMission = useCallback(
-    (mission: MissionListItem) => {
-      const shortKey = shortKeyById.get(mission.id) ?? "";
-      const matched = matchesMissionRadarFilters(
-        mission,
-        shortKey,
-        { radarStatus, searchQuery, workflowFilter },
-        attentionMissionIds,
-        agentMap,
-      );
-      if (!matched) {
-        setRadarStatus("all");
-        setSearchQuery("");
-        setWorkflowFilter("all");
-        setLocalPage(1);
-      }
-      previewMission(mission.id);
-    },
-    [shortKeyById, radarStatus, searchQuery, workflowFilter, attentionMissionIds, agentMap, previewMission],
-  );
-
   const handleToggleMissionStatus = useCallback(
     async (mission: MissionListItem) => {
       if (!selectedCompanyId || mutatingMissionId) return;
@@ -727,16 +701,13 @@ export function Missions() {
 
       <section aria-label="명령 헤더" className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-            style={{ backgroundColor: "var(--openbot-accent-soft)", color: "var(--openbot-accent-text)" }}
-          >
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-lime-500/30 bg-lime-500/10 px-2.5 py-1 text-[11px] font-semibold text-lime-800 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/12 dark:text-[#a3e635]">
             <Rocket className="h-3.5 w-3.5" />
             실시간 운영 현황
           </span>
           <div className="flex flex-wrap items-center gap-1.5">
             {QUICK_LINKS.map((link) => (
-              <Link key={link.to} to={link.to} className={`${PILL_CLASS} cursor-pointer`} style={PILL_STYLE}>
+              <Link key={link.to} to={link.to} className={`${PILL_CLASS} cursor-pointer`}>
                 <link.icon className="h-3.5 w-3.5" />
                 {link.label}
               </Link>
@@ -748,7 +719,6 @@ export function Missions() {
                 window.dispatchEvent(new CustomEvent(INSPECTOR_TOGGLE_EVENT))
               }
               className={`${PILL_CLASS} hidden cursor-pointer md:inline-flex`}
-              style={PILL_STYLE}
             >
               <PanelRightOpen className="h-3.5 w-3.5" />
               우측 인스펙터
@@ -757,7 +727,7 @@ export function Missions() {
         </div>
 
         {/* 1-row 5-column cockpit strip */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 divide-x divide-[#242d3f] bg-[#111622] border border-[#242d3f] rounded-md">
+        <div className="tactile-card grid grid-cols-2 overflow-hidden rounded-[12px] border border-slate-200/90 bg-white divide-x divide-slate-200/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] lg:grid-cols-5 dark:divide-white/[0.07] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_-18px_rgba(0,0,0,0.85)]">
           {kpis.map((kpi) => (
             <KpiCell key={kpi.label} {...kpi} />
           ))}
@@ -766,7 +736,7 @@ export function Missions() {
         {/* Single-line escalation / queue ticker */}
         <div
           role="status"
-          className="flex h-8 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap rounded-md border border-[#fbbf24]/35 bg-[#fbbf24]/7 px-3 text-xs"
+          className="tactile-card flex h-8 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap rounded-[10px] border border-amber-500/35 bg-amber-500/[0.07] px-3 text-xs text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-[#f59e0b]/35 dark:bg-[#0e131d] dark:bg-none dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
         >
           <span className="flex shrink-0 items-center gap-1.5 font-semibold text-amber-800 dark:text-[#fde68a]">
             <Inbox className="h-3.5 w-3.5" />
@@ -777,7 +747,7 @@ export function Missions() {
               key={chip.id}
               to={chip.to}
               title={chip.label}
-              className="max-w-56 shrink-0 truncate rounded border border-border bg-background px-2 py-0.5 text-[11px] no-underline text-inherit transition-colors hover:border-[#fbbf24] dark:border-[#242d3f] dark:bg-[#0b0e14]"
+              className="max-w-56 shrink-0 truncate rounded border border-slate-200/90 bg-white px-2 py-0.5 text-[11px] no-underline text-inherit transition-colors hover:border-amber-500/60 dark:border-white/[0.08] dark:bg-[#07090d] dark:hover:border-[#f59e0b]/60"
             >
               <span className="font-semibold text-amber-700 dark:text-[#fbbf24]">{chip.kind}</span>{" "}
               {chip.label}
@@ -799,12 +769,10 @@ export function Missions() {
         </div>
       </section>
 
-      {/* Combo 4 Fleet Mission Radar: Status chips with live counts, search, workflow filter & visual status mosaic */}
+      {/* Combo 1 Fleet Mission Radar: Status chips with live counts, search & workflow filter */}
       <MissionFleetRadar
         missions={fleetMissions}
         attentionMissionIds={attentionMissionIds}
-        attentionReasons={attentionReasons}
-        agentMap={agentMap}
         radarStatus={radarStatus}
         onRadarStatusChange={(next) => {
           setRadarStatus(next);
@@ -820,18 +788,16 @@ export function Missions() {
           setWorkflowFilter(next);
           setLocalPage(1);
         }}
-        selectedMissionId={activeMissionId}
-        onJumpToMission={handleJumpToMission}
         searchInputRef={searchInputRef}
       />
 
       {/* Single-row unified server filter toolbar (40px): filters scroll horizontally, actions stay pinned. */}
-      <div className="flex h-10 items-center gap-2 rounded-lg border border-border/80 bg-card/85 pl-2 pr-1.5 dark:border-white/[0.08] dark:bg-[#111622] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+      <div className="tactile-card flex h-10 items-center gap-2 rounded-[12px] border border-slate-200/90 bg-white/95 pl-2 pr-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_20px_-12px_rgba(0,0,0,0.7)]">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
           <div
             role="group"
             aria-label="Filter missions by status"
-            className="flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-muted/60 p-0.5 dark:border-[#242d3f] dark:bg-[#0b0e14]"
+            className="flex shrink-0 items-center gap-0.5 rounded-md border border-slate-200/90 bg-slate-100/80 p-0.5 dark:border-white/[0.07] dark:bg-[#07090d]"
           >
             {STATUS_TABS.map((tab) => {
               const active = statusFilter === tab.value;
@@ -845,8 +811,8 @@ export function Missions() {
                   }
                   className={`h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors ${
                     active
-                      ? "bg-background text-foreground shadow-xs dark:bg-[#151b28] dark:text-[#e6edf7] dark:shadow-[inset_0_0_0_1px_#242d3f]"
-                      : "text-muted-foreground hover:text-foreground dark:text-[#8b97ad] dark:hover:text-[#e6edf7]"
+                      ? "bg-white text-slate-950 shadow-xs dark:bg-[#151d2e] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
+                      : "text-slate-600 hover:text-slate-950 dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]"
                   }`}
                 >
                   {tab.label}
@@ -925,8 +891,8 @@ export function Missions() {
           }}
           className={`flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md border transition-colors ${
             inspectorOpen
-              ? "border-[#5f8dff]/50 bg-[#2563eb]/15 text-[#5f8dff]"
-              : "border-border text-muted-foreground hover:bg-accent hover:text-foreground dark:border-[#242d3f] dark:text-[#8b97ad] dark:hover:bg-[#151b28] dark:hover:text-[#e6edf7]"
+              ? "border-[#60a5fa]/50 bg-[#2563eb]/15 text-[#2563eb] dark:text-[#60a5fa]"
+              : "border-slate-200/90 text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:border-white/[0.09] dark:text-[#9aa7bd] dark:hover:bg-[#151d2e] dark:hover:text-[#eef2f8]"
           }`}
         >
           <PanelRightOpen className="h-3.5 w-3.5" />
@@ -991,36 +957,31 @@ export function Missions() {
         >
           {/* Left Pane (58%): High-Density 44px Scannable Mission List + CompactPagination */}
           <div className="flex min-w-0 flex-col gap-2.5">
-            <div className="overflow-hidden rounded-xl border border-border/80 bg-card/90 shadow-sm dark:border-white/[0.08] dark:bg-gradient-to-b dark:from-[#161b27]/85 dark:to-[#10141d]/95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-              <div className="flex items-center justify-between gap-2 border-b border-border/70 px-3 py-1.5 text-[11px] text-muted-foreground dark:border-white/[0.07]">
-                <div className="flex items-center gap-2 truncate">
-                  <span className="font-semibold text-foreground dark:text-[#eef1f6]">
-                    {hasClientRadarFilter ? `${filteredClientMissions.length}건 필터됨` : `${visibleMissions.length}건 표시`}
-                  </span>
-                  <span aria-hidden>·</span>
-                  <span className="truncate">우선 정렬: 개입 필요 → 실행 중 → 대기 → 완료</span>
-                </div>
-                {hasClientRadarFilter && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRadarStatus("all");
-                      setSearchQuery("");
-                      setWorkflowFilter("all");
-                      setLocalPage(1);
-                    }}
-                    className="shrink-0 cursor-pointer text-[11px] font-semibold text-[#60a5fa] hover:underline"
-                  >
-                    필터 초기화
-                  </button>
-                )}
-              </div>
-
+            <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_-18px_rgba(0,0,0,0.85)]">
               <div
-                className={`${ROW_GRID} border-b border-border/70 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground dark:border-white/[0.07]`}
+                className={`${ROW_GRID} border-b border-slate-200/80 bg-slate-50/70 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-[#9aa7bd]`}
               >
                 <span aria-hidden />
-                <span>Mission</span>
+                <span className="flex min-w-0 items-center gap-2">
+                  <span>Mission</span>
+                  <span className="font-mono text-[10px] font-semibold normal-case tracking-normal text-slate-600 tabular-nums dark:text-[#cbd5e1]">
+                    {hasClientRadarFilter ? `${filteredClientMissions.length}건 필터됨` : `${visibleMissions.length}건`}
+                  </span>
+                  {hasClientRadarFilter && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRadarStatus("all");
+                        setSearchQuery("");
+                        setWorkflowFilter("all");
+                        setLocalPage(1);
+                      }}
+                      className="shrink-0 cursor-pointer text-[10px] font-semibold normal-case tracking-normal text-blue-600 hover:underline dark:text-[#60a5fa]"
+                    >
+                      필터 초기화
+                    </button>
+                  )}
+                </span>
                 <span className="hidden sm:block">Steps</span>
                 <span className="hidden sm:block">Main executor</span>
                 <span className="hidden justify-self-end sm:block">Updated</span>
@@ -1126,7 +1087,7 @@ export function Missions() {
                   loading: "Loading…",
                 }}
                 onPageChange={handlePageChange}
-                className="flex-1 rounded-lg border-border/80 bg-card/85 text-foreground dark:border-white/[0.08] dark:bg-[#111622]"
+                className="flex-1"
               />
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <label className="flex items-center gap-1.5">
@@ -1165,7 +1126,7 @@ export function Missions() {
             <section
               aria-label="Mission preview"
               data-mission-preview
-              className="flex min-w-0 flex-col gap-3 self-start rounded-xl border border-border/80 bg-card/95 p-3.5 shadow-sm lg:sticky lg:top-0 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto dark:border-white/[0.08] dark:bg-gradient-to-b dark:from-[#161b27]/95 dark:to-[#10141d]/98 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_18px_40px_-24px_rgba(0,0,0,0.9)]"
+              className="tactile-card flex min-w-0 flex-col gap-3 self-start rounded-[12px] border border-slate-200/90 bg-white/95 p-3.5 text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] lg:sticky lg:top-0 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_18px_40px_-24px_rgba(0,0,0,0.9)]"
             >
               {selectedMission ? (
                 <>
@@ -1302,7 +1263,7 @@ export function Missions() {
                         {completedSteps}/{totalSteps} · {progressPct}%
                       </span>
                     </div>
-                    <div className="h-1.5 overflow-hidden rounded-full bg-muted dark:bg-[#242d3f]">
+                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/[0.08]">
                       <div
                         className={`h-full rounded-full transition-[width] ${
                           totalSteps > 0 && completedSteps === totalSteps ? DOT.lime : DOT.cobalt

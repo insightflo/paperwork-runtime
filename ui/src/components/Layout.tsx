@@ -267,16 +267,14 @@ export function Layout() {
               tabIndex={-1}
               data-density-tier={slide.metrics.canvasDensityTier}
               className={cn(
-                "flex-1 p-4 md:px-6 md:py-5",
-                isMobile ? "overflow-visible pb-[calc(5rem+env(safe-area-inset-bottom))]" : "overflow-auto openbot-canvas-sheet cockpit-canvas-sheet",
+                "flex-1 bg-[#f8fafc] px-4 py-4 md:px-6 md:py-5 dark:bg-[#07090d]",
+                isMobile ? "overflow-visible pb-[calc(5rem+env(safe-area-inset-bottom))]" : "overflow-auto cockpit-canvas-sheet",
               )}
               style={
                 isMobile
                   ? undefined
                   : {
                       ["--openbot-kpi-cols" as string]: slide.metrics.visibleKpiColumns,
-                      boxShadow: `0 26px 60px -30px rgb(var(--openbot-sheet-shadow-rgb) / ${slide.metrics.sheetShadowAlpha})`,
-                      borderTopLeftRadius: 12,
                     }
               }
             >

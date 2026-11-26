@@ -57,7 +57,9 @@ import {
 } from "lucide-react";
 
 // Cockpit primitives (approved Linear + Datadog palette; mirrors .cockpit-strip/.cockpit-toolbar).
-const CARD = "rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
+const CARD = "tactile-card rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+const STRIP_CLASS = "cockpit-strip tactile-card h-8 w-full gap-0 overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+const TOOLBAR_CLASS = "cockpit-toolbar tactile-card h-10 w-full overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 px-2 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
 const LABEL = "text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad]";
 const CTA = "bg-blue-600 text-[#f8fafc] hover:bg-blue-500 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]";
 const TAB_CLASS =
@@ -565,33 +567,26 @@ function SkillPane({
   const latestPin = shortRef(updateStatus?.latestRef);
 
   return (
-    <div className="min-w-0 bg-white dark:bg-[#0e131d]">
-      <div className="border-b border-slate-200/90 dark:border-white/[0.08] px-5 py-4">
-        <div className="flex min-w-0 flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="flex min-w-0 items-center gap-2 truncate text-xl font-semibold text-slate-900 dark:text-[#edf2fb]">
-              <SourceIcon className="h-5 w-5 shrink-0 text-slate-500 dark:text-[#8b97ad]" />
-              {detail.name}
-            </h1>
-            {detail.description && (
-              <p className="mt-2 max-w-3xl text-sm text-slate-500 dark:text-[#8b97ad]">{detail.description}</p>
-            )}
-          </div>
-          {detail.editable ? (
-            <button
-              type="button"
-              className="inline-flex shrink-0 items-center gap-2 text-sm text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]"
-              onClick={() => setEditMode(!editMode)}
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              {editMode ? "Stop editing" : "Edit"}
-            </button>
-          ) : (
-            <div className="min-w-0 truncate text-sm text-slate-500 dark:text-[#8b97ad]">{detail.editableReason}</div>
-          )}
-        </div>
+    <div className="min-w-0">
+      <div className="cockpit-toolbar h-10 border-b border-slate-200/90 px-3 dark:border-white/[0.08]">
+        <SourceIcon className="h-4 w-4 shrink-0 text-slate-500 dark:text-[#8b97ad]" />
+        <h1 className="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-[#edf2fb]">{detail.name}</h1>
+        <span className="min-w-0 flex-1 truncate text-xs text-slate-500 dark:text-[#8b97ad]">{detail.description ?? ""}</span>
+        {detail.editable ? (
+          <button
+            type="button"
+            className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]"
+            onClick={() => setEditMode(!editMode)}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            {editMode ? "Stop editing" : "Edit"}
+          </button>
+        ) : (
+          <span className="ml-auto min-w-0 truncate text-xs text-slate-500 dark:text-[#8b97ad]">{detail.editableReason}</span>
+        )}
+      </div>
 
-        <div className="mt-4 space-y-3 border-t border-slate-200/90 dark:border-white/[0.08] pt-4 text-sm">
+      <div className="space-y-2 border-b border-slate-200/90 px-3 py-2 text-xs dark:border-white/[0.08]">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <div className="flex min-w-0 items-center gap-2">
               <span className={LABEL}>Source</span>
@@ -677,9 +672,8 @@ function SkillPane({
             )}
           </div>
         </div>
-      </div>
 
-      <div className="border-b border-slate-200/90 dark:border-white/[0.08] px-5 py-3">
+      <div className="border-b border-slate-200/90 px-3 py-2 dark:border-white/[0.08]">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate font-mono text-sm text-slate-900 dark:text-[#edf2fb]">{file?.path ?? "SKILL.md"}</div>
@@ -724,7 +718,7 @@ function SkillPane({
         </div>
       </div>
 
-      <div className="min-h-[560px] px-5 py-5">
+      <div className="min-h-[560px] px-4 py-4">
         {fileLoading ? (
           <PageSkeleton variant="detail" />
         ) : !file ? (
@@ -1082,9 +1076,9 @@ export function CompanySkills() {
 
       <div className="space-y-2 tabular-nums">
       {/* 1-row 5-column cockpit strip: live skill library summary */}
-      <div className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-3 xl:grid-cols-5" role="group" aria-label="Skills summary">
+      <div className={STRIP_CLASS} role="group" aria-label="Skills summary">
         {skillStrip.map((cell) => (
-          <div key={cell.label} className="flex h-10 min-w-0 items-center justify-center gap-2 px-3 text-[11px] text-slate-600 dark:text-[#8b97ad]">
+          <div key={cell.label} className="cockpit-cell min-w-[5.5rem] flex-1 justify-center">
             <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.dot}`} />
             <span className="truncate uppercase tracking-wide">{cell.label}</span>
             <b className="ml-1 min-w-0 truncate font-semibold text-slate-950 dark:text-[#edf2fb]">{cell.value}</b>
@@ -1093,7 +1087,7 @@ export function CompanySkills() {
       </div>
 
       {/* 40px unified toolbar: Skills / Tools surface switch */}
-      <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-xl border border-slate-200/90 bg-slate-50/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+      <div className={TOOLBAR_CLASS}>
         <div role="group" aria-label="Skills surfaces" className="flex shrink-0 items-center gap-0.5 rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-slate-100 dark:bg-[#090c12] p-0.5">
           {([
             { key: "skills", label: "Skills", icon: Boxes },
@@ -1111,8 +1105,8 @@ export function CompanySkills() {
       {surface === "tools" ? (
         <ToolAdminPanel companyId={selectedCompanyId} />
       ) : (
-      <div className={`grid min-h-[calc(100vh-13rem)] min-w-0 gap-0 overflow-hidden tabular-nums xl:grid-cols-[21rem_minmax(0,1fr)] 2xl:grid-cols-[22rem_minmax(0,1fr)] ${CARD}`}>
-        <aside className="min-w-0 border-r border-slate-200/90 bg-slate-50/80 dark:border-white/[0.08] dark:bg-[#090c12]">
+      <div className="grid min-h-[calc(100vh-13rem)] min-w-0 gap-3 tabular-nums xl:grid-cols-[21rem_minmax(0,1fr)] 2xl:grid-cols-[22rem_minmax(0,1fr)]">
+        <aside className={cn(CARD, "min-w-0 overflow-hidden")}>
           <div className="border-b border-slate-200/90 dark:border-white/[0.08] px-4 py-3">
             <div className="flex min-w-0 items-center justify-between gap-2">
               <div className="min-w-0">
@@ -1209,7 +1203,7 @@ export function CompanySkills() {
           )}
         </aside>
 
-        <div className="min-w-0">
+        <div className={cn(CARD, "min-w-0 overflow-hidden")}>
           <SkillPane
             loading={skillsQuery.isLoading || detailQuery.isLoading}
             detail={activeDetail}

@@ -47,16 +47,32 @@ function configFromForm(form: StorageForm): CompanyDataStorageConfig {
   };
 }
 
+const FIELD_CLASS =
+  "h-9 w-full rounded-md border border-slate-200/90 bg-slate-50/80 px-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:placeholder:text-[#5c687f] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25";
+const CTA_CLASS =
+  "h-8 bg-blue-600 text-xs text-[#f8fafc] hover:bg-blue-500 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]";
+const OUTLINE_BTN_CLASS =
+  "h-8 border-slate-200/90 bg-white text-xs text-slate-900 hover:bg-slate-100 hover:text-slate-950 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]";
+const GHOST_BTN_CLASS =
+  "h-8 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:bg-white/[0.06] dark:hover:text-[#edf2fb]";
+
 function SecretSelect({ label, value, onChange, secrets, disabled }: {
   label: string; value: string; onChange: (value: string) => void; secrets: CompanySecret[]; disabled: boolean;
 }) {
-  return <label className="space-y-1.5 text-sm"><span className="text-muted-foreground">{label}</span>
-    <select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled}
-      className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm">
-      <option value="">Select a saved secret</option>
-      {secrets.map((secret) => <option key={secret.id} value={secret.id}>{secret.name}</option>)}
-    </select>
-  </label>;
+  return (
+    <label className="block space-y-1.5 text-sm">
+      <span className="block text-xs font-medium text-slate-600 dark:text-[#9aa7bd]">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        className={FIELD_CLASS}
+      >
+        <option value="">Select a saved secret</option>
+        {secrets.map((secret) => <option key={secret.id} value={secret.id}>{secret.name}</option>)}
+      </select>
+    </label>
+  );
 }
 
 export function CompanyDataStorageSettings({ companyId }: { companyId: string }) {
@@ -128,48 +144,152 @@ export function CompanyDataStorageSettings({ companyId }: { companyId: string })
     setCreateTarget(target); setNewSecretName(target === "access" ? "S3 access key" : "S3 secret access key"); setNewSecretValue("");
   }
 
-  return <section className="space-y-4">
-    <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Shared Data Storage</div>
-    <div className="space-y-4 rounded-md border border-border px-4 py-4">
-      <div className="flex items-start gap-2"><Database className="mt-0.5 h-4 w-4 text-muted-foreground" />
-        <div className="space-y-1 text-sm text-muted-foreground">
-          <p>Normalized, cumulative source data for this company. External workflows such as n8n place raw responses in a separate incoming store and write the normalized history and latest snapshots here; Paperwork agents read and append to this cumulative data.</p>
-          <p>Example layout: <code>&lt;prefix&gt;/&lt;category&gt;/latest.json</code> and <code>&lt;prefix&gt;/&lt;category&gt;/history/&lt;timestamp&gt;.json</code> for change detection. Final deliverables belong in Work-product Storage, not here.</p>
+  return (
+    <section className="space-y-2 tabular-nums">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad]">
+          <Database className="h-3.5 w-3.5 text-blue-600 dark:text-[#60a5fa]" />
+          Shared Data Storage
+        </div>
+        <div className="flex items-center gap-1.5 text-[11px]">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-medium ${
+              savedConfig.provider === "s3"
+                ? "border-lime-500/30 bg-lime-500/10 text-lime-700 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/10 dark:text-[#a3e635]"
+                : "border-slate-200/90 bg-slate-100/80 text-slate-600 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-[#8b97ad]"
+            }`}
+          >
+            <span
+              aria-hidden
+              className={`h-1.5 w-1.5 rounded-full ${
+                savedConfig.provider === "s3"
+                  ? "bg-lime-600 dark:bg-[#a3e635]"
+                  : "bg-slate-400 dark:bg-[#64748b]"
+              }`}
+            />
+            {savedConfig.provider === "s3" ? "S3 Shared" : "Local Disk"}
+          </span>
+          {!isSaved ? (
+            <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 font-medium text-amber-700 dark:border-[#f59e0b]/30 dark:bg-[#f59e0b]/12 dark:text-[#f59e0b]">
+              Unsaved
+            </span>
+          ) : null}
         </div>
       </div>
-      <label className="space-y-1.5 text-sm"><span className="text-muted-foreground">Data storage mode</span>
-        <select value={form.provider} onChange={(event) => setForm({ ...form, provider: event.target.value === "s3" ? "s3" : "local_disk" })}
-          className="h-9 w-full rounded-md border border-border bg-background px-3 text-sm">
-          <option value="local_disk">Local disk (Paperwork-managed company data folder)</option><option value="s3">S3-compatible shared object storage</option>
-        </select>
-      </label>
-      {storageQuery.isError ? <p className="text-xs text-destructive">Current shared-data settings could not be loaded.</p> : null}
-      {form.provider === "local_disk" ? <p className="text-xs text-muted-foreground">Data stays on Paperwork local disk under a company-scoped folder. Agents read and write it through the company data API; no object-storage credentials are exposed.</p> : <div className="space-y-3 border-t border-border pt-4">
-        <p className="text-xs text-muted-foreground">The key prefix is the company data root. n8n must write the exact shared layout under this prefix; agents access the same keys through the data API. Operators must choose a unique prefix per company.</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="space-y-1.5 text-sm"><span className="text-muted-foreground">Endpoint</span><Input value={form.endpoint} onChange={(event) => setForm({ ...form, endpoint: event.target.value })} placeholder="https://storage.example.com" /></label>
-          <label className="space-y-1.5 text-sm"><span className="text-muted-foreground">Region</span><Input value={form.region} onChange={(event) => setForm({ ...form, region: event.target.value })} placeholder="us-east-1" /></label>
-          <label className="space-y-1.5 text-sm"><span className="text-muted-foreground">Bucket</span><Input value={form.bucket} onChange={(event) => setForm({ ...form, bucket: event.target.value })} placeholder="shared-data" /></label>
-          <label className="space-y-1.5 text-sm"><span className="text-muted-foreground">Key prefix (required company data root)</span><Input value={form.keyPrefix} onChange={(event) => setForm({ ...form, keyPrefix: event.target.value })} placeholder="gazua" /></label>
+      <div className="tactile-card space-y-4 rounded-xl border border-slate-200/90 bg-white px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
+        <div className="flex items-start gap-2.5 rounded-lg border border-slate-200/80 bg-slate-50/75 p-3 dark:border-white/[0.07] dark:bg-[#090c12]">
+          <div className="mt-0.5 rounded-md border border-slate-200/90 bg-white p-1.5 text-blue-600 dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-[#60a5fa]">
+            <Database className="h-3.5 w-3.5" />
+          </div>
+          <div className="space-y-1 text-xs leading-relaxed text-slate-600 dark:text-[#8b97ad]">
+            <p>Normalized, cumulative source data for this company. External workflows such as n8n place raw responses in a separate incoming store and write the normalized history and latest snapshots here; Paperwork agents read and append to this cumulative data.</p>
+            <p>
+              Example layout:{" "}
+              <code className="rounded border border-slate-200/80 bg-white px-1 py-0.5 font-mono text-[11px] text-slate-800 dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-[#cbd5e1]">
+                &lt;prefix&gt;/&lt;category&gt;/latest.json
+              </code>{" "}
+              and{" "}
+              <code className="rounded border border-slate-200/80 bg-white px-1 py-0.5 font-mono text-[11px] text-slate-800 dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-[#cbd5e1]">
+                &lt;prefix&gt;/&lt;category&gt;/history/&lt;timestamp&gt;.json
+              </code>{" "}
+              for change detection. Final deliverables belong in Work-product Storage, not here.
+            </p>
+          </div>
         </div>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.forcePathStyle} onChange={(event) => setForm({ ...form, forcePathStyle: event.target.checked })} />Use path-style addressing</label>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <SecretSelect label="Access key secret" value={form.accessKeySecretId} onChange={(accessKeySecretId) => setForm({ ...form, accessKeySecretId })} secrets={secrets} disabled={secretSelectDisabled} />
-          <SecretSelect label="Secret access key secret" value={form.secretAccessKeySecretId} onChange={(secretAccessKeySecretId) => setForm({ ...form, secretAccessKeySecretId })} secrets={secrets} disabled={secretSelectDisabled} />
+        <label className="block space-y-1.5 text-sm">
+          <span className="block text-xs font-medium text-slate-600 dark:text-[#9aa7bd]">Data storage mode</span>
+          <select
+            value={form.provider}
+            onChange={(event) => setForm({ ...form, provider: event.target.value === "s3" ? "s3" : "local_disk" })}
+            className={FIELD_CLASS}
+          >
+            <option value="local_disk">Local disk (Paperwork-managed company data folder)</option>
+            <option value="s3">S3-compatible shared object storage</option>
+          </select>
+        </label>
+        {storageQuery.isError ? <p className="text-xs text-rose-600 dark:text-[#f43f5e]">Current shared-data settings could not be loaded.</p> : null}
+        {form.provider === "local_disk" ? (
+          <p className="text-xs leading-relaxed text-slate-500 dark:text-[#8b97ad]">Data stays on Paperwork local disk under a company-scoped folder. Agents read and write it through the company data API; no object-storage credentials are exposed.</p>
+        ) : (
+          <div className="space-y-3 border-t border-slate-200/80 pt-4 dark:border-white/[0.07]">
+            <p className="text-xs leading-relaxed text-slate-500 dark:text-[#8b97ad]">The key prefix is the company data root. n8n must write the exact shared layout under this prefix; agents access the same keys through the data API. Operators must choose a unique prefix per company.</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block space-y-1.5 text-sm">
+                <span className="block text-xs font-medium text-slate-600 dark:text-[#9aa7bd]">Endpoint</span>
+                <Input className={FIELD_CLASS} value={form.endpoint} onChange={(event) => setForm({ ...form, endpoint: event.target.value })} placeholder="https://storage.example.com" />
+              </label>
+              <label className="block space-y-1.5 text-sm">
+                <span className="block text-xs font-medium text-slate-600 dark:text-[#9aa7bd]">Region</span>
+                <Input className={FIELD_CLASS} value={form.region} onChange={(event) => setForm({ ...form, region: event.target.value })} placeholder="us-east-1" />
+              </label>
+              <label className="block space-y-1.5 text-sm">
+                <span className="block text-xs font-medium text-slate-600 dark:text-[#9aa7bd]">Bucket</span>
+                <Input className={FIELD_CLASS} value={form.bucket} onChange={(event) => setForm({ ...form, bucket: event.target.value })} placeholder="shared-data" />
+              </label>
+              <label className="block space-y-1.5 text-sm">
+                <span className="block text-xs font-medium text-slate-600 dark:text-[#9aa7bd]">Key prefix (required company data root)</span>
+                <Input className={FIELD_CLASS} value={form.keyPrefix} onChange={(event) => setForm({ ...form, keyPrefix: event.target.value })} placeholder="gazua" />
+              </label>
+            </div>
+            <label className="flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-[#cbd5e1]">
+              <input
+                type="checkbox"
+                className="accent-blue-600 dark:accent-[#60a5fa]"
+                checked={form.forcePathStyle}
+                onChange={(event) => setForm({ ...form, forcePathStyle: event.target.checked })}
+              />
+              Use path-style addressing
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SecretSelect label="Access key secret" value={form.accessKeySecretId} onChange={(accessKeySecretId) => setForm({ ...form, accessKeySecretId })} secrets={secrets} disabled={secretSelectDisabled} />
+              <SecretSelect label="Secret access key secret" value={form.secretAccessKeySecretId} onChange={(secretAccessKeySecretId) => setForm({ ...form, secretAccessKeySecretId })} secrets={secrets} disabled={secretSelectDisabled} />
+            </div>
+            {secretsQuery.isError ? <p className="text-xs text-rose-600 dark:text-[#f43f5e]">Saved secrets could not be loaded.</p> : null}
+            {createTarget ? (
+              <div className="space-y-2.5 rounded-lg border border-slate-200/90 bg-slate-50/85 p-3 dark:border-white/[0.08] dark:bg-[#090c12]">
+                <p className="text-xs text-slate-600 dark:text-[#8b97ad]">Create a new {createTarget === "access" ? "access key" : "secret access key"} secret. Its value is masked and never shown again.</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <Input className={FIELD_CLASS} value={newSecretName} onChange={(event) => setNewSecretName(event.target.value)} placeholder="Secret name" />
+                  <Input className={FIELD_CLASS} type="password" value={newSecretValue} onChange={(event) => setNewSecretValue(event.target.value)} placeholder="Secret value" autoComplete="new-password" />
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" className={CTA_CLASS} onClick={() => createTarget && createSecret.mutate({ target: createTarget, name: newSecretName.trim(), value: newSecretValue })} disabled={createSecret.isPending || !newSecretName.trim() || !newSecretValue}>Create secret</Button>
+                  <Button size="sm" variant="ghost" className={GHOST_BTN_CLASS} onClick={() => setCreateTarget(null)} disabled={createSecret.isPending}>Cancel</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="ghost" className={GHOST_BTN_CLASS} onClick={() => beginSecret("access")}><Plus className="h-3.5 w-3.5" />New access-key secret</Button>
+                <Button size="sm" variant="ghost" className={GHOST_BTN_CLASS} onClick={() => beginSecret("secret")}><Plus className="h-3.5 w-3.5" />New secret-access-key secret</Button>
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-200/80 pt-3 dark:border-white/[0.07]">
+          <Button size="sm" className={CTA_CLASS} onClick={() => saveStorage.mutate()} disabled={saveStorage.isPending || (form.provider === "s3" && !s3Complete)}>
+            {saveStorage.isPending ? "Saving…" : "Save shared-data settings"}
+          </Button>
+          {form.provider === "s3" ? (
+            <Button size="sm" variant="outline" className={OUTLINE_BTN_CLASS} onClick={() => testConnection.mutate()} disabled={!isSaved || testConnection.isPending}>
+              {testConnection.isPending ? "Testing…" : "Test saved shared-data connection"}
+            </Button>
+          ) : null}
         </div>
-        {secretsQuery.isError ? <p className="text-xs text-destructive">Saved secrets could not be loaded.</p> : null}
-        {createTarget ? <div className="space-y-2 rounded-md border border-border bg-muted/30 p-3">
-          <p className="text-xs text-muted-foreground">Create a new {createTarget === "access" ? "access key" : "secret access key"} secret. Its value is masked and never shown again.</p>
-          <div className="grid gap-2 sm:grid-cols-2"><Input value={newSecretName} onChange={(event) => setNewSecretName(event.target.value)} placeholder="Secret name" /><Input type="password" value={newSecretValue} onChange={(event) => setNewSecretValue(event.target.value)} placeholder="Secret value" autoComplete="new-password" /></div>
-          <div className="flex gap-2"><Button size="sm" onClick={() => createTarget && createSecret.mutate({ target: createTarget, name: newSecretName.trim(), value: newSecretValue })} disabled={createSecret.isPending || !newSecretName.trim() || !newSecretValue}>Create secret</Button><Button size="sm" variant="ghost" onClick={() => setCreateTarget(null)} disabled={createSecret.isPending}>Cancel</Button></div>
-        </div> : <div className="flex flex-wrap gap-2"><Button size="sm" variant="ghost" onClick={() => beginSecret("access")}><Plus className="h-3.5 w-3.5" />New access-key secret</Button><Button size="sm" variant="ghost" onClick={() => beginSecret("secret")}><Plus className="h-3.5 w-3.5" />New secret-access-key secret</Button></div>}
-      </div>}
-      <div className="flex flex-wrap items-center gap-2"><Button size="sm" onClick={() => saveStorage.mutate()} disabled={saveStorage.isPending || (form.provider === "s3" && !s3Complete)}>{saveStorage.isPending ? "Saving…" : "Save shared-data settings"}</Button>
-        {form.provider === "s3" ? <Button size="sm" variant="outline" onClick={() => testConnection.mutate()} disabled={!isSaved || testConnection.isPending}>{testConnection.isPending ? "Testing…" : "Test saved shared-data connection"}</Button> : null}
+        {form.provider === "s3" && !isSaved ? <p className="text-xs text-amber-700 dark:text-[#f59e0b]">Save changes before testing the shared-data connection.</p> : null}
+        {saveStorage.isError ? <p className="text-xs text-rose-600 dark:text-[#f43f5e]">{saveStorage.error instanceof Error ? saveStorage.error.message : "Shared-data settings could not be saved."}</p> : null}
+        {testResult ? (
+          <p
+            className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs ${
+              testResult.ok
+                ? "border-lime-500/30 bg-lime-500/10 text-lime-700 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/10 dark:text-[#a3e635]"
+                : "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-[#f43f5e]/30 dark:bg-[#f43f5e]/10 dark:text-[#fda4af]"
+            }`}
+          >
+            {testResult.ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <XCircle className="h-3.5 w-3.5 shrink-0" />}
+            <span>{testResult.ok ? "Shared-data connection verified." : testResult.error ?? "Shared-data connection failed."}</span>
+          </p>
+        ) : null}
       </div>
-      {form.provider === "s3" && !isSaved ? <p className="text-xs text-muted-foreground">Save changes before testing the shared-data connection.</p> : null}
-      {saveStorage.isError ? <p className="text-xs text-destructive">{saveStorage.error instanceof Error ? saveStorage.error.message : "Shared-data settings could not be saved."}</p> : null}
-      {testResult ? <p className={`flex items-center gap-1.5 text-xs ${testResult.ok ? "text-green-600" : "text-destructive"}`}>{testResult.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}{testResult.ok ? "Shared-data connection verified." : testResult.error ?? "Shared-data connection failed."}</p> : null}
-    </div>
-  </section>;
+    </section>
+  );
 }

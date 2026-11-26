@@ -112,16 +112,16 @@ function TelemetryCell({
   return (
     <Link
       to={to}
-      className="block min-w-0 border-[#242d3f] bg-card px-3 py-2.5 no-underline text-inherit transition-colors hover:bg-accent/60"
+      className="block min-w-0 px-3.5 py-2.5 no-underline text-inherit transition-colors hover:bg-slate-50/90 dark:hover:bg-[#141b2a]"
     >
       {/* Header row: label left, sparkline right. Both are in normal flow on this row,
           so the sparkline can never overlap the subtext rendered below. */}
       <div className="flex items-center justify-between gap-2">
-        <p className="min-w-0 truncate text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="min-w-0 truncate text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#9aa7bd]">{label}</p>
         {spark && <span className="hidden shrink-0 sm:inline-flex">{spark}</span>}
       </div>
-      <p className="mt-1 text-2xl font-semibold leading-none tracking-tight tabular-nums">{value}</p>
-      <p className="mt-1 truncate text-[11px] text-muted-foreground tabular-nums">{sub}</p>
+      <p className="mt-1 font-mono text-2xl font-semibold leading-none tracking-tight tabular-nums text-slate-950 dark:text-[#eef2f8]">{value}</p>
+      <p className="mt-1 truncate text-[11px] text-slate-500 tabular-nums dark:text-[#627089]">{sub}</p>
     </Link>
   );
 }
@@ -131,7 +131,7 @@ function LiveRunRow({ run, issue }: { run: LiveRunForIssue; issue?: Issue }) {
   return (
     <Link
       to={`/agents/${run.agentId}/runs/${run.id}`}
-      className="grid grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_6.5rem] items-center gap-3 border-b border-border/60 px-3 py-1.5 text-xs no-underline text-inherit transition-colors hover:bg-accent/40"
+      className="grid grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_6.5rem] items-center gap-3 border-b border-slate-200/70 px-3 py-1.5 text-xs no-underline text-inherit transition-colors hover:bg-slate-50/90 dark:border-white/[0.06] dark:hover:bg-[#141b2a]"
     >
       <span className="flex min-w-0 items-center gap-2">
         <span className="relative flex h-1.5 w-1.5 shrink-0">
@@ -461,7 +461,7 @@ export function Dashboard() {
             <div
               role="tablist"
               aria-label="실시간 모니터링 탭"
-              className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-1 dark:border-[#242d3f] dark:bg-[#0b0e14]"
+              className="tactile-card inline-flex items-center gap-1 rounded-[10px] border border-slate-200/90 bg-slate-100/80 p-1 dark:border-white/[0.08] dark:bg-[#07090d] dark:bg-none"
             >
               <button
                 type="button"
@@ -470,8 +470,8 @@ export function Dashboard() {
                 onClick={() => setBottomTab("sessions")}
                 className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                   bottomTab === "sessions"
-                    ? "bg-background text-foreground shadow-sm ring-1 ring-[#84cc16]/40 dark:bg-[#171f2e]"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-white text-slate-950 shadow-sm ring-1 ring-[#84cc16]/40 dark:bg-[#151d2e] dark:text-[#eef2f8]"
+                    : "text-slate-600 hover:text-slate-950 dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]"
                 }`}
               >
                 <span>실행 중인 세션</span>
@@ -487,8 +487,8 @@ export function Dashboard() {
                 onClick={() => setBottomTab("dgate")}
                 className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                   bottomTab === "dgate"
-                    ? "bg-background text-foreground shadow-sm ring-1 ring-[#5f8dff]/45 dark:bg-[#171f2e]"
-                    : "text-muted-foreground hover:text-foreground"
+                    ? "bg-white text-slate-950 shadow-sm ring-1 ring-[#60a5fa]/45 dark:bg-[#151d2e] dark:text-[#eef2f8]"
+                    : "text-slate-600 hover:text-slate-950 dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]"
                 }`}
               >
                 <span
@@ -499,7 +499,7 @@ export function Dashboard() {
                   }`}
                 />
                 <span>dgate 웹 모니터</span>
-                <span className="rounded-full border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground tabular-nums dark:border-[#242d3f] dark:bg-[#151b28]">
+                <span className="rounded-full border border-slate-200/90 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600 tabular-nums dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-[#9aa7bd]">
                   {dgate?.available ? `${dgateActiveWorkers} active` : "offline"}
                 </span>
               </button>
@@ -524,13 +524,13 @@ export function Dashboard() {
               type="button"
               onClick={() => setShowOperationsDetails((prev) => !prev)}
               aria-expanded={showOperationsDetails}
-              className="flex w-full items-center justify-between rounded-lg border border-border bg-card/70 px-3 py-2 text-left text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground dark:border-[#242d3f]"
+              className="tactile-card tactile-card-interactive flex w-full cursor-pointer items-center justify-between rounded-[12px] border border-slate-200/90 bg-white px-3.5 py-2.5 text-left text-xs font-semibold text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] hover:text-slate-950 dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#9aa7bd] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)] dark:hover:text-[#eef2f8]"
             >
               <span className="inline-flex items-center gap-1.5">
                 {showOperationsDetails ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                 운영 상세 · 미션 · 워크플로 · 에이전트 플릿
               </span>
-              <span className="font-mono text-[10px] font-normal">
+              <span className="font-mono text-[10px] font-normal tabular-nums text-slate-500 dark:text-[#627089]">
                 {activeMissions} active missions · {data.tasks.inProgress} in progress · {formatCents(data.costs.monthSpendCents)} MTD
               </span>
             </button>
@@ -540,7 +540,7 @@ export function Dashboard() {
             <div className="space-y-4">
               <div
                 data-testid="dashboard-telemetry"
-                className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-[#242d3f] overflow-hidden rounded-lg border border-border [&>:nth-child(2)]:border-e-0 [&>:nth-child(n+3)]:border-t lg:[&>:nth-child(2)]:border-e lg:[&>:nth-child(n+3)]:border-t-0"
+                className="tactile-card grid grid-cols-2 lg:grid-cols-4 divide-x divide-slate-200/80 overflow-hidden rounded-[12px] border border-slate-200/90 bg-white text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] [&>:nth-child(2)]:border-e-0 [&>:nth-child(n+3)]:border-t [&>:nth-child(n+3)]:border-slate-200/80 lg:[&>:nth-child(2)]:border-e lg:[&>:nth-child(n+3)]:border-t-0 dark:divide-white/[0.07] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)] dark:[&>:nth-child(n+3)]:border-white/[0.07]"
               >
                 <TelemetryCell
                   label="Agents"
@@ -572,16 +572,19 @@ export function Dashboard() {
               </div>
 
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
-                <section className="flex min-w-0 flex-col rounded-lg border border-border" aria-label="Live execution and recent activity">
-                  <header className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
+                <section
+                  className="tactile-card flex min-w-0 flex-col overflow-hidden rounded-[12px] border border-slate-200/90 bg-white text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]"
+                  aria-label="Live execution and recent activity"
+                >
+                  <header className="flex items-center justify-between gap-3 border-b border-slate-200/80 px-3.5 py-2.5 dark:border-white/[0.07]">
                     <h3 className="text-xs font-semibold">Live execution</h3>
-                    <span className="text-[11px] text-muted-foreground tabular-nums">
+                    <span className="font-mono text-[11px] text-slate-500 tabular-nums dark:text-[#9aa7bd]">
                       {liveRuns?.length ?? 0} runs · {liveRuns?.filter(isLiveRun).length ?? 0} live
                     </span>
                   </header>
                   {/* Explicit tracks: the agent and work-item columns each own a
                       minmax(0,…) track and truncate, so they can never overlap. */}
-                  <div className="hidden grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_6.5rem] gap-3 border-b border-border px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground sm:grid" aria-hidden="true">
+                  <div className="hidden grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_6.5rem] gap-3 border-b border-slate-200/80 bg-slate-50/70 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 sm:grid dark:border-white/[0.07] dark:bg-white/[0.02] dark:text-[#627089]" aria-hidden="true">
                     <span>Agent</span>
                     <span>Work item</span>
                     <span className="text-right">Started</span>
@@ -590,15 +593,15 @@ export function Dashboard() {
                     {liveRuns && liveRuns.length > 0 ? (
                       liveRuns.map((run) => <LiveRunRow key={run.id} run={run} issue={run.issueId ? issueById.get(run.issueId) : undefined} />)
                     ) : (
-                      <p className="border-b border-border px-3 py-3 text-sm text-muted-foreground">No recent agent runs.</p>
+                      <p className="border-b border-slate-200/70 px-3.5 py-3 text-sm text-slate-500 dark:border-white/[0.06] dark:text-[#9aa7bd]">No recent agent runs.</p>
                     )}
                   </div>
-                  <h4 className="border-b border-border bg-muted/30 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <h4 className="border-b border-slate-200/80 bg-slate-50/80 px-3.5 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:border-white/[0.07] dark:bg-white/[0.03] dark:text-[#9aa7bd]">
                     Recent activity
                   </h4>
-                  <div className="divide-y divide-border/60">
+                  <div className="divide-y divide-slate-200/70 dark:divide-white/[0.06]">
                     {recentActivity.length === 0 ? (
-                      <p className="px-3 py-3 text-sm text-muted-foreground">No activity yet.</p>
+                      <p className="px-3.5 py-3 text-sm text-slate-500 dark:text-[#9aa7bd]">No activity yet.</p>
                     ) : (
                       recentActivity.map((event: ActivityEvent) => (
                         <ActivityRow
@@ -652,7 +655,7 @@ export function Dashboard() {
 
       {data && (
         <>
-          <div className="grid grid-cols-2 gap-4 [&>div]:rounded-md [&>div]:border [&>div]:border-border/80 [&>div]:bg-card/60">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 [&>div]:rounded-[12px] [&>div]:border [&>div]:border-slate-200/90 [&>div]:bg-white [&>div]:shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:[&>div]:border-white/[0.08] dark:[&>div]:bg-[#0e131d] dark:[&>div]:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
             <ChartCard title="Run Activity" subtitle="Last 14 days">
               <RunActivityChart runs={runStats?.days ?? []} />
             </ChartCard>
@@ -671,10 +674,10 @@ export function Dashboard() {
             {/* Recent Missions */}
             {missions && missions.length > 0 && (
               <div className="min-w-0">
-                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#9aa7bd] mb-3">
                   Recent Missions
                 </h3>
-                <div className="rounded-md border border-border/80 bg-card/60 divide-y divide-border/60 overflow-hidden">
+                <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white text-slate-950 divide-y divide-slate-200/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#eef2f8] dark:divide-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
                   {[...missions]
                     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                     .slice(0, 5)
@@ -682,10 +685,10 @@ export function Dashboard() {
                       <Link
                         key={mission.id}
                         to={`/missions/${mission.id}`}
-                        className="px-4 py-3 text-sm cursor-pointer hover:bg-accent/50 transition-colors no-underline text-inherit block"
+                        className="px-4 py-3 text-sm cursor-pointer hover:bg-slate-50/90 dark:hover:bg-[#141b2a] transition-colors no-underline text-inherit block"
                       >
                         <div className="flex items-center gap-3">
-                          <Rocket className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <Rocket className="h-4 w-4 shrink-0 text-slate-400 dark:text-[#627089]" />
                           <span className="flex-1 truncate">{mission.title}</span>
                           <StatusBadge status={mission.status} />
                         </div>
@@ -696,20 +699,20 @@ export function Dashboard() {
             )}
 
             <div className="min-w-0">
-              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#9aa7bd] mb-3">
                   Recent Work
               </h3>
               {recentIssues.length === 0 ? (
-                <div className="rounded-md border border-border/80 bg-card/60 p-4">
-                  <p className="text-sm text-muted-foreground">No work yet.</p>
+                <div className="tactile-card rounded-[12px] border border-slate-200/90 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
+                  <p className="text-sm text-slate-500 dark:text-[#9aa7bd]">No work yet.</p>
                 </div>
               ) : (
-                <div className="rounded-md border border-border/80 bg-card/60 divide-y divide-border/60 overflow-hidden">
+                <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white text-slate-950 divide-y divide-slate-200/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#eef2f8] dark:divide-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
                   {recentIssues.slice(0, 10).map((issue) => (
                     <Link
                       key={issue.id}
                       to={`/issues/${issue.identifier ?? issue.id}`}
-                      className="px-4 py-3 text-sm cursor-pointer hover:bg-accent/50 transition-colors no-underline text-inherit block"
+                      className="px-4 py-3 text-sm cursor-pointer hover:bg-slate-50/90 dark:hover:bg-[#141b2a] transition-colors no-underline text-inherit block"
                     >
                       <div className="flex items-start gap-2 sm:items-center sm:gap-3">
                         {/* Status icon - left column on mobile */}

@@ -31,7 +31,6 @@ import { useCompany } from "../context/CompanyContext";
 import { useDateRange, PRESET_KEYS, PRESET_LABELS } from "../hooks/useDateRange";
 import { queryKeys } from "../lib/queryKeys";
 import { billingTypeDisplayName, cn, formatCents, formatTokens, providerDisplayName } from "../lib/utils";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -71,7 +70,7 @@ function BillerTabLabel({ biller, rows }: { biller: string; rows: CostByBiller[]
 }
 
 const TACTILE_CARD_CLASS =
-  "rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
+  "tactile-card rounded-xl border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
 
 function MetricTile({
   label,
@@ -625,44 +624,51 @@ export function Costs() {
 
   return (
     <div className="space-y-3 tabular-nums">
-      <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="min-w-0">
-                <h1 className="text-xl font-semibold tracking-tight">Costs</h1>
-                <p className="truncate text-xs text-muted-foreground">
-                  Inference spend, platform fees, credits, and live quota windows.
-                </p>
+      <div className="space-y-2">
+          <div className="cockpit-toolbar tactile-card h-10 w-full rounded-xl border-slate-200/90 bg-white pl-2 pr-1.5 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]">
+            <div className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden">
+              <h1 className="truncate text-sm font-semibold tracking-tight text-slate-950 dark:text-[#eef2f8]">Costs</h1>
+              <p className="hidden truncate text-xs text-slate-500 dark:text-[#8b97ad] sm:block">
+                Inference spend, platform fees, credits, and live quota windows.
+              </p>
             </div>
-
-            <div className="flex flex-wrap items-center gap-1">
+            <div role="group" aria-label="Cost date range presets" className="ml-auto flex shrink-0 items-center gap-0.5 rounded-md border border-slate-200/90 bg-slate-100/80 p-0.5 dark:border-white/[0.08] dark:bg-[#090c12]">
               {PRESET_KEYS.map((key) => (
-                <Button
+                <button
                   key={key}
-                  variant={preset === key ? "secondary" : "ghost"}
-                  size="sm"
-                  className="h-7 px-2 text-xs"
+                  type="button"
+                  aria-pressed={preset === key}
+                  className={cn(
+                    "h-6 cursor-pointer whitespace-nowrap rounded-md px-2 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/35 dark:focus-visible:ring-[#60a5fa]/35",
+                    preset === key
+                      ? "bg-white font-semibold text-slate-950 shadow-sm dark:bg-[#151d2b] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                      : "text-slate-600 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:text-[#eef2f8]",
+                  )}
                   onClick={() => setPreset(key)}
                 >
                   {PRESET_LABELS[key]}
-                </Button>
+                </button>
               ))}
             </div>
           </div>
 
           {preset === "custom" ? (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/80 bg-card/60 p-3">
+            <div className="tactile-card flex min-h-10 flex-wrap items-center gap-2 rounded-xl py-1 border-slate-200/90 bg-white px-2 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]">
+              <span className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-[#8b97ad]">Custom range</span>
               <input
                 type="date"
+                aria-label="Custom start date"
                 value={customFrom}
                 onChange={(event) => setCustomFrom(event.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                className="h-7 rounded-md border border-slate-200/90 bg-white px-2 text-xs text-slate-950 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25"
               />
-              <span className="text-sm text-muted-foreground">to</span>
+              <span className="text-xs text-slate-500 dark:text-[#8b97ad]">to</span>
               <input
                 type="date"
+                aria-label="Custom end date"
                 value={customTo}
                 onChange={(event) => setCustomTo(event.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                className="h-7 rounded-md border border-slate-200/90 bg-white px-2 text-xs text-slate-950 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25"
               />
             </div>
           ) : null}

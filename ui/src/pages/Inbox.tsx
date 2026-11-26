@@ -157,7 +157,11 @@ const CATEGORY: Record<TriageKind, { label: string; className: string }> = {
 };
 
 const TACTILE_SURFACE =
-  "rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
+  "tactile-card rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+const STRIP_CLASS =
+  "cockpit-strip tactile-card h-8 w-full gap-0 overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+const TOOLBAR_CLASS =
+  "cockpit-toolbar tactile-card h-10 w-full overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 px-2 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
 
 const KBD =
   "rounded-md border border-slate-200/90 bg-white px-1.5 font-mono text-[10px] leading-4 text-slate-600 shadow-[inset_0_-1px_0_rgba(15,23,42,0.06)] dark:border-white/[0.1] dark:bg-[#07090d] dark:text-[#8b97ad]";
@@ -270,7 +274,7 @@ function EvidenceSnippet({ text, label }: { text: string; label: string }) {
   return (
     <div className="min-w-0">
       <h4 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</h4>
-      <pre className="min-w-0 whitespace-pre-wrap rounded-md border border-border bg-background/60 px-3 py-2 font-mono text-[11px] leading-relaxed [overflow-wrap:anywhere]">
+      <pre className="min-w-0 whitespace-pre-wrap rounded-[10px] border border-slate-200/80 bg-slate-50/80 px-3 py-2 font-mono text-[11px] leading-relaxed [overflow-wrap:anywhere] dark:border-white/[0.07] dark:bg-[#090c12] dark:text-[#cbd5e1]">
         {lines.map((line, index) => (
           <span
             key={index}
@@ -343,13 +347,13 @@ function DetailPane({ shown, onBack, actionBar, children }: {
         shown ? "flex" : "hidden",
       )}
     >
-      <div className="rounded-t-xl border-b border-slate-200/80 bg-slate-50/95 px-3 py-1.5 dark:border-white/[0.06] dark:bg-[#090d14]/95 lg:hidden">
+      <div className="rounded-t-[12px] border-b border-slate-200/80 bg-slate-50/95 px-3 py-1.5 dark:border-white/[0.06] dark:bg-[#090c12]/95 lg:hidden">
         <Button type="button" variant="ghost" size="xs" onClick={onBack}>
           ← Back to list
         </Button>
       </div>
       <div className="min-w-0 flex-1 p-5 lg:overflow-y-auto">{children}</div>
-      <div className="sticky bottom-0 flex flex-none flex-wrap items-center gap-2 rounded-b-xl border-t border-slate-200/80 bg-slate-50/95 px-4 py-2.5 backdrop-blur dark:border-white/[0.06] dark:bg-[#090d14]/95">
+      <div className="sticky bottom-0 flex flex-none flex-wrap items-center gap-2 rounded-b-[12px] border-t border-slate-200/80 bg-slate-50/95 px-4 py-2.5 backdrop-blur dark:border-white/[0.06] dark:bg-[#090c12]/95">
         {actionBar}
       </div>
     </section>
@@ -863,7 +867,7 @@ export function Inbox() {
     const item = selectedItem;
     if (!item) {
       return (
-        <div className="flex h-full min-h-40 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border px-4 py-8 text-center">
+        <div className="flex h-full min-h-40 flex-col items-center justify-center gap-1 rounded-[10px] border border-dashed border-slate-300/90 px-4 py-8 text-center dark:border-white/[0.12]">
           <p className="text-sm font-medium">Nothing to preview</p>
           <p className="text-xs text-muted-foreground">Pick an item from the list to see its full context here.</p>
         </div>
@@ -892,7 +896,7 @@ export function Inbox() {
               ["Decided", approval.decidedAt ? timeAgo(approval.decidedAt) : "Awaiting decision"],
             ]}
           />
-          <div className="min-w-0 overflow-x-auto rounded-md border border-border bg-background/40 p-3">
+          <div className="min-w-0 overflow-x-auto">
             <ApprovalPayloadRenderer type={approval.type} payload={approval.payload} />
           </div>
           {snippet && (
@@ -991,50 +995,49 @@ export function Inbox() {
   };
 
   const tabLabel = tab === "recent" ? "Recent" : tab === "unread" ? "Unread" : "All";
+  const alertCount = (showAggregateAgentError ? 1 : 0) + (showBudgetAlert ? 1 : 0);
+  const inboxTelemetry = [
+    { label: "Items", value: triageItems.length, dot: "bg-blue-500 dark:bg-[#60a5fa]", title: "Visible work items" }, { label: "Unread", value: unreadIssueIds.length, dot: "bg-blue-500 dark:bg-[#60a5fa]", title: "Unread issues" },
+    { label: "Approvals", value: approvalsToRender.length, dot: "bg-amber-500 dark:bg-[#f59e0b]", title: "Visible approvals" }, { label: "Failed", value: failedRunsForTab.length, dot: "bg-rose-500 dark:bg-[#f43f5e]", title: "Visible failed runs" },
+    { label: "Joins", value: joinRequests.length, dot: "bg-lime-500 dark:bg-[#a3e635]", title: "Pending join requests" }, { label: "Alerts", value: alertCount, dot: "bg-amber-500 dark:bg-[#f59e0b]", title: "Active inbox alerts" }, { label: "Live", value: liveIssueIds.size, dot: "bg-lime-500 dark:bg-[#a3e635]", title: "Issues with live runs" },
+  ];
 
   return (
-    <div className="space-y-4 tabular-nums">
-      <div className="flex flex-col gap-3 rounded-xl border border-slate-200/90 bg-slate-50/95 px-3.5 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090d14] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Tabs value={tab} onValueChange={(value) => navigate(`/inbox/${value}`)}>
-            <PageTabBar
-              items={[
-                {
-                  value: "recent",
-                  label: "Recent",
-                },
-                { value: "unread", label: "Unread" },
-                { value: "all", label: "All" },
-              ]}
-            />
-          </Tabs>
-          {unreadIssueIds.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wider text-blue-700 dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/12 dark:text-[#93c5fd]">
-              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-blue-500 dark:bg-[#60a5fa]" />
-              Unread issues <span className="font-mono font-semibold text-slate-950 tabular-nums dark:text-[#edf2fb]">{unreadIssueIds.length}</span>
-            </span>
-          )}
-          {canMarkAllRead && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 shrink-0"
-              onClick={() => markAllReadMutation.mutate(unreadIssueIds)}
-              disabled={markAllReadMutation.isPending}
-            >
-              {markAllReadMutation.isPending ? "Marking…" : "Mark all as read"}
-            </Button>
-          )}
-        </div>
+    <div className="space-y-2 tabular-nums">
+      <div className={STRIP_CLASS} role="group" aria-label="Inbox telemetry">
+        <span className="cockpit-cell shrink-0"><InboxIcon className="h-3.5 w-3.5" aria-hidden /><span className="uppercase tracking-wide">Inbox</span></span>
+        {inboxTelemetry.map((cell) => (
+          <span key={cell.label} className="cockpit-cell min-w-[5.5rem] flex-1 justify-center" title={cell.title}>
+            <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", cell.dot)} /><span className="truncate uppercase tracking-wide">{cell.label}</span><b className="ml-1 font-mono">{cell.value}</b>
+          </span>
+        ))}
+      </div>
 
+      <div className={TOOLBAR_CLASS}>
+        <Tabs value={tab} onValueChange={(value) => navigate(`/inbox/${value}`)}>
+          <PageTabBar
+            items={[
+              { value: "recent", label: "Recent" }, { value: "unread", label: "Unread" }, { value: "all", label: "All" },
+            ]}
+          />
+        </Tabs>
+        {canMarkAllRead && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0"
+            onClick={() => markAllReadMutation.mutate(unreadIssueIds)}
+            disabled={markAllReadMutation.isPending}
+          >
+            {markAllReadMutation.isPending ? "Marking…" : "Mark all as read"}
+          </Button>
+        )}
+        <span className="flex-1" />
         {tab === "all" && (
-          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-            <Select
-              value={allCategoryFilter}
-              onValueChange={(value) => setAllCategoryFilter(value as InboxCategoryFilter)}
-            >
-              <SelectTrigger className="h-8 w-[170px] text-xs">
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Select value={allCategoryFilter} onValueChange={(value) => setAllCategoryFilter(value as InboxCategoryFilter)}>
+              <SelectTrigger className="h-7 w-[160px] text-xs">
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
@@ -1046,13 +1049,9 @@ export function Inbox() {
                 <SelectItem value="alerts">Alerts</SelectItem>
               </SelectContent>
             </Select>
-
             {showApprovalsCategory && (
-              <Select
-                value={allApprovalFilter}
-                onValueChange={(value) => setAllApprovalFilter(value as InboxApprovalFilter)}
-              >
-                <SelectTrigger className="h-8 w-[170px] text-xs">
+              <Select value={allApprovalFilter} onValueChange={(value) => setAllApprovalFilter(value as InboxApprovalFilter)}>
+                <SelectTrigger className="h-7 w-[160px] text-xs">
                   <SelectValue placeholder="Approval status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1104,7 +1103,7 @@ export function Inbox() {
                   mobileDetail ? "hidden lg:block" : "block",
                 )}
               >
-                <div className="sticky top-0 z-[1] flex items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/95 px-3.5 py-2 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-500 backdrop-blur dark:border-white/[0.06] dark:bg-[#090d14]/95 dark:text-[#8b97ad]">
+                <div className="sticky top-0 z-[1] flex items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/95 px-3.5 py-2 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-500 backdrop-blur dark:border-white/[0.06] dark:bg-[#090c12]/95 dark:text-[#8b97ad]">
                   <span>{triageItems.length} item{triageItems.length === 1 ? "" : "s"} · {tabLabel}</span>
                   {selectedKey && <span className="hidden font-mono normal-case tracking-normal text-slate-700 dark:text-[#cbd5e1] lg:inline">{selectedIndex + 1} / {triageItems.length}</span>}
                 </div>
@@ -1140,7 +1139,7 @@ export function Inbox() {
                     </Button>
                   </div>
                 )}
-                <div className="hidden items-center gap-1.5 border-t border-slate-200/80 bg-slate-50/95 px-3.5 py-2 text-[11px] text-slate-500 dark:border-white/[0.06] dark:bg-[#090d14]/95 dark:text-[#8b97ad] lg:flex" data-testid="inbox-keyboard-hints">
+                <div className="hidden items-center gap-1.5 border-t border-slate-200/80 bg-slate-50/95 px-3.5 py-2 text-[11px] text-slate-500 dark:border-white/[0.06] dark:bg-[#090c12]/95 dark:text-[#8b97ad] lg:flex" data-testid="inbox-keyboard-hints">
                   <Kbd>j</Kbd>
                   <Kbd>k</Kbd>
                   <span>navigate</span>

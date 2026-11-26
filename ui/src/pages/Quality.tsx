@@ -30,10 +30,11 @@ const PILL_CLASS = "inline-flex h-5 shrink-0 items-center rounded-full px-2 text
 const TAB_CLASS =
   "h-7 cursor-pointer rounded-md px-2.5 text-xs whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 dark:focus-visible:ring-[#60a5fa]/30 aria-pressed:bg-white aria-pressed:text-slate-950 aria-pressed:shadow-[inset_0_-2px_0_#65a30d,0_1px_2px_rgba(15,23,42,0.08)] dark:aria-pressed:bg-[#141c2b] dark:aria-pressed:text-[#edf2fb] dark:aria-pressed:shadow-[inset_0_-2px_0_#a3e635,inset_0_1px_0_rgba(255,255,255,0.08)] text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]";
 const ROW_CLASS = "flex items-start gap-3 px-3 py-2 transition-colors hover:bg-slate-50 dark:hover:bg-[#141b29]";
-const LIST_CLASS = "divide-y divide-slate-200/75 dark:divide-white/[0.06] overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
+const LIST_CLASS = "tactile-card divide-y divide-slate-200/75 overflow-hidden rounded-[12px] border-slate-200/90 bg-white/95 dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+const STRIP_CLASS = "cockpit-strip tactile-card h-8 w-full gap-0 overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+const TOOLBAR_CLASS = "cockpit-toolbar tactile-card h-10 w-full overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 px-2 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
 /** Child panels keep their own layout; only surfaces are re-skinned to cockpit hairlines. */
-const cockpitRoundedCardOverrides =
-  "[&_.border.rounded-lg]:rounded-xl [&_.border.rounded-lg.border-border]:border-slate-200/90 dark:[&_.border.rounded-lg.border-border]:border-white/[0.08] [&_.border.rounded-lg.border-border]:bg-white dark:[&_.border.rounded-lg.border-border]:bg-[#0e131d] [&_.border.rounded-lg.bg-card]:bg-white dark:[&_.border.rounded-lg.bg-card]:bg-[#0e131d] [&_.border.rounded-lg]:hover:bg-slate-100 dark:[&_.border.rounded-lg]:hover:bg-[#141b29]";
+const RSI_PANEL_CLASS = "tactile-card rounded-[12px] border-slate-200/90 bg-white/95 p-3 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
 
 function formatPct(value: number | null): string {
   return value === null ? "—" : `${value}%`;
@@ -139,10 +140,10 @@ export function Quality() {
   return (
     <div className="space-y-2 tabular-nums">
       {/* 1-row 6-cell cockpit strip: QA pass/rework telemetry replaces the 4-card metrics grid */}
-      <div className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-3 xl:grid-cols-6" role="group" aria-label={L(lang, { en: "Quality RSI metrics", ko: "품질 RSI 지표" })}
+      <div className={STRIP_CLASS} role="group" aria-label={L(lang, { en: "Quality RSI metrics", ko: "품질 RSI 지표" })}
         title={L(lang, { en: "Recurring Plan QA rejections and post-pass blind spots auto-graduate into Wiki lessons with minimal human intervention. Only pin rules that must be permanent as ★ Standard Rules.", ko: "반복되는 Plan QA 반려와 통과 후 미탐(구멍)은 사람 승인 없이 Wiki 교훈에 자동 반영됩니다. 꼭 영구 고정할 규칙만 ★ 표준 규약으로 지정하세요." })}>
         {stripCells.map((cell) => (
-          <div key={cell.label} className="flex h-10 min-w-0 items-center justify-center gap-2 px-3 text-[11px] text-slate-600 dark:text-[#8b97ad]" title={cell.title}>
+          <div key={cell.label} className="cockpit-cell min-w-[5.5rem] flex-1 justify-center" title={cell.title}>
             <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${TONE_DOT[cell.tone]}`} />
             <span className="truncate uppercase tracking-wide">{cell.label}</span>
             <b className="ml-1 font-semibold text-slate-950 dark:text-[#edf2fb]">{cell.value}</b>
@@ -151,7 +152,7 @@ export function Quality() {
       </div>
 
       {/* Tight 40px toolbar: section tabs + the single mutating action */}
-      <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-xl border border-slate-200/90 bg-slate-50/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+      <div className={TOOLBAR_CLASS}>
         <div role="group" aria-label={L(lang, { en: "Quality sections", ko: "품질 섹션" })} className="flex min-w-0 shrink items-center gap-0.5 overflow-x-auto rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-slate-100 dark:bg-[#090c12] p-0.5">
           {tabs.map((t) => (
             <button key={t.key} type="button" aria-pressed={tab === t.key} onClick={() => setTab(t.key)} className={TAB_CLASS}>
@@ -174,13 +175,13 @@ export function Quality() {
       </div>
 
       {(error || errorMsg) && (
-        <div className="flex items-center gap-2 rounded-xl border border-rose-500/35 dark:border-[#f87171]/40 bg-rose-500/10 dark:bg-[#f87171]/10 px-3 py-2 text-xs text-rose-700 dark:text-[#f87171]" role="alert">
+        <div className="flex items-center gap-2 rounded-[12px] border border-rose-500/35 dark:border-[#f87171]/40 bg-rose-500/10 dark:bg-[#f87171]/10 px-3 py-2 text-xs text-rose-700 dark:text-[#f87171]" role="alert">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           <span className="min-w-0 flex-1 truncate">{errorMsg ?? (error instanceof Error ? error.message : String(error))}</span>
         </div>
       )}
       {notice && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-lime-500/30 dark:border-[#a3e635]/30 bg-lime-500/10 dark:bg-[#a3e635]/10 px-3 py-2 text-xs text-lime-700 dark:text-[#a3e635]" role="status">
+        <div className="flex items-center justify-between gap-3 rounded-[12px] border border-lime-500/30 dark:border-[#a3e635]/30 bg-lime-500/10 dark:bg-[#a3e635]/10 px-3 py-2 text-xs text-lime-700 dark:text-[#a3e635]" role="status">
           <span className="flex min-w-0 items-center gap-1.5">
             <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">{notice}</span>
@@ -192,7 +193,7 @@ export function Quality() {
       )}
 
       {tab === "rsi" && (
-        <div className={cockpitRoundedCardOverrides}>
+        <div className={RSI_PANEL_CLASS}>
           <QualityRsiPanel
             overview={overview}
             promotingSig={promotingSig}

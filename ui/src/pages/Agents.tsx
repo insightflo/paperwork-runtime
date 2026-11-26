@@ -329,7 +329,7 @@ export function Agents() {
       {/* 1-row 4-column fleet telemetry strip */}
       <section
         aria-label="Fleet telemetry"
-        className="grid grid-cols-2 divide-x divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm lg:grid-cols-4 dark:divide-white/[0.07] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.095)]"
+        className="tactile-card grid grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-[12px] border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] lg:grid-cols-4 dark:divide-white/[0.07] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_10px_28px_-18px_rgba(0,0,0,0.85)]"
       >
         <FleetCell
           label="전체 에이전트"
@@ -375,7 +375,7 @@ export function Agents() {
       </section>
 
       {/* Widescreen primary toolbar: status strip + search + adapter/role filters + view toggle + new agent */}
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border bg-card px-2.5 py-2 shadow-sm dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <div className="tactile-card flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-slate-200/90 bg-white px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_6px_20px_-12px_rgba(0,0,0,0.7)]">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {/* Status filter strip */}
           <div
@@ -500,7 +500,7 @@ export function Agents() {
               )}
             </button>
             {filtersOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1.5 w-56 rounded-lg border border-border bg-popover p-1.5 shadow-lg dark:border-white/[0.12] dark:bg-[#121826]">
+              <div className="tactile-card absolute right-0 top-full z-50 mt-1.5 w-56 rounded-[12px] border border-slate-200/90 bg-white p-1.5 shadow-lg dark:border-white/[0.12] dark:bg-[#121826] dark:bg-none">
                 <button
                   type="button"
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground hover:bg-muted dark:text-[#eef2f8] dark:hover:bg-white/[0.06]"
@@ -648,14 +648,14 @@ export function Agents() {
       )}
 
       {effectiveView === "cards" && agents && agents.length > 0 && filtered.length === 0 && (
-        <div className="rounded-xl border border-dashed border-border bg-card/50 py-10 text-center text-sm text-muted-foreground dark:border-white/[0.1] dark:bg-[#0e131d]/60 dark:text-[#9aa7bd]">
+        <div className="tactile-card rounded-[12px] border border-dashed border-slate-300/90 bg-white/80 py-10 text-center text-sm text-slate-500 dark:border-white/[0.12] dark:bg-[#0e131d] dark:bg-none dark:text-[#9aa7bd]">
           선택한 필터에 해당하는 에이전트가 없습니다.
         </div>
       )}
 
       {/* Compact List view */}
       {effectiveView === "list" && filtered.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-border bg-card divide-y divide-border dark:border-white/[0.08] dark:bg-[#0e131d] dark:divide-white/[0.065]">
+        <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white divide-y divide-slate-200/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:divide-white/[0.065] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_-18px_rgba(0,0,0,0.85)]">
           {filtered.map((agent) => (
             <AgentRow
               key={agent.id}
@@ -681,7 +681,7 @@ export function Agents() {
 
       {/* Org chart view */}
       {effectiveView === "org" && filteredOrg.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-border bg-card divide-y divide-border dark:border-white/[0.08] dark:bg-[#0e131d] dark:divide-white/[0.065]">
+        <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white divide-y divide-slate-200/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:divide-white/[0.065] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_-18px_rgba(0,0,0,0.85)]">
           {filteredOrg.map((node) => (
             <OrgTreeNode
               key={node.id}
@@ -760,7 +760,7 @@ function AgentRow({
         </span>
       )}
       {heartbeat && (
-        <span className="hidden truncate text-right text-xs text-muted-foreground sm:block dark:text-[#627089]">
+        <span className="hidden truncate text-right font-mono text-xs tabular-nums text-muted-foreground sm:block dark:text-[#627089]">
           {heartbeat}
         </span>
       )}
