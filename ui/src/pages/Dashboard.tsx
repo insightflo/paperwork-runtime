@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "@/lib/router";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { dashboardApi } from "../api/dashboard";
+import { dashboardApi, type DashboardTelemetryWindow } from "../api/dashboard";
+import { costsApi } from "../api/costs";
 import { activityApi } from "../api/activity";
 import { ACTIVE_ISSUE_STATUS_FILTER, issuesApi } from "../api/issues";
 import { missionsApi } from "../api/missions";
@@ -20,12 +21,18 @@ import { ActivityRow } from "../components/ActivityRow";
 import { Identity } from "../components/Identity";
 import { timeAgo } from "../lib/timeAgo";
 import { agentUrl, formatCents, relativeTime } from "../lib/utils";
-import { Bot, LayoutDashboard, Rocket } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, LayoutDashboard, Rocket } from "lucide-react";
 import { ActiveAgentsPanel } from "../components/ActiveAgentsPanel";
 import { HarnessDiagnosisCard } from "../components/HarnessDiagnosisCard";
 import { HarnessProposalsCard } from "../components/HarnessProposalsCard";
 import { DashboardCommandHeader } from "../components/DashboardCommandHeader";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
+import { RadialVelocityGauge } from "../components/dashboard/RadialVelocityGauge";
+import { HealthAndQuotaPanel } from "../components/dashboard/HealthAndQuotaPanel";
+import { TokenFlowChart } from "../components/dashboard/TokenFlowChart";
+import { UsageTreemap } from "../components/dashboard/UsageTreemap";
+import { LiveSessionsTable, type LiveSessionRow } from "../components/dashboard/LiveSessionsTable";
+import { DgateMonitorPanel } from "../components/dashboard/DgateMonitorPanel";
 import { PageSkeleton } from "../components/PageSkeleton";
 import type { ActivityEvent, Agent, DashboardSummary, Issue } from "@paperclipai/shared";
 
@@ -369,6 +376,9 @@ export function Dashboard() {
   const { openOnboarding } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [animatedActivityIds, setAnimatedActivityIds] = useState<Set<string>>(new Set());
+  const [telemetryWindow, setTelemetryWindow] = useState<DashboardTelemetryWindow>("6h");
+  const [bottomTab, setBottomTab] = useState<"sessions" | "dgate">("sessions");
+  const [showOperationsDetails, setShowOperationsDetails] = useState(true);
   const seenActivityIdsRef = useRef<Set<string>>(new Set());
   const hydratedActivityRef = useRef(false);
   const activityAnimationTimersRef = useRef<number[]>([]);
@@ -433,6 +443,29 @@ export function Dashboard() {
     queryFn: () => heartbeatsApi.liveRunsForCompany(selectedCompanyId!, 4),
     enabled: !!selectedCompanyId,
     placeholderData: keepPreviousData,
+  });
+
+  const { data: telemetry, isLoading: telemetryLoading } = useQuery({
+    queryKey: ["dashboard", selectedCompanyId, "telemetry", telemetryWindow],
+    queryFn: () => dashboardApi.telemetry(selectedCompanyId!, telemetryWindow),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 15_000,
+    placeholderData: keepPreviousData,
+  });
+
+  const { data: dgate, isLoading: dgateLoading } = useQuery({
+    queryKey: ["dashboard", selectedCompanyId, "dgate"],
+    queryFn: () => dashboardApi.dgate(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    refetchInterval: 10_000,
+    placeholderData: keepPreviousData,
+  });
+
+  const { data: quotaWindows, isLoading: quotasLoading } = useQuery({
+    queryKey: queryKeys.usageQuotaWindows(selectedCompanyId!),
+    queryFn: () => costsApi.quotaWindows(selectedCompanyId!),
+    enabled: !!selectedCompanyId,
+    staleTime: 60_000,
   });
 
   const recentIssues = useMemo(() => (issues ? getRecentIssues(issues) : []), [issues]);
@@ -520,6 +553,24 @@ export function Dashboard() {
     return map;
   }, [issues]);
 
+  const liveSessionRows = useMemo<LiveSessionRow[]>(() => {
+    const raw = telemetry?.liveSessions ?? [];
+    return raw.map((session) => ({
+      ...session,
+      issueTitle: session.issueId ? issueById.get(session.issueId)?.title ?? null : null,
+    }));
+  }, [telemetry?.liveSessions, issueById]);
+
+  const activeSessionCount = useMemo(
+    () =>
+      liveSessionRows.filter((s) => {
+        const st = s.status.toLowerCase();
+        return st === "running" || st === "queued" || st === "in_progress" || st === "active";
+      }).length,
+    [liveSessionRows],
+  );
+  const dgateActiveWorkers = dgate?.available && dgate.snapshot ? dgate.snapshot.mapped_count : 0;
+
   const activeMissions = missions?.filter((m) => m.status === "active").length ?? 0;
   const missionCreatedPerDay = useMemo(() => countPerDay(missions ?? [], 14), [missions]);
   const agentList = agents ?? [];
@@ -575,94 +626,220 @@ export function Dashboard() {
 
       {data && (
         <>
-          {/* Control tower: action strip → one-row telemetry → cockpit grid. */}
+          {/* Control tower: urgent actions → 1top × dgate live telemetry → operations details. */}
           <ActionRequiredStrip data={data} agents={agents} issues={issues} />
 
-          <div
-            data-testid="dashboard-telemetry"
-            className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-[#242d3f] overflow-hidden rounded-lg border border-border [&>:nth-child(2)]:border-e-0 [&>:nth-child(n+3)]:border-t lg:[&>:nth-child(2)]:border-e lg:[&>:nth-child(n+3)]:border-t-0"
-          >
-            <TelemetryCell
-              label="Agents"
-              to="/agents"
-              value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
-              sub={`${data.agents.running} running · ${data.agents.paused} paused · ${data.agents.error} error`}
+          {/* Row 1: Radial Velocity Gauge (4 cols) + System Health & Provider Quotas (8 cols) */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-12" data-testid="dashboard-1top-row1">
+            <RadialVelocityGauge
+              className="lg:col-span-4"
+              tokensPerHour={telemetry?.velocity.tokensPerHour ?? 0}
+              peakTokensPerHour={telemetry?.velocity.peakTokensPerHour ?? 0}
+              totalTokens={telemetry?.velocity.totalTokens ?? 0}
+              avgTokensPerBucket={telemetry?.velocity.avgTokensPerBucket ?? 0}
+              activeWorkers={telemetry?.host.activeRuns ?? data.agents.running}
+              hostLabel={telemetry?.host.hostname ?? null}
+              loading={telemetryLoading && !telemetry}
             />
-            <TelemetryCell
-              label="Work in progress"
-              to="/issues"
-              value={data.tasks.inProgress}
-              sub={`${data.tasks.open} open · ${data.tasks.blocked} blocked`}
-            />
-            <TelemetryCell
-              label="Active missions"
-              to="/missions"
-              value={activeMissions}
-              sub={`${missions?.length ?? 0} total missions`}
-              spark={missionCreatedPerDay.some((count) => count > 0) ? <Sparkline points={missionCreatedPerDay} label="Missions created per day, last 14 days" /> : undefined}
-            />
-            <TelemetryCell
-              label="Month spend"
-              to="/costs"
-              value={formatCents(data.costs.monthSpendCents)}
-              sub={data.costs.monthBudgetCents > 0
-                ? `${data.costs.monthUtilizationPercent}% of ${formatCents(data.costs.monthBudgetCents)} budget`
-                : "Unlimited budget"}
+            <HealthAndQuotaPanel
+              className="lg:col-span-8"
+              window={telemetryWindow}
+              onWindowChange={setTelemetryWindow}
+              host={telemetry?.host ?? null}
+              dgate={dgate ?? null}
+              quotas={quotaWindows}
+              loading={telemetryLoading && !telemetry}
+              quotasLoading={quotasLoading && !quotaWindows}
             />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
-            <section className="flex min-w-0 flex-col rounded-lg border border-border" aria-label="Live execution and recent activity">
-              <header className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
-                <h3 className="text-xs font-semibold">Live execution</h3>
-                <span className="text-[11px] text-muted-foreground tabular-nums">
-                  {liveRuns?.length ?? 0} runs · {liveRuns?.filter(isLiveRun).length ?? 0} live
+          {/* Row 2: Token Flow Stacked Bar Chart (8 cols) + Usage Treemap (4 cols) */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-12" data-testid="dashboard-1top-row2">
+            <TokenFlowChart
+              className="lg:col-span-8"
+              buckets={telemetry?.buckets ?? []}
+              models={telemetry?.models ?? []}
+              avgTokensPerBucket={telemetry?.velocity.avgTokensPerBucket ?? 0}
+              window={telemetryWindow}
+              loading={telemetryLoading && !telemetry}
+            />
+            <UsageTreemap
+              className="lg:col-span-4"
+              projectShares={telemetry?.projectShares ?? []}
+              agentShares={telemetry?.agentShares ?? []}
+              loading={telemetryLoading && !telemetry}
+            />
+          </div>
+
+          {/* Row 3: Tabbed Live Sessions Table / dgate Web Monitor */}
+          <section className="space-y-2" data-testid="dashboard-1top-row3" aria-label="실시간 세션 및 dgate 모니터">
+            <div
+              role="tablist"
+              aria-label="실시간 모니터링 탭"
+              className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-1 dark:border-[#242d3f] dark:bg-[#0b0e14]"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={bottomTab === "sessions"}
+                onClick={() => setBottomTab("sessions")}
+                className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  bottomTab === "sessions"
+                    ? "bg-background text-foreground shadow-sm ring-1 ring-[#84cc16]/40 dark:bg-[#171f2e]"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <span>실행 중인 세션</span>
+                <span className="rounded-full border border-emerald-500/35 bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-emerald-600 tabular-nums dark:text-emerald-400">
+                  {activeSessionCount}/{liveSessionRows.length}
                 </span>
-              </header>
-              {/* Explicit tracks: the agent and work-item columns each own a
-                  minmax(0,…) track and truncate, so they can never overlap. */}
-              <div className="hidden grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_6.5rem] gap-3 border-b border-border px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground sm:grid" aria-hidden="true">
-                <span>Agent</span>
-                <span>Work item</span>
-                <span className="text-right">Started</span>
-              </div>
-              <div>
-                {liveRuns && liveRuns.length > 0 ? (
-                  liveRuns.map((run) => <LiveRunRow key={run.id} run={run} issue={run.issueId ? issueById.get(run.issueId) : undefined} />)
-                ) : (
-                  <p className="border-b border-border px-3 py-3 text-sm text-muted-foreground">No recent agent runs.</p>
-                )}
-              </div>
-              <h4 className="border-b border-border bg-muted/30 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Recent activity
-              </h4>
-              <div className="divide-y divide-border/60">
-                {recentActivity.length === 0 ? (
-                  <p className="px-3 py-3 text-sm text-muted-foreground">No activity yet.</p>
-                ) : (
-                  recentActivity.map((event: ActivityEvent) => (
-                    <ActivityRow
-                      key={event.id}
-                      event={event}
-                      agentMap={agentMap}
-                      entityNameMap={entityNameMap}
-                      entityTitleMap={entityTitleMap}
-                      className={animatedActivityIds.has(event.id) ? "activity-row-enter" : undefined}
-                    />
-                  ))
-                )}
-              </div>
-            </section>
+              </button>
 
-            <div className="flex min-w-0 flex-col gap-4">
-              <FleetHealthCard agents={agentList} />
-              <BudgetBurnCard
-                agents={agentList}
-                monthSpendCents={data.costs.monthSpendCents}
-                monthBudgetCents={data.costs.monthBudgetCents}
-              />
+              <button
+                type="button"
+                role="tab"
+                aria-selected={bottomTab === "dgate"}
+                onClick={() => setBottomTab("dgate")}
+                className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  bottomTab === "dgate"
+                    ? "bg-background text-foreground shadow-sm ring-1 ring-[#5f8dff]/45 dark:bg-[#171f2e]"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <span
+                  className={`h-2 w-2 rounded-full ${
+                    dgate?.available
+                      ? "bg-emerald-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]"
+                      : "bg-muted-foreground/50"
+                  }`}
+                />
+                <span>dgate 웹 모니터</span>
+                <span className="rounded-full border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground tabular-nums dark:border-[#242d3f] dark:bg-[#151b28]">
+                  {dgate?.available ? `${dgateActiveWorkers} active` : "offline"}
+                </span>
+              </button>
             </div>
+
+            {bottomTab === "sessions" ? (
+              <LiveSessionsTable
+                sessions={liveSessionRows}
+                loading={telemetryLoading && !telemetry}
+              />
+            ) : (
+              <DgateMonitorPanel
+                dgate={dgate ?? null}
+                loading={dgateLoading && !dgate}
+              />
+            )}
+          </section>
+
+          {/* Collapsible Papercompany Operations, Missions, Work & Fleet Details */}
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => setShowOperationsDetails((prev) => !prev)}
+              aria-expanded={showOperationsDetails}
+              className="flex w-full items-center justify-between rounded-lg border border-border bg-card/70 px-3 py-2 text-left text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground dark:border-[#242d3f]"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                {showOperationsDetails ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                운영 상세 · 미션 · 워크플로 · 에이전트 플릿
+              </span>
+              <span className="font-mono text-[10px] font-normal">
+                {activeMissions} active missions · {data.tasks.inProgress} in progress · {formatCents(data.costs.monthSpendCents)} MTD
+              </span>
+            </button>
           </div>
+
+          {showOperationsDetails && (
+            <div className="space-y-4">
+              <div
+                data-testid="dashboard-telemetry"
+                className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-[#242d3f] overflow-hidden rounded-lg border border-border [&>:nth-child(2)]:border-e-0 [&>:nth-child(n+3)]:border-t lg:[&>:nth-child(2)]:border-e lg:[&>:nth-child(n+3)]:border-t-0"
+              >
+                <TelemetryCell
+                  label="Agents"
+                  to="/agents"
+                  value={data.agents.active + data.agents.running + data.agents.paused + data.agents.error}
+                  sub={`${data.agents.running} running · ${data.agents.paused} paused · ${data.agents.error} error`}
+                />
+                <TelemetryCell
+                  label="Work in progress"
+                  to="/issues"
+                  value={data.tasks.inProgress}
+                  sub={`${data.tasks.open} open · ${data.tasks.blocked} blocked`}
+                />
+                <TelemetryCell
+                  label="Active missions"
+                  to="/missions"
+                  value={activeMissions}
+                  sub={`${missions?.length ?? 0} total missions`}
+                  spark={missionCreatedPerDay.some((count) => count > 0) ? <Sparkline points={missionCreatedPerDay} label="Missions created per day, last 14 days" /> : undefined}
+                />
+                <TelemetryCell
+                  label="Month spend"
+                  to="/costs"
+                  value={formatCents(data.costs.monthSpendCents)}
+                  sub={data.costs.monthBudgetCents > 0
+                    ? `${data.costs.monthUtilizationPercent}% of ${formatCents(data.costs.monthBudgetCents)} budget`
+                    : "Unlimited budget"}
+                />
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(0,1fr)]">
+                <section className="flex min-w-0 flex-col rounded-lg border border-border" aria-label="Live execution and recent activity">
+                  <header className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
+                    <h3 className="text-xs font-semibold">Live execution</h3>
+                    <span className="text-[11px] text-muted-foreground tabular-nums">
+                      {liveRuns?.length ?? 0} runs · {liveRuns?.filter(isLiveRun).length ?? 0} live
+                    </span>
+                  </header>
+                  {/* Explicit tracks: the agent and work-item columns each own a
+                      minmax(0,…) track and truncate, so they can never overlap. */}
+                  <div className="hidden grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_6.5rem] gap-3 border-b border-border px-3 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground sm:grid" aria-hidden="true">
+                    <span>Agent</span>
+                    <span>Work item</span>
+                    <span className="text-right">Started</span>
+                  </div>
+                  <div>
+                    {liveRuns && liveRuns.length > 0 ? (
+                      liveRuns.map((run) => <LiveRunRow key={run.id} run={run} issue={run.issueId ? issueById.get(run.issueId) : undefined} />)
+                    ) : (
+                      <p className="border-b border-border px-3 py-3 text-sm text-muted-foreground">No recent agent runs.</p>
+                    )}
+                  </div>
+                  <h4 className="border-b border-border bg-muted/30 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Recent activity
+                  </h4>
+                  <div className="divide-y divide-border/60">
+                    {recentActivity.length === 0 ? (
+                      <p className="px-3 py-3 text-sm text-muted-foreground">No activity yet.</p>
+                    ) : (
+                      recentActivity.map((event: ActivityEvent) => (
+                        <ActivityRow
+                          key={event.id}
+                          event={event}
+                          agentMap={agentMap}
+                          entityNameMap={entityNameMap}
+                          entityTitleMap={entityTitleMap}
+                          className={animatedActivityIds.has(event.id) ? "activity-row-enter" : undefined}
+                        />
+                      ))
+                    )}
+                  </div>
+                </section>
+
+                <div className="flex min-w-0 flex-col gap-4">
+                  <FleetHealthCard agents={agentList} />
+                  <BudgetBurnCard
+                    agents={agentList}
+                    monthSpendCents={data.costs.monthSpendCents}
+                    monthBudgetCents={data.costs.monthBudgetCents}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </>
       )}
 
