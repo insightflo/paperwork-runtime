@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { approvalsApi } from "../api/approvals";
@@ -13,13 +13,12 @@ import { queryKeys } from "../lib/queryKeys";
 import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
-import { IssueRow } from "../components/IssueRow";
 import { PriorityIcon } from "../components/PriorityIcon";
-import { StatusIcon } from "../components/StatusIcon";
 import { StatusBadge } from "../components/StatusBadge";
-import { ApprovalInboxRow } from "../components/ApprovalInboxRow";
+import { ApprovalPayloadRenderer, approvalLabel } from "../components/ApprovalPayload";
 import { L, useCompanyLanguage } from "../lib/companyLanguage";
 import { timeAgo } from "../lib/timeAgo";
+import { cn } from "../lib/utils";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tabs } from "@/components/ui/tabs";
@@ -33,9 +32,8 @@ import {
 import {
   Inbox as InboxIcon,
   AlertTriangle,
-  XCircle,
-  X,
   RotateCcw,
+  X,
 } from "lucide-react";
 import { PageTabBar } from "../components/PageTabBar";
 import type {
@@ -55,6 +53,7 @@ import {
   shouldShowHeartbeatLoadMoreSection,
   shouldShowInboxSection,
   type InboxTab,
+  type InboxWorkItem,
 } from "../lib/inbox";
 import { useDismissedInboxItems } from "../hooks/useInboxBadge";
 import { HumanReviewPacket } from "../components/HumanReviewPacket";
@@ -76,6 +75,30 @@ type SectionKey =
   | "join_requests"
   | "alerts";
 
+type TriageItem = InboxWorkItem;
+type TriageKind = TriageItem["kind"];
+
+/** Stable list/detail identity per work item. */
+function triageKey(item: TriageItem): string {
+  if (item.kind === "issue") return `issue:${item.issue.id}`;
+  if (item.kind === "approval") return `approval:${item.approval.id}`;
+  return `run:${item.run.id}`;
+}
+
+/**
+ * Archive (dismiss) key for an approval. Scoped to its current status so a
+ * locally archived request that later changes state reappears in the triage
+ * list instead of staying hidden.
+ */
+function archivedApprovalKey(approval: Approval): string {
+  return `approval:${approval.id}:${approval.status}`;
+}
+
+/** Approvals that can be decided right from the inbox (same rule as the old row). */
+function isDecidableApproval(approval: Approval): boolean {
+  return approval.type !== "budget_override_required" && ACTIONABLE_APPROVAL_STATUSES.has(approval.status);
+}
+
 function firstNonEmptyLine(value: string | null | undefined): string | null {
   if (!value) return null;
   const line = value.split("\n").map((chunk) => chunk.trim()).find(Boolean);
@@ -86,104 +109,222 @@ function runFailureMessage(run: HeartbeatRun): string {
   return firstNonEmptyLine(run.error) ?? firstNonEmptyLine(run.stderrExcerpt) ?? "Run exited with an error.";
 }
 
-function FailedRunInboxRow({
-  run,
-  issueById,
-  agentName: linkedAgentName,
-  issueLinkState,
-  onDismiss,
-  onRetry,
-  isRetrying,
-}: {
-  run: HeartbeatRun;
-  issueById: Map<string, Issue>;
-  agentName: string | null;
-  issueLinkState: unknown;
-  onDismiss: () => void;
-  onRetry: () => void;
-  isRetrying: boolean;
-}) {
+/** Full failure text for the detail pane (error first, stderr as fallback). */
+function runFailureDetail(run: HeartbeatRun): string {
+  return run.error?.trim() || run.stderrExcerpt?.trim() || "Run exited with an error.";
+}
+
+const DIFF_KEYS = ["diff", "patch", "unifiedDiff"];
+const EVIDENCE_KEYS = ["evidence", "rationale", "justification", "reason"];
+const MAX_SNIPPET_CHARS = 6000;
+const MAX_SNIPPET_LINES = 240;
+const MAX_DESCRIPTION_CHARS = 4000;
+
+/** Pull a diff/evidence text out of an approval payload, diffs first. */
+function approvalSnippet(payload: Record<string, unknown>): { text: string; isDiff: boolean } | null {
+  const find = (keys: string[]): string | null => {
+    for (const key of keys) {
+      const value = payload[key];
+      if (typeof value === "string" && value.trim()) return value;
+    }
+    return null;
+  };
+  const diff = find(DIFF_KEYS);
+  if (diff) return { text: diff, isDiff: true };
+  const evidence = find(EVIDENCE_KEYS);
+  return evidence ? { text: evidence, isDiff: false } : null;
+}
+
+function clampText(text: string, maxChars: number): string {
+  return text.length > maxChars ? `${text.slice(0, maxChars)}\n… (truncated)` : text;
+}
+
+const PILL = "shrink-0 rounded px-1.5 py-px text-[9.5px] font-bold uppercase leading-4 tracking-wider";
+
+const CATEGORY: Record<TriageKind, { label: string; className: string }> = {
+  issue: { label: "Issue", className: "bg-primary/15 text-primary" },
+  approval: { label: "Approval", className: "bg-amber-500/15 text-amber-700 dark:text-amber-300" },
+  failed_run: { label: "Failed run", className: "bg-red-500/15 text-red-700 dark:text-red-300" },
+};
+
+const KBD = "rounded border border-border bg-background px-1.5 font-mono text-[10px] leading-4 text-muted-foreground";
+
+function Kbd({ children }: { children: string }) {
+  return <kbd className={KBD}>{children}</kbd>;
+}
+
+interface TriageSummary {
+  title: string;
+  agent: string;
+  time: string;
+  unread: boolean;
+  detailTo: string;
+}
+
+function summarizeItem(item: TriageItem, lang: ReturnType<typeof useCompanyLanguage>, agentName: (id: string | null) => string | null, issueById: Map<string, Issue>): TriageSummary {
+  if (item.kind === "issue") {
+    const issue = item.issue;
+    return {
+      title: issue.title,
+      agent: agentName(issue.assigneeAgentId) ?? "Unassigned",
+      time: issue.lastExternalCommentAt ? `commented ${timeAgo(issue.lastExternalCommentAt)}` : `updated ${timeAgo(issue.updatedAt)}`,
+      unread: !!issue.isUnreadForMe,
+      detailTo: `/issues/${issue.identifier ?? issue.id}`,
+    };
+  }
+  if (item.kind === "approval") {
+    const approval = item.approval;
+    return {
+      title: approvalLabel(approval.type, approval.payload, lang),
+      agent: agentName(approval.requestedByAgentId) ?? (approval.requestedByUserId ? "Board member" : approval.requestedByPluginId ? "Plugin" : "System"),
+      time: `updated ${timeAgo(approval.updatedAt)}`,
+      unread: ACTIONABLE_APPROVAL_STATUSES.has(approval.status),
+      detailTo: `/approvals/${approval.id}`,
+    };
+  }
+  const run = item.run;
   const issueId = readIssueIdFromRun(run);
   const issue = issueId ? issueById.get(issueId) ?? null : null;
-  const displayError = runFailureMessage(run);
+  return {
+    title: issue ? `${issue.identifier ?? issue.id.slice(0, 8)} · ${issue.title}` : "Failed run",
+    agent: agentName(run.agentId) ?? "Unknown agent",
+    time: `failed ${timeAgo(run.createdAt)}`,
+    unread: true,
+    detailTo: `/agents/${run.agentId}/runs/${run.id}`,
+  };
+}
 
+/** Compact scannable master-list row. */
+function TriageListRow({ item, summary, selected, live, onSelect }: {
+  item: TriageItem;
+  summary: TriageSummary;
+  selected: boolean;
+  live: boolean;
+  onSelect: () => void;
+}) {
+  const category = CATEGORY[item.kind];
   return (
-    <div className="group border-b border-border px-2 py-2.5 last:border-b-0 sm:px-1 sm:pr-3 sm:py-2">
-      <div className="flex items-start gap-2 sm:items-center">
-        <Link
-          to={`/agents/${run.agentId}/runs/${run.id}`}
-          className="flex min-w-0 flex-1 items-start gap-2 no-underline text-inherit transition-colors hover:bg-accent/50"
-        >
-          <span className="hidden h-2 w-2 shrink-0 sm:inline-flex" aria-hidden="true" />
-          <span className="hidden h-3.5 w-3.5 shrink-0 sm:inline-flex" aria-hidden="true" />
-          <span className="mt-0.5 shrink-0 rounded-md bg-red-500/20 p-1.5 sm:mt-0">
-            <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="line-clamp-2 text-sm font-medium sm:truncate sm:line-clamp-none">
-              {issue ? (
-                <>
-                  <span className="font-mono text-muted-foreground mr-1.5">
-                    {issue.identifier ?? issue.id.slice(0, 8)}
-                  </span>
-                  {issue.title}
-                </>
-              ) : (
-                <>Failed run{linkedAgentName ? ` — ${linkedAgentName}` : ""}</>
-              )}
-            </span>
-            <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <StatusBadge status={run.status} />
-              {linkedAgentName && issue ? <span>{linkedAgentName}</span> : null}
-              <span className="truncate max-w-[300px]">{displayError}</span>
-              <span>{timeAgo(run.createdAt)}</span>
+    <li>
+      <button
+        type="button"
+        onClick={onSelect}
+        data-triage-key={triageKey(item)}
+        aria-current={selected ? "true" : undefined}
+        className={cn(
+          "grid w-full grid-cols-[0.625rem_minmax(0,1fr)] items-start gap-x-2.5 border-b border-border/60 px-3 py-2 text-left transition-colors last:border-b-0",
+          selected ? "bg-primary/15 shadow-[inset_2px_0_0_var(--primary)]" : "hover:bg-accent/50",
+        )}
+      >
+        <span className={cn("mt-[7px] h-1.5 w-1.5 rounded-full", summary.unread ? "bg-primary" : "bg-transparent")} aria-hidden="true" />
+        <span className="block min-w-0">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className={cn(PILL, category.className)}>{category.label}</span>
+            <span className={cn("min-w-0 truncate text-xs", summary.unread ? "font-semibold" : "font-medium text-foreground/85")}>
+              {summary.title}
             </span>
           </span>
-        </Link>
-        <div className="hidden shrink-0 items-center gap-2 sm:flex">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 shrink-0 px-2.5"
-            onClick={onRetry}
-            disabled={isRetrying}
+          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground tabular-nums">
+            {live && (
+              <span className="shrink-0 rounded-full bg-blue-500/10 px-1.5 py-px text-[10px] font-medium text-blue-600 dark:text-blue-400">Live</span>
+            )}
+            <span className="min-w-0 truncate font-medium text-foreground/75">{summary.agent}</span>
+            <span className="shrink-0">·</span>
+            <span className="shrink-0">{summary.time}</span>
+          </span>
+        </span>
+      </button>
+    </li>
+  );
+}
+
+/** Diff/evidence block: mono, wrapped, with semantic +/- colours. */
+function EvidenceSnippet({ text, label }: { text: string; label: string }) {
+  const lines = clampText(text, MAX_SNIPPET_CHARS).split("\n").slice(0, MAX_SNIPPET_LINES);
+  return (
+    <div className="min-w-0">
+      <h4 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</h4>
+      <pre className="min-w-0 whitespace-pre-wrap rounded-md border border-border bg-background/60 px-3 py-2 font-mono text-[11px] leading-relaxed [overflow-wrap:anywhere]">
+        {lines.map((line, index) => (
+          <span
+            key={index}
+            className={cn(
+              "block",
+              line.startsWith("+") && !line.startsWith("+++") && "text-emerald-600 dark:text-emerald-400",
+              line.startsWith("-") && !line.startsWith("---") && "text-red-600 dark:text-red-400",
+              (line.startsWith("@@") || line.startsWith("#")) && "text-muted-foreground",
+            )}
           >
-            <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-            {isRetrying ? "Retrying…" : "Retry"}
-          </Button>
-          <button
-            type="button"
-            onClick={onDismiss}
-            className="rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
-            aria-label="Dismiss"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-      <div className="mt-3 flex gap-2 sm:hidden">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-8 shrink-0 px-2.5"
-          onClick={onRetry}
-          disabled={isRetrying}
-        >
-          <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-          {isRetrying ? "Retrying…" : "Retry"}
-        </Button>
-        <button
-          type="button"
-          onClick={onDismiss}
-          className="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
-          aria-label="Dismiss"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+            {line || " "}
+          </span>
+        ))}
+      </pre>
     </div>
+  );
+}
+
+function DetailTop({ item }: { item: TriageItem }) {
+  const category = CATEGORY[item.kind];
+  const ref = item.kind === "issue"
+    ? item.issue.identifier ?? item.issue.id.slice(0, 8)
+    : item.kind === "approval"
+      ? item.approval.id.slice(0, 8)
+      : item.run.id.slice(0, 8);
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className={cn(PILL, category.className)}>{category.label}</span>
+      <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">{ref}</span>
+    </div>
+  );
+}
+
+function DetailFrom({ dotClass, children }: { dotClass: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground tabular-nums">
+      <span className={cn("h-2 w-2 shrink-0 rounded-full", dotClass)} aria-hidden="true" />
+      {children}
+    </div>
+  );
+}
+
+function MetaGrid({ rows }: { rows: [string, ReactNode][] }) {
+  return (
+    <dl className="grid grid-cols-[minmax(0,5.5rem)_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
+      {rows.map(([label, value]) => (
+        <Fragment key={label}>
+          <dt className="truncate text-muted-foreground">{label}</dt>
+          <dd className="min-w-0 truncate">{value}</dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
+
+/** Right pane: vertical flex column, scrolling body, action bar pinned at the bottom. */
+function DetailPane({ shown, onBack, actionBar, children }: {
+  shown: boolean;
+  onBack: () => void;
+  actionBar: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      aria-label="Inbox detail"
+      data-testid="inbox-detail"
+      className={cn(
+        "min-w-0 flex-col rounded-lg border border-border bg-card/60 lg:flex lg:h-[calc(100dvh-5.75rem)]",
+        shown ? "flex" : "hidden",
+      )}
+    >
+      <div className="rounded-t-lg border-b border-border bg-background/95 px-3 py-1.5 lg:hidden">
+        <Button type="button" variant="ghost" size="xs" onClick={onBack}>
+          ← Back to list
+        </Button>
+      </div>
+      <div className="min-w-0 flex-1 p-4 lg:overflow-y-auto">{children}</div>
+      <div className="sticky bottom-0 flex flex-none flex-wrap items-center gap-2 rounded-b-lg border-t border-border bg-background/95 px-3 py-2 backdrop-blur">
+        {actionBar}
+      </div>
+    </section>
   );
 }
 
@@ -322,8 +463,11 @@ export function Inbox() {
   );
 
   const approvalsToRender = useMemo(
-    () => getApprovalsForTab(approvals ?? [], tab, allApprovalFilter),
-    [approvals, tab, allApprovalFilter],
+    () =>
+      getApprovalsForTab(approvals ?? [], tab, allApprovalFilter)
+        // Locally archived approvals stay hidden until their status changes.
+        .filter((approval) => !dismissed.has(archivedApprovalKey(approval))),
+    [approvals, tab, allApprovalFilter, dismissed],
   );
   const showJoinRequestsCategory =
     allCategoryFilter === "everything" || allCategoryFilter === "join_requests";
@@ -501,6 +645,83 @@ export function Inbox() {
     },
   });
 
+  // ---- Master-detail selection ------------------------------------------------
+  // `pickedKey` is the row the operator chose (click or j/k). Below lg the
+  // list and detail stack, so the detail only replaces the list once a row is
+  // picked. From lg up the first row is previewed by default.
+  const [pickedKey, setPickedKey] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const triageItems = workItemsToRender;
+  const triageKeys = useMemo(() => triageItems.map(triageKey), [triageItems]);
+  const pickedIndex = pickedKey ? triageKeys.indexOf(pickedKey) : -1;
+  const selectedIndex = triageItems.length > 0 ? (pickedIndex >= 0 ? pickedIndex : 0) : -1;
+  const selectedItem = selectedIndex >= 0 ? triageItems[selectedIndex] : null;
+  const selectedKey = selectedItem ? triageKeys[selectedIndex] : null;
+  const mobileDetail = pickedIndex >= 0;
+
+  useEffect(() => {
+    if (!selectedKey) return;
+    listRef.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [selectedKey]);
+
+  // After an action drains the current row, move to the next one so the queue
+  // keeps flowing (falls back to the previous row at the end of the list).
+  const advanceFrom = (index: number) => {
+    const rest = triageKeys.filter((_, i) => i !== index);
+    setPickedKey(rest.length ? rest[Math.min(index, rest.length - 1)] : null);
+  };
+
+  const approveItem = (item: TriageItem) => {
+    if (item.kind !== "approval" || !isDecidableApproval(item.approval)) return;
+    approveMutation.mutate(item.approval.id);
+  };
+
+  const archiveItem = (item: TriageItem, index: number) => {
+    if (item.kind === "issue") {
+      if (!item.issue.isUnreadForMe || fadingOutIssues.has(item.issue.id)) return;
+      markReadMutation.mutate(item.issue.id);
+    } else if (item.kind === "failed_run") {
+      dismiss(`run:${item.run.id}`);
+    } else {
+      dismiss(archivedApprovalKey(item.approval));
+    }
+    advanceFrom(index);
+  };
+
+  // j/k navigate · a approve · x dismiss. Reads the latest list through a ref
+  // so the listener is bound once; never fires while typing.
+  const shortcutsRef = useRef({ keys: triageKeys, items: triageItems, selectedKey, approveItem, archiveItem, selectedIndex });
+  shortcutsRef.current = { keys: triageKeys, items: triageItems, selectedKey, approveItem, archiveItem, selectedIndex };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      const { keys, items, selectedKey, approveItem, archiveItem, selectedIndex } = shortcutsRef.current;
+      if (keys.length === 0) return;
+      const key = event.key.toLowerCase();
+      if (key === "j" || key === "k") {
+        event.preventDefault();
+        const current = keys.indexOf(selectedKey ?? "");
+        setPickedKey(keys[(current + (key === "j" ? 1 : -1) + keys.length) % keys.length]);
+        return;
+      }
+      const item = selectedIndex >= 0 ? items[selectedIndex] : null;
+      if (!item) return;
+      if (key === "a") {
+        event.preventDefault();
+        approveItem(item);
+      } else if (key === "x") {
+        event.preventDefault();
+        archiveItem(item, selectedIndex);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   if (!selectedCompanyId) {
     return <EmptyState icon={InboxIcon} message="Select a company to view inbox." />;
   }
@@ -545,8 +766,192 @@ export function Inbox() {
     .map((issue) => issue.id);
   const canMarkAllRead = unreadIssueIds.length > 0;
 
+  const summaries = new Map<string, TriageSummary>();
+  for (const item of triageItems) {
+    summaries.set(triageKey(item), summarizeItem(item, lang, agentName, issueById));
+  }
+
+  const detailActionBar = (() => {
+    const item = selectedItem;
+    if (!item) return null;
+    const approvalPending = approveMutation.isPending || rejectMutation.isPending;
+    const nodes: ReactNode[] = [];
+    if (item.kind === "approval" && isDecidableApproval(item.approval)) {
+      nodes.push(
+        <Button key="approve" type="button" size="xs" onClick={() => approveItem(item)} disabled={approvalPending} data-testid="inbox-approve">
+          Approve<span className="ml-1.5 font-mono text-[10px] opacity-70">a</span>
+        </Button>,
+        <Button key="reject" type="button" size="xs" variant="outline" className="border-red-500/40 text-red-700 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200" onClick={() => { rejectMutation.mutate(item.approval.id); advanceFrom(selectedIndex); }} disabled={approvalPending}>
+          Reject
+        </Button>,
+      );
+    }
+    if (item.kind === "failed_run") {
+      const retrying = retryingRunIds.has(item.run.id);
+      nodes.push(
+        <Button key="retry" type="button" size="xs" variant="outline" onClick={() => retryRunMutation.mutate(item.run)} disabled={retrying}>
+          <RotateCcw className="size-3" />
+          {retrying ? "Retrying…" : "Retry"}
+        </Button>,
+      );
+    }
+    const archiveDisabled = item.kind === "issue" && (!item.issue.isUnreadForMe || fadingOutIssues.has(item.issue.id) || markReadMutation.isPending);
+    const archiveTitle = item.kind === "issue"
+      ? item.issue.isUnreadForMe ? "Archive (marks this issue as read)" : "Already read"
+      : "Archive (dismiss from inbox)";
+    nodes.push(
+      <Button key="archive" type="button" size="xs" variant="outline" onClick={() => archiveItem(item, selectedIndex)} disabled={archiveDisabled} title={archiveTitle} data-testid="inbox-archive">
+        Archive<span className="ml-1.5 font-mono text-[10px] opacity-70">x</span>
+      </Button>,
+    );
+    nodes.push(
+      <span key="spacer" className="flex-1" />,
+      <Button key="open" asChild size="xs" variant="outline">
+        {item.kind === "issue" ? (
+          <Link to={summaries.get(selectedKey!)!.detailTo} state={issueLinkState}>Open detail</Link>
+        ) : (
+          <Link to={summaries.get(selectedKey!)!.detailTo}>Open detail</Link>
+        )}
+      </Button>,
+    );
+    return nodes;
+  })();
+
+  const renderDetailBody = () => {
+    const item = selectedItem;
+    if (!item) {
+      return (
+        <div className="flex h-full min-h-40 flex-col items-center justify-center gap-1 rounded-md border border-dashed border-border px-4 py-8 text-center">
+          <p className="text-sm font-medium">Nothing to preview</p>
+          <p className="text-xs text-muted-foreground">Pick an item from the list to see its full context here.</p>
+        </div>
+      );
+    }
+    const summary = summaries.get(selectedKey!)!;
+
+    if (item.kind === "approval") {
+      const approval = item.approval;
+      const snippet = approvalSnippet(approval.payload);
+      return (
+        <div className="flex min-w-0 flex-col gap-3">
+          <DetailTop item={item} />
+          <h2 className="text-[15px] font-bold leading-snug [overflow-wrap:anywhere]">{summary.title}</h2>
+          <DetailFrom dotClass="bg-primary">
+            <b className="font-semibold text-foreground">{summary.agent}</b>
+            <span>·</span>
+            <span>{summary.time}</span>
+            <span>·</span>
+            <StatusBadge status={approval.status} />
+          </DetailFrom>
+          <MetaGrid
+            rows={[
+              ["Request", approvalLabel(approval.type, null, lang)],
+              ["Status", <StatusBadge key="s" status={approval.status} />],
+              ["Decided", approval.decidedAt ? timeAgo(approval.decidedAt) : "Awaiting decision"],
+            ]}
+          />
+          <div className="min-w-0 overflow-x-auto rounded-md border border-border bg-background/40 p-3">
+            <ApprovalPayloadRenderer type={approval.type} payload={approval.payload} />
+          </div>
+          {snippet && (
+            <EvidenceSnippet text={snippet.text} label={snippet.isDiff ? "Context · evidence diff" : "Context · evidence"} />
+          )}
+          {approval.decisionNote && (
+            <div>
+              <h4 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Decision note</h4>
+              <p className="text-sm whitespace-pre-wrap [overflow-wrap:anywhere]">{approval.decisionNote}</p>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (item.kind === "failed_run") {
+      const run = item.run;
+      const issueId = readIssueIdFromRun(run);
+      const issue = issueId ? issueById.get(issueId) ?? null : null;
+      return (
+        <div className="flex min-w-0 flex-col gap-3">
+          <DetailTop item={item} />
+          <h2 className="text-[15px] font-bold leading-snug [overflow-wrap:anywhere]">
+            {issue ? (
+              <>
+                <span className="mr-1.5 font-mono text-xs font-normal text-muted-foreground">{issue.identifier ?? issue.id.slice(0, 8)}</span>
+                {issue.title}
+              </>
+            ) : (
+              <>Failed run{summary.agent !== "Unknown agent" ? ` — ${summary.agent}` : ""}</>
+            )}
+          </h2>
+          <DetailFrom dotClass="bg-red-500 dark:bg-red-400">
+            <b className="font-semibold text-foreground">{summary.agent}</b>
+            <span>·</span>
+            <span>{summary.time}</span>
+            <span>·</span>
+            <StatusBadge status={run.status} />
+          </DetailFrom>
+          {issue && (
+            <MetaGrid
+              rows={[
+                ["Work item", <Link key="i" className="underline underline-offset-2 hover:text-foreground" to={`/issues/${issue.identifier ?? issue.id}`}>{issue.title}</Link>],
+                ["Status", <StatusBadge key="s" status={issue.status} />],
+              ]}
+            />
+          )}
+          <EvidenceSnippet text={runFailureDetail(run)} label="Failure detail" />
+          {issue?.description && (
+            <div>
+              <h4 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Work item description</h4>
+              <p className="text-sm whitespace-pre-wrap [overflow-wrap:anywhere]">{clampText(issue.description, MAX_DESCRIPTION_CHARS)}</p>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const issue = item.issue;
+    const isUnread = !!issue.isUnreadForMe && !fadingOutIssues.has(issue.id);
+    const live = liveIssueIds.has(issue.id);
+    const description = issue.description?.trim();
+    return (
+      <div className="flex min-w-0 flex-col gap-3">
+        <DetailTop item={item} />
+        <h2 className="text-[15px] font-bold leading-snug [overflow-wrap:anywhere]">{issue.title}</h2>
+        <DetailFrom dotClass={isUnread ? "bg-primary" : "bg-transparent"}>
+          <b className="font-semibold text-foreground">{summary.agent}</b>
+          <span>·</span>
+          <span>updated {timeAgo(issue.updatedAt)}</span>
+          {issue.lastExternalCommentAt && (
+            <>
+              <span>·</span>
+              <span>commented {timeAgo(issue.lastExternalCommentAt)}</span>
+            </>
+          )}
+        </DetailFrom>
+        <MetaGrid
+          rows={[
+            ["Status", <StatusBadge key="s" status={issue.status} />],
+            ["Priority", <span key="p" className="inline-flex items-center gap-1.5"><PriorityIcon priority={issue.priority} />{issue.priority}</span>],
+            ["Project", issue.project?.name ?? "—"],
+            ["Run", live ? <span key="l" className="font-medium text-blue-600 dark:text-blue-400">Agent running</span> : "No active run"],
+          ]}
+        />
+        <div>
+          <h4 className="mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Description</h4>
+          {description ? (
+            <p className="text-sm leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">{clampText(description, MAX_DESCRIPTION_CHARS)}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">No description.</p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const tabLabel = tab === "recent" ? "Recent" : tab === "unread" ? "Unread" : "All";
+
   return (
-    <div className="space-y-6 tabular-nums">
+    <div className="space-y-4 tabular-nums">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={tab} onValueChange={(value) => navigate(`/inbox/${value}`)}>
@@ -639,97 +1044,71 @@ export function Inbox() {
           {showSeparatorBefore("work_items") && <Separator />}
           <div>
             <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Work Items</h3>
-            <div className="overflow-hidden rounded-md border border-border/80 bg-card/60 [&>a]:border-border/60 [&>div]:border-border/60">
-              {workItemsToRender.map((item) => {
-                if (item.kind === "approval") {
-                  return (
-                    <ApprovalInboxRow
-                      key={`approval:${item.approval.id}`}
-                      approval={item.approval}
-                      requesterName={agentName(item.approval.requestedByAgentId)}
-                      onApprove={() => approveMutation.mutate(item.approval.id)}
-                      onReject={() => rejectMutation.mutate(item.approval.id)}
-                      isPending={approveMutation.isPending || rejectMutation.isPending}
-                    />
-                  );
-                }
-
-                if (item.kind === "failed_run") {
-                  return (
-                    <FailedRunInboxRow
-                      key={`run:${item.run.id}`}
-                      run={item.run}
-                      issueById={issueById}
-                      agentName={agentName(item.run.agentId)}
-                      issueLinkState={issueLinkState}
-                      onDismiss={() => dismiss(`run:${item.run.id}`)}
-                      onRetry={() => retryRunMutation.mutate(item.run)}
-                      isRetrying={retryingRunIds.has(item.run.id)}
-                    />
-                  );
-                }
-
-                const issue = item.issue;
-                const isUnread = issue.isUnreadForMe && !fadingOutIssues.has(issue.id);
-                const isFading = fadingOutIssues.has(issue.id);
-                return (
-                  <IssueRow
-                    key={`issue:${issue.id}`}
-                    issue={issue}
-                    issueLinkState={issueLinkState}
-                    desktopMetaLeading={(
-                      <>
-                        <span className="hidden sm:inline-flex">
-                          <PriorityIcon priority={issue.priority} />
-                        </span>
-                        <span className="hidden shrink-0 sm:inline-flex">
-                          <StatusIcon status={issue.status} />
-                        </span>
-                        <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
-                          {issue.identifier ?? issue.id.slice(0, 8)}
-                        </span>
-                        {liveIssueIds.has(issue.id) && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-1.5 py-0.5 sm:gap-1.5 sm:px-2">
-                            <span className="relative flex h-2 w-2">
-                              <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-blue-400 opacity-75" />
-                              <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
-                            </span>
-                            <span className="hidden text-[11px] font-medium text-blue-600 dark:text-blue-400 sm:inline">
-                              Live
-                            </span>
-                          </span>
-                        )}
-                      </>
-                    )}
-                    mobileMeta={
-                      issue.lastExternalCommentAt
-                        ? `commented ${timeAgo(issue.lastExternalCommentAt)}`
-                        : `updated ${timeAgo(issue.updatedAt)}`
-                    }
-                    unreadState={isUnread ? "visible" : isFading ? "fading" : "hidden"}
-                    onMarkRead={() => markReadMutation.mutate(issue.id)}
-                    trailingMeta={
-                      issue.lastExternalCommentAt
-                        ? `commented ${timeAgo(issue.lastExternalCommentAt)}`
-                        : `updated ${timeAgo(issue.updatedAt)}`
-                    }
-                  />
-                );
-              })}
-            </div>
-            {attentionHasMore && (
-              <div className="mt-3 text-center">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void loadMoreAttention()}
-                  disabled={attentionLoading}
-                >
-                  {attentionLoading ? "Loading…" : "Load more"}
-                </Button>
+            {/* Master-detail triage: 42 / 58 split from lg, stacked below. */}
+            <div
+              data-testid="inbox-triage"
+              className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(320px,42%)_minmax(0,58%)] lg:items-start"
+            >
+              <div
+                ref={listRef}
+                className={cn(
+                  "min-w-0 rounded-lg border border-border bg-card/60 lg:h-[calc(100dvh-5.75rem)] lg:overflow-y-auto",
+                  mobileDetail ? "hidden lg:block" : "block",
+                )}
+              >
+                <div className="sticky top-0 z-[1] flex items-center justify-between gap-3 border-b border-border bg-popover/95 px-3 py-1.5 text-[10.5px] uppercase tracking-wider text-muted-foreground backdrop-blur">
+                  <span>{triageItems.length} item{triageItems.length === 1 ? "" : "s"} · {tabLabel}</span>
+                  {selectedKey && <span className="hidden normal-case tracking-normal lg:inline">{selectedIndex + 1} / {triageItems.length}</span>}
+                </div>
+                {triageItems.length === 0 ? (
+                  <p className="px-3 py-6 text-center text-sm text-muted-foreground">No items in this view.</p>
+                ) : (
+                  <ul>
+                    {triageItems.map((item) => {
+                      const key = triageKey(item);
+                      return (
+                        <TriageListRow
+                          key={key}
+                          item={item}
+                          summary={summaries.get(key)!}
+                          selected={key === selectedKey}
+                          live={item.kind === "issue" && liveIssueIds.has(item.issue.id)}
+                          onSelect={() => setPickedKey(key)}
+                        />
+                      );
+                    })}
+                  </ul>
+                )}
+                {attentionHasMore && (
+                  <div className="border-t border-border px-3 py-2 text-center">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      onClick={() => void loadMoreAttention()}
+                      disabled={attentionLoading}
+                    >
+                      {attentionLoading ? "Loading…" : "Load more"}
+                    </Button>
+                  </div>
+                )}
+                <div className="hidden items-center gap-1.5 border-t border-border bg-popover/95 px-3 py-1.5 text-[11px] text-muted-foreground lg:flex" data-testid="inbox-keyboard-hints">
+                  <Kbd>j</Kbd>
+                  <Kbd>k</Kbd>
+                  <span>navigate</span>
+                  <span aria-hidden="true">·</span>
+                  <Kbd>a</Kbd>
+                  <span>approve</span>
+                  <span aria-hidden="true">·</span>
+                  <Kbd>x</Kbd>
+                  <span>dismiss</span>
+                </div>
               </div>
-            )}
+
+              <DetailPane shown={mobileDetail} onBack={() => setPickedKey(null)} actionBar={detailActionBar}>
+                {renderDetailBody()}
+              </DetailPane>
+            </div>
           </div>
         </>
       )}
