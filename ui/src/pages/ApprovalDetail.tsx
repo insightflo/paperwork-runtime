@@ -18,22 +18,30 @@ import { HumanReviewPacket } from "../components/HumanReviewPacket";
 import { approvalHumanReview } from "../lib/humanReview";
 import { cn } from "@/lib/utils";
 
-// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
-const HAIRLINE_CARD = "min-w-0 rounded-md border border-[#242d3f] bg-[#151b28]";
+// Combo 1 cockpit palette: light slate surfaces, obsidian #0e131d/#090c12 dark surfaces, cobalt/lime/amber signals.
+const HAIRLINE_CARD = "tactile-card min-w-0 rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-[#0e131d]";
 /** Descendant override so ApprovalComments / payload blocks inherit the hairline card + mono log look. */
 const HAIRLINE_DESCENDANTS =
-  "[&_.border.rounded-lg]:rounded-md [&_.border.rounded-lg]:border-[#242d3f] [&_.border.rounded-lg]:bg-[#151b28] " +
-  "[&_.rounded-md.border.p-3]:border-[#242d3f] [&_pre]:whitespace-pre-wrap [&_pre]:font-mono";
+  "[&_.border.rounded-lg]:rounded-[12px] [&_.border.rounded-lg]:border-slate-200/90 [&_.border.rounded-lg]:bg-white/95 " +
+  "[&_.border.rounded-lg]:shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.05)] " +
+  "dark:[&_.border.rounded-lg]:border-white/[0.08] dark:[&_.border.rounded-lg]:bg-[#0e131d] " +
+  "dark:[&_.border.rounded-lg]:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.36)] " +
+  "[&_.rounded-md.border.p-3]:border-slate-200/90 dark:[&_.rounded-md.border.p-3]:border-white/[0.08] [&_pre]:whitespace-pre-wrap [&_pre]:font-mono";
 const STATUS_PILL: Record<string, string> = {
-  pending: "border-[#fbbf24]/40 bg-[#fbbf24]/10 text-[#fbbf24]",
-  approved: "border-[#34d399]/40 bg-[#34d399]/10 text-[#34d399]",
-  rejected: "border-[#f87171]/40 bg-[#f87171]/10 text-[#f87171]",
-  revision_requested: "border-[#5f8dff]/40 bg-[#5f8dff]/10 text-[#5f8dff]",
+  pending: "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:border-[#f59e0b]/40 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]",
+  approved: "border-lime-600/30 bg-lime-600/10 text-lime-700 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/10 dark:text-[#a3e635]",
+  rejected: "border-rose-500/35 bg-rose-500/10 text-rose-700 dark:border-[#f87171]/40 dark:bg-[#f87171]/10 dark:text-[#f87171]",
+  revision_requested: "border-blue-500/35 bg-blue-500/10 text-blue-700 dark:border-[#60a5fa]/40 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa]",
 };
-const STATUS_DOT: Record<string, string> = { pending: "bg-[#fbbf24]", approved: "bg-[#34d399]", rejected: "bg-[#f87171]", revision_requested: "bg-[#5f8dff]" };
-const CTA_PRIMARY = "h-7 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]";
-const CTA_GHOST = "h-7 border-[#242d3f] bg-[#0b0e14] px-2.5 text-xs text-[#e6edf7] hover:bg-[#151b28]";
-const CTA_DANGER = "h-7 border-[#f87171]/45 bg-[#f87171]/10 px-2.5 text-xs text-[#f87171] hover:bg-[#f87171]/20 hover:text-[#f87171]";
+const STATUS_DOT: Record<string, string> = {
+  pending: "bg-amber-500 dark:bg-[#f59e0b]",
+  approved: "bg-lime-500 dark:bg-[#a3e635]",
+  rejected: "bg-rose-500 dark:bg-[#f87171]",
+  revision_requested: "bg-blue-600 dark:bg-[#60a5fa]",
+};
+const CTA_PRIMARY = "h-7 bg-blue-600 px-2.5 text-xs text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:bg-blue-500 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]";
+const CTA_GHOST = "h-7 border-slate-200/90 bg-white px-2.5 text-xs text-slate-700 hover:border-blue-500/40 hover:bg-slate-50 dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#edf2fb] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#141b29]";
+const CTA_DANGER = "h-7 border-rose-500/35 bg-rose-500/10 px-2.5 text-xs text-rose-700 hover:bg-rose-500/15 hover:text-rose-800 dark:border-[#f87171]/45 dark:bg-[#f87171]/10 dark:text-[#f87171] dark:hover:bg-[#f87171]/20 dark:hover:text-[#fca5a5]";
 
 /** One cell of the 1-row cockpit strip: micro status dot (optional) · uppercase label · bold tabular fact. */
 function StripFact({ label, value, dot }: { label: string; value: string; dot?: string }) {
@@ -41,7 +49,7 @@ function StripFact({ label, value, dot }: { label: string; value: string; dot?: 
     <span className="cockpit-cell min-w-0 flex-1">
       {dot && <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />}
       <span className="truncate uppercase tracking-wide">{label}</span>
-      <b className="truncate normal-case tracking-normal" title={value}>{value}</b>
+      <b className="truncate font-mono normal-case tracking-normal" title={value}>{value}</b>
     </span>
   );
 }
@@ -102,67 +110,39 @@ export function ApprovalDetail() {
     queryClient.invalidateQueries({ queryKey: queryKeys.approvals.issues(approvalId) });
     if (approval?.companyId) {
       queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(approval.companyId) });
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.approvals.list(approval.companyId, "pending"),
-      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.approvals.list(approval.companyId, "pending") });
       queryClient.invalidateQueries({ queryKey: queryKeys.agents.list(approval.companyId) });
     }
   };
 
   const approveMutation = useMutation({
     mutationFn: () => approvalsApi.approve(approval!),
-    onSuccess: () => {
-      setError(null);
-      refresh();
-      navigate(`/approvals/${approvalId}?resolved=approved`, { replace: true });
-    },
+    onSuccess: () => { setError(null); refresh(); navigate(`/approvals/${approvalId}?resolved=approved`, { replace: true }); },
     onError: (err) => setError(err instanceof Error ? err.message : L(lang, { en: "Failed to approve", ko: "승인하지 못했습니다." })),
   });
-
   const rejectMutation = useMutation({
     mutationFn: () => approvalsApi.reject(approval!),
-    onSuccess: () => {
-      setError(null);
-      refresh();
-    },
+    onSuccess: () => { setError(null); refresh(); },
     onError: (err) => setError(err instanceof Error ? err.message : L(lang, { en: "Failed to reject", ko: "거절하지 못했습니다." })),
   });
-
   const revisionMutation = useMutation({
     mutationFn: () => approvalsApi.requestRevision(approval!),
-    onSuccess: () => {
-      setError(null);
-      refresh();
-    },
+    onSuccess: () => { setError(null); refresh(); },
     onError: (err) => setError(err instanceof Error ? err.message : L(lang, { en: "Revision request failed", ko: "수정 요청을 보내지 못했습니다." })),
   });
-
   const resubmitMutation = useMutation({
     mutationFn: () => approvalsApi.resubmit(approval!),
-    onSuccess: () => {
-      setError(null);
-      refresh();
-    },
+    onSuccess: () => { setError(null); refresh(); },
     onError: (err) => setError(err instanceof Error ? err.message : L(lang, { en: "Resubmit failed", ko: "재제출하지 못했습니다." })),
   });
-
   const addCommentMutation = useMutation({
     mutationFn: () => approvalsApi.addComment(approvalId!, commentBody.trim()),
-    onSuccess: () => {
-      setCommentBody("");
-      setError(null);
-      refresh();
-    },
+    onSuccess: () => { setCommentBody(""); setError(null); refresh(); },
     onError: (err) => setError(err instanceof Error ? err.message : L(lang, { en: "Comment failed", ko: "댓글을 게시하지 못했습니다." })),
   });
-
   const deleteAgentMutation = useMutation({
     mutationFn: (agentId: string) => agentsApi.remove(agentId),
-    onSuccess: () => {
-      setError(null);
-      refresh();
-      navigate("/approvals");
-    },
+    onSuccess: () => { setError(null); refresh(); navigate("/approvals"); },
     onError: (err) => setError(err instanceof Error ? err.message : L(lang, { en: "Delete failed", ko: "삭제하지 못했습니다." })),
   });
 
@@ -197,14 +177,14 @@ export function ApprovalDetail() {
           };
 
   return (
-    <div className={cn("max-w-4xl space-y-2 tabular-nums", HAIRLINE_DESCENDANTS)}>
+    <div className={cn("mx-auto w-full max-w-[1120px] space-y-3 tabular-nums", HAIRLINE_DESCENDANTS)}>
       {showApprovedBanner && (
-        <div className="flex items-center justify-between gap-3 rounded-md border border-[#34d399]/40 bg-[#34d399]/10 px-4 py-2.5 animate-in fade-in zoom-in-95 duration-300">
+        <div className="flex items-center justify-between gap-3 rounded-[12px] border border-lime-600/30 bg-lime-600/10 px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] animate-in fade-in zoom-in-95 duration-300 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
           <div className="flex min-w-0 items-start gap-2">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#34d399]" />
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-lime-600 dark:text-[#a3e635]" />
             <div className="min-w-0">
-              <p className="text-sm font-medium text-[#e6edf7]">{L(lang, { en: "Approval confirmed", ko: "승인이 확정되었습니다" })}</p>
-              <p className="text-xs text-[#8b97ad]">
+              <p className="text-sm font-medium text-slate-900 dark:text-[#edf2fb]">{L(lang, { en: "Approval confirmed", ko: "승인이 확정되었습니다" })}</p>
+              <p className="text-xs text-slate-600 dark:text-[#8b97ad]">
                 {approval.type === "workflow_replacement" ? L(lang, { en: "Replacement approved. Actual creation and execution require a separate request and rechecking current conditions.", ko: "교체 요청을 승인했습니다. 실제 생성·실행은 별도 요청과 현재 조건 재검사를 거칩니다." }) : L(lang, { en: "Requesting agent was notified to review this approval and linked work items.", ko: "요청한 에이전트에게 승인 결과와 연관 업무를 확인하도록 알렸습니다." })}
               </p>
             </div>
@@ -213,8 +193,8 @@ export function ApprovalDetail() {
         </div>
       )}
       {/* 1-row 5-cell cockpit strip: status · requester · type · linked work · timeline */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Approval summary">
-        <StripFact label={L(lang, { en: "Status", ko: "상태" })} value={humanLabel(lang, "approvalStatus", approval.status).label} dot={STATUS_DOT[approval.status] ?? "bg-[#8b97ad]"} />
+      <div className="cockpit-strip tactile-card w-full gap-0 border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-[#0e131d]" role="group" aria-label="Approval summary">
+        <StripFact label={L(lang, { en: "Status", ko: "상태" })} value={humanLabel(lang, "approvalStatus", approval.status).label} dot={STATUS_DOT[approval.status] ?? "bg-slate-400 dark:bg-[#8b97ad]"} />
         <StripFact label={L(lang, { en: "Requested by", ko: "요청" })} value={approval.requestedByAgentId ? agentNameById.get(approval.requestedByAgentId) ?? approval.requestedByAgentId.slice(0, 8) : L(lang, approval.requestedByPluginId ? { en: "Plugin", ko: "플러그인" } : { en: "Board", ko: "보드" })} />
         <StripFact label={L(lang, { en: "Type", ko: "유형" })} value={approval.type} />
         <StripFact label={L(lang, { en: "Linked work", ko: "연관 업무" })} value={String(linkedIssues?.length ?? 0)} />
@@ -222,13 +202,13 @@ export function ApprovalDetail() {
       </div>
 
       {/* Tight single-row 40px toolbar: type icon · title · mono id · status pill. */}
-      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] pl-2 pr-1.5">
-        <TypeIcon className="h-4 w-4 shrink-0 text-[#5f8dff]" />
+      <div className="cockpit-toolbar tactile-card h-10 w-full rounded-[12px] border-slate-200/90 bg-white/95 pl-2 pr-1.5 dark:border-white/[0.08] dark:bg-[#0e131d]">
+        <TypeIcon className="h-4 w-4 shrink-0 text-blue-600 dark:text-[#60a5fa]" />
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-          <h2 className="min-w-0 truncate text-sm font-semibold text-[#e6edf7]">{approvalLabel(approval.type, approval.payload as Record<string, unknown> | null, lang)}</h2>
-          <span className="min-w-0 shrink-0 truncate font-mono text-[11px] text-[#8b97ad]">{approval.id}</span>
+          <h2 className="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-[#edf2fb]">{approvalLabel(approval.type, approval.payload as Record<string, unknown> | null, lang)}</h2>
+          <span className="min-w-0 shrink-0 truncate font-mono text-[11px] text-slate-500 dark:text-[#8b97ad]">{approval.id}</span>
         </div>
-        <span title={approval.status} className={cn("inline-flex h-6 shrink-0 items-center rounded-full border px-2 text-[11px] font-semibold uppercase tracking-[0.18em]", STATUS_PILL[approval.status] ?? "border-[#242d3f] bg-[#151b28] text-[#8b97ad]")}>
+        <span title={approval.status} className={cn("inline-flex h-6 shrink-0 items-center rounded-full border px-2 text-[11px] font-semibold uppercase tracking-[0.18em]", STATUS_PILL[approval.status] ?? "border-slate-200/90 bg-slate-100 text-slate-500 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#8b97ad]")}>
           {humanLabel(lang, "approvalStatus", approval.status).label}
         </span>
       </div>
@@ -236,7 +216,7 @@ export function ApprovalDetail() {
         <div className="text-sm space-y-1 [&_section]:rounded-md [&_section.border-border]:border-border/80 [&_section.border-border]:bg-card/60">
           {approval.requestedByAgentId && (
             <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]">{L(lang, { en: "Requested by", ko: "요청" })}</span>
+              <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad]">{L(lang, { en: "Requested by", ko: "요청" })}</span>
               <Identity name={agentNameById.get(approval.requestedByAgentId) ?? approval.requestedByAgentId.slice(0, 8)} size="sm" />
             </div>
           )}
@@ -244,34 +224,34 @@ export function ApprovalDetail() {
           <HumanReviewPacket packet={reviewPacket} />
           <button
             type="button"
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mt-2"
+            className="mt-2 flex items-center gap-1 text-xs text-slate-500 transition-colors hover:text-slate-900 dark:text-[#8b97ad] dark:hover:text-[#edf2fb]"
             onClick={() => setShowRawPayload((v) => !v)}
           >
             <ChevronRight className={`h-3 w-3 transition-transform ${showRawPayload ? "rotate-90" : ""}`} />
             {L(lang, { en: "See full request", ko: "전체 요청 보기" })}
           </button>
           {showRawPayload && (
-            <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-[#242d3f] bg-[#0b0e14] p-3 font-mono text-xs text-[#c9d3e4]">
+            <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-slate-200/90 bg-slate-50 p-3 font-mono text-xs text-slate-700 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#c9d3e4]">
               {JSON.stringify(payload, null, 2)}
             </pre>
           )}
           {approval.decisionNote && (
-            <p className="whitespace-pre-wrap text-xs text-[#8b97ad]">{L(lang, { en: "Decision note:", ko: "결정 메모:" })} {approval.decisionNote}</p>
+            <p className="whitespace-pre-wrap text-xs text-slate-600 dark:text-[#8b97ad]">{L(lang, { en: "Decision note:", ko: "결정 메모:" })} {approval.decisionNote}</p>
           )}
         </div>
-        {error && <p role="alert" className="whitespace-pre-wrap font-mono text-xs text-[#f87171]">{error}</p>}
+        {error && <p role="alert" className="whitespace-pre-wrap font-mono text-xs text-rose-600 dark:text-[#f87171]">{error}</p>}
         {linkedIssues && linkedIssues.length > 0 && (
-          <div className="border-t border-[#242d3f] pt-3">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]">{L(lang, { en: "Linked Work Items", ko: "연관 업무" })}</p>
-            <div className="divide-y divide-[#242d3f]/70 rounded-md border border-[#242d3f] bg-[#0b0e14]">
+          <div className="border-t border-slate-200/90 pt-3 dark:border-white/[0.08]">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad]">{L(lang, { en: "Linked Work Items", ko: "연관 업무" })}</p>
+            <div className="divide-y divide-slate-200/80 rounded-md border border-slate-200/90 bg-slate-50 dark:divide-white/[0.065] dark:border-white/[0.08] dark:bg-[#090c12]">
               {linkedIssues.map((issue) => (
-                <Link key={issue.id} to={`/issues/${issue.identifier ?? issue.id}`} className="flex items-center gap-2 px-2 py-1.5 text-xs text-[#e6edf7] hover:bg-[#151b28]">
-                  <span className="shrink-0 font-mono text-[#8b97ad]">{issue.identifier ?? issue.id.slice(0, 8)}</span>
+                <Link key={issue.id} to={`/issues/${issue.identifier ?? issue.id}`} className="flex items-center gap-2 px-2 py-1.5 text-xs text-slate-900 transition-colors hover:bg-white dark:text-[#edf2fb] dark:hover:bg-[#141b29]">
+                  <span className="shrink-0 font-mono text-slate-500 dark:text-[#8b97ad]">{issue.identifier ?? issue.id.slice(0, 8)}</span>
                   <span className="min-w-0 flex-1 truncate">{issue.title}</span>
                 </Link>
               ))}
             </div>
-            <p className="mt-2 text-[11px] text-[#8b97ad]">
+            <p className="mt-2 text-[11px] text-slate-500 dark:text-[#8b97ad]">
               {L(lang, { en: "Linked work items remain open until the requesting agent follows up and closes them.", ko: "연관 업무는 요청한 에이전트가 후속 작업을 수행하고 종결할 때까지 열린 상태로 유지됩니다." })}
             </p>
           </div>
