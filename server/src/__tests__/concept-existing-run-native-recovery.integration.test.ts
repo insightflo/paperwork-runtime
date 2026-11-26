@@ -92,7 +92,7 @@ function createApp(db: Db, companyId: string) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.actor = { type: "board", source: "session", userId: "board-stage-a", companyIds: [companyId], isInstanceAdmin: false } as typeof req.actor;
+    req.actor = { type: "board", source: "session", userId: "board-stage-a", companyIds: [companyId], isInstanceAdmin: true } as typeof req.actor;
     next();
   });
   app.use("/api", workflowRoutes(db));

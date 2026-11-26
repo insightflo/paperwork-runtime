@@ -295,7 +295,7 @@ describeEP("workflow run input HTTP boundary", () => {
   it("manual POST for another company's workflow is isolated 404 without writes", async () => {
     const owner = await seedRunInputWorkflow(db, manualFields);
     const outsider = await seedRunInputWorkflow(db, []);
-    const app = buildBoardApp(db, outsider.companyId);
+    const app = buildBoardApp(db, outsider.companyId, { isInstanceAdmin: false });
     const before = await countCompanyRunState(db, owner.companyId, heartbeatWakeup.mock.calls.length);
     const res = await request(app)
       .post(`/api/workflows/${owner.workflowId}/runs`)

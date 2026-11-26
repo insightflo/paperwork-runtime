@@ -21,7 +21,7 @@ const contract = { role: 'qa', resultFileName: 'result.json', resultSchemaVersio
 function app(agent = false) {
   const server = express(); server.use(express.json());
   server.use((req, _res, next) => { req.actor = agent ? { type: 'agent', agentId, companyId, runId: null }
-    : { type: 'board', userId: 'test-board', companyIds: [companyId], source: 'authenticated', isInstanceAdmin: false }; next(); });
+    : { type: 'board', userId: 'test-board', companyIds: [companyId], source: 'authenticated', isInstanceAdmin: true }; next(); });
   server.use('/api', workflowRoutes(fixture.db)); server.use('/api', toolDefinitionRoutes(fixture.db));
   server.use(errorHandler); return server;
 }

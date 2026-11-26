@@ -48,7 +48,7 @@ describe("mission decision report routes", () => {
     userId: "local-board",
     companyIds: ["company-1"],
     source: "authenticated",
-    isInstanceAdmin: false,
+    isInstanceAdmin: true,
   }) {
     const app = express();
     app.use(express.json());
