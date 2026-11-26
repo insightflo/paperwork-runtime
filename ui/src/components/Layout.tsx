@@ -18,7 +18,6 @@ import { useSidebar } from "../context/SidebarContext";
 import { useTheme } from "../context/ThemeContext";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useCompanyPageMemory } from "../hooks/useCompanyPageMemory";
-import { useAfterInitialPaint } from "../hooks/useAfterInitialPaint";
 import { healthApi } from "../api/health";
 import { shouldSyncCompanySelectionFromRoute } from "../lib/company-selection";
 import { SidebarDensityContext, useSidebarSlideController } from "../lib/sidebar-slide-physics";
@@ -27,15 +26,11 @@ import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
 import { NotFoundPage } from "../pages/NotFound";
 import {
-  DesktopHermesAside,
   DialogMounts,
   INSTANCE_SETTINGS_MEMORY_KEY,
-  MobileHermesDrawer,
   SidebarFooterBar,
   StickyLiveRunDock,
-  readRememberedHermesPanelOpen,
   readRememberedInstanceSettingsPath,
-  writeHermesPanelPreference,
 } from "./LayoutChrome";
 
 export function Layout() {
@@ -59,10 +54,8 @@ export function Layout() {
   const lastMainScrollTop = useRef(0);
   const [mobileNavVisible, setMobileNavVisible] = useState(true);
   const [instanceSettingsTarget, setInstanceSettingsTarget] = useState<string>(() => readRememberedInstanceSettingsPath());
-  const [hermesPanelOpen, setHermesPanelOpenState] = useState(() => readRememberedHermesPanelOpen());
-  const heavyPanelsReady = useAfterInitialPaint(900);
   const nextTheme = theme === "dark" ? "light" : "dark";
-  const rightPanelWidth = (!isMobile ? (inspector.isExpanded ? 360 : 44) : 0) + (hermesPanelOpen && !isMobile ? 384 : 0);
+  const rightPanelWidth = !isMobile ? (inspector.isExpanded ? 360 : 44) : 0;
   const slide = useSidebarSlideController({ isMobile, sidebarOpen, setSidebarOpen, rightPanelWidth });
   const { setHoveringSubNav, metrics: { subNavBlurPx } } = slide;
   const subNavHoverApplied = useRef(false);
@@ -122,16 +115,6 @@ export function Layout() {
     }
   }, [companyPrefix, companies, companiesLoading, matchedCompany, location.pathname, location.search, navigate, selectionSource, selectedCompanyId, setSelectedCompanyId]);
 
-  const setHermesPanelOpen = useCallback((open: boolean) => {
-    setHermesPanelOpenState(open);
-    writeHermesPanelPreference(open);
-  }, []);
-
-  const openHermesPanel = useCallback(() => {
-    setHermesPanelOpen(true);
-    if (isMobile) setSidebarOpen(false);
-  }, [isMobile, setHermesPanelOpen, setSidebarOpen]);
-
   useCompanyPageMemory();
   useKeyboardShortcuts({
     onNewIssue: () => openNewIssue(),
@@ -184,7 +167,7 @@ export function Layout() {
       {isInstanceSettingsRoute ? (
         <InstanceSidebar />
       ) : (
-        <Sidebar onOpenHermes={openHermesPanel} hermesPanelOpen={hermesPanelOpen} onToggleCompact={slide.toggleCompact} />
+        <Sidebar onToggleCompact={slide.toggleCompact} />
       )}
     </SidebarDensityContext.Provider>
   );
@@ -210,7 +193,7 @@ export function Layout() {
         {isMobile ? (
           <div className={cn("fixed inset-y-0 left-0 z-50 flex flex-col overflow-hidden pt-[env(safe-area-inset-top)] transition-transform duration-100 ease-out", sidebarOpen ? "translate-x-0" : "-translate-x-full")}>
             <div className="flex flex-1 min-h-0 overflow-hidden">
-              <CompanyRail />
+              <CompanyRail onToggleSidebar={toggleSidebar} />
               {sidePanel}
             </div>
             <SidebarFooterBar
@@ -225,7 +208,7 @@ export function Layout() {
           </div>
         ) : (
           <div className="flex h-full shrink-0">
-            <CompanyRail />
+            <CompanyRail onToggleSidebar={slide.toggleNav} />
             <div
               data-compact-nav={slide.density.compact ? "true" : undefined}
               className="flex h-full flex-col overflow-hidden transition-[width] duration-100 ease-out"
@@ -287,13 +270,9 @@ export function Layout() {
               </div>
             </main>
             <PropertiesPanel controller={inspector} />
-            {!isMobile && (
-              <DesktopHermesAside open={hermesPanelOpen} heavyPanelsReady={heavyPanelsReady} onOpen={() => setHermesPanelOpen(true)} onClose={() => setHermesPanelOpen(false)} />
-            )}
           </div>
         </div>
       </div>
-      {isMobile && <MobileHermesDrawer open={hermesPanelOpen} heavyPanelsReady={heavyPanelsReady} onClose={() => setHermesPanelOpen(false)} />}
       {!isMobile && <StickyLiveRunDock companyId={selectedCompanyId} companyPrefix={selectedCompany?.issuePrefix ?? companyPrefix} />}
       {isMobile && <MobileBottomNav visible={mobileNavVisible} />}
       <CommandPalette />

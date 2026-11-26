@@ -38,9 +38,13 @@ describe("AgentConfigForm model dropdown custom option", () => {
   it("treats Pi local as selectable rather than coming soon", () => {
     expect(isAdapterTypeEnabled("pi_local")).toBe(true);
   });
+
+  it("disables removed hermes_local adapter type", () => {
+    expect(isAdapterTypeEnabled("hermes_local")).toBe(false);
+  });
 });
 
-describe("Hermes provider model helpers", () => {
+describe("Provider model helpers", () => {
   const models = [
     { id: "openai-codex/gpt-5.4-mini", label: "gpt-5.4-mini" },
     { id: "openai-codex/gpt-5.4", label: "gpt-5.4" },

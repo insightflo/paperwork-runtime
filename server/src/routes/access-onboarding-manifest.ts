@@ -93,10 +93,10 @@ function buildOnboardingDiscoveryDiagnostics(input: {
 
   if (apiHost && isLoopbackHost(apiHost)) {
     diagnostics.push({
-      code: "openclaw_onboarding_api_loopback",
+      code: "agent_onboarding_api_loopback",
       level: "warn",
       message:
-        "Onboarding URL resolves to loopback hostname. Remote OpenClaw agents cannot reach localhost on your Paperclip host.",
+        "Onboarding URL resolves to loopback hostname. Remote agents cannot reach localhost on your Paperwork host.",
       hint: "Use a reachable hostname/IP (for example Tailscale hostname, Docker host alias, or public domain)."
     });
   }
@@ -107,9 +107,9 @@ function buildOnboardingDiscoveryDiagnostics(input: {
     (!bindHost || isLoopbackHost(bindHost))
   ) {
     diagnostics.push({
-      code: "openclaw_onboarding_private_loopback_bind",
+      code: "agent_onboarding_private_loopback_bind",
       level: "warn",
-      message: "Paperclip is bound to loopback in authenticated/private mode.",
+      message: "Paperwork is bound to loopback in authenticated/private mode.",
       hint: "Run with a reachable bind host or use pnpm dev --tailscale-auth for private-network onboarding."
     });
   }
@@ -123,7 +123,7 @@ function buildOnboardingDiscoveryDiagnostics(input: {
     !allowSet.has(apiHost)
   ) {
     diagnostics.push({
-      code: "openclaw_onboarding_private_host_not_allowed",
+      code: "agent_onboarding_private_host_not_allowed",
       level: "warn",
       message: `Onboarding host "${apiHost}" is not in allowed hostnames for authenticated/private mode.`,
       hint: `Run pnpm paperclipai allowed-hostname ${apiHost}`
@@ -212,16 +212,16 @@ export function buildInviteOnboardingManifest(
     invite: toInviteSummaryResponse(req, token, invite),
     onboarding: {
       instructions:
-        "Join as an OpenClaw Gateway agent, save your one-time claim secret, wait for board approval, then claim your API key. Save the claim response token to ~/.openclaw/workspace/paperclip-claimed-api-key.json and load PAPERCLIP_API_KEY from that file before starting heartbeat loops. You MUST submit adapterType='openclaw_gateway', set agentDefaultsPayload.url to your ws:// or wss:// OpenClaw gateway endpoint, and include agentDefaultsPayload.headers.x-openclaw-token (or legacy x-openclaw-auth).",
+        "Join as a Paperwork agent, save your one-time claim secret, wait for board approval, then claim your API key. Save the claim response token securely (for example ~/.paperwork/claimed-api-key.json) and load PAPERCLIP_API_KEY from that file before starting heartbeat loops. Submit adapterType='http' (or another supported adapter type) and set agentDefaultsPayload with your adapter configuration.",
       inviteMessage: extractInviteMessage(invite),
-      recommendedAdapterType: "openclaw_gateway",
+      recommendedAdapterType: "http",
       requiredFields: {
         requestType: "agent",
         agentName: "Display name for this agent",
-        adapterType: "Use 'openclaw_gateway' for OpenClaw Gateway agents",
+        adapterType: "Use 'http' for remote HTTP webhook agents or another supported adapter type",
         capabilities: "Optional capability summary",
         agentDefaultsPayload:
-          "Adapter config for OpenClaw gateway. MUST include url (ws:// or wss://) and headers.x-openclaw-token (or legacy x-openclaw-auth). Optional fields: paperclipApiUrl, waitTimeoutMs, sessionKeyStrategy, sessionKey, role, scopes, disableDeviceAuth, devicePrivateKeyPem."
+          "Optional adapter configuration payload (for example url and paperclipApiUrl for HTTP webhook agents)."
       },
       registrationEndpoint: {
         method: "POST",
@@ -246,8 +246,8 @@ export function buildInviteOnboardingManifest(
         guidance:
           opts.deploymentMode === "authenticated" &&
           opts.deploymentExposure === "private"
-            ? "If OpenClaw runs on another machine, ensure the Paperclip hostname is reachable and allowed via `pnpm paperclipai allowed-hostname <host>`."
-            : "Ensure OpenClaw can reach this Paperclip API base URL for invite, claim, and skill bootstrap calls."
+            ? "If your agent runs on another machine, ensure the Paperwork hostname is reachable and allowed via `pnpm paperclipai allowed-hostname <host>`."
+            : "Ensure your agent runtime can reach this Paperwork API base URL for invite, claim, and skill bootstrap calls."
       },
       textInstructions: {
         path: onboardingTextPath,
@@ -258,7 +258,7 @@ export function buildInviteOnboardingManifest(
         name: "paperclip",
         path: skillPath,
         url: skillUrl,
-        installPath: "~/.openclaw/skills/paperclip/SKILL.md"
+        installPath: "~/.paperwork/skills/paperclip/SKILL.md"
       }
     }
   };

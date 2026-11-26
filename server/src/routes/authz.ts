@@ -56,6 +56,47 @@ export function assertCompanyAccess(req: Request, companyId: string) {
   }
 }
 
+export interface CompanyAdminAccessChecker {
+  getMembership: (
+    companyId: string,
+    principalType: "user" | "agent",
+    principalId: string,
+  ) => Promise<{ status: string; membershipRole: string | null } | null>;
+  canUser: (
+    companyId: string,
+    userId: string | null | undefined,
+    permissionKey: "users:manage_permissions",
+  ) => Promise<boolean>;
+}
+
+export async function assertCompanyAdminAccess(
+  access: CompanyAdminAccessChecker,
+  req: Request,
+  companyId: string,
+) {
+  assertBoard(req);
+  assertCompanyAccess(req, companyId);
+  if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
+    return;
+  }
+  const userId = req.actor.userId;
+  if (!userId) {
+    throw forbidden("Company admin or owner access required");
+  }
+  const membership = await access.getMembership(companyId, "user", userId);
+  if (
+    membership &&
+    membership.status === "active" &&
+    hasMinimumTeamRole(membership.membershipRole, "admin")
+  ) {
+    return;
+  }
+  const hasPermission = await access.canUser(companyId, userId, "users:manage_permissions");
+  if (!hasPermission) {
+    throw forbidden("Company admin or owner access required");
+  }
+}
+
 export function getActorInfo(req: Request) {
   if (req.actor.type === "none") {
     throw unauthorized();

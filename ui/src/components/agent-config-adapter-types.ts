@@ -5,7 +5,6 @@ const ENABLED_ADAPTER_TYPES = new Set([
   "gemini_local",
   "opencode_local",
   "commandcode_local",
-  "hermes_local",
   "cursor",
   "pi_local",
 ]);

@@ -11,13 +11,11 @@ import {
 } from "../api/missions";
 import { agentsApi } from "../api/agents";
 import { api } from "../api/client";
-import { dashboardApi } from "../api/dashboard";
 import { operatorDecisionsApi } from "../api/operator-decisions";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
-import { formatCents } from "../lib/utils";
 import { EmptyState } from "../components/EmptyState";
 import { PageSkeleton } from "../components/PageSkeleton";
 import { CompactPagination } from "../components/CompactPagination";
@@ -34,31 +32,19 @@ import {
 } from "../components/missions/MissionFleetRadar";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
-import { INSPECTOR_TOGGLE_EVENT } from "../components/PropertiesPanel";
 import { normalizeQueueItems, queueItemLabel } from "../components/QueuePanel";
 import {
   AlertTriangle,
   Inbox,
-  MessageSquare,
   PanelRightOpen,
   Pause,
   Play,
   Plus,
   RefreshCw,
   Rocket,
-  ShieldCheck,
-  UserRoundCheck,
   X,
 } from "lucide-react";
 
-const STATUS_TABS: { label: string; value: MissionStatus | "all" }[] = [
-  { label: "All", value: "all" },
-  { label: "Planning", value: "planning" },
-  { label: "Active", value: "active" },
-  { label: "Paused", value: "paused" },
-  { label: "Completed", value: "completed" },
-  { label: "Cancelled", value: "cancelled" },
-];
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 const SORT_OPTIONS = [
   { value: "updatedAt:desc", label: "Recently updated" },
@@ -97,14 +83,6 @@ const CONTROL_CLASS =
 
 const ROW_GRID =
   "grid grid-cols-[10px_minmax(0,1fr)_auto] items-center gap-x-2.5 sm:grid-cols-[10px_minmax(0,1fr)_5.5rem_7.5rem_7.75rem]";
-
-const PILL_CLASS =
-  "tactile-card inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-700 no-underline shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#9aa7bd] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07)] dark:hover:border-white/[0.16] dark:hover:bg-[#141b2a] dark:hover:text-[#eef2f8]";
-const QUICK_LINKS = [
-  { icon: UserRoundCheck, label: "결정함", to: "/human-operator" },
-  { icon: ShieldCheck, label: "Hermit Gate · 실행 규칙", to: "/worktree/rules" },
-  { icon: MessageSquare, label: "채널 협업 보드", to: "/channels" },
-];
 
 function formatDateTime(date: Date | string | null | undefined): string {
   if (!date) return "—";
@@ -167,28 +145,6 @@ function stepSelection(ids: string[], current: string | null, delta: 1 | -1): st
 function isTypingTarget(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null;
   return Boolean(element && (element.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(element.tagName)));
-}
-
-function count(noun: string, value: number): string {
-  return `${value} ${noun}${value === 1 ? "" : "s"}`;
-}
-
-function KpiCell(props: { to: string; label: string; value: string; sub: string; dot: string }) {
-  return (
-    <Link
-      to={props.to}
-      className="flex min-w-0 flex-col gap-0.5 px-3.5 py-2.5 no-underline text-inherit transition-colors hover:bg-slate-50/90 dark:hover:bg-[#141b2a]"
-    >
-      <span className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-[#9aa7bd]">
-        <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${props.dot}`} />
-        <span className="truncate">{props.label}</span>
-      </span>
-      <span className="truncate font-mono text-xl font-semibold leading-tight tabular-nums text-slate-950 dark:text-[#eef2f8]">
-        {props.value}
-      </span>
-      <span className="truncate text-[11px] tabular-nums text-slate-500 dark:text-[#627089]">{props.sub}</span>
-    </Link>
-  );
 }
 
 function ToolbarField({ label, children }: { label: string; children: ReactNode }) {
@@ -334,27 +290,21 @@ export function Missions() {
     enabled: !!selectedCompanyId,
   });
 
-  // Live cockpit telemetry. Shares cache keys with the dashboard command header.
-  const { data: summary, isError: summaryError } = useQuery({
-    queryKey: queryKeys.dashboard(selectedCompanyId!),
-    queryFn: () => dashboardApi.summary(selectedCompanyId!),
-    enabled: !!selectedCompanyId,
-    refetchInterval: 30_000,
-  });
-  const { data: allMissions, isError: allMissionsError } = useQuery({
+  // Fleet-wide missions + pending operator decisions / queue for escalation ticker.
+  const { data: allMissions } = useQuery({
     queryKey: queryKeys.missions.list(selectedCompanyId!),
     queryFn: () => missionsApi.list(selectedCompanyId!),
     enabled: !!selectedCompanyId,
     refetchInterval: 30_000,
   });
-  const { data: pending, isError: pendingError } = useQuery({
+  const { data: pending } = useQuery({
     queryKey: queryKeys.operatorDecisions.list(selectedCompanyId!, "pending"),
     queryFn: () => operatorDecisionsApi.list(selectedCompanyId!, "pending", 50),
     enabled: !!selectedCompanyId,
     refetchInterval: 30_000,
     retry: false,
   });
-  const { data: queueRaw, isError: queueError } = useQuery({
+  const { data: queueRaw } = useQuery({
     queryKey: ["ops-console-queue", selectedCompanyId!],
     queryFn: () => api.get<unknown>(`/companies/${selectedCompanyId}/ops-console/queue`),
     enabled: !!selectedCompanyId,
@@ -580,9 +530,6 @@ export function Missions() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [inspectorOpen, visibleMissions.length, moveSelection]);
 
-  const countByStatus = (status: MissionStatus) =>
-    (allMissions ?? []).filter((mission) => mission.status === status).length;
-  const waitsLoaded = pending !== undefined || queueRaw !== undefined;
   const waitCount = pendingCards.length + queueItems.length;
   const waitChips = [
     ...pendingCards.slice(0, 6).map((card) => ({
@@ -607,80 +554,6 @@ export function Missions() {
     return <PageSkeleton variant="list" />;
   }
 
-  const loadState = (failed: boolean) => (failed ? "Load failed" : "Loading");
-  const spendBudgetCents = summary?.costs.monthBudgetCents ?? 0;
-  const spendPct =
-    summary && spendBudgetCents > 0
-      ? Math.round((summary.costs.monthSpendCents / spendBudgetCents) * 100)
-      : 0;
-  const activeMissions = allMissions ? countByStatus("active") : null;
-  const kpis = [
-    {
-      to: "/agents",
-      label: "Active agents",
-      value: summary ? String(summary.agents.running) : "—",
-      sub: summary
-        ? `${summary.agents.active + summary.agents.running + summary.agents.paused + summary.agents.error} enabled`
-        : loadState(summaryError),
-      dot: summary && summary.agents.running > 0 ? DOT.emerald : DOT.muted,
-    },
-    {
-      to: "/issues",
-      label: "Running work",
-      value: summary ? String(summary.tasks.inProgress) : "—",
-      sub: summary ? `${summary.tasks.blocked} blocked` : loadState(summaryError),
-      dot: summary?.tasks.blocked ? DOT.amber : summary?.tasks.inProgress ? DOT.emerald : DOT.muted,
-    },
-    {
-      to: "/missions",
-      label: "Active missions",
-      value: activeMissions === null ? "—" : String(activeMissions),
-      sub:
-        activeMissions === null
-          ? loadState(allMissionsError)
-          : `${countByStatus("planning")} planning · ${countByStatus("paused")} paused`,
-      dot: activeMissions ? DOT.emerald : DOT.muted,
-    },
-    {
-      to: "/costs",
-      label: "Monthly spend",
-      value: summary ? formatCents(summary.costs.monthSpendCents) : "—",
-      sub: !summary
-        ? loadState(summaryError)
-        : spendBudgetCents > 0
-          ? `of ${formatCents(spendBudgetCents)} · ${spendPct}%`
-          : "No budget",
-      dot:
-        !summary || spendBudgetCents <= 0
-          ? DOT.muted
-          : spendPct >= 100
-            ? DOT.crimson
-            : spendPct >= 80
-              ? DOT.amber
-              : DOT.emerald,
-    },
-    {
-      to: "/human-operator",
-      label: "Waiting / blocked",
-      value: waitsLoaded
-        ? String(waitCount)
-        : summary
-          ? String(summary.pendingApprovals + summary.budgets.pendingApprovals)
-          : "—",
-      sub: waitsLoaded
-        ? `${count("decision", pendingCards.length)} · ${count("queued", queueItems.length)}`
-        : loadState(pendingError || queueError),
-      dot: waitCount > 0 ? DOT.amber : DOT.muted,
-    },
-  ];
-  const tickerStatus = waitChips.length
-    ? `${waitCount} waiting on humans`
-    : pendingError || queueError
-      ? "Queue unavailable"
-      : waitsLoaded
-        ? "All clear — nothing waiting"
-        : "Checking queue…";
-
   const selectedBucket = selectedMission
     ? getMissionRadarBucket(selectedMission, attentionMissionIds)
     : null;
@@ -699,48 +572,15 @@ export function Missions() {
         </p>
       )}
 
-      <section aria-label="명령 헤더" className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-lime-500/30 bg-lime-500/10 px-2.5 py-1 text-[11px] font-semibold text-lime-800 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/12 dark:text-[#a3e635]">
-            <Rocket className="h-3.5 w-3.5" />
-            실시간 운영 현황
-          </span>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {QUICK_LINKS.map((link) => (
-              <Link key={link.to} to={link.to} className={`${PILL_CLASS} cursor-pointer`}>
-                <link.icon className="h-3.5 w-3.5" />
-                {link.label}
-              </Link>
-            ))}
-            <button
-              type="button"
-              onClick={() =>
-                typeof window !== "undefined" &&
-                window.dispatchEvent(new CustomEvent(INSPECTOR_TOGGLE_EVENT))
-              }
-              className={`${PILL_CLASS} hidden cursor-pointer md:inline-flex`}
-            >
-              <PanelRightOpen className="h-3.5 w-3.5" />
-              우측 인스펙터
-            </button>
-          </div>
-        </div>
-
-        {/* 1-row 5-column cockpit strip */}
-        <div className="tactile-card grid grid-cols-2 overflow-hidden rounded-[12px] border border-slate-200/90 bg-white divide-x divide-slate-200/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] lg:grid-cols-5 dark:divide-white/[0.07] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_-18px_rgba(0,0,0,0.85)]">
-          {kpis.map((kpi) => (
-            <KpiCell key={kpi.label} {...kpi} />
-          ))}
-        </div>
-
-        {/* Single-line escalation / queue ticker */}
+      {/* Compact escalation ticker (only shown when human decisions or queued items await action) */}
+      {waitCount > 0 && (
         <div
           role="status"
           className="tactile-card flex h-8 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap rounded-[10px] border border-amber-500/35 bg-amber-500/[0.07] px-3 text-xs text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-[#f59e0b]/35 dark:bg-[#0e131d] dark:bg-none dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
         >
           <span className="flex shrink-0 items-center gap-1.5 font-semibold text-amber-800 dark:text-[#fde68a]">
             <Inbox className="h-3.5 w-3.5" />
-            {tickerStatus}
+            {`${waitCount} waiting on humans`}
           </span>
           {waitChips.map((chip) => (
             <Link
@@ -758,16 +598,14 @@ export function Missions() {
               +{waitCount - waitChips.length} more
             </span>
           )}
-          {waitCount > 0 && (
-            <Link
-              to="/human-operator"
-              className="ml-auto shrink-0 font-semibold text-amber-800 no-underline hover:underline dark:text-[#fde68a]"
-            >
-              Review →
-            </Link>
-          )}
+          <Link
+            to="/human-operator"
+            className="ml-auto shrink-0 font-semibold text-amber-800 no-underline hover:underline dark:text-[#fde68a]"
+          >
+            Review →
+          </Link>
         </div>
-      </section>
+      )}
 
       {/* Combo 1 Fleet Mission Radar: Status chips with live counts, search & workflow filter */}
       <MissionFleetRadar
@@ -791,36 +629,9 @@ export function Missions() {
         searchInputRef={searchInputRef}
       />
 
-      {/* Single-row unified server filter toolbar (40px): filters scroll horizontally, actions stay pinned. */}
+      {/* Single-row compact controls toolbar (40px): executor, date range, sort, inspector, refresh, new mission */}
       <div className="tactile-card flex h-10 items-center gap-2 rounded-[12px] border border-slate-200/90 bg-white/95 pl-2 pr-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_20px_-12px_rgba(0,0,0,0.7)]">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-          <div
-            role="group"
-            aria-label="Filter missions by status"
-            className="flex shrink-0 items-center gap-0.5 rounded-md border border-slate-200/90 bg-slate-100/80 p-0.5 dark:border-white/[0.07] dark:bg-[#07090d]"
-          >
-            {STATUS_TABS.map((tab) => {
-              const active = statusFilter === tab.value;
-              return (
-                <button
-                  key={tab.value}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() =>
-                    updateSearchParams({ status: tab.value === "all" ? null : tab.value }, { resetPage: true })
-                  }
-                  className={`h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors ${
-                    active
-                      ? "bg-white text-slate-950 shadow-xs dark:bg-[#151d2e] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
-                      : "text-slate-600 hover:text-slate-950 dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]"
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-
           <select
             aria-label="Main executor"
             value={ownerAgentId}

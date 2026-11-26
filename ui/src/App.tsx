@@ -45,7 +45,6 @@ const AgentWiki = lazy(async () => ({ default: (await import("./pages/AgentWiki"
 const Activity = lazy(async () => ({ default: (await import("./pages/Activity")).Activity }));
 const CompanySkills = lazy(async () => ({ default: (await import("./pages/CompanySkills")).CompanySkills }));
 const CompanyInstructions = lazy(async () => ({ default: (await import("./pages/CompanyInstructions")).CompanyInstructions }));
-const HermesChat = lazy(async () => ({ default: (await import("./pages/HermesChat")).HermesChat }));
 const HumanOperator = lazy(async () => ({ default: (await import("./pages/HumanOperator")).HumanOperator }));
 const InstanceGeneralSettings = lazy(async () => ({ default: (await import("./pages/InstanceGeneralSettings")).InstanceGeneralSettings }));
 const InstanceSettings = lazy(async () => ({ default: (await import("./pages/InstanceSettings")).InstanceSettings }));
@@ -225,7 +224,6 @@ function boardRoutes() {
       <Route path="company/settings" element={lazyRoute(<CompanySettings />)} />
       <Route path="skills/*" element={lazyRoute(<CompanySkills />)} />
       <Route path="instructions" element={lazyRoute(<CompanyInstructions />)} />
-      <Route path="hermes" element={lazyRoute(<HermesChat />)} />
       <Route path="human-operator" element={lazyRoute(<HumanOperator />)} />
       <Route path="settings" element={<LegacySettingsRedirect />} />
       <Route path="settings/*" element={<LegacySettingsRedirect />} />
@@ -441,7 +439,6 @@ export function App() {
           <Route path="workflows" element={<UnprefixedBoardRedirect />} />
           <Route path="skills/*" element={<UnprefixedBoardRedirect />} />
           <Route path="instructions" element={<UnprefixedBoardRedirect />} />
-          <Route path="hermes" element={<UnprefixedBoardRedirect />} />
           <Route path="human-operator" element={<UnprefixedBoardRedirect />} />
           <Route path="settings" element={<LegacySettingsRedirect />} />
           <Route path="settings/*" element={<LegacySettingsRedirect />} />

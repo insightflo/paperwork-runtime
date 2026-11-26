@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { PanelLeft, Plus, Search } from "lucide-react";
 import { useQueries } from "@tanstack/react-query";
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
@@ -22,7 +22,14 @@ import {
   sortCompaniesByStoredOrder,
 } from "./CompanyRailItem";
 
-export function CompanyRail() {
+interface CompanyRailProps {
+  onToggleSidebar?: () => void;
+}
+
+const RAIL_UTIL_BTN =
+  "flex items-center justify-center w-9 h-9 rounded-[8px] border border-transparent text-muted-foreground hover:text-foreground hover:bg-slate-200/70 hover:border-slate-300/70 dark:hover:bg-white/[0.04] dark:hover:border-white/[0.065] transition-all duration-150";
+
+export function CompanyRail({ onToggleSidebar }: CompanyRailProps = {}) {
   const { companies, selectedCompanyId, setSelectedCompanyId } = useCompany();
   const { openOnboarding } = useDialog();
   const navigate = useNavigate();
@@ -171,13 +178,51 @@ export function CompanyRail() {
 
       <div className="w-6 h-px bg-slate-300/80 dark:bg-white/[0.08] mx-auto shrink-0" />
 
-      <div className="flex items-center justify-center py-2 shrink-0">
+      <div className="flex flex-col items-center gap-1.5 py-2 shrink-0">
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => {
+                if (onToggleSidebar) {
+                  onToggleSidebar();
+                } else {
+                  document.dispatchEvent(new KeyboardEvent("keydown", { key: "[" }));
+                }
+              }}
+              className={RAIL_UTIL_BTN}
+              aria-label="사이드바 접기/펼치기 ([)"
+            >
+              <PanelLeft className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8}>
+            <p>사이드바 접기/펼치기 ([)</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip delayDuration={300}>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }))}
+              className={RAIL_UTIL_BTN}
+              aria-label="커맨드 팔레트 (⌘K)"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8}>
+            <p>커맨드 팔레트 (⌘K)</p>
+          </TooltipContent>
+        </Tooltip>
+
         <Tooltip delayDuration={300}>
           <TooltipTrigger asChild>
             <button
               type="button"
               onClick={() => openOnboarding()}
-              className="flex items-center justify-center w-9 h-9 rounded-[10px] border border-dashed border-slate-300 dark:border-white/[0.12] text-muted-foreground hover:border-[#2563eb]/70 hover:text-[#2563eb] dark:hover:border-[#a3e635]/60 dark:hover:text-[#a3e635] dark:hover:bg-[#a3e635]/[0.06] transition-[border-color,color,background-color] duration-150"
+              className="flex items-center justify-center w-9 h-9 rounded-[8px] border border-dashed border-slate-300 dark:border-white/[0.12] text-muted-foreground hover:border-[#2563eb]/70 hover:text-[#2563eb] dark:hover:border-[#a3e635]/60 dark:hover:text-[#a3e635] dark:hover:bg-[#a3e635]/[0.06] transition-[border-color,color,background-color] duration-150"
               aria-label="Add company"
             >
               <Plus className="h-4 w-4" />

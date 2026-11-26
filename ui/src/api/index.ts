@@ -16,7 +16,6 @@ export { activityApi } from "./activity";
 export { dashboardApi } from "./dashboard";
 export { qualityApi } from "./quality";
 export { heartbeatsApi } from "./heartbeats";
-export { hermesChatApi } from "./hermesChat";
 export { instanceSettingsApi } from "./instanceSettings";
 export { sidebarBadgesApi } from "./sidebarBadges";
 export { companySkillsApi } from "./companySkills";

@@ -3,7 +3,6 @@ import { claudeLocalUIAdapter } from "./claude-local";
 import { codexLocalUIAdapter } from "./codex-local";
 import { piLocalUIAdapter } from "./pi-local";
 import { commandCodeLocalUIAdapter } from "./commandcode-local";
-import { hermesLocalUIAdapter } from "./hermes-local";
 import { processUIAdapter } from "./process";
 import { httpUIAdapter } from "./http";
 
@@ -12,7 +11,6 @@ const uiAdapters: UIAdapterModule[] = [
   codexLocalUIAdapter,
   piLocalUIAdapter,
   commandCodeLocalUIAdapter,
-  hermesLocalUIAdapter,
   processUIAdapter,
   httpUIAdapter,
 ];

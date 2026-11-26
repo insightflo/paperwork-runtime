@@ -90,6 +90,9 @@ export function actorMiddleware(db: Db, opts: ActorMiddlewareOptions): RequestHa
           req.actor = {
             type: "board",
             userId,
+            sessionId: session.session?.id,
+            email: session.user.email ?? null,
+            name: session.user.name ?? null,
             companyIds: memberships.map((row) => row.companyId),
             isInstanceAdmin: Boolean(roleRow),
             runId: runIdHeader ?? undefined,

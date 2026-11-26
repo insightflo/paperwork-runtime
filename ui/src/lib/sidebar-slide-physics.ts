@@ -1,9 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-/** st.-aurelia 2.5D adaptive sidebar physics — Paperclip 72px rail + 0..256px nav. */
-export const RAIL_WIDTH_PX = 72;
-export const NAV_EXPANDED_WIDTH_PX = 256;
-export const NAV_PEEK_WIDTH_PX = 184;
+/** Combo 1 adaptive sidebar physics — 52px icon rail + 0..224px sleek sidebar. */
+export const RAIL_WIDTH_PX = 52;
+export const NAV_EXPANDED_WIDTH_PX = 224;
+export const NAV_PEEK_WIDTH_PX = 168;
 export const NAV_COMPACT_WIDTH_PX = 88;
 export const NAV_COLLAPSED_WIDTH_PX = 0;
 export const CONVERSATION_MIN_WIDTH_PX = 424;
@@ -19,11 +19,11 @@ export interface SidebarSnapTarget {
 
 export function resolveSnapTarget(currentNavWidth: number, velocityPxPerMs = 0): SidebarSnapTarget {
   const projected = clamp(currentNavWidth + velocityPxPerMs * 140, 0, NAV_EXPANDED_WIDTH_PX);
-  if (velocityPxPerMs < -0.45 && currentNavWidth < 210) return { mode: "collapsed", targetWidth: 0 };
-  if (velocityPxPerMs > 0.45 && currentNavWidth > 60) return { mode: "expanded", targetWidth: NAV_EXPANDED_WIDTH_PX };
-  if (projected < 72) return { mode: "collapsed", targetWidth: 0 };
-  if (projected < 136) return { mode: "compact", targetWidth: NAV_COMPACT_WIDTH_PX };
-  if (projected < 224) return { mode: "peek", targetWidth: NAV_PEEK_WIDTH_PX };
+  if (velocityPxPerMs < -0.45 && currentNavWidth < 184) return { mode: "collapsed", targetWidth: 0 };
+  if (velocityPxPerMs > 0.45 && currentNavWidth > 56) return { mode: "expanded", targetWidth: NAV_EXPANDED_WIDTH_PX };
+  if (projected < 64) return { mode: "collapsed", targetWidth: 0 };
+  if (projected < 128) return { mode: "compact", targetWidth: NAV_COMPACT_WIDTH_PX };
+  if (projected < 196) return { mode: "peek", targetWidth: NAV_PEEK_WIDTH_PX };
   return { mode: "expanded", targetWidth: NAV_EXPANDED_WIDTH_PX };
 }
 
@@ -62,8 +62,8 @@ export function calculateSidebarSlideMetrics(
     subNavScale: isSnappedCompact ? 1 : Number((1 - collapseProgress * 0.035).toFixed(4)),
     subNavOpacity: isSnappedCompact ? 1 : Number(clamp(1 - Math.pow(collapseProgress, 1.35) * 0.65, 0.2, 1).toFixed(3)),
     sheetShadowAlpha: Number(clamp(0.065 + collapseProgress * 0.065, 0.05, 0.14).toFixed(3)),
-    canvasDensityTier: navVisibleWidth <= 88 ? "ultra-wide" : navVisibleWidth <= 205 ? "expanded" : "standard",
-    visibleKpiColumns: navVisibleWidth <= 88 ? 5 : navVisibleWidth <= 205 ? 4 : 3,
+    canvasDensityTier: navVisibleWidth <= 88 ? "ultra-wide" : navVisibleWidth <= 184 ? "expanded" : "standard",
+    visibleKpiColumns: navVisibleWidth <= 88 ? 5 : navVisibleWidth <= 184 ? 4 : 3,
   };
 }
 

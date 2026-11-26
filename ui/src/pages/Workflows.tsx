@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type JSX } from "react";
 import { jsonToSteps, stepsToJson, type StepDraft } from "./workflows/step-draft.js";
-import type { LabelOption, PluginPageProps, StatusFilter, WorkflowScopeFilter, WorkflowSummary } from "./workflows/workflow-page-types.js";
+import type { LabelOption, PluginPageProps, StatusFilter, WorkflowScopeFilter } from "./workflows/workflow-page-types.js";
 import { fetchCompanyLabels, useAvailableWorkflowTools, useHostContext, usePluginAction, useWorkflowOverview } from "./workflows/workflow-page-api.js";
 import { filterRunsForWorkflows, isManualMissionPlanWorkflow } from "./workflows/workflow-filters.js";
 import { WorkflowHelpOverlay } from "./workflows/workflow-help-overlay.js";
@@ -65,16 +65,13 @@ const COCKPIT_CSS = `
 `;
 
 const PAGE_CLASS = "-m-4 md:-m-6 flex min-h-[calc(100dvh-3rem)] flex-col bg-slate-50 text-slate-900 tabular-nums dark:bg-[#07090d] dark:text-[#edf2fb]";
-const SELECT_CLASS = "h-7.5 min-w-0 rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs text-slate-900 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.09] dark:bg-[#090d14] dark:text-[#edf2fb] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25";
 const ACTION_CLASS = "inline-flex h-7.5 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-[#60a5fa]/40";
 
-function WorkflowControlBar({ workflows, navigatorSearch, onNavigatorSearchChange, runningCount, workflowCount, runCount, showHelp, onToggleHelp, showNewWorkflowForm, onNewWorkflow, isRefreshing, refreshButtonLabel, onRefresh }: {
-  workflows: WorkflowSummary[]; navigatorSearch: string; onNavigatorSearchChange: (value: string) => void;
+function WorkflowControlBar({ runningCount, workflowCount, runCount, showHelp, onToggleHelp, showNewWorkflowForm, onNewWorkflow, isRefreshing, refreshButtonLabel, onRefresh }: {
   runningCount: number; workflowCount: number; runCount: number;
   showHelp: boolean; onToggleHelp: () => void; showNewWorkflowForm: boolean; onNewWorkflow: () => void;
   isRefreshing: boolean; refreshButtonLabel: string; onRefresh: () => void;
 }): JSX.Element {
-  const focusedWorkflow = workflows.find((workflow) => workflow.name === navigatorSearch) ?? null;
   const hasRunning = runningCount > 0;
   return (
     <header
@@ -92,16 +89,6 @@ function WorkflowControlBar({ workflows, navigatorSearch, onNavigatorSearchChang
       >
         ?
       </button>
-      <select
-        aria-label="Focus workflow"
-        title="Focus the definition list and navigator on one workflow"
-        className={`${SELECT_CLASS} max-w-[240px]`}
-        value={focusedWorkflow?.id ?? ""}
-        onChange={(event) => onNavigatorSearchChange(workflows.find((workflow) => workflow.id === event.target.value)?.name ?? "")}
-      >
-        <option value="">All workflows</option>
-        {workflows.map((workflow) => <option key={workflow.id} value={workflow.id}>{workflow.name}</option>)}
-      </select>
       <span
         role="status"
         className={`hidden min-w-0 items-center gap-2 rounded-full border px-3 py-1 text-[11px] tabular-nums sm:inline-flex ${
@@ -277,7 +264,7 @@ export function WorkflowPage(props: PluginPageProps): JSX.Element {
   return (
     <div data-plugin-id={PLUGIN_ID} id="wf-page" className={PAGE_CLASS}>
       <style data-wf-cockpit-style="true">{COCKPIT_CSS}</style>
-      <WorkflowControlBar workflows={scopedWorkflows} navigatorSearch={navigatorSearch} onNavigatorSearchChange={setNavigatorSearch} runningCount={scopedActiveRuns.length} workflowCount={filteredWorkflows.length} runCount={scopedRecentRuns.length}
+      <WorkflowControlBar runningCount={scopedActiveRuns.length} workflowCount={filteredWorkflows.length} runCount={scopedRecentRuns.length}
         showHelp={showHelp} onToggleHelp={() => setShowHelp(!showHelp)} showNewWorkflowForm={showNewWorkflowForm} onNewWorkflow={() => { setShowNewWorkflowForm(true); }}
         isRefreshing={isRefreshing} refreshButtonLabel={refreshButtonLabel} onRefresh={refreshOverview} />
 

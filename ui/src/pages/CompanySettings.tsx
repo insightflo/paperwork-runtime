@@ -5,19 +5,16 @@ import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { useToast } from "../context/ToastContext";
 import { companiesApi } from "../api/companies";
-import { accessApi } from "../api/access";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
-import { buildAgentSnippet } from "../lib/openclaw-invite-snippet";
 import { Button } from "@/components/ui/button";
-import { Settings, Check } from "lucide-react";
+import { Settings } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import { CompanyWorkProductStorageSettings } from "../components/CompanyWorkProductStorageSettings";
 import { CompanyDataStorageSettings } from "../components/CompanyDataStorageSettings";
 import {
   Field,
-  ToggleField,
-  HintIcon
+  ToggleField
 } from "../components/agent-config-primitives";
 import { AccessSettingsSection } from "../components/access-settings/AccessSettingsSection";
 
@@ -59,11 +56,6 @@ export function CompanySettings() {
     setDefaultLanguage(selectedCompany.defaultLanguage);
   }, [selectedCompany]);
 
-  const [inviteError, setInviteError] = useState<string | null>(null);
-  const [inviteSnippet, setInviteSnippet] = useState<string | null>(null);
-  const [snippetCopied, setSnippetCopied] = useState(false);
-  const [snippetCopyDelightId, setSnippetCopyDelightId] = useState(0);
-
   const generalDirty =
     !!selectedCompany &&
     (companyName !== selectedCompany.name ||
@@ -94,59 +86,6 @@ export function CompanySettings() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
-    }
-  });
-
-  const inviteMutation = useMutation({
-    mutationFn: () =>
-      accessApi.createOpenClawInvitePrompt(selectedCompanyId!),
-    onSuccess: async (invite) => {
-      setInviteError(null);
-      const base = window.location.origin.replace(/\/+$/, "");
-      const onboardingTextLink =
-        invite.onboardingTextUrl ??
-        invite.onboardingTextPath ??
-        `/api/invites/${invite.token}/onboarding.txt`;
-      const absoluteUrl = onboardingTextLink.startsWith("http")
-        ? onboardingTextLink
-        : `${base}${onboardingTextLink}`;
-      setSnippetCopied(false);
-      setSnippetCopyDelightId(0);
-      let snippet: string;
-      try {
-        const manifest = await accessApi.getInviteOnboarding(invite.token);
-        snippet = buildAgentSnippet({
-          onboardingTextUrl: absoluteUrl,
-          connectionCandidates:
-            manifest.onboarding.connectivity?.connectionCandidates ?? null,
-          testResolutionUrl:
-            manifest.onboarding.connectivity?.testResolutionEndpoint?.url ??
-            null
-        });
-      } catch {
-        snippet = buildAgentSnippet({
-          onboardingTextUrl: absoluteUrl,
-          connectionCandidates: null,
-          testResolutionUrl: null
-        });
-      }
-      setInviteSnippet(snippet);
-      try {
-        await navigator.clipboard.writeText(snippet);
-        setSnippetCopied(true);
-        setSnippetCopyDelightId((prev) => prev + 1);
-        setTimeout(() => setSnippetCopied(false), 2000);
-      } catch {
-        /* clipboard may not be available */
-      }
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.sidebarBadges(selectedCompanyId!)
-      });
-    },
-    onError: (err) => {
-      setInviteError(
-        err instanceof Error ? err.message : "Failed to create invite"
-      );
     }
   });
 
@@ -182,14 +121,6 @@ export function CompanySettings() {
   function handleClearLogo() {
     clearLogoMutation.mutate();
   }
-
-  useEffect(() => {
-    void selectedCompanyId;
-    setInviteError(null);
-    setInviteSnippet(null);
-    setSnippetCopied(false);
-    setSnippetCopyDelightId(0);
-  }, [selectedCompanyId]);
 
   const archiveMutation = useMutation({
     mutationFn: ({
@@ -471,78 +402,6 @@ export function CompanySettings() {
       </div>
 
       <AccessSettingsSection selectedCompanyId={selectedCompanyId} />
-
-      {/* Invites */}
-      <div className="space-y-2">
-        <div className={LABEL}>Invites</div>
-        <div className={`space-y-3 px-4 py-4 ${CARD}`}>
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-slate-500 dark:text-[#8b97ad]">
-              Generate an OpenClaw agent invite snippet.
-            </span>
-            <HintIcon text="Creates a short-lived OpenClaw agent invite and renders a copy-ready prompt." />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              className={`h-7 text-xs ${CTA}`}
-              onClick={() => inviteMutation.mutate()}
-              disabled={inviteMutation.isPending}
-            >
-              {inviteMutation.isPending
-                ? "Generating..."
-                : "Generate OpenClaw Invite Prompt"}
-            </Button>
-          </div>
-          {inviteError && (
-            <p className="text-sm text-destructive">{inviteError}</p>
-          )}
-          {inviteSnippet && (
-            <div className="rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] p-2">
-              <div className="flex min-w-0 items-center justify-between gap-2">
-                <div className="min-w-0 truncate text-xs text-slate-500 dark:text-[#8b97ad]">
-                  OpenClaw Invite Prompt
-                </div>
-                {snippetCopied && (
-                  <span
-                    key={snippetCopyDelightId}
-                    className="flex shrink-0 items-center gap-1 text-xs text-lime-700 dark:text-[#a3e635] animate-pulse"
-                  >
-                    <Check className="h-3 w-3" />
-                    Copied
-                  </span>
-                )}
-              </div>
-              <div className="mt-1 space-y-1.5">
-                <textarea
-                  className={`h-[28rem] w-full px-2 py-1.5 font-mono text-xs ${FIELD}`}
-                  value={inviteSnippet}
-                  readOnly
-                />
-                <div className="flex justify-end">
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-xs text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(inviteSnippet);
-                        setSnippetCopied(true);
-                        setSnippetCopyDelightId((prev) => prev + 1);
-                        setTimeout(() => setSnippetCopied(false), 2000);
-                      } catch {
-                        /* clipboard may not be available */
-                      }
-                    }}
-                  >
-                    {snippetCopied ? "Copied snippet" : "Copy snippet"}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
 
       {/* Danger Zone */}
       <div className="space-y-2">

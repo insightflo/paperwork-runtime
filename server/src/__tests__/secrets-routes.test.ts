@@ -122,7 +122,13 @@ describe("secret routes", () => {
     mockSecretService.remove.mockResolvedValue(secret());
     mockToolService.listDefinitions.mockResolvedValue([tool({ name: "daily-tech-scout" })]);
 
-    const res = await request(createApp()).delete(`/api/secrets/${SECRET_ID}`);
+    const res = await request(createApp({
+      type: "board",
+      userId: "board-user-1",
+      companyIds: [COMPANY_ID],
+      source: "session",
+      isInstanceAdmin: true,
+    })).delete(`/api/secrets/${SECRET_ID}`);
 
     expect(res.status).toBe(409);
     expect(res.body.usedByTools).toEqual(["daily-tech-scout"]);
@@ -135,7 +141,13 @@ describe("secret routes", () => {
     mockSecretService.getById.mockResolvedValue(secret());
     mockSecretService.remove.mockResolvedValue(secret());
 
-    const res = await request(createApp()).delete(`/api/secrets/${SECRET_ID}`);
+    const res = await request(createApp({
+      type: "board",
+      userId: "board-user-1",
+      companyIds: [COMPANY_ID],
+      source: "session",
+      isInstanceAdmin: true,
+    })).delete(`/api/secrets/${SECRET_ID}`);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true });
@@ -150,7 +162,13 @@ describe("secret routes", () => {
     mockSecretService.getById.mockResolvedValue(secret());
     mockSecretService.rotate.mockResolvedValue(secret({ latestVersion: 2 }));
 
-    const res = await request(createApp())
+    const res = await request(createApp({
+      type: "board",
+      userId: "board-user-1",
+      companyIds: [COMPANY_ID],
+      source: "session",
+      isInstanceAdmin: true,
+    }))
       .post(`/api/secrets/${SECRET_ID}/rotate`)
       .send({ value: "rotated-value-2" });
 

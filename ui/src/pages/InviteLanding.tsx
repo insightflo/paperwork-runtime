@@ -15,15 +15,14 @@ const joinAdapterOptions: AgentAdapterType[] = [...AGENT_ADAPTER_TYPES];
 const adapterLabels: Record<string, string> = {
   claude_local: "Claude (local)", codex_local: "Codex (local)",
   antigravity_local: "Antigravity (local)", gemini_local: "Gemini CLI (local)",
-  opencode_local: "OpenCode (local)", hermes_local: "Hermes Agent (local)",
-  commandcode_local: "Command Code (local)", openclaw_gateway: "OpenClaw Gateway",
+  opencode_local: "OpenCode (local)", commandcode_local: "Command Code (local)",
   cursor: "Cursor (local)", pi_local: "Pi (local)",
   process: "Process", http: "HTTP",
 };
 
 const ENABLED_INVITE_ADAPTERS = new Set([
   "claude_local", "codex_local", "antigravity_local", "gemini_local",
-  "opencode_local", "hermes_local", "cursor", "commandcode_local",
+  "opencode_local", "cursor", "commandcode_local",
   "pi_local",
 ]);
 
@@ -317,7 +316,7 @@ export function InviteLandingPage() {
               >
                 {joinAdapterOptions.map((type) => (
                   <option key={type} value={type} disabled={!ENABLED_INVITE_ADAPTERS.has(type)}>
-                    {adapterLabels[type]}{!ENABLED_INVITE_ADAPTERS.has(type) ? " (Coming soon)" : ""}
+                    {adapterLabels[type] ?? type}{!ENABLED_INVITE_ADAPTERS.has(type) ? " (Coming soon)" : ""}
                   </option>
                 ))}
               </select>

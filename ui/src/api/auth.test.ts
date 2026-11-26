@@ -62,7 +62,7 @@ describe("authApi", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/sign-in/email", {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ email: "u@example.com", password: "secret" }),
     });
   });
@@ -94,7 +94,7 @@ describe("authApi", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/sign-in/social", {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         provider: "google",
         callbackURL: "https://papercompany.example.test/missions",
@@ -114,7 +114,7 @@ describe("authApi", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/request-password-reset", {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         email: "u@example.com",
         redirectTo: "https://paperwork.example.test/auth",
@@ -130,7 +130,7 @@ describe("authApi", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/reset-password", {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ token: "token-1", newPassword: "new-secret-1" }),
     });
   });

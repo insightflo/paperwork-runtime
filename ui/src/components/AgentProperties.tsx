@@ -21,7 +21,6 @@ const adapterLabels: Record<string, string> = {
   opencode_local: "OpenCode (local)",
   commandcode_local: "Command Code (local)",
   pi_local: "Pi (local)",
-  openclaw_gateway: "OpenClaw Gateway",
   cursor: "Cursor (local)",
   process: "Process",
   http: "HTTP",

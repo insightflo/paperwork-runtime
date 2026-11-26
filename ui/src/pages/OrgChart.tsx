@@ -105,7 +105,6 @@ const adapterLabels: Record<string, string> = {
   commandcode_local: "Command Code",
   pi_local: "Pi",
   cursor: "Cursor",
-  openclaw_gateway: "OpenClaw Gateway",
   process: "Process",
   http: "HTTP",
 };

@@ -76,36 +76,44 @@ export function SortableCompanyItem({
               e.preventDefault();
               onSelect();
             }}
-            className="relative flex items-center justify-center group overflow-visible"
+            className="relative flex w-full items-center justify-center group overflow-visible"
           >
             <div
               className={cn(
-                "absolute left-[-14px] w-1 rounded-r-full bg-foreground transition-[height] duration-150",
-                isSelected ? "h-5" : "h-0 group-hover:h-2",
+                "absolute left-[-8px] w-[3px] rounded-r-[3px] transition-[height,background-color,box-shadow] duration-150",
+                isSelected
+                  ? "h-5 bg-[#2563eb] dark:bg-[#a3e635] dark:shadow-[0_0_10px_rgba(163,230,53,0.42)]"
+                  : "h-0 group-hover:h-2 bg-[#2563eb]/60 dark:bg-[#60a5fa]/65",
               )}
             />
             <div
-              className={cn("relative overflow-visible transition-transform duration-150", isDragging && "scale-105")}
+              className={cn(
+                "relative flex h-9 w-9 items-center justify-center rounded-[8px] border overflow-visible transition-all duration-150",
+                isSelected
+                  ? "border-[#2563eb]/35 bg-[#2563eb]/10 text-[#2563eb] dark:border-[#a3e635]/28 dark:bg-[linear-gradient(180deg,rgba(163,230,53,0.14),rgba(163,230,53,0.05))] dark:text-[#a3e635] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
+                  : "border-transparent bg-transparent hover:border-slate-300/70 hover:bg-slate-200/60 dark:hover:border-white/[0.065] dark:hover:bg-white/[0.04]",
+                isDragging && "scale-105 shadow-lg",
+              )}
             >
               <CompanyPatternIcon
                 companyName={company.name}
                 logoUrl={company.logoUrl}
                 brandColor={company.brandColor}
                 className={cn(
-                  isSelected ? "rounded-[14px]" : "rounded-[22px] group-hover:rounded-[14px]",
+                  "h-7 w-7 rounded-[6px] text-xs",
                   isDragging && "shadow-lg",
                 )}
               />
               {hasLiveAgents && (
                 <span className="pointer-events-none absolute -right-0.5 -top-0.5 z-10">
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-blue-400 opacity-80" />
-                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-blue-500 ring-2 ring-background" />
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-[#a3e635] opacity-80" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-[#65a30d] dark:bg-[#a3e635] ring-2 ring-[#f1f5f9] dark:ring-[#090c12]" />
                   </span>
                 </span>
               )}
               {hasUnreadInbox && (
-                <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 z-10 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-background" />
+                <span className="pointer-events-none absolute -bottom-0.5 -right-0.5 z-10 h-2 w-2 rounded-full bg-red-500 ring-2 ring-[#f1f5f9] dark:ring-[#090c12]" />
               )}
             </div>
           </a>

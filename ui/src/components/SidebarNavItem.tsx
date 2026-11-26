@@ -33,7 +33,7 @@ function renderCompactIndicator(opts: {
     return (
       <span
         className={cn(
-          "absolute -right-1 -top-1 min-w-4 rounded-full px-1 text-center text-[10px] font-semibold leading-4 tabular-nums",
+          "absolute -right-1 -top-1 min-w-4 rounded-full px-1 text-center font-mono text-[10px] font-semibold leading-4 tabular-nums",
           opts.badgeTone === "danger" ? "bg-red-600/90 text-red-50" : "bg-primary text-primary-foreground",
         )}
       >
@@ -53,27 +53,34 @@ function renderCompactIndicator(opts: {
     );
   }
   if (opts.liveCount != null && opts.liveCount > 0) {
-    return <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-blue-500 animate-pulse" />;
+    return <span className="pw-live-dot absolute right-1 top-1 h-2 w-2" />;
   }
   return null;
 }
 
 /**
- * Compact right-aligned pill. It never shrinks or wraps and is width-capped, so a long value
- * truncates inside the pill instead of colliding with (or squeezing out) the truncated label.
+ * Compact right-aligned Combo 1 `.nav-count` mono pill. Never shrinks or wraps and is width-capped,
+ * turning lime-tinted when the parent NavLink carries `aria-current="page"`.
  */
 const COUNT_PILL =
-  "inline-flex h-[18px] min-w-[18px] max-w-[7.5rem] shrink-0 tabular-nums items-center justify-center gap-1 whitespace-nowrap rounded-full px-1.5 text-[11px] font-semibold leading-none";
-const SUBTLE_PILL = "border-border bg-muted text-muted-foreground dark:border-[#242d3f] dark:bg-[#111622]";
-const AMBER_PILL = "border-amber-500/35 bg-amber-500/15 text-amber-700 dark:text-[var(--pw-amber)]";
-/** Active row: subtle panel pill with a 2px left accent (the cobalt token is defined by the dark theme). */
-const ACTIVE_ROW = cn(
-  "border-l-primary bg-accent/60 text-foreground",
-  "dark:border-[#242d3f] dark:border-l-[var(--pw-cobalt)] dark:bg-[#111622]",
+  "inline-flex h-[18px] min-w-[18px] max-w-[7.5rem] shrink-0 tabular-nums items-center justify-center gap-1 whitespace-nowrap rounded-[5px] px-1.5 font-mono text-[10.5px] font-medium leading-none transition-colors";
+const SUBTLE_PILL = cn(
+  "bg-slate-200/70 text-muted-foreground dark:bg-white/[0.04] dark:text-muted-foreground",
+  "group-aria-[current=page]:bg-[#65a30d]/15 group-aria-[current=page]:text-[#4d7c0f]",
+  "dark:group-aria-[current=page]:bg-[#a3e635]/14 dark:group-aria-[current=page]:text-[#a3e635]",
 );
-const INACTIVE_ICON = "h-4 w-4 shrink-0";
+const AMBER_PILL = "bg-amber-500/15 text-amber-700 dark:bg-amber-500/15 dark:text-[var(--pw-amber)]";
+/** Combo 1 `.nav-item.active`: top-lit obsidian surface with specular top hairline. */
+const ACTIVE_ROW = cn(
+  "border-slate-200/90 bg-white text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(15,23,42,0.04)]",
+  "dark:border-white/[0.065] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.065),rgba(255,255,255,0.03))] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.095)]",
+);
+const INACTIVE_ICON = "h-3.5 w-3.5 shrink-0";
 /** The link carries `group`; NavLink sets `aria-current="page"` on the active route. */
-const ACTIVE_ICON = cn(INACTIVE_ICON, "group-aria-[current=page]:dark:text-[var(--pw-cobalt)]");
+const ACTIVE_ICON = cn(
+  INACTIVE_ICON,
+  "group-aria-[current=page]:text-[#4d7c0f] dark:group-aria-[current=page]:text-[#a3e635]",
+);
 
 export function SidebarNavItem({
   to,
@@ -115,10 +122,10 @@ export function SidebarNavItem({
         onFocus={warmRoute}
         className={({ isActive }) =>
           cn(
-            "group relative mx-auto flex h-9 w-9 items-center justify-center rounded-[10px] border border-l-2 transition-colors",
+            "group relative mx-auto flex h-9 w-9 items-center justify-center rounded-[8px] border transition-all duration-150",
             isActive
               ? cn(ACTIVE_ROW, "font-medium")
-              : "border-transparent text-foreground/75 hover:bg-accent/50 hover:text-foreground",
+              : "border-transparent text-foreground/75 hover:bg-slate-200/50 hover:text-foreground dark:text-[#94a3b8] dark:hover:bg-white/[0.04] dark:hover:text-[#eef2f8]",
             className,
           )
         }
@@ -140,10 +147,10 @@ export function SidebarNavItem({
       onFocus={warmRoute}
       className={({ isActive }) =>
         cn(
-          "group flex items-center gap-2.5 rounded-[9px] border border-l-2 px-3 py-1.5 text-[13px] font-medium transition-colors",
+          "group flex items-center gap-2 rounded-[7px] border px-2.5 py-[7px] text-[12.5px] font-medium transition-all duration-150",
           isActive
             ? ACTIVE_ROW
-            : "border-transparent text-foreground/80 hover:bg-accent/50 hover:text-foreground",
+            : "border-transparent text-foreground/75 hover:bg-slate-200/50 hover:text-foreground dark:text-[#94a3b8] dark:hover:bg-white/[0.04] dark:hover:text-[#eef2f8]",
           className,
         )
       }
@@ -163,19 +170,28 @@ export function SidebarNavItem({
             </span>
           )}
           {hasLiveCount && (
-            <span title={`${liveCount} live runs`} className={cn(COUNT_PILL, SUBTLE_PILL, "text-blue-600 dark:text-[var(--pw-cobalt)]")}>
-              <span className="relative flex h-2 w-2 shrink-0">
-                <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-blue-400 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
-              </span>
-              {liveCount} live
+            <span
+              title={`${liveCount} live runs`}
+              className={cn(
+                COUNT_PILL,
+                "bg-[#65a30d]/12 text-[#4d7c0f] dark:bg-[#a3e635]/14 dark:text-[#a3e635]",
+              )}
+            >
+              <span className="pw-live-dot h-1.5 w-1.5" />
+              {liveCount} LIVE
             </span>
           )}
           {hasBadge && (
             <span
               className={cn(
                 COUNT_PILL,
-                badgeTone === "danger" ? "bg-red-600/90 text-red-50" : "bg-primary text-primary-foreground",
+                badgeTone === "danger"
+                  ? "bg-red-600/90 text-red-50"
+                  : cn(
+                      "bg-slate-200/80 text-foreground dark:bg-white/[0.08] dark:text-[#eef2f8]",
+                      "group-aria-[current=page]:bg-[#65a30d]/15 group-aria-[current=page]:text-[#4d7c0f]",
+                      "dark:group-aria-[current=page]:bg-[#a3e635]/14 dark:group-aria-[current=page]:text-[#a3e635]",
+                    ),
               )}
             >
               {badge}

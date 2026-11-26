@@ -15,7 +15,7 @@ import {
   logActivity,
 } from "../services/index.js";
 import type { StorageService } from "../storage/types.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess, getActorInfo } from "./authz.js";
 
 export function companyRoutes(db: Db, _storage?: StorageService) {
   const router = Router();
@@ -158,7 +158,7 @@ export function companyRoutes(db: Db, _storage?: StorageService) {
       }
       body = updateCompanyBrandingSchema.parse(req.body);
     } else {
-      assertBoard(req);
+      await assertCompanyAdminAccess(access, req, companyId);
       body = updateCompanySchema.parse(req.body);
     }
 
@@ -182,9 +182,8 @@ export function companyRoutes(db: Db, _storage?: StorageService) {
   });
 
   router.post("/:companyId/archive", async (req, res) => {
-    assertBoard(req);
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyAdminAccess(access, req, companyId);
     const company = await svc.archive(companyId);
     if (!company) {
       res.status(404).json({ error: "Company not found" });
@@ -202,9 +201,8 @@ export function companyRoutes(db: Db, _storage?: StorageService) {
   });
 
   router.delete("/:companyId", async (req, res) => {
-    assertBoard(req);
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyAdminAccess(access, req, companyId);
     const company = await svc.remove(companyId);
     if (!company) {
       res.status(404).json({ error: "Company not found" });

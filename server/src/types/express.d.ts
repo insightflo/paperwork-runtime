@@ -8,6 +8,9 @@ declare global {
       actor: {
         type: "board" | "agent" | "none";
         userId?: string;
+        sessionId?: string;
+        email?: string | null;
+        name?: string | null;
         agentId?: string;
         companyId?: string;
         companyIds?: string[];

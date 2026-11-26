@@ -1,6 +1,5 @@
 import {
   createHash,
-  generateKeyPairSync,
   randomBytes,
   timingSafeEqual
 } from "node:crypto";
@@ -9,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Router } from "express";
 import type { Request } from "express";
+import { z } from "zod";
 import { and, eq, isNull, desc } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import {
@@ -22,7 +22,6 @@ import {
   createCliAuthChallengeSchema,
   claimJoinRequestApiKeySchema,
   createCompanyInviteSchema,
-  createOpenClawInvitePromptSchema,
   listJoinRequestsQuerySchema,
   resolveCliAuthChallengeSchema,
   updateMemberPermissionsSchema,
@@ -45,7 +44,6 @@ import {
   unauthorized,
   badRequest
 } from "../errors.js";
-import { logger } from "../middleware/logger.js";
 import { validate } from "../middleware/validate.js";
 import {
   accessService,
@@ -59,7 +57,7 @@ import {
   requireAgentApiKeyResponsibleUserBinding,
   type AgentApiKeyResponsibilityContext,
 } from "../services/agent-api-key-policy.js";
-import { assertCompanyAccess } from "./authz.js";
+import { TEAM_ROLES, assertCompanyAccess, canManageTeamRole } from "./authz.js";
 import {
   claimBoardOwnership,
   inspectBoardClaimChallenge
@@ -227,358 +225,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function normalizeHeaderValue(
-  value: unknown,
-  depth: number = 0
-): string | null {
-  const direct = nonEmptyTrimmedString(value);
-  if (direct) return direct;
-  if (!isPlainObject(value) || depth >= 3) return null;
-
-  const candidateKeys = [
-    "value",
-    "token",
-    "secret",
-    "apiKey",
-    "api_key",
-    "auth",
-    "authToken",
-    "auth_token",
-    "accessToken",
-    "access_token",
-    "authorization",
-    "bearer",
-    "header",
-    "raw",
-    "text",
-    "string"
-  ];
-  for (const key of candidateKeys) {
-    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
-    const normalized = normalizeHeaderValue(
-      (value as Record<string, unknown>)[key],
-      depth + 1
-    );
-    if (normalized) return normalized;
-  }
-
-  const entries = Object.entries(value as Record<string, unknown>);
-  if (entries.length === 1) {
-    const [singleKey, singleValue] = entries[0];
-    const normalizedKey = singleKey.trim().toLowerCase();
-    if (
-      normalizedKey !== "type" &&
-      normalizedKey !== "version" &&
-      normalizedKey !== "secretid" &&
-      normalizedKey !== "secret_id"
-    ) {
-      const normalized = normalizeHeaderValue(singleValue, depth + 1);
-      if (normalized) return normalized;
-    }
-  }
-
-  return null;
-}
-
-function extractHeaderEntries(input: unknown): Array<[string, unknown]> {
-  if (isPlainObject(input)) {
-    return Object.entries(input);
-  }
-  if (!Array.isArray(input)) {
-    return [];
-  }
-
-  const entries: Array<[string, unknown]> = [];
-  for (const item of input) {
-    if (Array.isArray(item)) {
-      const key = nonEmptyTrimmedString(item[0]);
-      if (!key) continue;
-      entries.push([key, item[1]]);
-      continue;
-    }
-    if (!isPlainObject(item)) continue;
-
-    const mapped = item as Record<string, unknown>;
-    const explicitKey =
-      nonEmptyTrimmedString(mapped.key) ??
-      nonEmptyTrimmedString(mapped.name) ??
-      nonEmptyTrimmedString(mapped.header);
-    if (explicitKey) {
-      const explicitValue = Object.prototype.hasOwnProperty.call(
-        mapped,
-        "value"
-      )
-        ? mapped.value
-        : Object.prototype.hasOwnProperty.call(mapped, "token")
-        ? mapped.token
-        : Object.prototype.hasOwnProperty.call(mapped, "secret")
-        ? mapped.secret
-        : mapped;
-      entries.push([explicitKey, explicitValue]);
-      continue;
-    }
-
-    const singleEntry = Object.entries(mapped);
-    if (singleEntry.length === 1) {
-      entries.push(singleEntry[0] as [string, unknown]);
-    }
-  }
-
-  return entries;
-}
-
-function normalizeHeaderMap(
-  input: unknown
-): Record<string, string> | undefined {
-  const entries = extractHeaderEntries(input);
-  if (entries.length === 0) return undefined;
-
-  const out: Record<string, string> = {};
-  for (const [key, value] of entries) {
-    const normalizedValue = normalizeHeaderValue(value);
-    if (!normalizedValue) continue;
-    const trimmedKey = key.trim();
-    const trimmedValue = normalizedValue.trim();
-    if (!trimmedKey || !trimmedValue) continue;
-    out[trimmedKey] = trimmedValue;
-  }
-  return Object.keys(out).length > 0 ? out : undefined;
-}
-
-function nonEmptyTrimmedString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function headerMapHasKeyIgnoreCase(
-  headers: Record<string, string>,
-  targetKey: string
-): boolean {
-  const normalizedTarget = targetKey.trim().toLowerCase();
-  return Object.keys(headers).some(
-    (key) => key.trim().toLowerCase() === normalizedTarget
+const updateCompanyMemberSchema = z
+  .object({
+    membershipRole: z.enum(TEAM_ROLES).optional(),
+    status: z.enum(["pending", "active", "suspended"]).optional(),
+  })
+  .refine(
+    (value) => value.membershipRole !== undefined || value.status !== undefined,
+    { message: "At least one of membershipRole or status must be provided" },
   );
-}
-
-function headerMapGetIgnoreCase(
-  headers: Record<string, string>,
-  targetKey: string
-): string | null {
-  const normalizedTarget = targetKey.trim().toLowerCase();
-  const key = Object.keys(headers).find(
-    (candidate) => candidate.trim().toLowerCase() === normalizedTarget
-  );
-  if (!key) return null;
-  const value = headers[key];
-  return typeof value === "string" ? value : null;
-}
-
-function tokenFromAuthorizationHeader(rawHeader: string | null): string | null {
-  const trimmed = nonEmptyTrimmedString(rawHeader);
-  if (!trimmed) return null;
-  const bearerMatch = trimmed.match(/^bearer\s+(.+)$/i);
-  if (bearerMatch?.[1]) {
-    return nonEmptyTrimmedString(bearerMatch[1]);
-  }
-  return trimmed;
-}
-
-function parseBooleanLike(value: unknown): boolean | null {
-  if (typeof value === "boolean") return value;
-  if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "true" || normalized === "1") return true;
-  if (normalized === "false" || normalized === "0") return false;
-  return null;
-}
-
-function generateEd25519PrivateKeyPem(): string {
-  const generated = generateKeyPairSync("ed25519");
-  return generated.privateKey
-    .export({ type: "pkcs8", format: "pem" })
-    .toString();
-}
-
-export function buildJoinDefaultsPayloadForAccept(input: {
-  adapterType: string | null;
-  defaultsPayload: unknown;
-  paperclipApiUrl?: unknown;
-  inboundOpenClawAuthHeader?: string | null;
-  inboundOpenClawTokenHeader?: string | null;
-}): unknown {
-  if (input.adapterType !== "openclaw_gateway") {
-    return input.defaultsPayload;
-  }
-
-  const merged = isPlainObject(input.defaultsPayload)
-    ? { ...(input.defaultsPayload as Record<string, unknown>) }
-    : ({} as Record<string, unknown>);
-
-  if (!nonEmptyTrimmedString(merged.paperclipApiUrl)) {
-    const legacyPaperclipApiUrl = nonEmptyTrimmedString(input.paperclipApiUrl);
-    if (legacyPaperclipApiUrl) merged.paperclipApiUrl = legacyPaperclipApiUrl;
-  }
-  const mergedHeaders = normalizeHeaderMap(merged.headers) ?? {};
-
-  const inboundOpenClawAuthHeader = nonEmptyTrimmedString(
-    input.inboundOpenClawAuthHeader
-  );
-  const inboundOpenClawTokenHeader = nonEmptyTrimmedString(
-    input.inboundOpenClawTokenHeader
-  );
-  if (
-    inboundOpenClawTokenHeader &&
-    !headerMapHasKeyIgnoreCase(mergedHeaders, "x-openclaw-token")
-  ) {
-    mergedHeaders["x-openclaw-token"] = inboundOpenClawTokenHeader;
-  }
-  if (
-    inboundOpenClawAuthHeader &&
-    !headerMapHasKeyIgnoreCase(mergedHeaders, "x-openclaw-auth")
-  ) {
-    mergedHeaders["x-openclaw-auth"] = inboundOpenClawAuthHeader;
-  }
-
-  if (Object.keys(mergedHeaders).length > 0) {
-    merged.headers = mergedHeaders;
-  } else {
-    delete merged.headers;
-  }
-
-  const discoveredToken =
-    headerMapGetIgnoreCase(mergedHeaders, "x-openclaw-token") ??
-    headerMapGetIgnoreCase(mergedHeaders, "x-openclaw-auth") ??
-    tokenFromAuthorizationHeader(
-      headerMapGetIgnoreCase(mergedHeaders, "authorization")
-    );
-  if (
-    discoveredToken &&
-    !headerMapHasKeyIgnoreCase(mergedHeaders, "x-openclaw-token")
-  ) {
-    mergedHeaders["x-openclaw-token"] = discoveredToken;
-  }
-
-  return Object.keys(merged).length > 0 ? merged : null;
-}
-
-export function mergeJoinDefaultsPayloadForReplay(
-  existingDefaultsPayload: unknown,
-  nextDefaultsPayload: unknown
-): unknown {
-  if (
-    !isPlainObject(existingDefaultsPayload) &&
-    !isPlainObject(nextDefaultsPayload)
-  ) {
-    return nextDefaultsPayload ?? existingDefaultsPayload;
-  }
-  if (!isPlainObject(existingDefaultsPayload)) {
-    return nextDefaultsPayload;
-  }
-  if (!isPlainObject(nextDefaultsPayload)) {
-    return existingDefaultsPayload;
-  }
-
-  const merged: Record<string, unknown> = {
-    ...(existingDefaultsPayload as Record<string, unknown>),
-    ...(nextDefaultsPayload as Record<string, unknown>)
-  };
-
-  const existingHeaders = normalizeHeaderMap(
-    (existingDefaultsPayload as Record<string, unknown>).headers
-  );
-  const nextHeaders = normalizeHeaderMap(
-    (nextDefaultsPayload as Record<string, unknown>).headers
-  );
-  if (existingHeaders || nextHeaders) {
-    merged.headers = {
-      ...(existingHeaders ?? {}),
-      ...(nextHeaders ?? {})
-    };
-  } else if (Object.prototype.hasOwnProperty.call(merged, "headers")) {
-    delete merged.headers;
-  }
-
-  return merged;
-}
-
-export function canReplayOpenClawGatewayInviteAccept(input: {
-  requestType: "human" | "agent";
-  adapterType: string | null;
-  existingJoinRequest: Pick<
-    typeof joinRequests.$inferSelect,
-    "requestType" | "adapterType" | "status"
-  > | null;
-}): boolean {
-  if (
-    input.requestType !== "agent" ||
-    input.adapterType !== "openclaw_gateway"
-  ) {
-    return false;
-  }
-  if (!input.existingJoinRequest) {
-    return false;
-  }
-  if (
-    input.existingJoinRequest.requestType !== "agent" ||
-    input.existingJoinRequest.adapterType !== "openclaw_gateway"
-  ) {
-    return false;
-  }
-  return (
-    input.existingJoinRequest.status === "pending_approval" ||
-    input.existingJoinRequest.status === "approved"
-  );
-}
-
-function summarizeSecretForLog(
-  value: unknown
-): { present: true; length: number; sha256Prefix: string } | null {
-  const trimmed = nonEmptyTrimmedString(value);
-  if (!trimmed) return null;
-  return {
-    present: true,
-    length: trimmed.length,
-    sha256Prefix: hashToken(trimmed).slice(0, 12)
-  };
-}
-
-function summarizeOpenClawGatewayDefaultsForLog(defaultsPayload: unknown) {
-  const defaults = isPlainObject(defaultsPayload)
-    ? (defaultsPayload as Record<string, unknown>)
-    : null;
-  const headers = defaults ? normalizeHeaderMap(defaults.headers) : undefined;
-  const gatewayTokenValue = headers
-    ? headerMapGetIgnoreCase(headers, "x-openclaw-token") ??
-      headerMapGetIgnoreCase(headers, "x-openclaw-auth") ??
-      tokenFromAuthorizationHeader(
-        headerMapGetIgnoreCase(headers, "authorization")
-      )
-    : null;
-  return {
-    present: Boolean(defaults),
-    keys: defaults ? Object.keys(defaults).sort() : [],
-    url: defaults ? nonEmptyTrimmedString(defaults.url) : null,
-    paperclipApiUrl: defaults
-      ? nonEmptyTrimmedString(defaults.paperclipApiUrl)
-      : null,
-    headerKeys: headers ? Object.keys(headers).sort() : [],
-    sessionKeyStrategy: defaults
-      ? nonEmptyTrimmedString(defaults.sessionKeyStrategy)
-      : null,
-    disableDeviceAuth: defaults
-      ? parseBooleanLike(defaults.disableDeviceAuth)
-      : null,
-    waitTimeoutMs:
-      defaults && typeof defaults.waitTimeoutMs === "number"
-        ? defaults.waitTimeoutMs
-        : null,
-    devicePrivateKeyPem: defaults
-      ? summarizeSecretForLog(defaults.devicePrivateKeyPem)
-      : null,
-    gatewayToken: summarizeSecretForLog(gatewayTokenValue)
-  };
-}
 
 export function normalizeAgentDefaultsForJoin(input: {
   adapterType: string | null;
@@ -588,249 +243,14 @@ export function normalizeAgentDefaultsForJoin(input: {
   bindHost: string;
   allowedHostnames: string[];
 }) {
-  const fatalErrors: string[] = [];
-  const diagnostics: JoinDiagnostic[] = [];
-  if (input.adapterType !== "openclaw_gateway") {
-    const normalized = isPlainObject(input.defaultsPayload)
-      ? (input.defaultsPayload as Record<string, unknown>)
-      : null;
-    return { normalized, diagnostics, fatalErrors };
-  }
-
-  if (!isPlainObject(input.defaultsPayload)) {
-    diagnostics.push({
-      code: "openclaw_gateway_defaults_missing",
-      level: "warn",
-      message:
-        "No OpenClaw gateway config was provided in agentDefaultsPayload.",
-      hint:
-        "Include agentDefaultsPayload.url and headers.x-openclaw-token for OpenClaw gateway joins."
-    });
-    fatalErrors.push(
-      "agentDefaultsPayload is required for adapterType=openclaw_gateway"
-    );
-    return {
-      normalized: null as Record<string, unknown> | null,
-      diagnostics,
-      fatalErrors
-    };
-  }
-
-  const defaults = input.defaultsPayload as Record<string, unknown>;
-  const normalized: Record<string, unknown> = {};
-
-  let gatewayUrl: URL | null = null;
-  const rawGatewayUrl = nonEmptyTrimmedString(defaults.url);
-  if (!rawGatewayUrl) {
-    diagnostics.push({
-      code: "openclaw_gateway_url_missing",
-      level: "warn",
-      message: "OpenClaw gateway URL is missing.",
-      hint: "Set agentDefaultsPayload.url to ws:// or wss:// gateway URL."
-    });
-    fatalErrors.push("agentDefaultsPayload.url is required");
-  } else {
-    try {
-      gatewayUrl = new URL(rawGatewayUrl);
-      if (gatewayUrl.protocol !== "ws:" && gatewayUrl.protocol !== "wss:") {
-        diagnostics.push({
-          code: "openclaw_gateway_url_protocol",
-          level: "warn",
-          message: `OpenClaw gateway URL must use ws:// or wss:// (got ${gatewayUrl.protocol}).`
-        });
-        fatalErrors.push(
-          "agentDefaultsPayload.url must use ws:// or wss:// for openclaw_gateway"
-        );
-      } else {
-        normalized.url = gatewayUrl.toString();
-        diagnostics.push({
-          code: "openclaw_gateway_url_configured",
-          level: "info",
-          message: `Gateway endpoint set to ${gatewayUrl.toString()}`
-        });
-      }
-    } catch {
-      diagnostics.push({
-        code: "openclaw_gateway_url_invalid",
-        level: "warn",
-        message: `Invalid OpenClaw gateway URL: ${rawGatewayUrl}`
-      });
-      fatalErrors.push("agentDefaultsPayload.url is not a valid URL");
-    }
-  }
-
-  const headers = normalizeHeaderMap(defaults.headers) ?? {};
-  const gatewayToken =
-    headerMapGetIgnoreCase(headers, "x-openclaw-token") ??
-    headerMapGetIgnoreCase(headers, "x-openclaw-auth") ??
-    tokenFromAuthorizationHeader(headerMapGetIgnoreCase(headers, "authorization"));
-  if (gatewayToken && !headerMapHasKeyIgnoreCase(headers, "x-openclaw-token")) {
-    headers["x-openclaw-token"] = gatewayToken;
-  }
-  if (Object.keys(headers).length > 0) {
-    normalized.headers = headers;
-  }
-
-  if (!gatewayToken) {
-    diagnostics.push({
-      code: "openclaw_gateway_auth_header_missing",
-      level: "warn",
-      message: "Gateway auth token is missing from agent defaults.",
-      hint:
-        "Set agentDefaultsPayload.headers.x-openclaw-token (or legacy x-openclaw-auth)."
-    });
-    fatalErrors.push(
-      "agentDefaultsPayload.headers.x-openclaw-token (or x-openclaw-auth) is required"
-    );
-  } else if (gatewayToken.trim().length < 16) {
-    diagnostics.push({
-      code: "openclaw_gateway_auth_header_too_short",
-      level: "warn",
-      message: `Gateway auth token appears too short (${gatewayToken.trim().length} chars).`,
-      hint:
-        "Use the full gateway auth token from ~/.openclaw/openclaw.json (typically long random string)."
-    });
-    fatalErrors.push(
-      "agentDefaultsPayload.headers.x-openclaw-token is too short; expected a full gateway token"
-    );
-  } else {
-    diagnostics.push({
-      code: "openclaw_gateway_auth_header_configured",
-      level: "info",
-      message: "Gateway auth token configured."
-    });
-  }
-
-  if (isPlainObject(defaults.payloadTemplate)) {
-    normalized.payloadTemplate = defaults.payloadTemplate;
-  }
-
-  const parsedDisableDeviceAuth = parseBooleanLike(defaults.disableDeviceAuth);
-  const disableDeviceAuth = parsedDisableDeviceAuth === true;
-  if (parsedDisableDeviceAuth !== null) {
-    normalized.disableDeviceAuth = parsedDisableDeviceAuth;
-  }
-
-  const configuredDevicePrivateKeyPem = nonEmptyTrimmedString(
-    defaults.devicePrivateKeyPem
-  );
-  if (configuredDevicePrivateKeyPem) {
-    normalized.devicePrivateKeyPem = configuredDevicePrivateKeyPem;
-    diagnostics.push({
-      code: "openclaw_gateway_device_key_configured",
-      level: "info",
-      message:
-        "Gateway device key configured. Pairing approvals should persist for this agent."
-    });
-  } else if (!disableDeviceAuth) {
-    try {
-      normalized.devicePrivateKeyPem = generateEd25519PrivateKeyPem();
-      diagnostics.push({
-        code: "openclaw_gateway_device_key_generated",
-        level: "info",
-        message:
-          "Generated persistent gateway device key for this join. Pairing approvals should persist for this agent."
-      });
-    } catch (err) {
-      diagnostics.push({
-        code: "openclaw_gateway_device_key_generate_failed",
-        level: "warn",
-        message: `Failed to generate gateway device key: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-        hint:
-          "Set agentDefaultsPayload.devicePrivateKeyPem explicitly or set disableDeviceAuth=true."
-      });
-      fatalErrors.push(
-        "Failed to generate gateway device key. Set devicePrivateKeyPem or disableDeviceAuth=true."
-      );
-    }
-  }
-
-  const waitTimeoutMs =
-    typeof defaults.waitTimeoutMs === "number" &&
-    Number.isFinite(defaults.waitTimeoutMs)
-      ? Math.floor(defaults.waitTimeoutMs)
-      : typeof defaults.waitTimeoutMs === "string"
-      ? Number.parseInt(defaults.waitTimeoutMs.trim(), 10)
-      : NaN;
-  if (Number.isFinite(waitTimeoutMs) && waitTimeoutMs > 0) {
-    normalized.waitTimeoutMs = waitTimeoutMs;
-  }
-
-  const timeoutSec =
-    typeof defaults.timeoutSec === "number" && Number.isFinite(defaults.timeoutSec)
-      ? Math.floor(defaults.timeoutSec)
-      : typeof defaults.timeoutSec === "string"
-      ? Number.parseInt(defaults.timeoutSec.trim(), 10)
-      : NaN;
-  if (Number.isFinite(timeoutSec) && timeoutSec > 0) {
-    normalized.timeoutSec = timeoutSec;
-  }
-
-  const sessionKeyStrategy = nonEmptyTrimmedString(defaults.sessionKeyStrategy);
-  if (
-    sessionKeyStrategy === "fixed" ||
-    sessionKeyStrategy === "issue" ||
-    sessionKeyStrategy === "run"
-  ) {
-    normalized.sessionKeyStrategy = sessionKeyStrategy;
-  }
-
-  const sessionKey = nonEmptyTrimmedString(defaults.sessionKey);
-  if (sessionKey) {
-    normalized.sessionKey = sessionKey;
-  }
-
-  const role = nonEmptyTrimmedString(defaults.role);
-  if (role) {
-    normalized.role = role;
-  }
-
-  if (Array.isArray(defaults.scopes)) {
-    const scopes = defaults.scopes
-      .filter((entry): entry is string => typeof entry === "string")
-      .map((entry) => entry.trim())
-      .filter(Boolean);
-    if (scopes.length > 0) {
-      normalized.scopes = scopes;
-    }
-  }
-
-  const rawPaperclipApiUrl =
-    typeof defaults.paperclipApiUrl === "string"
-      ? defaults.paperclipApiUrl.trim()
-      : "";
-  if (rawPaperclipApiUrl) {
-    try {
-      const parsedPaperclipApiUrl = new URL(rawPaperclipApiUrl);
-      if (
-        parsedPaperclipApiUrl.protocol !== "http:" &&
-        parsedPaperclipApiUrl.protocol !== "https:"
-      ) {
-        diagnostics.push({
-          code: "openclaw_gateway_paperclip_api_url_protocol",
-          level: "warn",
-          message: `paperclipApiUrl must use http:// or https:// (got ${parsedPaperclipApiUrl.protocol}).`
-        });
-      } else {
-        normalized.paperclipApiUrl = parsedPaperclipApiUrl.toString();
-        diagnostics.push({
-          code: "openclaw_gateway_paperclip_api_url_configured",
-          level: "info",
-          message: `paperclipApiUrl set to ${parsedPaperclipApiUrl.toString()}`
-        });
-      }
-    } catch {
-      diagnostics.push({
-        code: "openclaw_gateway_paperclip_api_url_invalid",
-        level: "warn",
-        message: `Invalid paperclipApiUrl: ${rawPaperclipApiUrl}`
-      });
-    }
-  }
-
-  return { normalized, diagnostics, fatalErrors };
+  const normalized = isPlainObject(input.defaultsPayload)
+    ? (input.defaultsPayload as Record<string, unknown>)
+    : null;
+  return {
+    normalized,
+    diagnostics: [] as JoinDiagnostic[],
+    fatalErrors: [] as string[],
+  };
 }
 
 function mergeInviteDefaults(
@@ -1310,28 +730,6 @@ export function accessRoutes(
     if (!allowed) throw forbidden("Permission denied");
   }
 
-  async function assertCanGenerateOpenClawInvitePrompt(
-    req: Request,
-    companyId: string
-  ) {
-    assertCompanyAccess(req, companyId);
-    if (req.actor.type === "agent") {
-      if (!req.actor.agentId) throw forbidden("Agent authentication required");
-      const actorAgent = await agents.getById(req.actor.agentId);
-      if (!actorAgent || actorAgent.companyId !== companyId) {
-        throw forbidden("Agent key cannot access another company");
-      }
-      if (actorAgent.role !== "ceo") {
-        throw forbidden("Only CEO agents can generate OpenClaw invite prompts");
-      }
-      return;
-    }
-    if (req.actor.type !== "board") throw unauthorized();
-    if (isLocalImplicit(req)) return;
-    const allowed = await access.canUser(companyId, req.actor.userId, "users:invite");
-    if (!allowed) throw forbidden("Permission denied");
-  }
-
   async function createCompanyInviteForCompany(input: {
     req: Request;
     companyId: string;
@@ -1411,6 +809,19 @@ export function accessRoutes(
     res.type("text/markdown").send(markdown);
   });
 
+  router.get("/companies/:companyId/invites", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    await assertCompanyPermission(req, companyId, "users:invite");
+    const rows = await db
+      .select()
+      .from(invites)
+      .where(eq(invites.companyId, companyId))
+      .orderBy(desc(invites.createdAt));
+    res.json(
+      rows.map(({ tokenHash: _tokenHash, ...safe }) => safe),
+    );
+  });
+
   router.post(
     "/companies/:companyId/invites",
     validate(createCompanyInviteSchema),
@@ -1445,53 +856,9 @@ export function accessRoutes(
       });
 
       const inviteSummary = toInviteSummaryResponse(req, token, created);
+      const { tokenHash: _tokenHash, ...safeCreated } = created;
       res.status(201).json({
-        ...created,
-        token,
-        inviteUrl: `/invite/${token}`,
-        onboardingTextPath: inviteSummary.onboardingTextPath,
-        onboardingTextUrl: inviteSummary.onboardingTextUrl,
-        inviteMessage: inviteSummary.inviteMessage
-      });
-    }
-  );
-
-  router.post(
-    "/companies/:companyId/openclaw/invite-prompt",
-    validate(createOpenClawInvitePromptSchema),
-    async (req, res) => {
-      const companyId = req.params.companyId as string;
-      await assertCanGenerateOpenClawInvitePrompt(req, companyId);
-      const { token, created, normalizedAgentMessage } =
-        await createCompanyInviteForCompany({
-          req,
-          companyId,
-          allowedJoinTypes: "agent",
-          defaultsPayload: null,
-          agentMessage: req.body.agentMessage ?? null
-        });
-
-      await logActivity(db, {
-        companyId,
-        actorType: req.actor.type === "agent" ? "agent" : "user",
-        actorId:
-          req.actor.type === "agent"
-            ? req.actor.agentId ?? "unknown-agent"
-            : req.actor.userId ?? "board",
-        action: "invite.openclaw_prompt_created",
-        entityType: "invite",
-        entityId: created.id,
-        details: {
-          inviteType: created.inviteType,
-          allowedJoinTypes: created.allowedJoinTypes,
-          expiresAt: created.expiresAt.toISOString(),
-          hasAgentMessage: Boolean(normalizedAgentMessage)
-        }
-      });
-
-      const inviteSummary = toInviteSummaryResponse(req, token, created);
-      res.status(201).json({
-        ...created,
+        ...safeCreated,
         token,
         inviteUrl: `/invite/${token}`,
         onboardingTextPath: inviteSummary.onboardingTextPath,
@@ -1607,20 +974,11 @@ export function accessRoutes(
         .from(invites)
         .where(eq(invites.tokenHash, hashToken(token)))
         .then((rows) => rows[0] ?? null);
-      if (!invite || invite.revokedAt || inviteExpired(invite)) {
+      if (!invite || invite.revokedAt || invite.acceptedAt || inviteExpired(invite)) {
         throw notFound("Invite not found");
       }
-      const inviteAlreadyAccepted = Boolean(invite.acceptedAt);
-      const existingJoinRequestForInvite = inviteAlreadyAccepted
-        ? await db
-            .select()
-            .from(joinRequests)
-            .where(eq(joinRequests.inviteId, invite.id))
-            .then((rows) => rows[0] ?? null)
-        : null;
 
       if (invite.inviteType === "bootstrap_ceo") {
-        if (inviteAlreadyAccepted) throw notFound("Invite not found");
         if (req.body.requestType !== "human") {
           throw badRequest("Bootstrap invite requires human request type");
         }
@@ -1675,55 +1033,15 @@ export function accessRoutes(
         throw unauthorized("Authenticated user is required");
       }
       if (requestType === "agent" && !req.body.agentName) {
-        if (
-          !inviteAlreadyAccepted ||
-          !existingJoinRequestForInvite?.agentName
-        ) {
-          throw badRequest("agentName is required for agent join requests");
-        }
+        throw badRequest("agentName is required for agent join requests");
       }
 
       const adapterType = req.body.adapterType ?? null;
-      if (
-        inviteAlreadyAccepted &&
-        !canReplayOpenClawGatewayInviteAccept({
-          requestType,
-          adapterType,
-          existingJoinRequest: existingJoinRequestForInvite
-        })
-      ) {
-        throw notFound("Invite not found");
-      }
-      const replayJoinRequestId = inviteAlreadyAccepted
-        ? existingJoinRequestForInvite?.id ?? null
-        : null;
-      if (inviteAlreadyAccepted && !replayJoinRequestId) {
-        throw conflict("Join request not found");
-      }
-
-      const replayMergedDefaults = inviteAlreadyAccepted
-        ? mergeJoinDefaultsPayloadForReplay(
-            existingJoinRequestForInvite?.agentDefaultsPayload ?? null,
-            req.body.agentDefaultsPayload ?? null
-          )
-        : req.body.agentDefaultsPayload ?? null;
-
-      const gatewayDefaultsPayload =
-        requestType === "agent"
-          ? buildJoinDefaultsPayloadForAccept({
-              adapterType,
-              defaultsPayload: replayMergedDefaults,
-              paperclipApiUrl: req.body.paperclipApiUrl ?? null,
-              inboundOpenClawAuthHeader: req.header("x-openclaw-auth") ?? null,
-              inboundOpenClawTokenHeader: req.header("x-openclaw-token") ?? null
-            })
-          : null;
-
       const joinDefaults =
         requestType === "agent"
           ? normalizeAgentDefaultsForJoin({
               adapterType,
-              defaultsPayload: gatewayDefaultsPayload,
+              defaultsPayload: req.body.agentDefaultsPayload ?? null,
               deploymentMode: opts.deploymentMode,
               deploymentExposure: opts.deploymentExposure,
               bindHost: opts.bindHost,
@@ -1739,26 +1057,7 @@ export function accessRoutes(
         throw badRequest(joinDefaults.fatalErrors.join("; "));
       }
 
-      if (requestType === "agent" && adapterType === "openclaw_gateway") {
-        logger.info(
-          {
-            inviteId: invite.id,
-            joinRequestDiagnostics: joinDefaults.diagnostics.map((diag) => ({
-              code: diag.code,
-              level: diag.level
-            })),
-            normalizedAgentDefaults: summarizeOpenClawGatewayDefaultsForLog(
-              joinDefaults.normalized
-            )
-          },
-          "invite accept normalized OpenClaw gateway defaults"
-        );
-      }
-
-      const claimSecret =
-        requestType === "agent" && !inviteAlreadyAccepted
-          ? createClaimSecret()
-          : null;
+      const claimSecret = requestType === "agent" ? createClaimSecret() : null;
       const claimSecretHash = claimSecret ? hashToken(claimSecret) : null;
       const claimSecretExpiresAt = claimSecret
         ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
@@ -1766,176 +1065,50 @@ export function accessRoutes(
 
       const actorEmail =
         requestType === "human" ? await resolveActorEmail(db, req) : null;
-      const created = !inviteAlreadyAccepted
-        ? await db.transaction(async (tx) => {
-            await tx
-              .update(invites)
-              .set({ acceptedAt: new Date(), updatedAt: new Date() })
-              .where(
-                and(
-                  eq(invites.id, invite.id),
-                  isNull(invites.acceptedAt),
-                  isNull(invites.revokedAt)
-                )
-              );
+      const created = await db.transaction(async (tx) => {
+        await tx
+          .update(invites)
+          .set({ acceptedAt: new Date(), updatedAt: new Date() })
+          .where(
+            and(
+              eq(invites.id, invite.id),
+              isNull(invites.acceptedAt),
+              isNull(invites.revokedAt)
+            )
+          );
 
-            const row = await tx
-              .insert(joinRequests)
-              .values({
-                inviteId: invite.id,
-                companyId,
-                requestType,
-                status: "pending_approval",
-                requestIp: requestIp(req),
-                requestingUserId:
-                  requestType === "human"
-                    ? req.actor.userId ?? "local-board"
-                    : null,
-                requestEmailSnapshot:
-                  requestType === "human" ? actorEmail : null,
-                agentName: requestType === "agent" ? req.body.agentName : null,
-                adapterType: requestType === "agent" ? adapterType : null,
-                capabilities:
-                  requestType === "agent"
-                    ? req.body.capabilities ?? null
-                    : null,
-                agentDefaultsPayload:
-                  requestType === "agent" ? joinDefaults.normalized : null,
-                claimSecretHash,
-                claimSecretExpiresAt
-              })
-              .returning()
-              .then((rows) => rows[0]);
-            return row;
+        const row = await tx
+          .insert(joinRequests)
+          .values({
+            inviteId: invite.id,
+            companyId,
+            requestType,
+            status: "pending_approval",
+            requestIp: requestIp(req),
+            requestingUserId:
+              requestType === "human"
+                ? req.actor.userId ?? "local-board"
+                : null,
+            requestEmailSnapshot:
+              requestType === "human" ? actorEmail : null,
+            agentName: requestType === "agent" ? req.body.agentName : null,
+            adapterType: requestType === "agent" ? adapterType : null,
+            capabilities:
+              requestType === "agent"
+                ? req.body.capabilities ?? null
+                : null,
+            agentDefaultsPayload:
+              requestType === "agent" ? joinDefaults.normalized : null,
+            claimSecretHash,
+            claimSecretExpiresAt
           })
-        : await db
-            .update(joinRequests)
-            .set({
-              requestIp: requestIp(req),
-              agentName:
-                requestType === "agent"
-                  ? req.body.agentName ??
-                    existingJoinRequestForInvite?.agentName ??
-                    null
-                  : null,
-              capabilities:
-                requestType === "agent"
-                  ? req.body.capabilities ??
-                    existingJoinRequestForInvite?.capabilities ??
-                    null
-                  : null,
-              adapterType: requestType === "agent" ? adapterType : null,
-              agentDefaultsPayload:
-                requestType === "agent" ? joinDefaults.normalized : null,
-              updatedAt: new Date()
-            })
-            .where(eq(joinRequests.id, replayJoinRequestId as string))
-            .returning()
-            .then((rows) => rows[0]);
+          .returning()
+          .then((rows) => rows[0]);
+        return row;
+      });
 
       if (!created) {
         throw conflict("Join request not found");
-      }
-
-      if (
-        inviteAlreadyAccepted &&
-        requestType === "agent" &&
-        adapterType === "openclaw_gateway" &&
-        created.status === "approved" &&
-        created.createdAgentId
-      ) {
-        const existingAgent = await agents.getById(created.createdAgentId);
-        if (!existingAgent) {
-          throw conflict("Approved join request agent not found");
-        }
-        const existingAdapterConfig = isPlainObject(existingAgent.adapterConfig)
-          ? (existingAgent.adapterConfig as Record<string, unknown>)
-          : {};
-        const nextAdapterConfig = {
-          ...existingAdapterConfig,
-          ...(joinDefaults.normalized ?? {})
-        };
-        const updatedAgent = await agents.update(created.createdAgentId, {
-          adapterType,
-          adapterConfig: nextAdapterConfig
-        });
-        if (!updatedAgent) {
-          throw conflict("Approved join request agent not found");
-        }
-        await logActivity(db, {
-          companyId,
-          actorType: req.actor.type === "agent" ? "agent" : "user",
-          actorId:
-            req.actor.type === "agent"
-              ? req.actor.agentId ?? "invite-agent"
-              : req.actor.userId ?? "board",
-          action: "agent.updated_from_join_replay",
-          entityType: "agent",
-          entityId: updatedAgent.id,
-          details: { inviteId: invite.id, joinRequestId: created.id }
-        });
-      }
-
-      if (requestType === "agent" && adapterType === "openclaw_gateway") {
-        const expectedDefaults = summarizeOpenClawGatewayDefaultsForLog(
-          joinDefaults.normalized
-        );
-        const persistedDefaults = summarizeOpenClawGatewayDefaultsForLog(
-          created.agentDefaultsPayload
-        );
-        const missingPersistedFields: string[] = [];
-
-        if (expectedDefaults.url && !persistedDefaults.url)
-          missingPersistedFields.push("url");
-        if (
-          expectedDefaults.paperclipApiUrl &&
-          !persistedDefaults.paperclipApiUrl
-        ) {
-          missingPersistedFields.push("paperclipApiUrl");
-        }
-        if (expectedDefaults.gatewayToken && !persistedDefaults.gatewayToken) {
-          missingPersistedFields.push("headers.x-openclaw-token");
-        }
-        if (
-          expectedDefaults.devicePrivateKeyPem &&
-          !persistedDefaults.devicePrivateKeyPem
-        ) {
-          missingPersistedFields.push("devicePrivateKeyPem");
-        }
-        if (
-          expectedDefaults.headerKeys.length > 0 &&
-          persistedDefaults.headerKeys.length === 0
-        ) {
-          missingPersistedFields.push("headers");
-        }
-
-        logger.info(
-          {
-            inviteId: invite.id,
-            joinRequestId: created.id,
-            joinRequestStatus: created.status,
-            expectedDefaults,
-            persistedDefaults,
-            diagnostics: joinDefaults.diagnostics.map((diag) => ({
-              code: diag.code,
-              level: diag.level,
-              message: diag.message,
-              hint: diag.hint ?? null
-            }))
-          },
-          "invite accept persisted OpenClaw gateway join request"
-        );
-
-        if (missingPersistedFields.length > 0) {
-          logger.warn(
-            {
-              inviteId: invite.id,
-              joinRequestId: created.id,
-              missingPersistedFields
-            },
-            "invite accept detected missing persisted OpenClaw gateway defaults"
-          );
-        }
       }
 
       await logActivity(db, {
@@ -1946,15 +1119,12 @@ export function accessRoutes(
             ? req.actor.agentId ?? "invite-agent"
             : req.actor.userId ??
               (requestType === "agent" ? "invite-anon" : "board"),
-        action: inviteAlreadyAccepted
-          ? "join.request_replayed"
-          : "join.requested",
+        action: "join.requested",
         entityType: "join_request",
         entityId: created.id,
         details: {
           requestType,
-          requestIp: created.requestIp,
-          inviteReplay: inviteAlreadyAccepted
+          requestIp: created.requestIp
         }
       });
 
@@ -2398,6 +1568,92 @@ export function accessRoutes(
     },
   );
 
+  async function assertCanManageTargetMemberRole(
+    req: Request,
+    companyId: string,
+    targetCurrentRole: string | null | undefined,
+    targetNextRole?: string | null,
+  ) {
+    if (isLocalImplicit(req) || req.actor.isInstanceAdmin) return;
+    if (req.actor.type !== "board" || !req.actor.userId) {
+      throw forbidden("Insufficient role to manage this member");
+    }
+    const actorMembership = await access.getMembership(companyId, "user", req.actor.userId);
+    const actorRole = actorMembership?.status === "active" ? actorMembership.membershipRole : null;
+    const currentRole = targetCurrentRole ?? "member";
+    if (!canManageTeamRole(actorRole, currentRole)) {
+      throw forbidden("Insufficient role to manage this member");
+    }
+    if (targetNextRole !== undefined && targetNextRole !== null && !canManageTeamRole(actorRole, targetNextRole)) {
+      throw forbidden("Insufficient role to assign target role");
+    }
+  }
+
+  router.patch(
+    "/companies/:companyId/members/:memberId",
+    validate(updateCompanyMemberSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const memberId = req.params.memberId as string;
+      await assertCompanyPermission(req, companyId, "users:manage_permissions");
+      const target = await access.getMemberById(companyId, memberId);
+      if (!target) throw notFound("Member not found");
+      await assertCanManageTargetMemberRole(
+        req,
+        companyId,
+        target.membershipRole,
+        req.body.membershipRole,
+      );
+      const updated = await access.updateCompanyMember(companyId, memberId, {
+        membershipRole: req.body.membershipRole,
+        status: req.body.status,
+      });
+      if (!updated) throw notFound("Member not found");
+      await logActivity(db, {
+        companyId,
+        actorType: "user",
+        actorId: req.actor.userId ?? "board",
+        action: "company_member.updated",
+        entityType: "company_membership",
+        entityId: updated.id,
+        details: {
+          principalType: updated.principalType,
+          principalId: updated.principalId,
+          previousRole: target.membershipRole,
+          membershipRole: updated.membershipRole,
+          previousStatus: target.status,
+          status: updated.status,
+        },
+      });
+      res.json(updated);
+    },
+  );
+
+  router.delete("/companies/:companyId/members/:memberId", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const memberId = req.params.memberId as string;
+    await assertCompanyPermission(req, companyId, "users:manage_permissions");
+    const target = await access.getMemberById(companyId, memberId);
+    if (!target) throw notFound("Member not found");
+    await assertCanManageTargetMemberRole(req, companyId, target.membershipRole);
+    const removed = await access.removeCompanyMember(companyId, memberId);
+    if (!removed) throw notFound("Member not found");
+    await logActivity(db, {
+      companyId,
+      actorType: "user",
+      actorId: req.actor.userId ?? "board",
+      action: "company_member.removed",
+      entityType: "company_membership",
+      entityId: removed.id,
+      details: {
+        principalType: removed.principalType,
+        principalId: removed.principalId,
+        membershipRole: removed.membershipRole,
+      },
+    });
+    res.json({ ok: true, id: removed.id });
+  });
+
   router.patch(
     "/companies/:companyId/members/:memberId/permissions",
     validate(updateMemberPermissionsSchema),
@@ -2412,6 +1668,18 @@ export function accessRoutes(
         req.actor.userId ?? null
       );
       if (!updated) throw notFound("Member not found");
+      await logActivity(db, {
+        companyId,
+        actorType: "user",
+        actorId: req.actor.userId ?? "board",
+        action: "company_member.permissions_updated",
+        entityType: "company_membership",
+        entityId: memberId,
+        details: {
+          principalId: updated.principalId,
+          grantCount: (req.body.grants ?? []).length,
+        },
+      });
       res.json(updated);
     }
   );
@@ -2422,6 +1690,18 @@ export function accessRoutes(
       await assertInstanceAdmin(req);
       const userId = req.params.userId as string;
       const result = await access.promoteInstanceAdmin(userId);
+      const userCompanies = await access.listUserCompanyAccess(userId);
+      for (const membership of userCompanies) {
+        await logActivity(db, {
+          companyId: membership.companyId,
+          actorType: "user",
+          actorId: req.actor.userId ?? "board",
+          action: "instance_admin.promoted",
+          entityType: "user",
+          entityId: userId,
+          details: { targetUserId: userId },
+        });
+      }
       res.status(201).json(result);
     }
   );
@@ -2433,6 +1713,18 @@ export function accessRoutes(
       const userId = req.params.userId as string;
       const removed = await access.demoteInstanceAdmin(userId);
       if (!removed) throw notFound("Instance admin role not found");
+      const userCompanies = await access.listUserCompanyAccess(userId);
+      for (const membership of userCompanies) {
+        await logActivity(db, {
+          companyId: membership.companyId,
+          actorType: "user",
+          actorId: req.actor.userId ?? "board",
+          action: "instance_admin.demoted",
+          entityType: "user",
+          entityId: userId,
+          details: { targetUserId: userId },
+        });
+      }
       res.json(removed);
     }
   );
@@ -2450,10 +1742,27 @@ export function accessRoutes(
     async (req, res) => {
       await assertInstanceAdmin(req);
       const userId = req.params.userId as string;
-      const memberships = await access.setUserCompanyAccess(
-        userId,
-        req.body.companyIds ?? []
-      );
+      const previous = await access.listUserCompanyAccess(userId);
+      const nextCompanyIds: string[] = req.body.companyIds ?? [];
+      const memberships = await access.setUserCompanyAccess(userId, nextCompanyIds);
+      const affectedCompanyIds = new Set<string>([
+        ...previous.map((m) => m.companyId),
+        ...nextCompanyIds,
+      ]);
+      for (const companyId of affectedCompanyIds) {
+        await logActivity(db, {
+          companyId,
+          actorType: "user",
+          actorId: req.actor.userId ?? "board",
+          action: "user.company_access_updated",
+          entityType: "user",
+          entityId: userId,
+          details: {
+            targetUserId: userId,
+            granted: nextCompanyIds.includes(companyId),
+          },
+        });
+      }
       res.json(memberships);
     }
   );

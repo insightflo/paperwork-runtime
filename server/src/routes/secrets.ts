@@ -8,9 +8,10 @@ import {
   updateSecretSchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
-import { assertBoard, assertCompanyAccess } from "./authz.js";
+import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess } from "./authz.js";
 import { companyWorkProductStorageRoutes } from "./company-work-product-storage.js";
 import { logActivity, secretService } from "../services/index.js";
+import { accessService } from "../services/access.js";
 import { toolService } from "../services/tools/registry.js";
 
 /**
@@ -43,6 +44,7 @@ export function secretRoutes(db: Db) {
   const router = Router();
   router.use(companyWorkProductStorageRoutes(db));
   const svc = secretService(db);
+  const access = accessService(db);
   const configuredDefaultProvider = process.env.PAPERCLIP_SECRETS_PROVIDER;
   const defaultProvider = (
     configuredDefaultProvider && SECRET_PROVIDERS.includes(configuredDefaultProvider as SecretProvider)
@@ -74,9 +76,8 @@ export function secretRoutes(db: Db) {
   });
 
   router.post("/companies/:companyId/secrets", validate(createSecretSchema), async (req, res) => {
-    assertBoard(req);
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyAdminAccess(access, req, companyId);
 
     const created = await svc.create(
       companyId,
@@ -111,7 +112,7 @@ export function secretRoutes(db: Db) {
       res.status(404).json({ error: "Secret not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    await assertCompanyAdminAccess(access, req, existing.companyId);
 
     const rotated = await svc.rotate(
       id,
@@ -143,7 +144,7 @@ export function secretRoutes(db: Db) {
       res.status(404).json({ error: "Secret not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    await assertCompanyAdminAccess(access, req, existing.companyId);
 
     const updated = await svc.update(id, {
       name: req.body.name,
@@ -177,7 +178,7 @@ export function secretRoutes(db: Db) {
       res.status(404).json({ error: "Secret not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    await assertCompanyAdminAccess(access, req, existing.companyId);
 
     const usage = await loadToolUsageBySecretId(db, existing.companyId);
     const usedByTools = usage.get(id) ?? [];
