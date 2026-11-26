@@ -16,8 +16,18 @@ import { LiveSessionsTable, type LiveSessionRow } from "../LiveSessionsTable";
 import { DgateMonitorPanel, type DgateMonitorResponse } from "../DgateMonitorPanel";
 
 vi.mock("@/lib/router", () => ({
-  Link: ({ children, to, className }: { children: ReactNode; to: string; className?: string }) => (
-    <a href={to} className={className}>
+  Link: ({
+    children,
+    to,
+    className,
+    ...rest
+  }: {
+    children: ReactNode;
+    to: string;
+    className?: string;
+    [key: string]: unknown;
+  }) => (
+    <a href={to} className={className} {...rest}>
       {children}
     </a>
   ),
@@ -326,128 +336,201 @@ describe("Dashboard 1top × dgate components", () => {
     expect(getRowIds()).toEqual(["run-2"]);
   });
 
-  it("renders DgateMonitorPanel live snapshot and graceful offline fallback", () => {
+  it("renders DgateMonitorPanel as Paperwork native internal control plane with live gates and never shows Mac dgate offline warning", () => {
     const liveResponse: DgateMonitorResponse = {
-      available: true,
-      sourceUrl: "http://127.0.0.1:4190",
-      fetchedAt: "2026-11-26T07:15:00Z",
-      stale: false,
-      snapshot: {
-        timestamp: "2026-11-26T07:14:58Z",
-        scope: "paperwork-runtime",
-        db_live: true,
-        total_forks: 14,
-        open_forks: 3,
-        outcomes: { pass: 9, rework: 2, fail: 1, waiting_human: 2 },
-        effort_level: "high",
-        host_process_count: 5,
-        mapped_count: 3,
-        providers: [],
-        repos: [],
-        routes: [
-          { route: "file_select", p: 0.86, mode: "sharp" },
-          { route: "tool_select", p: 0.78, mode: "sharp" },
-          { route: "retry_or_abort", p: 0.54, mode: "split" },
-          { route: "delegate_swarm", p: 0.81, mode: "sharp" },
-        ],
-        active_gates: [
-          { gate: "G1", status: "pass" },
-          { gate: "G2", status: "pass" },
-          { gate: "G3", status: "active" },
-        ],
-        lead: {
-          slot: "L0",
-          name: "lead-orchestrator",
-          address: "hc-01",
-          cli: "claude",
-          model: "claude-opus-4-6",
-          effort: "high",
-          status: "active",
-          repo_tag: "runtime",
-          activity: "Coordinating dashboard telemetry rollout",
+      connected: true,
+      source: "paperwork_internal",
+      timestamp: "2026-11-26T07:14:58Z",
+      summary: {
+        activeRuns: 2,
+        queuedRuns: 1,
+        activeAgents: 4,
+        totalAgents: 6,
+        pendingApprovals: 2,
+        pendingDecisions: 1,
+        openBudgetIncidents: 1,
+        pendingWorktreeProposals: 2,
+        passRatePct: 90,
+      },
+      workers: [
+        {
+          runId: "run-101",
+          agentId: "ag-101",
+          agentName: "Alpha Coder",
+          role: "engineer",
+          adapterType: "claude_local",
+          model: "claude-sonnet-4-6",
+          status: "running",
+          startedAt: "2026-11-26T07:12:43Z",
+          durationMs: 135_000,
+          contextLabel: "Implementing internal control plane UI",
         },
-        workers: [
-          {
-            slot: "W1",
-            name: "worker-ui-charts",
-            address: "hc-02",
-            cli: "codex",
-            model: "gpt-5.4",
-            effort: "medium",
-            status: "active",
-            repo_tag: "ui",
-            activity: "Building LiveSessionsTable & DgateMonitorPanel",
-          },
-        ],
-        verifiers: [
-          {
-            slot: "V1",
-            name: "verifier-vitest",
-            address: "hc-03",
-            cli: "pi",
-            model: "gpt-5.4-mini",
-            effort: "low",
-            status: "idle",
-            repo_tag: "ui",
-            activity: "Waiting for build artifact",
-          },
-        ],
-        advisors: [
-          {
-            slot: "A1",
-            name: "advisor-g3",
-            address: "hc-04",
-            cli: "claude",
-            model: "claude-opus-4-6",
-            effort: "high",
-            status: "idle",
-            repo_tag: "runtime",
-            activity: "Ready for merge gate review",
-          },
-        ],
-        local_repo: {
-          pipelines: [
-            { name: "feat/dashboard-1top-charts", status: "running" },
-            { name: "feat/dashboard-telemetry-api", status: "ready_pr" },
-          ],
+        {
+          runId: "run-102",
+          agentId: "ag-102",
+          agentName: "Beta QA",
+          role: "qa",
+          adapterType: "codex_local",
+          model: "gpt-5.4",
+          status: "queued",
+          startedAt: "2026-11-26T07:14:13Z",
+          durationMs: 45_000,
+          contextLabel: "Queued for verification pass",
         },
-        system: { cpu_pct: 38, mem_pct: 61, load_1m: 1.8 },
-        recent_events: [
-          { timestamp: "2026-11-26T07:14:50Z", kind: "dispatch", message: "Assigned Brief 3 to worker-ui-charts" },
+      ],
+      gates: {
+        approvals: [
+          {
+            id: "ap-1",
+            kind: "approval",
+            title: "Approve production deploy",
+            status: "pending",
+            severity: "high",
+            createdAt: "2026-11-26T07:10:00Z",
+            linkPath: "/approvals",
+          },
+          {
+            id: "ap-2",
+            kind: "approval",
+            title: "Approve agent budget bump",
+            status: "pending",
+            severity: "medium",
+            createdAt: "2026-11-26T07:11:00Z",
+            linkPath: "/approvals",
+          },
+        ],
+        operatorDecisions: [
+          {
+            id: "dec-1",
+            kind: "operator_decision",
+            title: "Confirm Wave 2 release timing",
+            status: "open",
+            severity: "high",
+            createdAt: "2026-11-26T07:12:00Z",
+            linkPath: "/human-operator",
+          },
+        ],
+        worktreeProposals: [
+          {
+            id: "wt-1",
+            kind: "worktree_proposal",
+            title: "Merge feat/s21-control-plane-ui",
+            status: "pending",
+            severity: "medium",
+            createdAt: "2026-11-26T07:13:00Z",
+            linkPath: "/worktree/proposals",
+          },
+          {
+            id: "wt-2",
+            kind: "worktree_proposal",
+            title: "Merge feat/s21-control-plane-api",
+            status: "pending",
+            severity: "medium",
+            createdAt: "2026-11-26T07:13:30Z",
+            linkPath: "/worktree/proposals",
+          },
+        ],
+        budgetIncidents: [
+          {
+            id: "bi-1",
+            kind: "budget_incident",
+            title: "Soft cap reached on Alpha Coder",
+            status: "open",
+            severity: "critical",
+            createdAt: "2026-11-26T07:14:00Z",
+            linkPath: "/costs",
+          },
         ],
       },
+      outcomes: {
+        windowHours: 24,
+        total: 23,
+        succeeded: 18,
+        failed: 2,
+        cancelled: 0,
+        timedOut: 0,
+        running: 2,
+        queued: 1,
+        byAdapter: {
+          claude_local: 14,
+          codex_local: 9,
+        },
+        byProvider: {
+          anthropic: 14,
+          openai: 9,
+        },
+      },
+      recentEvents: [
+        {
+          id: "ev-1",
+          action: "approval_pending",
+          entityType: "approval",
+          entityId: "ap-1",
+          actorType: "agent",
+          createdAt: "2026-11-26T07:14:50Z",
+          summary: "Requested production deploy approval",
+        },
+        {
+          id: "ev-2",
+          action: "run_succeeded",
+          entityType: "heartbeat_run",
+          entityId: "run-99",
+          actorType: "agent",
+          createdAt: "2026-11-26T07:13:20Z",
+          summary: "Completed regression suite",
+        },
+      ],
     };
 
     render(<DgateMonitorPanel dgate={liveResponse} />);
 
     expect(container.querySelector('[data-testid="dgate-live-panel"]')).not.toBeNull();
-    expect(container.textContent).toContain("dgate LIVE");
-    expect(container.textContent).toContain("paperwork-runtime");
-    expect(container.textContent).toContain("lead-orchestrator");
-    expect(container.textContent).toContain("worker-ui-charts");
-    expect(container.textContent).toContain("verifier-vitest");
-    expect(container.textContent).toContain("advisor-g3");
-    expect(container.textContent).toContain("file_select");
-    expect(container.textContent).toContain("delegate_swarm");
-    expect(container.textContent).toContain("G1");
-    expect(container.textContent).toContain("G3");
-    expect(container.textContent).toContain("feat/dashboard-1top-charts");
-    expect(container.textContent).toContain("Assigned Brief 3 to worker-ui-charts");
+    expect(container.textContent).toContain("CONTROL PLANE LIVE");
+    expect(container.textContent).toContain("PAPERWORK INTERNAL");
+    expect(container.textContent).toContain("실행 중 워커");
+    expect(container.textContent).toContain("대기 통제 게이트");
+    expect(container.textContent).toContain("24h 성공률");
+    expect(container.textContent).toContain("90%");
+    expect(container.textContent).toContain("활성 에이전트");
 
-    // Offline fallback
-    const offlineResponse: DgateMonitorResponse = {
+    // Agent workers grid + click-through to /agents/:id
+    expect(container.textContent).toContain("Alpha Coder");
+    expect(container.textContent).toContain("Beta QA");
+    expect(container.textContent).toContain("2m 15s");
+    expect(container.textContent).toContain("claude_local");
+    expect(container.textContent).toContain("Implementing internal control plane UI");
+    const agentLinks = Array.from(container.querySelectorAll<HTMLAnchorElement>('a[href^="/agents/"]')).map((a) =>
+      a.getAttribute("href"),
+    );
+    expect(agentLinks).toContain("/agents/ag-101");
+    expect(agentLinks).toContain("/agents/ag-102");
+
+    // Internal Control Gates clickable routes + live titles
+    expect(container.querySelector<HTMLAnchorElement>('[data-testid="control-gate-approvals"]')?.getAttribute("href")).toBe("/approvals");
+    expect(container.querySelector<HTMLAnchorElement>('[data-testid="control-gate-owner-decisions"]')?.getAttribute("href")).toBe("/human-operator");
+    expect(container.querySelector<HTMLAnchorElement>('[data-testid="control-gate-worktree-proposals"]')?.getAttribute("href")).toBe("/worktree/proposals");
+    expect(container.querySelector<HTMLAnchorElement>('[data-testid="control-gate-budget-incidents"]')?.getAttribute("href")).toBe("/costs");
+    expect(container.textContent).toContain("Approve production deploy");
+
+    // Recent Control Events
+    expect(container.textContent).toContain("Requested production deploy approval");
+    expect(container.textContent).toContain("Completed regression suite");
+
+    // Empty / unavailable payload still renders native control plane without any Mac dgate offline error
+    const emptyResponse: DgateMonitorResponse = {
       available: false,
       fetchedAt: "2026-11-26T07:16:00Z",
-      reason: "DGATE_WEB_URL is not configured on A1",
+      reason: "no snapshot yet",
       snapshot: null,
     };
 
-    render(<DgateMonitorPanel dgate={offlineResponse} />);
+    render(<DgateMonitorPanel dgate={emptyResponse} />);
 
-    expect(container.querySelector('[data-testid="dgate-offline-card"]')).not.toBeNull();
-    expect(container.textContent).toContain("dgate 웹 모니터 미연결");
-    expect(container.textContent).toContain("DGATE_WEB_URL is not configured on A1");
-    expect(container.textContent).toContain("DGATE_WEB_URL");
-    expect(container.textContent).toContain("POST /dashboard/dgate/snapshot");
+    expect(container.querySelector('[data-testid="dgate-live-panel"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="dgate-offline-card"]')).toBeNull();
+    expect(container.textContent).not.toContain("dgate 웹 모니터 미연결");
+    expect(container.textContent).not.toContain("DGATE_WEB_URL");
+    expect(container.textContent).not.toContain("POST /dashboard/dgate/snapshot");
+    expect(container.textContent).toContain("현재 실행 중이거나 최근 실행된 에이전트 워커가 없습니다.");
   });
 });

@@ -120,7 +120,18 @@ export function Dashboard() {
       }).length,
     [liveSessionRows],
   );
-  const dgateActiveWorkers = dgate?.available && dgate.snapshot ? dgate.snapshot.mapped_count : 0;
+  const controlPlaneSummary = dgate?.summary ?? dgate?.snapshot?.summary;
+  const controlPlaneActiveWorkers =
+    controlPlaneSummary?.activeRuns ??
+    controlPlaneSummary?.runningWorkers ??
+    dgate?.snapshot?.mapped_count ??
+    0;
+  const controlPlanePendingGates =
+    controlPlaneSummary?.pendingGates ??
+    ((controlPlaneSummary?.pendingApprovals ?? 0) +
+      (controlPlaneSummary?.pendingDecisions ?? 0) +
+      (controlPlaneSummary?.pendingWorktreeProposals ?? 0) +
+      (controlPlaneSummary?.openBudgetIncidents ?? 0));
 
   const agentName = (id: string | null) => {
     if (!id || !agents) return null;
@@ -218,8 +229,8 @@ export function Dashboard() {
             />
           </div>
 
-          {/* Row 3: Tabbed Live Sessions Table / dgate Web Monitor */}
-          <section className="space-y-2" data-testid="dashboard-1top-row3" aria-label="실시간 세션 및 dgate 모니터">
+          {/* Row 3: Tabbed Live Sessions Table / Internal Control & Execution Monitor */}
+          <section className="space-y-2" data-testid="dashboard-1top-row3" aria-label="실시간 세션 및 내부 통제 관제">
             <div
               role="tablist"
               aria-label="실시간 모니터링 탭"
@@ -255,14 +266,16 @@ export function Dashboard() {
               >
                 <span
                   className={`h-2 w-2 rounded-full ${
-                    dgate?.available
-                      ? "bg-emerald-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]"
-                      : "bg-muted-foreground/50"
+                    controlPlanePendingGates > 0
+                      ? "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.8)]"
+                      : "bg-emerald-500 shadow-[0_0_6px_rgba(34,197,94,0.8)]"
                   }`}
                 />
-                <span>dgate 웹 모니터</span>
+                <span>내부 통제 · 실행 관제</span>
                 <span className="rounded-full border border-slate-200/90 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600 tabular-nums dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-[#9aa7bd]">
-                  {dgate?.available ? `${dgateActiveWorkers} active` : "offline"}
+                  {controlPlanePendingGates > 0
+                    ? `${controlPlaneActiveWorkers} active · ${controlPlanePendingGates} gate`
+                    : `${controlPlaneActiveWorkers} active`}
                 </span>
               </button>
             </div>

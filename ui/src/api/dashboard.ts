@@ -85,13 +85,155 @@ export interface DgateSystemMetrics {
   [key: string]: unknown;
 }
 
+export type ControlPlaneGateKind =
+  | "approval"
+  | "operator_decision"
+  | "worktree_proposal"
+  | "budget_incident";
+
+export type ControlPlaneSeverity = "critical" | "high" | "medium" | "low";
+
+export interface ControlPlaneSummary {
+  activeRuns?: number;
+  queuedRuns?: number;
+  runningWorkers?: number;
+  queuedWorkers?: number;
+  activeAgents: number;
+  totalAgents?: number;
+  pendingApprovals?: number;
+  pendingDecisions?: number;
+  openBudgetIncidents?: number;
+  pendingWorktreeProposals?: number;
+  pendingGates?: number;
+  passRatePct?: number | null;
+  successRate24h?: number | null;
+  totalRuns24h?: number;
+  succeededRuns24h?: number;
+  failedRuns24h?: number;
+}
+
+export interface ControlPlaneWorker {
+  id?: string;
+  runId?: string;
+  agentId?: string;
+  name?: string;
+  agentName?: string;
+  role?: string | null;
+  slot?: string;
+  adapterType?: string | null;
+  adapter?: string | null;
+  cli?: string | null;
+  model?: string | null;
+  status: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  elapsedSec?: number | null;
+  durationSec?: number | null;
+  durationMs?: number | null;
+  contextLabel?: string | null;
+  issueId?: string | null;
+  issueIdentifier?: string | null;
+  issueTitle?: string | null;
+  activity?: string | null;
+  [key: string]: unknown;
+}
+
+export interface ControlPlaneGateItem {
+  id?: string;
+  key?: string;
+  kind?: ControlPlaneGateKind | string;
+  title?: string;
+  label?: string;
+  count?: number;
+  pending?: number;
+  status?: string;
+  severity?: ControlPlaneSeverity | string;
+  createdAt?: string;
+  linkPath?: string;
+  route?: string;
+  [key: string]: unknown;
+}
+
+export interface ControlPlaneGates {
+  approvals?: ControlPlaneGateItem[];
+  operatorDecisions?: ControlPlaneGateItem[];
+  worktreeProposals?: ControlPlaneGateItem[];
+  budgetIncidents?: ControlPlaneGateItem[];
+  pendingApprovals?: number;
+  ownerDecisions?: number;
+  worktreeProposalsCount?: number;
+  budgetIncidentsCount?: number;
+  totalPending?: number;
+  items?: ControlPlaneGateItem[];
+  [key: string]: unknown;
+}
+
+export interface ControlPlaneOutcomes {
+  windowHours?: number;
+  total?: number;
+  succeeded?: number;
+  failed?: number;
+  cancelled?: number;
+  timedOut?: number;
+  running?: number;
+  queued?: number;
+  byAdapter?: Record<string, number>;
+  byProvider?: Record<string, number>;
+  pass?: number;
+  rework?: number;
+  fail?: number;
+  waiting_human?: number;
+  [key: string]: unknown;
+}
+
+export interface ControlPlaneProviderBreakdown {
+  adapterType?: string;
+  adapter?: string;
+  provider?: string;
+  model?: string | null;
+  runs?: number;
+  succeeded?: number;
+  failed?: number;
+  running?: number;
+  queued?: number;
+  count?: number;
+  sharePct?: number;
+  successRate?: number | null;
+  [key: string]: unknown;
+}
+
+export interface ControlPlaneEvent {
+  id?: string;
+  timestamp?: string;
+  ts?: string;
+  createdAt?: string;
+  at?: string;
+  kind?: string;
+  type?: string;
+  event?: string;
+  action?: string;
+  entityType?: string;
+  entityId?: string;
+  actorType?: string;
+  severity?: string;
+  status?: string;
+  actor?: string | null;
+  agentId?: string | null;
+  agentName?: string | null;
+  message?: string;
+  summary?: string;
+  detail?: string;
+  route?: string | null;
+  [key: string]: unknown;
+}
+
 export interface DgateSnapshot {
   timestamp: string;
   scope: string;
   db_live: boolean;
   total_forks: number;
   open_forks: number;
-  outcomes: Record<string, number>;
+  outcomes: Record<string, number> & ControlPlaneOutcomes;
   effort_level: string | null;
   host_process_count: number;
   mapped_count: number;
@@ -106,14 +248,34 @@ export interface DgateSnapshot {
   local_repo: Record<string, unknown> | null;
   system: DgateSystemMetrics | null;
   recent_events: Array<Record<string, unknown>>;
+  source?: "paperwork_internal" | "poll" | "push" | "none" | string;
+  summary?: ControlPlaneSummary;
+  gates?: ControlPlaneGates | ControlPlaneGateItem[];
+  recentEvents?: ControlPlaneEvent[];
+  adapters?: ControlPlaneProviderBreakdown[];
 }
 
+export type ControlPlaneSnapshot = DgateSnapshot;
+
 export interface DgateDashboardBridgeResponse {
-  available: boolean;
+  // Paperwork native flat internal control-plane fields (Wave 1 GET /dashboard/dgate)
+  connected?: boolean;
+  source?: "paperwork_internal" | "poll" | "push" | "none" | string;
+  timestamp?: string;
+  summary?: ControlPlaneSummary;
+  workers?: ControlPlaneWorker[];
+  gates?: ControlPlaneGates | ControlPlaneGateItem[];
+  outcomes?: ControlPlaneOutcomes;
+  recentEvents?: ControlPlaneEvent[];
+  adapters?: ControlPlaneProviderBreakdown[];
+  // Backward-compatible legacy bridge fields
+  available?: boolean;
   sourceUrl?: string | null;
-  fetchedAt: string;
+  stale?: boolean;
+  fetchedAt?: string | null;
   error?: string | null;
-  snapshot: DgateSnapshot | null;
+  reason?: string | null;
+  snapshot?: ControlPlaneSnapshot | null;
 }
 
 export const dashboardApi = {
