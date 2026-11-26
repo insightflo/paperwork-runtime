@@ -1,9 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type {
-  Agent,
-  EnvBinding,
-} from "@paperclipai/shared";
+import type { Agent, EnvBinding } from "@paperclipai/shared";
 import type { AdapterModel } from "../api/agents";
 import { agentsApi } from "../api/agents";
 import { secretsApi } from "../api/secrets";
@@ -13,10 +10,7 @@ import {
   DEFAULT_CODEX_LOCAL_MODEL,
 } from "@paperclipai/adapter-codex-local";
 import { Button } from "@/components/ui/button";
-import {
-  FolderOpen,
-  Heart,
-} from "lucide-react";
+import { FolderOpen, Heart } from "lucide-react";
 import { cn } from "../lib/utils";
 import {
   extractModelName,
@@ -64,8 +58,9 @@ import {
   ProviderDropdown,
   ModelDropdown,
   ThinkingEffortDropdown,
-  inputClass,
 } from "./agent-config-form-fields";
+
+const tactileInputClass = "w-full rounded-md border border-slate-200/90 bg-white px-2.5 py-1.5 text-sm font-mono text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] outline-none transition-[border-color,box-shadow] placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:placeholder:text-[#627089] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25";
 
 /* ---- Props ---- */
 
@@ -562,16 +557,17 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     };
   }, [isCreate, overlay.heartbeat, runtimeConfig, val]);
   return (
-    <div className={cn("relative", cards && "space-y-6")}>
+    <div className={cn("relative tabular-nums", cards && "space-y-6")}>
       {/* ---- Floating Save button (edit mode, when dirty) ---- */}
       {isDirty && !props.hideInlineSave && (
-        <div className="sticky top-0 z-10 flex items-center justify-end px-4 py-2 bg-background/90 backdrop-blur-sm border-b border-primary/20">
+        <div className="sticky top-0 z-10 flex items-center justify-end border-b border-slate-200/90 bg-white/95 px-4 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-sm dark:border-white/[0.08] dark:bg-[#0e131d]/95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">Unsaved changes</span>
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-[#f59e0b]"><span aria-hidden className="h-1.5 w-1.5 rounded-full bg-amber-500 dark:bg-[#f59e0b]" />Unsaved changes</span>
             <Button
               size="sm"
               onClick={handleSave}
               disabled={!isCreate && props.isSaving}
+              className="border border-blue-600/20 bg-blue-600 text-white hover:bg-blue-500 dark:border-[#60a5fa]/45 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]"
             >
               {!isCreate && props.isSaving ? "Saving..." : "Save"}
             </Button>
@@ -581,18 +577,18 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
 
       {/* ---- Identity (edit only) ---- */}
       {!isCreate && (
-        <div className={cn(!cards && "border-b border-border")}>
+        <div className={cn(!cards && "border-b border-slate-200/80 dark:border-white/[0.07]")}>
           {cards
-            ? <h3 className="text-sm font-medium mb-3">Identity</h3>
-            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">Identity</div>
+            ? <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-700 dark:text-[#eef2f8] mb-3">Identity</h3>
+            : <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-[#8f9db3]">Identity</div>
           }
-          <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
+          <div className={cn(cards ? "tactile-card rounded-[12px] border-slate-200/90 bg-white/95 p-4 space-y-3 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_-18px_rgba(0,0,0,0.85)]" : "px-4 pb-3 space-y-3")}>
             <Field label="Name" hint={help.name}>
               <DraftInput
                 value={eff("identity", "name", props.agent.name)}
                 onCommit={(v) => mark("identity", "name", v)}
                 immediate
-                className={inputClass}
+                className={tactileInputClass}
                 placeholder="Agent name"
               />
             </Field>
@@ -601,7 +597,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 value={eff("identity", "title", props.agent.title ?? "")}
                 onCommit={(v) => mark("identity", "title", v || null)}
                 immediate
-                className={inputClass}
+                className={tactileInputClass}
                 placeholder="e.g. VP of Engineering"
               />
             </Field>
@@ -648,7 +644,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                     }}
                   />
                 </Field>
-                <div className="rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                <div className="rounded-[10px] border border-amber-600/25 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]">
                   Prompt template is replayed on every heartbeat. Keep it compact and dynamic to avoid recurring token cost and cache churn.
                 </div>
               </>
@@ -658,18 +654,18 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       )}
 
       {/* ---- Adapter ---- */}
-      <div className={cn(!cards && (isCreate ? "border-t border-border" : "border-b border-border"))}>
+      <div className={cn(!cards && (isCreate ? "border-t border-slate-200/80 dark:border-white/[0.07]" : "border-b border-slate-200/80 dark:border-white/[0.07]"))}>
         <div className={cn(cards ? "flex items-center justify-between mb-3" : "px-4 py-2 flex items-center justify-between gap-2")}>
           {cards
-            ? <h3 className="text-sm font-medium">Adapter</h3>
-            : <span className="text-xs font-medium text-muted-foreground">Adapter</span>
+            ? <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-700 dark:text-[#eef2f8]">Adapter</h3>
+            : <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-[#8f9db3]">Adapter</span>
           }
           {showHeaderAdapterTestEnvironmentButton && (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="h-7 px-2.5 text-xs"
+              className="h-7 rounded-md border-slate-200/90 bg-white px-2.5 text-xs text-slate-700 hover:border-blue-500/40 hover:bg-slate-50 dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#eef2f8] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#141b29]"
               onClick={() => testEnvironment.mutate()}
               disabled={testEnvironment.isPending || !selectedCompanyId}
             >
@@ -677,7 +673,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             </Button>
           )}
         </div>
-        <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
+        <div className={cn(cards ? "tactile-card rounded-[12px] border-slate-200/90 bg-white/95 p-4 space-y-3 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_-18px_rgba(0,0,0,0.85)]" : "px-4 pb-3 space-y-3")}>
           {showAdapterTypeField && (
             <Field label="Adapter type" hint={help.adapterType}>
               <AdapterTypeDropdown
@@ -725,7 +721,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
           )}
 
           {!showInlineHermesConnectionTest && testEnvironment.error && (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <div className="rounded-[10px] border border-red-600/25 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-400/35 dark:bg-red-500/10 dark:text-red-300">
               {testEnvironment.error instanceof Error
                 ? testEnvironment.error.message
                 : "Environment test failed"}
@@ -739,8 +735,8 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
           {/* Working directory */}
           {showLegacyWorkingDirectoryField && (
             <Field label="Working directory (deprecated)" hint={help.cwd}>
-              <div className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5">
-                <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <div className="flex items-center gap-2 rounded-md border border-slate-200/90 bg-white px-2.5 py-1.5 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <FolderOpen className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[#627089]" />
                 <DraftInput
                   value={
                     isCreate
@@ -753,7 +749,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       : mark("adapterConfig", "cwd", v || undefined)
                   }
                   immediate
-                  className="w-full bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/40"
+                  className="w-full bg-transparent font-mono text-sm outline-none placeholder:text-slate-400 dark:placeholder:text-[#627089]"
                   placeholder="/path/to/project"
                 />
                 <ChoosePathButton />
@@ -777,7 +773,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   }}
                 />
               </Field>
-              <div className="rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              <div className="rounded-[10px] border border-amber-600/25 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]">
                 Prompt template is replayed on every heartbeat. Prefer small task framing and variables like <code>{"{{ context.* }}"}</code> or <code>{"{{ run.* }}"}</code>; avoid repeating stable instructions here.
               </div>
             </>
@@ -791,12 +787,12 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
 
       {/* ---- Permissions & Configuration ---- */}
       {isLocal && (
-        <div className={cn(!cards && "border-b border-border")}>
+        <div className={cn(!cards && "border-b border-slate-200/80 dark:border-white/[0.07]")}>
           {cards
-            ? <h3 className="text-sm font-medium mb-3">Permissions &amp; Configuration</h3>
-            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground">Permissions &amp; Configuration</div>
+            ? <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-700 dark:text-[#eef2f8] mb-3">Permissions &amp; Configuration</h3>
+            : <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-[#8f9db3]">Permissions &amp; Configuration</div>
           }
-          <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
+          <div className={cn(cards ? "tactile-card rounded-[12px] border-slate-200/90 bg-white/95 p-4 space-y-3 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_-18px_rgba(0,0,0,0.85)]" : "px-4 pb-3 space-y-3")}>
               <Field label="Command" hint={help.localCommand}>
                 <DraftInput
                   value={
@@ -810,7 +806,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       : mark("adapterConfig", "command", v || undefined)
                   }
                   immediate
-                  className={inputClass}
+                  className={tactileInputClass}
                   placeholder={
                     adapterType === "codex_local"
                       ? "codex"
@@ -837,7 +833,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                           : markFallbackConfigField("command", v || undefined)
                     }
                     immediate
-                    className={inputClass}
+                    className={tactileInputClass}
                     placeholder="e.g. codex, claude"
                   />
                 </Field>
@@ -878,7 +874,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="h-7 px-2.5 text-xs"
+                      className="h-7 rounded-md border-slate-200/90 bg-white px-2.5 text-xs text-slate-700 hover:border-blue-500/40 hover:bg-slate-50 dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#eef2f8] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#141b29]"
                       onClick={() => testEnvironment.mutate()}
                       disabled={
                         testEnvironment.isPending ||
@@ -891,7 +887,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                     </Button>
                   </div>
                   {testEnvironment.error && (
-                    <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    <div className="rounded-[10px] border border-red-600/25 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-400/35 dark:bg-red-500/10 dark:text-red-300">
                       {testEnvironment.error instanceof Error
                         ? testEnvironment.error.message
                         : "Connection test failed"}
@@ -917,7 +913,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
               {adapterType === "codex_local" &&
                 codexSearchEnabled &&
                 currentThinkingEffort === "minimal" && (
-                  <p className="text-xs text-amber-400">
+                  <p className="text-xs text-amber-700 dark:text-[#f59e0b]">
                     Codex may reject `minimal` thinking when search is enabled.
                   </p>
                 )}
@@ -942,7 +938,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       }}
                     />
                   </Field>
-                  <div className="rounded-md border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  <div className="rounded-[10px] border border-amber-600/25 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]">
                     Bootstrap prompt is legacy and will be removed in a future release. Consider moving this content into the agent&apos;s prompt template or instructions file instead.
                   </div>
                 </>
@@ -967,7 +963,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       : mark("adapterConfig", "extraArgs", v ? parseCommaArgs(v) : undefined)
                   }
                   immediate
-                  className={inputClass}
+                  className={tactileInputClass}
                   placeholder="e.g. --verbose, --foo=bar"
                 />
               </Field>
@@ -1005,7 +1001,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       )}
                       onCommit={(v) => mark("adapterConfig", "timeoutSec", v)}
                       immediate
-                      className={inputClass}
+                      className={tactileInputClass}
                     />
                   </Field>
                   <Field label="Interrupt grace period (sec)" hint={help.graceSec}>
@@ -1017,7 +1013,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       )}
                       onCommit={(v) => mark("adapterConfig", "graceSec", v)}
                       immediate
-                      className={inputClass}
+                      className={tactileInputClass}
                     />
                   </Field>
                 </>
@@ -1028,12 +1024,12 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
 
       {/* ---- Run Policy ---- */}
       {isCreate && showCreateRunPolicySection ? (
-        <div className={cn(!cards && "border-b border-border")}>
+        <div className={cn(!cards && "border-b border-slate-200/80 dark:border-white/[0.07]")}>
           {cards
-            ? <h3 className="text-sm font-medium flex items-center gap-2 mb-3"><Heart className="h-3 w-3" /> Run Policy</h3>
-            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground flex items-center gap-2"><Heart className="h-3 w-3" /> Run Policy</div>
+            ? <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-700 dark:text-[#eef2f8] flex items-center gap-2 mb-3"><Heart className="h-3 w-3" /> Run Policy</h3>
+            : <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-[#8f9db3] flex items-center gap-2"><Heart className="h-3 w-3" /> Run Policy</div>
           }
-          <div className={cn(cards ? "border border-border rounded-lg p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
+          <div className={cn(cards ? "tactile-card rounded-[12px] border-slate-200/90 bg-white/95 p-4 space-y-3 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_-18px_rgba(0,0,0,0.85)]" : "px-4 pb-3 space-y-3")}>
             <ToggleWithNumber
               label="Heartbeat on interval"
               hint={help.heartbeatInterval}
@@ -1049,12 +1045,12 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
           </div>
         </div>
       ) : !isCreate ? (
-        <div className={cn(!cards && "border-b border-border")}>
+        <div className={cn(!cards && "border-b border-slate-200/80 dark:border-white/[0.07]")}>
           {cards
-            ? <h3 className="text-sm font-medium flex items-center gap-2 mb-3"><Heart className="h-3 w-3" /> Run Policy</h3>
-            : <div className="px-4 py-2 text-xs font-medium text-muted-foreground flex items-center gap-2"><Heart className="h-3 w-3" /> Run Policy</div>
+            ? <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-700 dark:text-[#eef2f8] flex items-center gap-2 mb-3"><Heart className="h-3 w-3" /> Run Policy</h3>
+            : <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-[#8f9db3] flex items-center gap-2"><Heart className="h-3 w-3" /> Run Policy</div>
           }
-          <div className={cn(cards ? "border border-border rounded-lg overflow-hidden" : "")}>
+          <div className={cn(cards ? "tactile-card overflow-hidden rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_-18px_rgba(0,0,0,0.85)]" : "")}>
             <div className={cn(cards ? "p-4 space-y-3" : "px-4 pb-3 space-y-3")}>
               <ToggleWithNumber
                 label="Heartbeat on interval"
@@ -1109,7 +1105,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   )}
                   onCommit={(v) => mark("heartbeat", "cooldownSec", v)}
                   immediate
-                  className={inputClass}
+                  className={tactileInputClass}
                 />
               </Field>
               <Field label="Max concurrent runs" hint={help.maxConcurrentRuns}>
@@ -1121,7 +1117,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   )}
                   onCommit={(v) => mark("heartbeat", "maxConcurrentRuns", v)}
                   immediate
-                  className={inputClass}
+                  className={tactileInputClass}
                 />
               </Field>
               {/* [session rotation threshold] runtime-managed adapters only — claude/codex/hermes
@@ -1154,7 +1150,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                         sessionTokenDefault,
                       ),
                     )}
-                    className={inputClass}
+                    className={tactileInputClass}
                   />
                 </Field>
               )}
@@ -1172,14 +1168,14 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 const mv = fit.modelVerdict;
                 const ageHours = Math.max(0, Math.round((Date.now() - new Date(fit.computedAt).getTime()) / 3_600_000));
                 return (
-                  <div className="rounded-md border border-primary/20 bg-primary/5 p-3 text-xs space-y-1">
-                    <div className="font-medium text-muted-foreground">
+                  <div className="rounded-[10px] border border-blue-600/20 bg-blue-50/80 p-3 text-xs space-y-1 tabular-nums dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/10">
+                    <div className="font-medium text-slate-600 dark:text-[#8f9db3]">
                       Auto fit proposal (last {fit.windowDays ?? 14}d · {fit.runs ?? "?"} runs · {ageHours}h ago · proposals only, human approves changes)
                     </div>
                     {tv && (
                       <div>
                         <span className="font-medium">Session threshold:</span>{" "}
-                        <span className={tv.verdict === "raise" ? "text-amber-600 dark:text-amber-300" : ""}>
+                        <span className={tv.verdict === "raise" ? "text-amber-700 dark:text-[#f59e0b]" : ""}>
                           {tv.verdict}
                         </span>
                         {tv.suggestedTokens ? ` → ${tv.suggestedTokens.toLocaleString("en-US")} tokens` : ""}

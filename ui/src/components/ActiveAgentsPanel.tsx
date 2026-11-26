@@ -51,12 +51,15 @@ export function ActiveAgentsPanel({ companyId }: ActiveAgentsPanelProps) {
 
   return (
     <div>
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-        Agents
-      </h3>
+      <div className="mb-3 flex items-center gap-2">
+        <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-lime-500 shadow-[0_0_6px_rgba(101,163,13,0.35)] dark:bg-[#a3e635] dark:shadow-[0_0_8px_rgba(163,230,53,0.55)]" />
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground dark:text-[#8f9db3]">
+          Agents
+        </h3>
+      </div>
       {runs.length === 0 ? (
-        <div className="rounded-xl border border-border p-4">
-          <p className="text-sm text-muted-foreground">No recent agent runs.</p>
+        <div className="tactile-card rounded-xl border border-border/80 p-4 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_-18px_rgba(0,0,0,0.85)]">
+          <p className="text-sm text-muted-foreground dark:text-[#9aa7bd]">No recent agent runs.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
@@ -91,45 +94,47 @@ function AgentRunCard({
 }) {
   return (
     <div className={cn(
-      "flex h-[320px] flex-col overflow-hidden rounded-xl border shadow-sm",
+      "tactile-card flex h-[320px] flex-col overflow-hidden rounded-xl border tabular-nums transition-[border-color,background-color,box-shadow] duration-150",
+      "dark:bg-none dark:bg-[#0e131d] dark:text-[#eef2f8]",
       isActive
-        ? "border-cyan-500/25 bg-cyan-500/[0.04] shadow-[0_16px_40px_rgba(6,182,212,0.08)]"
-        : "border-border bg-background/70",
+        ? "border-lime-500/30 bg-lime-500/[0.04] shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_16px_40px_rgba(101,163,13,0.10)] dark:border-[#a3e635]/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_16px_40px_-20px_rgba(163,230,53,0.25)]"
+        : "border-border bg-background/70 dark:border-white/[0.08] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_-18px_rgba(0,0,0,0.85)]",
     )}>
-      <div className="border-b border-border/60 px-3 py-3">
+      <div className="border-b border-border/60 px-3 py-3 dark:border-white/[0.07]">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               {isActive ? (
-                <span className="relative flex h-2.5 w-2.5 shrink-0">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400 opacity-70" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-cyan-500" />
-                </span>
+                <span aria-hidden className="pw-live-dot mt-0.5" />
               ) : (
-                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-muted-foreground/35" />
+                <span aria-hidden className="mt-0.5 inline-flex h-1.5 w-1.5 rounded-full bg-muted-foreground/35 dark:bg-[#627089]" />
               )}
               <Identity name={run.agentName} size="sm" className="[&>span:last-child]:!text-[11px]" />
             </div>
-            <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
-              <span>{isActive ? "Live now" : run.finishedAt ? `Finished ${relativeTime(run.finishedAt)}` : `Started ${relativeTime(run.createdAt)}`}</span>
+            <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground dark:text-[#8f9db3]">
+              <span className={cn(isActive && "font-semibold text-lime-700 dark:text-[#a3e635]")}>
+                {isActive ? "Live now" : run.finishedAt ? `Finished ${relativeTime(run.finishedAt)}` : `Started ${relativeTime(run.createdAt)}`}
+              </span>
             </div>
           </div>
 
           <Link
             to={`/agents/${run.agentId}/runs/${run.id}`}
-            className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/70 px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/70 px-2 py-1 text-[10px] text-muted-foreground transition-colors hover:border-blue-500/40 hover:text-blue-600 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#8f9db3] dark:hover:border-[#60a5fa]/45 dark:hover:text-[#60a5fa]"
           >
             <ExternalLink className="h-2.5 w-2.5" />
           </Link>
         </div>
 
         {run.issueId && (
-          <div className="mt-3 rounded-lg border border-border/60 bg-background/60 px-2.5 py-2 text-xs">
+          <div className="mt-3 rounded-lg border border-border/60 bg-background/60 px-2.5 py-2 text-xs dark:border-white/[0.07] dark:bg-[#090c12]/80">
             <Link
               to={`/issues/${issue?.identifier ?? run.issueId}`}
               className={cn(
                 "line-clamp-2 hover:underline",
-                isActive ? "text-cyan-700 dark:text-cyan-300" : "text-muted-foreground hover:text-foreground",
+                isActive
+                  ? "text-lime-700 dark:text-[#a3e635]"
+                  : "text-muted-foreground hover:text-foreground dark:text-[#9aa7bd] dark:hover:text-[#60a5fa]",
               )}
               title={issue?.title ? `${issue?.identifier ?? run.issueId.slice(0, 8)} - ${issue.title}` : issue?.identifier ?? run.issueId.slice(0, 8)}
             >
@@ -140,7 +145,7 @@ function AgentRunCard({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 dark:bg-[#090c12]/45">
         <RunTranscriptView
           entries={transcript}
           density="compact"

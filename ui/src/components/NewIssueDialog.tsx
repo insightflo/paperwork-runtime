@@ -914,7 +914,7 @@ export function NewIssueDialog() {
         showCloseButton={false}
         aria-describedby={undefined}
         className={cn(
-          "p-0 gap-0 flex flex-col max-h-[calc(100dvh-2rem)]",
+          "tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_50px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_50px_rgba(0,0,0,0.48)] [&_[data-slot=popover-content]]:rounded-[12px] [&_[data-slot=popover-content]]:border-[var(--pw-hairline)] [&_[data-slot=popover-content]]:bg-white [&_[data-slot=popover-content]]:text-slate-900 [&_[data-slot=popover-content]]:shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:[&_[data-slot=popover-content]]:border-white/10 dark:[&_[data-slot=popover-content]]:bg-[#0e131d] dark:[&_[data-slot=popover-content]]:bg-none dark:[&_[data-slot=popover-content]]:text-slate-100 dark:[&_[data-slot=popover-content]]:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] p-0 gap-0 flex flex-col max-h-[calc(100dvh-2rem)]",
           expanded
             ? "sm:max-w-2xl h-[calc(100dvh-2rem)]"
             : "sm:max-w-lg"
@@ -943,14 +943,14 @@ export function NewIssueDialog() {
         }}
       >
         {/* Header bar */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200/80 bg-slate-50/70 shrink-0 dark:border-white/10 dark:bg-[#07090d]">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Popover open={companyOpen} onOpenChange={setCompanyOpen}>
               <PopoverTrigger asChild>
                 <button
                   className={cn(
                     "px-1.5 py-0.5 rounded text-xs font-semibold cursor-pointer hover:opacity-80 transition-opacity",
-                    !dialogCompany?.brandColor && "bg-muted",
+                    !dialogCompany?.brandColor && "border border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300",
                   )}
                   style={
                     dialogCompany?.brandColor
@@ -964,13 +964,13 @@ export function NewIssueDialog() {
                   {(dialogCompany?.name ?? "").slice(0, 3).toUpperCase()}
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-48 p-1" align="start">
+              <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-48 p-1" align="start">
                 {companies.filter((c) => c.status !== "archived").map((c) => (
                   <button
                     key={c.id}
                     className={cn(
-                      "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-                      c.id === effectiveCompanyId && "bg-accent",
+                      "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5",
+                      c.id === effectiveCompanyId && "bg-[var(--pw-cobalt-soft)] text-slate-950 dark:text-slate-50",
                     )}
                     onClick={() => {
                       handleCompanyChange(c.id);
@@ -980,7 +980,7 @@ export function NewIssueDialog() {
                     <span
                       className={cn(
                         "px-1 py-0.5 rounded text-[10px] font-semibold leading-none",
-                        !c.brandColor && "bg-muted",
+                        !c.brandColor && "border border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300",
                       )}
                       style={
                         c.brandColor
@@ -999,7 +999,7 @@ export function NewIssueDialog() {
               </PopoverContent>
             </Popover>
             <span className="text-muted-foreground/60">&rsaquo;</span>
-            <span>New work item</span>
+            <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">New work item</span>
           </div>
           <div className="flex items-center gap-1">
             <Button
@@ -1026,7 +1026,7 @@ export function NewIssueDialog() {
         {/* Title */}
         <div className="px-4 pt-4 pb-2 shrink-0">
           <textarea
-            className="w-full text-lg font-semibold bg-transparent outline-none resize-none overflow-hidden placeholder:text-muted-foreground/50"
+            className="w-full text-lg font-semibold bg-transparent text-slate-950 caret-[#65a30d] outline-none resize-none overflow-hidden placeholder:text-slate-400 dark:text-slate-50 dark:caret-[#a3e635] dark:placeholder:text-slate-500"
             placeholder="Work item title"
             rows={1}
             value={title}
@@ -1073,7 +1073,7 @@ export function NewIssueDialog() {
                 value={assigneeValue}
                 options={assigneeOptions}
                 placeholder="Assignee"
-                disablePortal
+                disablePortal className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]"
                 noneLabel="No assignee"
                 searchPlaceholder="Search assignees..."
                 emptyMessage="No assignees found."
@@ -1124,7 +1124,7 @@ export function NewIssueDialog() {
                 value={projectId}
                 options={projectOptions}
                 placeholder="Work context"
-                disablePortal
+                disablePortal className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]"
                 noneLabel="No work context"
                 searchPlaceholder="Search work contexts..."
                 emptyMessage="No work contexts found."
@@ -1171,7 +1171,7 @@ export function NewIssueDialog() {
                 Control whether this work item runs in the shared execution context, a new isolated execution context, or an existing one.
               </div>
               <select
-                className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none"
+                className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none transition-colors focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
                 value={executionWorkspaceMode}
                 onChange={(e) => {
                   setExecutionWorkspaceMode(e.target.value);
@@ -1188,7 +1188,7 @@ export function NewIssueDialog() {
               </select>
               {executionWorkspaceMode === "reuse_existing" && (
                 <select
-                  className="w-full rounded border border-border bg-transparent px-2 py-1.5 text-xs outline-none"
+                  className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none transition-colors focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
                   value={selectedExecutionWorkspaceId}
                   onChange={(e) => setSelectedExecutionWorkspaceId(e.target.value)}
                 >
@@ -1219,14 +1219,14 @@ export function NewIssueDialog() {
               {assigneeOptionsTitle}
             </button>
             {assigneeOptionsOpen && (
-              <div className="mt-2 rounded-md border border-border p-3 bg-muted/20 space-y-3">
+              <div className="mt-2 rounded-[12px] border border-slate-200/80 bg-slate-50/60 p-3 space-y-3 dark:border-white/10 dark:bg-[#07090d]">
                 <div className="space-y-1.5">
                   <div className="text-xs text-muted-foreground">Model</div>
                   <InlineEntitySelector
                     value={assigneeModelOverride}
                     options={modelOverrideOptions}
                     placeholder="Default model"
-                    disablePortal
+                    disablePortal className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]"
                     noneLabel="Default model"
                     searchPlaceholder="Search models..."
                     emptyMessage="No models found."
@@ -1240,8 +1240,8 @@ export function NewIssueDialog() {
                       <button
                         key={option.value || "default"}
                         className={cn(
-                          "px-2 py-1 rounded-md text-xs border border-border hover:bg-accent/50 transition-colors",
-                          assigneeThinkingEffort === option.value && "bg-accent"
+                          "px-2 py-1 rounded-md text-xs border border-border hover:bg-slate-100 dark:hover:bg-white/5 transition-colors",
+                          assigneeThinkingEffort === option.value && "bg-[var(--pw-cobalt-soft)] text-slate-950 dark:text-slate-50"
                         )}
                         onClick={() => setAssigneeThinkingEffort(option.value)}
                       >
@@ -1256,7 +1256,7 @@ export function NewIssueDialog() {
                     <button
                       className={cn(
                         "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
-                        assigneeChrome ? "bg-green-600" : "bg-muted"
+                        assigneeChrome ? "bg-[#65a30d] dark:bg-[#a3e635]" : "bg-slate-200 dark:bg-white/10"
                       )}
                       onClick={() => setAssigneeChrome((value) => !value)}
                     >
@@ -1295,7 +1295,7 @@ export function NewIssueDialog() {
               placeholder="Add description..."
               bordered={false}
               mentions={mentionOptions}
-              contentClassName={cn("text-sm text-muted-foreground pb-12", expanded ? "min-h-[220px]" : "min-h-[120px]")}
+              contentClassName={cn("text-sm text-slate-600 dark:text-slate-300 pb-12", expanded ? "min-h-[220px]" : "min-h-[120px]")}
               imageUploadHandler={async (file) => {
                 const asset = await uploadDescriptionImage.mutateAsync(file);
                 return asset.contentPath;
@@ -1303,13 +1303,13 @@ export function NewIssueDialog() {
             />
           </div>
           {stagedFiles.length > 0 ? (
-            <div className="mt-4 space-y-3 rounded-lg border border-border/70 p-3">
+            <div className="mt-4 space-y-3 rounded-[12px] border border-slate-200/80 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-[#07090d]">
               {stagedDocuments.length > 0 ? (
                 <div className="space-y-2">
                   <div className="text-xs font-medium text-muted-foreground">Documents</div>
                   <div className="space-y-2">
                     {stagedDocuments.map((file) => (
-                      <div key={file.id} className="flex items-start justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
+                      <div key={file.id} className="flex items-start justify-between gap-3 rounded-md border border-slate-200/80 bg-white px-3 py-2 dark:border-white/10 dark:bg-[#0e131d]">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
@@ -1345,7 +1345,7 @@ export function NewIssueDialog() {
                   <div className="text-xs font-medium text-muted-foreground">Attachments</div>
                   <div className="space-y-2">
                     {stagedAttachments.map((file) => (
-                      <div key={file.id} className="flex items-start justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
+                      <div key={file.id} className="flex items-start justify-between gap-3 rounded-md border border-slate-200/80 bg-white px-3 py-2 dark:border-white/10 dark:bg-[#0e131d]">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -1375,22 +1375,22 @@ export function NewIssueDialog() {
         </div>
 
         {/* Property chips bar */}
-        <div className="flex items-center gap-1.5 px-4 py-2 border-t border-border flex-wrap shrink-0">
+        <div className="flex items-center gap-1.5 px-4 py-2 border-t border-slate-200/80 bg-slate-50/50 flex-wrap shrink-0 dark:border-white/10 dark:bg-[#07090d]">
           {/* Status chip */}
           <Popover open={statusOpen} onOpenChange={setStatusOpen}>
             <PopoverTrigger asChild>
-              <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
+              <button className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
                 <CircleDot className={cn("h-3 w-3", currentStatus.color)} />
                 {currentStatus.label}
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-36 p-1" align="start">
+            <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-36 p-1" align="start">
               {statuses.map((s) => (
                 <button
                   key={s.value}
                   className={cn(
-                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-                    s.value === status && "bg-accent"
+                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5",
+                    s.value === status && "bg-[var(--pw-cobalt-soft)] text-slate-950 dark:text-slate-50"
                   )}
                   onClick={() => { setStatus(s.value); setStatusOpen(false); }}
                 >
@@ -1404,7 +1404,7 @@ export function NewIssueDialog() {
           {/* Priority chip */}
           <Popover open={priorityOpen} onOpenChange={setPriorityOpen}>
             <PopoverTrigger asChild>
-              <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
+              <button className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
                 {currentPriority ? (
                   <>
                     <currentPriority.icon className={cn("h-3 w-3", currentPriority.color)} />
@@ -1418,13 +1418,13 @@ export function NewIssueDialog() {
                 )}
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-36 p-1" align="start">
+            <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-36 p-1" align="start">
               {priorities.map((p) => (
                 <button
                   key={p.value}
                   className={cn(
-                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-                    p.value === priority && "bg-accent"
+                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5",
+                    p.value === priority && "bg-[var(--pw-cobalt-soft)] text-slate-950 dark:text-slate-50"
                   )}
                   onClick={() => { setPriority(p.value); setPriorityOpen(false); }}
                 >
@@ -1436,7 +1436,7 @@ export function NewIssueDialog() {
           </Popover>
 
           {/* Labels chip (placeholder) */}
-          <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors text-muted-foreground">
+          <button className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
             <Tag className="h-3 w-3" />
             Labels
           </button>
@@ -1450,7 +1450,7 @@ export function NewIssueDialog() {
             multiple
           />
           <button
-            className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors text-muted-foreground"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]"
             onClick={() => stageFileInputRef.current?.click()}
             disabled={createIssue.isPending}
           >
@@ -1461,16 +1461,16 @@ export function NewIssueDialog() {
           {/* More (dates) */}
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
-              <button className="inline-flex items-center justify-center rounded-md border border-border p-1 text-xs hover:bg-accent/50 transition-colors text-muted-foreground">
+              <button className="inline-flex items-center justify-center rounded-md border border-slate-200/90 bg-white p-1 text-xs text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-400 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
                 <MoreHorizontal className="h-3 w-3" />
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-44 p-1" align="start">
-              <button className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground">
+            <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-44 p-1" align="start">
+              <button className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5 text-muted-foreground">
                 <Calendar className="h-3 w-3" />
                 Start date
               </button>
-              <button className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 text-muted-foreground">
+              <button className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5 text-muted-foreground">
                 <Calendar className="h-3 w-3" />
                 Due date
               </button>
@@ -1479,7 +1479,7 @@ export function NewIssueDialog() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-border shrink-0">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-200/80 bg-slate-50/50 shrink-0 dark:border-white/10 dark:bg-[#07090d]">
           <Button
             variant="ghost"
             size="sm"
@@ -1502,7 +1502,7 @@ export function NewIssueDialog() {
             </div>
             <Button
               size="sm"
-              className="min-w-[8.5rem] disabled:opacity-100"
+              className="min-w-[8.5rem] bg-[#4d7c0f] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:bg-[#3f6212] dark:bg-[#a3e635] dark:text-[#07090d] dark:hover:bg-[#bef264] tabular-nums disabled:opacity-100"
               disabled={!title.trim() || createIssue.isPending}
               onClick={handleSubmit}
               aria-busy={createIssue.isPending}

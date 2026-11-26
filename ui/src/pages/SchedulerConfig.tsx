@@ -13,11 +13,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Clock, Plus, Trash2, CalendarClock, ToggleLeft, ToggleRight } from "lucide-react";
 import { cn } from "../lib/utils";
 
-// Cockpit primitives (approved Linear + Datadog palette; mirrors .cockpit-strip/.cockpit-toolbar).
-const CARD = "rounded-md border border-[#242d3f] bg-[#151b28]";
-const FIELD = "rounded-md border border-[#242d3f] bg-[#111622] text-[#e6edf7] outline-none focus:border-[#5f8dff] focus:ring-[#5f8dff]/40";
-const LABEL = "text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]";
-const CTA = "bg-[#2563eb] text-[#f8fafc] hover:bg-[#5f8dff]";
+// Combo 1 tactile cockpit primitives: light-legible cards over obsidian dark surfaces.
+const CARD = "tactile-card dark:bg-none dark:border-white/[0.08] dark:bg-[#0e131d]";
+const FIELD = "rounded-lg border border-slate-200/90 bg-white text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#eef2f8] dark:placeholder:text-[#627089] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25";
+const LABEL = "text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad]";
+const CTA = "bg-blue-600 text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -102,13 +102,13 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
   return (
     <form
       onSubmit={handleSubmit}
-      className={`space-y-4 ${CARD} p-4`}
+      className={`grid gap-4 xl:grid-cols-4 ${CARD} p-4`}
     >
-      <p className={LABEL}>New Schedule</p>
+      <p className={`${LABEL} xl:col-span-4`}>New Schedule</p>
 
       {/* Agent */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#8b97ad]">Agent</label>
+        <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Agent</label>
         <Select value={agentId} onValueChange={setAgentId}>
           <SelectTrigger className="h-8 text-sm">
             <SelectValue placeholder="Select agent..." />
@@ -123,7 +123,7 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
 
       {/* Cron preset */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#8b97ad]">Preset</label>
+        <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Preset</label>
         <Select onValueChange={handlePreset} defaultValue="__custom__">
           <SelectTrigger className="h-8 text-sm tabular-nums">
             <SelectValue placeholder="Choose preset..." />
@@ -139,7 +139,7 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
 
       {/* Cron expression */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#8b97ad]">Cron expression</label>
+        <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Cron expression</label>
         <Input
           className={`h-8 text-sm font-mono tabular-nums ${FIELD}`}
           value={cronExpression}
@@ -153,7 +153,7 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
 
       {/* Timezone */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#8b97ad]">Timezone</label>
+        <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Timezone</label>
         <Input
           className={`h-8 text-sm ${FIELD}`}
           value={timezone}
@@ -163,10 +163,10 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
       </div>
 
       {formError && (
-        <p className="text-xs text-destructive">{formError}</p>
+        <p className="text-xs text-destructive xl:col-span-4">{formError}</p>
       )}
 
-      <div className="flex items-center gap-2 pt-1">
+      <div className="flex items-center gap-2 pt-1 xl:col-span-4">
         <Button type="submit" size="sm" className={`h-7 text-xs ${CTA}`} disabled={createMutation.isPending}>
           {createMutation.isPending ? "Creating..." : "Create schedule"}
         </Button>
@@ -213,12 +213,12 @@ function ScheduleRow({ schedule, agentName, companyId }: ScheduleRowProps) {
       !schedule.enabled && "opacity-60",
     )}>
       {/* Icon */}
-      <Clock className="h-4 w-4 shrink-0 text-[#8b97ad]" />
+      <Clock className="h-4 w-4 shrink-0 text-slate-500 dark:text-[#8b97ad]" />
 
       {/* Cron + agent */}
       <div className="min-w-0 space-y-0.5">
-        <p className="truncate font-mono text-xs font-medium tabular-nums text-[#e6edf7]">{schedule.cronExpression}</p>
-        <div className="flex min-w-0 items-center gap-2 text-xs text-[#8b97ad]">
+        <p className="truncate font-mono text-xs font-medium tabular-nums text-slate-950 dark:text-[#eef2f8]">{schedule.cronExpression}</p>
+        <div className="flex min-w-0 items-center gap-2 text-xs text-slate-500 dark:text-[#8b97ad]">
           <span className="min-w-0 truncate">{agentName}</span>
           <span className="shrink-0">·</span>
           <span className="shrink-0 tabular-nums">{schedule.timezone}</span>
@@ -227,13 +227,13 @@ function ScheduleRow({ schedule, agentName, companyId }: ScheduleRowProps) {
 
       {/* Next run */}
       <div className="hidden min-w-0 text-right sm:block">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8b97ad]">Next</p>
-        <p className="truncate text-xs font-medium tabular-nums text-[#e6edf7]">{formatDate(schedule.nextRunAt)}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad]">Next</p>
+        <p className="truncate text-xs font-medium tabular-nums text-slate-950 dark:text-[#eef2f8]">{formatDate(schedule.nextRunAt)}</p>
       </div>
 
       {/* Last run */}
       <div className="hidden min-w-0 text-right sm:block">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-[#8b97ad]">Last</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad]">Last</p>
         <p className="truncate text-xs tabular-nums">{formatDate(schedule.lastRunAt)}</p>
       </div>
 
@@ -241,7 +241,7 @@ function ScheduleRow({ schedule, agentName, companyId }: ScheduleRowProps) {
       <Button
         variant="ghost"
         size="icon-xs"
-        className={cn("h-7 w-7 justify-self-center", schedule.enabled ? "text-[#34d399] hover:text-[#34d399]" : "text-[#8b97ad] hover:text-[#e6edf7]")}
+        className={cn("h-7 w-7 justify-self-center", schedule.enabled ? "text-lime-700 dark:text-[#a3e635] hover:text-lime-700 dark:hover:text-[#a3e635]" : "text-slate-500 dark:text-[#8b97ad] hover:text-slate-900 dark:hover:text-[#eef2f8]")}
         onClick={() => toggleMutation.mutate(!schedule.enabled)}
         disabled={toggleMutation.isPending}
         title={schedule.enabled ? "Disable schedule" : "Enable schedule"}
@@ -255,7 +255,7 @@ function ScheduleRow({ schedule, agentName, companyId }: ScheduleRowProps) {
       <Button
         variant="ghost"
         size="icon-xs"
-        className="h-7 w-7 justify-self-center text-[#8b97ad] hover:text-destructive"
+        className="h-7 w-7 justify-self-center text-slate-500 dark:text-[#8b97ad] hover:text-destructive"
         onClick={() => deleteMutation.mutate()}
         disabled={deleteMutation.isPending}
       >
@@ -306,10 +306,10 @@ export function SchedulerConfig() {
     .map((s) => s.nextRunAt as string)
     .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
   const strip = [
-    { label: "Schedules", value: schedules ? list.length : "—", dot: "bg-[#5f8dff]" },
-    { label: "Enabled", value: schedules ? enabledCount : "—", dot: "bg-[#34d399]" },
-    { label: "Disabled", value: schedules ? list.length - enabledCount : "—", dot: "bg-[#8b97ad]" },
-    { label: "Next run", value: nextRunAt ? formatShort(nextRunAt) : "—", dot: "bg-[#fbbf24]" },
+    { label: "Schedules", value: schedules ? list.length : "—", dot: "bg-blue-600 dark:bg-[#60a5fa]" },
+    { label: "Enabled", value: schedules ? enabledCount : "—", dot: "bg-lime-500 dark:bg-[#a3e635]" },
+    { label: "Disabled", value: schedules ? list.length - enabledCount : "—", dot: "bg-slate-400 dark:bg-[#64748b]" },
+    { label: "Next run", value: nextRunAt ? formatShort(nextRunAt) : "—", dot: "bg-amber-500 dark:bg-[#f59e0b]" },
   ];
 
   return (
@@ -321,7 +321,7 @@ export function SchedulerConfig() {
       )}
 
       {/* 1-row 4-column cockpit strip */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Scheduler summary">
+      <div className="cockpit-strip h-10 w-full gap-0 overflow-hidden rounded-xl border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)]" role="group" aria-label="Scheduler summary">
         {strip.map((cell) => (
           <div key={cell.label} className="cockpit-cell min-w-0 flex-1 justify-center">
             <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.dot}`} />
@@ -332,16 +332,16 @@ export function SchedulerConfig() {
       </div>
 
       {/* 40px unified toolbar */}
-      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-2">
+      <div className="cockpit-toolbar tactile-card h-10 rounded-xl px-2 dark:bg-none dark:border-white/[0.08] dark:bg-[#0e131d]">
         <div className="flex min-w-0 items-baseline gap-2">
-          <h1 className="truncate text-sm font-semibold text-[#e6edf7]">Scheduler</h1>
-          <span className="truncate text-xs text-[#8b97ad]">Cron-based agent wakeup schedules</span>
+          <h1 className="truncate text-sm font-semibold text-slate-950 dark:text-[#eef2f8]">Scheduler</h1>
+          <span className="truncate text-xs text-slate-500 dark:text-[#8b97ad]">Cron-based agent wakeup schedules</span>
         </div>
         <button
           type="button"
           aria-pressed={showForm}
           onClick={() => setShowForm((v) => !v)}
-          className="ml-auto inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-md bg-[#2563eb] px-2.5 text-xs font-medium text-[#f8fafc] transition-colors hover:bg-[#5f8dff]"
+          className="ml-auto inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />New Schedule
         </button>
@@ -370,7 +370,7 @@ export function SchedulerConfig() {
 
       {/* Schedule list: explicit column tracks keep columns from overlapping */}
       {!isLoading && schedules && schedules.length > 0 && (
-        <div className={`grid grid-cols-[1rem_minmax(0,1fr)_2rem_2rem] items-center gap-3 border-b border-[#242d3f] px-4 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad] sm:grid-cols-[1rem_minmax(0,1fr)_10.5rem_10.5rem_2rem_2rem]`}>
+        <div className={`grid grid-cols-[1rem_minmax(0,1fr)_2rem_2rem] items-center gap-3 border-b border-slate-200/90 dark:border-white/[0.08] px-4 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad] sm:grid-cols-[1rem_minmax(0,1fr)_10.5rem_10.5rem_2rem_2rem]`}>
           <span />
           <span>Cron</span>
           <span className="hidden text-right sm:block">Next run</span>

@@ -18,15 +18,15 @@ import { ListTodo, Search } from "lucide-react";
 type StatusGroup = "open" | "in_progress" | "blocked" | "active";
 
 const STATUS_GROUPS: { key: StatusGroup; label: string; statuses: string[]; dot: string }[] = [
-  { key: "open", label: "Open", statuses: ["todo", "backlog"], dot: "bg-[#8b97ad]" },
-  { key: "in_progress", label: "In Progress", statuses: ["in_progress", "in_review"], dot: "bg-[#5f8dff]" },
-  { key: "blocked", label: "Blocked", statuses: ["blocked"], dot: "bg-[#fbbf24]" },
-  { key: "active", label: "Active", statuses: [], dot: "bg-[#34d399]" },
+  { key: "open", label: "Open", statuses: ["todo", "backlog"], dot: "bg-slate-400 dark:bg-[#8b97ad]" },
+  { key: "in_progress", label: "In Progress", statuses: ["in_progress", "in_review"], dot: "bg-blue-600 dark:bg-[#60a5fa]" },
+  { key: "blocked", label: "Blocked", statuses: ["blocked"], dot: "bg-amber-600 dark:bg-[#f59e0b]" },
+  { key: "active", label: "Active", statuses: [], dot: "bg-lime-600 dark:bg-[#a3e635]" },
 ];
 
 const TAB_CLASS =
-  "h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors aria-pressed:bg-[#151b28] aria-pressed:text-[#e6edf7] aria-pressed:shadow-[inset_0_0_0_1px_#242d3f] text-[#8b97ad] hover:text-[#e6edf7]";
-const ROW_CLASS = "h-9 border-[#242d3f] px-3 py-0 hover:bg-[#1a2131]";
+  "h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors text-slate-600 hover:text-slate-900 aria-pressed:bg-blue-600/10 aria-pressed:text-slate-900 aria-pressed:shadow-[inset_0_0_0_1px_rgba(37,99,235,0.28)] dark:text-[#8b97ad] dark:hover:text-[#edf2fb] dark:aria-pressed:bg-[#60a5fa]/12 dark:aria-pressed:text-[#edf2fb] dark:aria-pressed:shadow-[inset_0_0_0_1px_rgba(96,165,250,0.36)]";
+const ROW_CLASS = "h-9 border-slate-200/90 px-3 py-0 transition-colors hover:bg-slate-50 dark:border-white/[0.065] dark:hover:bg-[#141b29]";
 
 export function MyIssues() {
   const { selectedCompanyId } = useCompany();
@@ -81,9 +81,9 @@ export function MyIssues() {
   }
 
   return (
-    <div className="space-y-2 tabular-nums">
+    <div className="mx-auto w-full max-w-[1180px] space-y-3 tabular-nums">
       {/* 1-row 4-column cockpit summary strip */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="My work items by status">
+      <div className="cockpit-strip tactile-card w-full gap-0 border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-[#0e131d]" role="group" aria-label="My work items by status">
         {STATUS_GROUPS.map((group) => {
           const active = activeGroup === group.key;
           return (
@@ -94,24 +94,24 @@ export function MyIssues() {
               onClick={() => setActiveGroup(group.key)}
               className={`cockpit-cell min-w-0 flex-1 justify-center transition-colors ${
                 active
-                  ? "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_-1px_0_#5f8dff]"
-                  : "hover:bg-[#151b28] hover:text-[#e6edf7]"
+                  ? "bg-blue-600/10 text-slate-900 shadow-[inset_0_-1px_0_#2563eb] dark:bg-[#151d2c] dark:text-[#edf2fb] dark:shadow-[inset_0_-1px_0_#60a5fa]"
+                  : "hover:bg-slate-100/80 hover:text-slate-900 dark:hover:bg-[#151d2c] dark:hover:text-[#edf2fb]"
               }`}
             >
               <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${group.dot}`} />
               <span className="truncate uppercase tracking-wide">{group.label}</span>
-              <b className="ml-1">{groupCounts[group.key]}</b>
+              <b className="ml-1 font-mono">{groupCounts[group.key]}</b>
             </button>
           );
         })}
       </div>
 
       {/* Tight 40px filter toolbar: status tabs + local search, count pinned right */}
-      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-2">
+      <div className="cockpit-toolbar tactile-card h-10 rounded-[12px] border-slate-200/90 bg-white/95 px-2 dark:border-white/[0.08] dark:bg-[#0e131d]">
         <div
           role="group"
           aria-label="Filter my work by status"
-          className="flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5"
+          className="flex shrink-0 items-center gap-0.5 rounded-md border border-slate-200/90 bg-slate-50 p-0.5 dark:border-white/[0.08] dark:bg-[#090c12]"
         >
           {STATUS_GROUPS.map((group) => (
             <button
@@ -127,17 +127,17 @@ export function MyIssues() {
         </div>
 
         <div className="relative ml-2 min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b97ad]" />
+          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-[#8b97ad]" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search my work..."
             aria-label="Search my work"
-            className="h-7 w-full rounded-md border border-[#242d3f] bg-[#0b0e14] pl-7 pr-2 text-xs text-[#e6edf7] outline-none placeholder:text-[#8b97ad] focus:border-[#5f8dff] focus:ring-[#5f8dff]/40"
+            className="h-7 w-full rounded-md border border-slate-200/90 bg-white pl-7 pr-2 text-xs text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#edf2fb] dark:placeholder:text-[#8b97ad] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25"
           />
         </div>
 
-        <span className="ml-auto shrink-0 text-[11px] uppercase tracking-[0.16em] text-[#8b97ad]">
+        <span className="ml-auto shrink-0 text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-[#8b97ad]">
           {visibleIssues.length}
           {normalizedSearch || activeGroup !== "active" ? ` of ${myIssues.length}` : ""} shown
         </span>
@@ -154,7 +154,7 @@ export function MyIssues() {
       )}
 
       {visibleIssues.length > 0 && (
-        <div className="overflow-hidden rounded-md border border-[#242d3f] bg-[#151b28] tabular-nums">
+        <div className="tactile-card overflow-hidden rounded-[12px] border-slate-200/90 bg-white/95 tabular-nums dark:border-white/[0.08] dark:bg-[#0e131d]">
           {visibleIssues.map((issue) => (
             <EntityRow
               key={issue.id}
@@ -169,7 +169,7 @@ export function MyIssues() {
                 </>
               }
               trailing={
-                <span className="text-xs text-[#8b97ad] tabular-nums">
+                <span className="text-xs text-slate-500 tabular-nums dark:text-[#8b97ad]">
                   {formatDate(issue.createdAt)}
                 </span>
               }

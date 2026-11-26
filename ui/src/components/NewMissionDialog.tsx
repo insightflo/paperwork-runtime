@@ -126,27 +126,27 @@ export function NewMissionDialog() {
       <DialogContent
         showCloseButton={false}
         className={cn(
-          "p-0 gap-0 flex flex-col max-h-[calc(100dvh-2rem)] overflow-hidden",
+          "tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_50px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_50px_rgba(0,0,0,0.48)] p-0 gap-0 flex flex-col max-h-[calc(100dvh-2rem)] overflow-hidden",
           expanded ? "sm:max-w-2xl h-[calc(100dvh-2rem)]" : "sm:max-w-lg"
         )}
         onKeyDown={handleKeyDown}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200/80 bg-slate-50/70 shrink-0 dark:border-white/10 dark:bg-[#07090d]">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             {selectedCompany && (
-              <span className="bg-muted px-1.5 py-0.5 rounded text-xs font-medium">
+              <span className="rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600 tabular-nums dark:border-white/10 dark:bg-[#0e131d] dark:text-slate-300">
                 {selectedCompany.name.slice(0, 3).toUpperCase()}
               </span>
             )}
             <span className="text-muted-foreground/60">&rsaquo;</span>
-            <span>New Mission</span>
+            <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">New Mission</span>
           </div>
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon-xs"
-              className="text-muted-foreground"
+              className="text-slate-500 hover:text-[#2563eb] dark:text-slate-400 dark:hover:text-[#60a5fa]"
               onClick={() => setExpanded(!expanded)}
             >
               {expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
@@ -154,7 +154,7 @@ export function NewMissionDialog() {
             <Button
               variant="ghost"
               size="icon-xs"
-              className="text-muted-foreground"
+              className="text-slate-500 hover:text-[#2563eb] dark:text-slate-400 dark:hover:text-[#60a5fa]"
               onClick={() => { reset(); closeNewMission(); }}
             >
               <span className="text-lg leading-none">&times;</span>
@@ -165,7 +165,7 @@ export function NewMissionDialog() {
         {/* Title */}
         <div className="px-4 pt-4 pb-2 shrink-0">
           <input
-            className="w-full text-lg font-semibold bg-transparent outline-none placeholder:text-muted-foreground/50"
+            className="w-full text-lg font-semibold bg-transparent text-slate-950 caret-[#65a30d] outline-none placeholder:text-slate-400 dark:text-slate-50 dark:caret-[#a3e635] dark:placeholder:text-slate-500"
             placeholder="Mission title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -189,7 +189,7 @@ export function NewMissionDialog() {
             bordered={false}
             className="min-w-0 max-w-full overflow-hidden"
             contentClassName={cn(
-              "text-sm text-muted-foreground max-w-full overflow-x-hidden overflow-y-auto overscroll-contain whitespace-pre-wrap break-words [overflow-wrap:anywhere]",
+              "text-sm text-slate-600 dark:text-slate-300 max-w-full overflow-x-hidden overflow-y-auto overscroll-contain whitespace-pre-wrap break-words [overflow-wrap:anywhere]",
               expanded
                 ? "min-h-[220px] max-h-[calc(100dvh-15rem)]"
                 : "min-h-[120px] max-h-[42dvh]"
@@ -198,22 +198,22 @@ export function NewMissionDialog() {
         </div>
 
         {/* Property chips */}
-        <div className="flex items-center gap-1.5 px-4 py-2 border-t border-border flex-wrap">
+        <div className="flex items-center gap-1.5 px-4 py-2 border-t border-slate-200/80 bg-slate-50/50 flex-wrap dark:border-white/10 dark:bg-[#07090d]">
           {/* Status */}
           <Popover open={statusOpen} onOpenChange={setStatusOpen}>
             <PopoverTrigger asChild>
-              <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
+              <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
                 <StatusBadge status={status} />
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-40 p-1" align="start">
+            <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-40 p-1" align="start">
               {statusOptions.map((s) => (
                 <button
                   key={s.value}
                   type="button"
                   className={cn(
-                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 capitalize",
-                    s.value === status && "bg-accent"
+                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5 capitalize",
+                    s.value === status && "bg-[var(--pw-cobalt-soft)] text-slate-950 dark:text-slate-50"
                   )}
                   onClick={() => { setStatus(s.value); setStatusOpen(false); }}
                 >
@@ -226,19 +226,19 @@ export function NewMissionDialog() {
           {/* Main executor */}
           <Popover open={ownerOpen} onOpenChange={setOwnerOpen}>
             <PopoverTrigger asChild>
-              <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
-                <User className="h-3 w-3 text-muted-foreground" />
+              <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
+                <User className="h-3 w-3 text-[#2563eb] dark:text-[#60a5fa]" />
                 {selectedOwner ? selectedOwner.name : "Main executor"}
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-48 p-1" align="start">
+            <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-48 p-1" align="start">
               {(agents ?? []).map((a) => (
                 <button
                   key={a.id}
                   type="button"
                   className={cn(
-                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 truncate",
-                    a.id === ownerAgentId && "bg-accent"
+                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5 truncate",
+                    a.id === ownerAgentId && "bg-[var(--pw-cobalt-soft)] text-slate-950 dark:text-slate-50"
                   )}
                   onClick={() => { setOwnerAgentId(a.id); setOwnerOpen(false); }}
                 >
@@ -251,12 +251,12 @@ export function NewMissionDialog() {
           {/* Project (optional) */}
           <Popover open={projectOpen} onOpenChange={setProjectOpen}>
             <PopoverTrigger asChild>
-              <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
-                <Folder className="h-3 w-3 text-muted-foreground" />
+              <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
+                <Folder className="h-3 w-3 text-[#2563eb] dark:text-[#60a5fa]" />
                 {selectedProject ? selectedProject.name : "Project"}
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-48 p-1" align="start">
+            <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-48 p-1" align="start">
               {(projects ?? []).length === 0 ? (
                 <div className="px-2 py-1.5 text-xs text-muted-foreground">No projects</div>
               ) : (
@@ -265,8 +265,8 @@ export function NewMissionDialog() {
                     key={p.id}
                     type="button"
                     className={cn(
-                      "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50 truncate",
-                      p.id === projectId && "bg-accent"
+                      "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5 truncate",
+                      p.id === projectId && "bg-[var(--pw-cobalt-soft)] text-slate-950 dark:text-slate-50"
                     )}
                     onClick={() => { setProjectId(p.id); setProjectOpen(false); }}
                   >
@@ -283,9 +283,9 @@ export function NewMissionDialog() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end px-4 py-2.5 border-t border-border">
+        <div className="flex items-center justify-end px-4 py-2.5 border-t border-slate-200/80 bg-slate-50/50 dark:border-white/10 dark:bg-[#07090d]">
           <Button
-            size="sm"
+            size="sm" className="bg-[#4d7c0f] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:bg-[#3f6212] dark:bg-[#a3e635] dark:text-[#07090d] dark:hover:bg-[#bef264] tabular-nums"
             disabled={!title.trim() || createMission.isPending || (agents ?? []).length === 0}
             onClick={handleSubmit}
           >

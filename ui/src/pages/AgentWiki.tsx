@@ -21,28 +21,34 @@ import { cn } from "@/lib/utils";
 type WikiPageTab = MistologyTab | "kb";
 
 // Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
-const SEGMENT_ACTIVE = "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_0_0_1px_#242d3f]";
-const SEGMENT_IDLE = "text-[#8b97ad] hover:text-[#e6edf7]";
+const TACTILE_PANEL =
+  "rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
+const TACTILE_INSET =
+  "border-slate-200/90 bg-slate-100/80 text-slate-600 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#8b97ad]";
+const SEGMENT_ACTIVE = "bg-white text-slate-950 shadow-[0_1px_2px_rgba(15,23,42,0.08)] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]";
+const SEGMENT_IDLE = "text-slate-600 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:text-[#edf2fb]";
 /** Hairline card: #151b28 body inside a 1px #242d3f border. */
-const HAIRLINE_CARD = "min-w-0 rounded-md border border-[#242d3f] bg-[#151b28]";
-/** Descendant override so WikiMetricsBar / MistologyCardList / KbTreePanel blocks inherit the hairline card look. */
-const HAIRLINE_DESCENDANTS =
-  "[&_h2]:text-[11px] [&_h2]:font-semibold [&_h2]:uppercase [&_h2]:tracking-wider [&_h2]:text-[#8b97ad] " +
-  "[&_article]:rounded-md [&_article]:border-[#242d3f] [&_article]:bg-[#151b28] [&_article]:shadow-none [&_article_h3]:min-w-0 [&_article_h3]:truncate " +
-  "[&_dd]:min-w-0 [&_dd]:whitespace-pre-wrap [&_code]:whitespace-pre-wrap [&_code]:font-mono " +
-  "[&_section.rounded-lg.border]:rounded-md [&_section.rounded-lg.border]:border-[#242d3f] [&_section.rounded-lg.border]:bg-[#151b28] [&_section.rounded-lg.border]:shadow-none " +
-  "[&_div.rounded-md.border]:border-[#242d3f] [&_div.rounded-md.border]:bg-[#151b28] " +
-  "[&_p.rounded-lg.border]:rounded-md [&_p.rounded-lg.border]:border-[#242d3f] [&_p.rounded-lg.border]:bg-[#151b28]";
+const TACTILE_CARD = cn("min-w-0", TACTILE_PANEL);
+/** Descendant override so WikiMetricsBar / MistologyCardList / KbTreePanel blocks inherit the tactile card look. */
+const TACTILE_DESCENDANTS =
+  "[&_h2]:text-[11px] [&_h2]:font-semibold [&_h2]:uppercase [&_h2]:tracking-wider [&_h2]:text-slate-500 dark:[&_h2]:text-[#8b97ad] " +
+  "[&_article]:rounded-xl [&_article]:border-slate-200/90 [&_article]:bg-white [&_article]:shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:[&_article]:border-white/[0.08] dark:[&_article]:bg-[#0e131d] dark:[&_article]:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] " +
+  "[&_article_h3]:min-w-0 [&_article_h3]:truncate [&_dd]:min-w-0 [&_dd]:whitespace-pre-wrap [&_code]:whitespace-pre-wrap [&_code]:font-mono " +
+  "[&_article_dl>div]:border [&_article_dl>div]:border-slate-200/70 [&_article_dl>div]:bg-slate-50/80 dark:[&_article_dl>div]:border-white/[0.06] dark:[&_article_dl>div]:bg-[#090c12]/80 " +
+  "[&_.text-rose-300]:text-rose-700 dark:[&_.text-rose-300]:text-rose-300 [&_.text-amber-300]:text-amber-700 dark:[&_.text-amber-300]:text-amber-300 [&_.text-emerald-300]:text-emerald-700 dark:[&_.text-emerald-300]:text-emerald-300 " +
+  "[&_section.rounded-lg.border]:rounded-xl [&_section.rounded-lg.border]:border-slate-200/90 [&_section.rounded-lg.border]:bg-white dark:[&_section.rounded-lg.border]:border-white/[0.08] dark:[&_section.rounded-lg.border]:bg-[#0e131d] " +
+  "[&_div.rounded-md.border]:border-slate-200/80 [&_div.rounded-md.border]:bg-white dark:[&_div.rounded-md.border]:border-white/[0.08] dark:[&_div.rounded-md.border]:bg-[#090c12] " +
+  "[&_p.rounded-lg.border]:rounded-xl [&_p.rounded-lg.border]:border-slate-200/90 [&_p.rounded-lg.border]:bg-white dark:[&_p.rounded-lg.border]:border-white/[0.08] dark:[&_p.rounded-lg.border]:bg-[#0e131d]";
 const TOOLBAR_INPUT =
-  "h-7 border-[#242d3f] bg-[#0b0e14] text-xs text-[#e6edf7] focus-visible:border-[#5f8dff] focus-visible:ring-0";
+  "h-8 rounded-lg border-slate-200/90 bg-white text-xs text-slate-900 placeholder:text-slate-400 focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/20 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#edf2fb] dark:placeholder:text-[#8b97ad] dark:focus-visible:border-[#60a5fa] dark:focus-visible:ring-[#60a5fa]/25";
 
 /** One cell of the 1-row cockpit strip: micro status dot (optional) · uppercase label · bold tabular fact. */
 function StripFact({ label, value, dot }: { label: string; value: string; dot?: string }) {
   return (
-    <span className="cockpit-cell min-w-0 flex-1">
-      {dot && <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />}
-      <span className="truncate uppercase tracking-wide">{label}</span>
-      <b className="truncate normal-case tracking-normal">{value}</b>
+    <span className="flex h-10 min-w-0 items-center justify-center gap-1.5 px-2 text-xs text-slate-600 dark:text-[#8b97ad]">
+      {dot && <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full", dot)} />}
+      <span className="truncate text-[11px] font-semibold uppercase tracking-[0.1em]">{label}</span>
+      <b className="truncate font-mono text-xs font-semibold normal-case tracking-normal text-slate-950 dark:text-[#edf2fb]" title={value}>{value}</b>
     </span>
   );
 }
@@ -66,7 +72,7 @@ export function AgentWiki() {
 
   if (!selectedCompanyId) {
     return (
-      <p className="text-sm text-[#8b97ad] tabular-nums">
+      <p className="text-sm text-slate-500 tabular-nums dark:text-[#8b97ad]">
         {L(lang, { en: "Select a company to view its wiki.", ko: "회사를 선택하세요." })}
       </p>
     );
@@ -113,34 +119,34 @@ export function AgentWiki() {
   });
 
   return (
-    <div className={cn("space-y-2 tabular-nums", HAIRLINE_DESCENDANTS)}>
+    <div className={cn("space-y-3 tabular-nums", TACTILE_DESCENDANTS)}>
       {/* 1-row 5-cell cockpit strip: record counts by tab + TTL + access */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Wiki summary">
-        <StripFact label={L(lang, { en: "Standards", ko: "표준 규약" })} value={String(canonPatterns.length)} dot="bg-[#5f8dff]" />
-        <StripFact label={L(lang, { en: "Mistakes · 30d", ko: "오답 · 30일" })} value={String(recentPatterns.length + activeEntryGroups)} dot="bg-[#fbbf24]" />
-        <StripFact label={L(lang, { en: "Retired", ko: "은퇴·해결" })} value={String(retiredPatterns.length + closedEntryGroups)} dot="bg-[#8b97ad]" />
+      <div className={cn(TACTILE_PANEL, "grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden dark:divide-white/[0.06] sm:grid-cols-5")} role="group" aria-label="Wiki summary">
+        <StripFact label={L(lang, { en: "Standards", ko: "표준 규약" })} value={String(canonPatterns.length)} dot="bg-blue-500 dark:bg-[#60a5fa]" />
+        <StripFact label={L(lang, { en: "Mistakes · 30d", ko: "오답 · 30일" })} value={String(recentPatterns.length + activeEntryGroups)} dot="bg-amber-500 dark:bg-[#f59e0b]" />
+        <StripFact label={L(lang, { en: "Retired", ko: "은퇴·해결" })} value={String(retiredPatterns.length + closedEntryGroups)} dot="bg-slate-400 dark:bg-[#8b97ad]" />
         <StripFact label="TTL" value="30d" />
-        <StripFact label={L(lang, { en: "Access", ko: "접근" })} value={L(lang, { en: "Read-only", ko: "읽기 전용" })} dot="bg-[#34d399]" />
+        <StripFact label={L(lang, { en: "Access", ko: "접근" })} value={L(lang, { en: "Read-only", ko: "읽기 전용" })} dot="bg-lime-500 shadow-[0_0_6px_rgba(163,230,53,0.45)] dark:bg-[#a3e635]" />
       </div>
 
       {/* Tight single-row 40px toolbar: title · description · tabs · search (wraps on narrow viewports). */}
-      <div className="cockpit-toolbar min-h-10 w-full flex-wrap rounded-md border border-[#242d3f] bg-[#111622] pl-2 pr-1.5">
-        <Brain className="h-3.5 w-3.5 shrink-0 text-[#5f8dff]" aria-hidden />
-        <h1 className="shrink-0 text-sm font-semibold text-[#e6edf7]">Mistology Wiki</h1>
-        <p className="min-w-0 truncate text-xs text-[#8b97ad]" title={description}>{description}</p>
+      <div className={cn(TACTILE_PANEL, "flex min-h-10 w-full flex-wrap items-center gap-2 px-2.5 py-1.5")}>
+        <Brain className="h-4 w-4 shrink-0 text-blue-600 dark:text-[#60a5fa]" aria-hidden />
+        <h1 className="shrink-0 text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">Mistology Wiki</h1>
+        <p className="min-w-0 truncate text-xs text-slate-500 dark:text-[#8b97ad]" title={description}>{description}</p>
         <div className="ml-auto flex min-w-0 items-center gap-2">
           {tab !== "kb" && (
             <div className="relative">
-              <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b97ad]" />
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-[#8b97ad]" />
               <Input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder={L(lang, { en: "Search title, symptoms, tags", ko: "제목·증상·태그 검색" })}
-                className={cn(TOOLBAR_INPUT, "w-56 pl-7")}
+                className={cn(TOOLBAR_INPUT, "w-56 pl-8")}
               />
             </div>
           )}
-          <div role="tablist" aria-label="Mistology tabs" className="flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5">
+          <div role="tablist" aria-label="Mistology tabs" className={cn("flex shrink-0 items-center gap-0.5 rounded-lg border p-0.5", TACTILE_INSET)}>
             {tabs.map((t) => (
               <button
                 key={t.id}
@@ -148,7 +154,7 @@ export function AgentWiki() {
                 role="tab"
                 aria-selected={tab === t.id}
                 onClick={() => setTab(t.id)}
-                className={cn("h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors", tab === t.id ? SEGMENT_ACTIVE : SEGMENT_IDLE)}
+                className={cn("h-7 cursor-pointer rounded-md px-2 text-xs whitespace-nowrap transition-colors", tab === t.id ? SEGMENT_ACTIVE : SEGMENT_IDLE)}
               >
                 {t.label}
               </button>
@@ -157,18 +163,25 @@ export function AgentWiki() {
         </div>
       </div>
 
-      {(() => {
-        if (tab === "kb") return <KbTreePanel key={selectedCompanyId} companyId={selectedCompanyId} />;
-        if (isLoading) return <p className={cn(HAIRLINE_CARD, "px-4 py-3 font-mono text-xs text-[#8b97ad]")}>{L(lang, { en: "Loading…", ko: "불러오는 중…" })}</p>;
-        if (isError) {
-          return (
-            <p className={cn(HAIRLINE_CARD, "whitespace-pre-wrap px-4 py-3 font-mono text-xs text-[#f87171]")}>
-              {L(lang, { en: "Failed to load", ko: "조회 실패" })}: {(error as Error)?.message ?? "unknown"}
-            </p>
-          );
-        }
-        return <MistologyCardList patterns={shown.patterns} entries={shown.entries} language={lang} />;
-      })()}
+      <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_21rem] xl:items-start">
+        <div className="min-w-0">
+          {(() => {
+            if (tab === "kb") return <KbTreePanel key={selectedCompanyId} companyId={selectedCompanyId} />;
+            if (isLoading) return <p className={cn(TACTILE_CARD, "px-4 py-3 font-mono text-xs text-slate-500 dark:text-[#8b97ad]")}>{L(lang, { en: "Loading…", ko: "불러오는 중…" })}</p>;
+            if (isError) {
+              return (
+                <p className={cn(TACTILE_CARD, "whitespace-pre-wrap px-4 py-3 font-mono text-xs text-rose-700 dark:text-[#f87171]")}>
+                  {L(lang, { en: "Failed to load", ko: "조회 실패" })}: {(error as Error)?.message ?? "unknown"}
+                </p>
+              );
+            }
+            return <MistologyCardList patterns={shown.patterns} entries={shown.entries} language={lang} />;
+          })()}
+        </div>
+        <aside className="min-w-0 xl:sticky xl:top-3">
+          <WikiMetricsBar patterns={patterns} entries={entries} language={lang} />
+        </aside>
+      </div>
     </div>
   );
 }

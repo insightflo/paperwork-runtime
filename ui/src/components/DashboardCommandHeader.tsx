@@ -43,11 +43,14 @@ interface WaitEntry {
   tone: "question" | "approval" | "queue";
 }
 
-const TONE_VARS: Record<WaitEntry["tone"], { fg: string; bg: string }> = {
-  question: { fg: "--openbot-wait-question", bg: "--openbot-wait-question-soft" },
-  approval: { fg: "--openbot-wait-approval", bg: "--openbot-wait-approval-soft" },
-  queue: { fg: "--openbot-info-text", bg: "--openbot-info-soft" },
+const TONE_CLASSES: Record<WaitEntry["tone"], string> = {
+  question: "border-amber-500/25 bg-amber-500/10 text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]",
+  approval: "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:border-rose-400/35 dark:bg-rose-500/10 dark:text-rose-300",
+  queue: "border-blue-500/25 bg-blue-500/10 text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa]",
 };
+
+const ACTION_PILL_CLASS = "inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-slate-50/85 px-2.5 py-1 text-[11px] font-medium text-slate-600 no-underline shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-colors hover:border-[#60a5fa]/45 hover:bg-white hover:text-[#2563eb] dark:border-white/[0.09] dark:bg-[#07090d] dark:text-[#8f9db3] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:hover:border-[#60a5fa]/45 dark:hover:bg-[#0b0f18] dark:hover:text-[#60a5fa]";
+const KPI_TILE_CLASS = "block rounded-[10px] border border-slate-200/90 bg-slate-50/80 px-3 py-2.5 no-underline text-inherit shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_2px_rgba(15,23,42,0.03)] transition-colors hover:border-[#60a5fa]/45 hover:bg-white dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:hover:border-[#60a5fa]/45 dark:hover:bg-[#0b0f18]";
 
 export function DashboardCommandHeader(props: { companyId: string; kpis?: CommandKpis }) {
   const { companyId } = props;
@@ -124,48 +127,33 @@ export function DashboardCommandHeader(props: { companyId: string; kpis?: Comman
     { icon: Hourglass, label: "대기/차단 현황", value: waitDisplay, sub: pending ? `결정 ${pendingCards.length}${hasMore ? "+" : ""} · 큐 ${queueItems.length}` : (hasSummary ? "승인+큐" : summaryPlaceholderSub), to: "/human-operator" },
   ];
 
-  const pillStyle = {
-    backgroundColor: "var(--openbot-surface-25d-raised)",
-    borderColor: "var(--openbot-surface-25d-border)",
-    color: "var(--openbot-text-secondary)",
-  };
-
   return (
     <section
       aria-label="명령 헤더"
-      className="rounded-xl border p-3.5 space-y-3"
-      style={{
-        backgroundColor: "var(--openbot-surface-25d-bg)",
-        borderColor: "var(--openbot-surface-25d-border)",
-        boxShadow: "var(--openbot-surface-25d-shadow)",
-      }}
+      className="tactile-card space-y-3 rounded-[12px] border border-slate-200/90 bg-white p-3.5 tabular-nums text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span
-          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-          style={{ backgroundColor: "var(--openbot-accent-soft)", color: "var(--openbot-accent-text)" }}
-        >
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-[#65a30d]/30 bg-[#65a30d]/10 px-2.5 py-1 text-[11px] font-semibold text-[#4d7c0f] dark:border-[#a3e635]/35 dark:bg-[#a3e635]/10 dark:text-[#a3e635]">
           <Rocket className="h-3.5 w-3.5" />
           실시간 운영 현황
         </span>
         <div className="flex flex-wrap items-center gap-1.5">
-          <Link to="/human-operator" className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium no-underline transition-colors hover:brightness-110" style={pillStyle}>
+          <Link to="/human-operator" className={ACTION_PILL_CLASS}>
             <UserRoundCheck className="h-3.5 w-3.5" />
             결정함{waitCount > 0 ? ` ${waitDisplay}` : ""}
           </Link>
-          <Link to="/worktree/rules" className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium no-underline transition-colors hover:brightness-110" style={pillStyle}>
+          <Link to="/worktree/rules" className={ACTION_PILL_CLASS}>
             <ShieldCheck className="h-3.5 w-3.5" />
             Hermit Gate · 실행 규칙
           </Link>
-          <Link to="/channels" className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium no-underline transition-colors hover:brightness-110" style={pillStyle}>
+          <Link to="/channels" className={ACTION_PILL_CLASS}>
             <MessageSquare className="h-3.5 w-3.5" />
             채널 협업 보드
           </Link>
           <button
             type="button"
             onClick={() => typeof window !== "undefined" && window.dispatchEvent(new CustomEvent(INSPECTOR_TOGGLE_EVENT))}
-            className="hidden md:inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors hover:brightness-110 cursor-pointer"
-            style={pillStyle}
+            className={`${ACTION_PILL_CLASS} cursor-pointer max-md:hidden`}
           >
             <PanelRightOpen className="h-3.5 w-3.5" />
             우측 인스펙터
@@ -178,28 +166,23 @@ export function DashboardCommandHeader(props: { companyId: string; kpis?: Comman
           <Link
             key={tile.label}
             to={tile.to}
-            className="rounded-lg border px-3 py-2.5 no-underline text-inherit transition-transform hover:-translate-y-0.5"
-            style={{
-              backgroundColor: "var(--openbot-surface-25d-raised)",
-              borderColor: "var(--openbot-surface-25d-border)",
-              boxShadow: "inset 0 1px 0 var(--openbot-surface-25d-highlight)",
-            }}
+            className={KPI_TILE_CLASS}
           >
-            <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--openbot-text-muted)" }}>
-              <tile.icon className="h-3.5 w-3.5" />
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-[#8f9db3]">
+              <tile.icon className="h-3.5 w-3.5 text-[#2563eb] dark:text-[#60a5fa]" />
               {tile.label}
             </div>
-            <div className="mt-1 text-lg font-semibold leading-none" style={{ color: "var(--openbot-text-primary)" }}>
+            <div className="mt-1 text-lg font-semibold leading-none tabular-nums text-slate-950 dark:text-[#edf2fb]">
               {tile.value}
             </div>
-            <div className="mt-1 text-[10px]" style={{ color: "var(--openbot-text-muted)" }}>{tile.sub}</div>
+            <div className="mt-1 text-[10px] tabular-nums text-slate-500 dark:text-[#8f9db3]">{tile.sub}</div>
           </Link>
         ))}
       </div>
 
       {waits.length > 0 && (
-        <div className="flex items-center gap-2 overflow-x-auto">
-          <span className="flex items-center gap-1 text-[11px] shrink-0" style={{ color: "var(--openbot-text-muted)" }}>
+        <div className="flex items-center gap-2 overflow-x-auto rounded-[10px] border border-slate-200/80 bg-slate-50/75 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <span className="flex shrink-0 items-center gap-1 text-[11px] text-slate-500 dark:text-[#8f9db3]">
             <Inbox className="h-3.5 w-3.5" />
             대기열
           </span>
@@ -207,22 +190,21 @@ export function DashboardCommandHeader(props: { companyId: string; kpis?: Comman
             <Link
               key={w.id}
               to={w.tone === "queue" ? "/worktree/rules" : "/human-operator"}
-              className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium no-underline max-w-56 truncate"
-              style={{ color: `var(${TONE_VARS[w.tone].fg})`, backgroundColor: `var(${TONE_VARS[w.tone].bg})` }}
+              className={`shrink-0 max-w-56 truncate rounded-full border px-2 py-0.5 text-[10px] font-medium no-underline ${TONE_CLASSES[w.tone]}`}
               title={w.label}
             >
               {w.label}
             </Link>
           ))}
           {waitCount > waits.length && (
-            <Link to="/human-operator" className="shrink-0 text-[10px] underline underline-offset-2" style={{ color: "var(--openbot-text-muted)" }}>
+            <Link to="/human-operator" className="shrink-0 text-[10px] text-[#2563eb] underline underline-offset-2 transition-colors hover:text-[#4d7c0f] dark:text-[#60a5fa] dark:hover:text-[#a3e635]">
               +{waitCount - waits.length} 더 보기
             </Link>
           )}
         </div>
       )}
 
-      <p className="text-[10px]" style={{ color: "var(--openbot-text-muted)" }}>
+      <p className="text-[10px] text-slate-500 dark:text-[#8f9db3]">
         사이드바 경계를 드래그하면 뷰가 스냅됩니다 (compact · peek · expanded).
       </p>
     </section>

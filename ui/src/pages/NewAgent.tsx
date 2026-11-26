@@ -26,19 +26,19 @@ const SUPPORTED_ADVANCED_ADAPTER_TYPES = new Set<CreateConfigValues["adapterType
 
 // Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
 /** Hairline card: #151b28 body inside a 1px #242d3f border. */
-const HAIRLINE_CARD = "min-w-0 rounded-md border border-[#242d3f] bg-[#151b28]";
-const CTA_PRIMARY = "h-7 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]";
-const CTA_GHOST = "h-7 border-[#242d3f] bg-[#0b0e14] px-2.5 text-xs text-[#e6edf7] hover:bg-[#151b28]";
+const HAIRLINE_CARD = "min-w-0 rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
+const CTA_PRIMARY = "h-7 border-0 bg-blue-600 px-2.5 text-xs text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] hover:bg-blue-500 dark:bg-[#60a5fa] dark:text-[#07111f] dark:hover:bg-[#7bb7ff]";
+const CTA_GHOST = "h-7 border-slate-200/80 bg-white px-2.5 text-xs text-slate-700 hover:bg-slate-50 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:hover:bg-[#141b29]";
 /** Descendant override so AgentConfigForm's "cards" sections inherit the hairline card look. */
-const HAIRLINE_DESCENDANTS = "[&_.border.rounded-lg]:rounded-md [&_.border.rounded-lg.border-border]:border-[#242d3f] [&_.border.rounded-lg.border-border]:bg-[#151b28]";
+const HAIRLINE_DESCENDANTS = "[&_.border.rounded-lg]:rounded-xl [&_.border.rounded-lg.border-border]:border-slate-200/90 [&_.border.rounded-lg.border-border]:bg-white [&_.border.rounded-lg.border-border]:shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:[&_.border.rounded-lg.border-border]:border-white/[0.08] dark:[&_.border.rounded-lg.border-border]:bg-[#0e131d] dark:[&_.border.rounded-lg.border-border]:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
 
 /** One cell of the 1-row cockpit strip: micro status dot (optional) · uppercase label · bold tabular fact. */
 function StripFact({ label, value, dot }: { label: string; value: string; dot?: string }) {
   return (
-    <span className="cockpit-cell min-w-0 flex-1">
+    <span className="flex h-10 min-w-0 items-center justify-center gap-1.5 px-2 text-xs text-slate-600 dark:text-[#8b97ad]">
       {dot && <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />}
       <span className="truncate uppercase tracking-wide">{label}</span>
-      <b className="truncate normal-case tracking-normal" title={value}>{value}</b>
+      <b className="truncate font-semibold normal-case tracking-normal text-slate-950 dark:text-[#edf2fb]" title={value}>{value}</b>
     </span>
   );
 }
@@ -100,10 +100,7 @@ export function NewAgent() {
   const effectiveRole = isFirstAgent ? "ceo" : role;
 
   useEffect(() => {
-    setBreadcrumbs([
-      { label: "Agents", href: "/agents" },
-      { label: "New Agent" },
-    ]);
+    setBreadcrumbs([{ label: "Agents", href: "/agents" }, { label: "New Agent" }]);
   }, [setBreadcrumbs]);
 
   useEffect(() => {
@@ -172,33 +169,33 @@ export function NewAgent() {
   const reportsToName = reportsTo ? agents?.find((agent) => agent.id === reportsTo)?.name ?? reportsTo : "—";
 
   return (
-    <div className="mx-auto max-w-2xl space-y-2 tabular-nums">
+    <div className="w-full space-y-3 tabular-nums">
       {/* 1-row 6-cell cockpit strip: the configuration in progress at a glance */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="New agent summary">
-        <StripFact label="Role" value={roleLabels[effectiveRole] ?? effectiveRole} dot={isFirstAgent ? "bg-[#fbbf24]" : "bg-[#5f8dff]"} />
+      <div className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] sm:grid-cols-3 xl:grid-cols-6" role="group" aria-label="New agent summary">
+        <StripFact label="Role" value={roleLabels[effectiveRole] ?? effectiveRole} dot={isFirstAgent ? "bg-amber-500 dark:bg-[#f59e0b]" : "bg-blue-500 dark:bg-[#60a5fa]"} />
         <StripFact label="Reports to" value={reportsToName} />
         <StripFact label="Adapter" value={configValues.adapterType} />
         <StripFact label="Model" value={configValues.model || "—"} />
         <StripFact label="Skills" value={`${selectedSkillKeys.length}/${availableSkills.length}`} />
-        <StripFact label="Heartbeat" value={`${configValues.heartbeatEnabled ? "On" : "Off"} · ${configValues.intervalSec}s`} dot={configValues.heartbeatEnabled ? "bg-[#34d399]" : "bg-[#8b97ad]"} />
+        <StripFact label="Heartbeat" value={`${configValues.heartbeatEnabled ? "On" : "Off"} · ${configValues.intervalSec}s`} dot={configValues.heartbeatEnabled ? "bg-lime-500 dark:bg-[#a3e635]" : "bg-slate-400 dark:bg-[#8b97ad]"} />
       </div>
 
       {/* Tight single-row 40px toolbar: title · scope · CEO notice (actions live in the footer of this long form). */}
-      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] pl-2 pr-1.5">
+      <div className="cockpit-toolbar h-10 w-full rounded-xl border border-slate-200/90 bg-white pl-2 pr-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-          <h1 className="shrink-0 text-sm font-semibold text-[#e6edf7]">New Agent</h1>
-          <p className="min-w-0 truncate text-xs text-[#8b97ad]">Advanced agent configuration</p>
+          <h1 className="shrink-0 text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">New Agent</h1>
+          <p className="min-w-0 truncate text-xs text-slate-500 dark:text-[#8b97ad]">Advanced agent configuration</p>
         </div>
         {isFirstAgent && (
-          <span className="shrink-0 rounded-full border border-[#fbbf24]/40 bg-[#fbbf24]/10 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#fbbf24]">CEO</span>
+          <span className="shrink-0 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 dark:border-[#f59e0b]/40 dark:bg-[#f59e0b]/10 py-0.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700 dark:text-[#f59e0b]">CEO</span>
         )}
       </div>
 
-      <div className={cn(HAIRLINE_CARD, "divide-y divide-[#242d3f]")}>
+      <div className={cn(HAIRLINE_CARD, "divide-y divide-slate-200/80 dark:divide-white/[0.06]")}>
         {/* Name */}
         <div className="px-4 pb-2 pt-4">
           <input
-            className="w-full bg-transparent text-lg font-semibold text-[#e6edf7] outline-none placeholder:text-[#8b97ad]/50"
+            className="w-full bg-transparent text-lg font-semibold text-slate-950 dark:text-[#edf2fb] outline-none placeholder:text-slate-400 dark:placeholder:text-[#8b97ad]/50"
             placeholder="Agent name" value={name} onChange={(e) => setName(e.target.value)}
           />
         </div>
@@ -206,7 +203,7 @@ export function NewAgent() {
         {/* Title */}
         <div className="px-4 pb-3">
           <input
-            className="w-full bg-transparent text-sm text-[#8b97ad] outline-none placeholder:text-[#8b97ad]/40"
+            className="w-full bg-transparent text-sm text-slate-500 dark:text-[#8b97ad] outline-none placeholder:text-slate-400 dark:placeholder:text-[#8b97ad]/40"
             placeholder="Title (e.g. VP of Engineering)"
             aria-label="Title" value={title} onChange={(e) => setTitle(e.target.value)}
           />
@@ -218,7 +215,7 @@ export function NewAgent() {
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className={cn("inline-flex h-7 items-center gap-1.5 rounded-md border border-[#242d3f] bg-[#0b0e14] px-2 text-xs text-[#e6edf7] transition-colors hover:bg-[#151b28]", isFirstAgent && "cursor-not-allowed opacity-60")}
+                className={cn("inline-flex h-7 items-center gap-1.5 rounded-md border border-slate-200/80 dark:border-white/[0.08] bg-slate-100/80 dark:bg-[#090c12] px-2 text-xs text-slate-950 dark:text-[#edf2fb] transition-colors hover:bg-slate-50 dark:hover:bg-[#141b29]", isFirstAgent && "cursor-not-allowed opacity-60")}
                 disabled={isFirstAgent}
               >
                 <Shield className="h-3 w-3 text-muted-foreground" />
@@ -242,48 +239,50 @@ export function NewAgent() {
         </div>
       </div>
 
-      {/* Shared config form */}
-      <div className={HAIRLINE_DESCENDANTS}>
-        <AgentConfigForm
-          mode="create"
-          values={configValues}
-          onChange={(patch) => setConfigValues((prev) => ({ ...prev, ...patch }))}
-          adapterModels={adapterModels}
-          sectionLayout="cards"
-        />
-      </div>
-
-      <section aria-label="Company skills" className={cn(HAIRLINE_CARD, "px-4 py-4")}>
-        <div className="space-y-3">
-          <div>
-            <h2 className="text-xs font-semibold text-[#e6edf7]">Company skills</h2>
-            <p className="mt-1 text-xs text-[#8b97ad]">
-              Optional skills from the company library. Built-in Paperwork runtime skills are added automatically.
-            </p>
-          </div>
-          {availableSkills.length === 0 ? (
-            <p className="text-xs text-[#8b97ad]">No optional company skills installed yet.</p>
-          ) : (
-            <div className="divide-y divide-[#242d3f]/70">
-              {availableSkills.map((skill) => (
-                <div key={skill.id} className="flex items-start gap-3">
-                  <Checkbox id={`skill-${skill.id}`} checked={selectedSkillKeys.includes(skill.key)} onCheckedChange={(next) => toggleSkill(skill.key, next === true)} />
-                  <label htmlFor={`skill-${skill.id}`} className="grid min-w-0 flex-1 gap-1 py-2 leading-none">
-                    <span className="min-w-0 truncate text-sm font-medium text-[#e6edf7]">{skill.name}</span>
-                    <span className="min-w-0 break-words font-mono text-xs text-[#8b97ad]">{skill.description ?? skill.key}</span>
-                  </label>
-                </div>
-              ))}
-            </div>
-          )}
+      <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
+        {/* Shared config form */}
+        <div className={cn(HAIRLINE_DESCENDANTS, "min-w-0")}>
+          <AgentConfigForm
+            mode="create"
+            values={configValues}
+            onChange={(patch) => setConfigValues((prev) => ({ ...prev, ...patch }))}
+            adapterModels={adapterModels}
+            sectionLayout="cards"
+          />
         </div>
-      </section>
+
+        <section aria-label="Company skills" className={cn(HAIRLINE_CARD, "px-4 py-4")}>
+          <div className="space-y-3">
+            <div>
+              <h2 className="text-xs font-semibold text-slate-950 dark:text-[#edf2fb]">Company skills</h2>
+              <p className="mt-1 text-xs text-slate-500 dark:text-[#8b97ad]">
+                Optional skills from the company library. Built-in Paperwork runtime skills are added automatically.
+              </p>
+            </div>
+            {availableSkills.length === 0 ? (
+              <p className="text-xs text-slate-500 dark:text-[#8b97ad]">No optional company skills installed yet.</p>
+            ) : (
+              <div className="divide-y divide-slate-200/70 dark:divide-white/[0.06]">
+                {availableSkills.map((skill) => (
+                  <div key={skill.id} className="flex items-start gap-3">
+                    <Checkbox id={`skill-${skill.id}`} checked={selectedSkillKeys.includes(skill.key)} onCheckedChange={(next) => toggleSkill(skill.key, next === true)} />
+                    <label htmlFor={`skill-${skill.id}`} className="grid min-w-0 flex-1 gap-1 py-2 leading-none">
+                      <span className="min-w-0 truncate text-sm font-medium text-slate-950 dark:text-[#edf2fb]">{skill.name}</span>
+                      <span className="min-w-0 break-words font-mono text-xs text-slate-500 dark:text-[#8b97ad]">{skill.description ?? skill.key}</span>
+                    </label>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
 
       {/* Footer: status notes + actions; the cobalt Create agent is the page's single primary CTA. */}
       <div className={cn(HAIRLINE_CARD, "flex flex-wrap items-center gap-3 px-4 py-2")}>
         <div className="min-w-0 flex-1 space-y-1">
-          {isFirstAgent && <p className="text-xs text-[#fbbf24]">This will be the CEO</p>}
-          {formError && <p role="alert" className="whitespace-pre-wrap font-mono text-xs text-[#f87171]">{formError}</p>}
+          {isFirstAgent && <p className="text-xs text-amber-700 dark:text-[#f59e0b]">This will be the CEO</p>}
+          {formError && <p role="alert" className="whitespace-pre-wrap font-mono text-xs text-rose-700 dark:text-[#f87171]">{formError}</p>}
         </div>
         <div className="flex items-center justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => navigate("/agents")} className={CTA_GHOST}>Cancel</Button>

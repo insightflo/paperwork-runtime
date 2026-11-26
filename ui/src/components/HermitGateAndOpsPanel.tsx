@@ -13,17 +13,17 @@ import { cn } from "../lib/utils";
 
 export const HERMIT_AUDIT_TOTAL = 25;
 
+const INPUT_CLASS = "border-slate-200/90 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:border-blue-500 focus-visible:ring-blue-500/15 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-[#60a5fa] dark:focus-visible:ring-[#60a5fa]/20";
+const INSET_ROW_CLASS = "rounded-[10px] border border-slate-200/80 bg-slate-50/70 px-2 py-1 dark:border-white/[0.07] dark:bg-[#090c12]";
+
 export function auditProgressText(progress: { completed: number; total?: number } | null | undefined): string {
   return `${progress?.completed ?? 0} / ${progress?.total ?? HERMIT_AUDIT_TOTAL}`;
 }
 
 function Section(props: { title: string; children: ReactNode }) {
   return (
-    <section
-      className="rounded-lg border p-3 space-y-2"
-      style={{ backgroundColor: "var(--openbot-surface-25d-bg)", borderColor: "var(--openbot-surface-25d-border)" }}
-    >
-      <h3 className="text-xs font-semibold" style={{ color: "var(--openbot-text-secondary)" }}>{props.title}</h3>
+    <section className="tactile-card rounded-[12px] border-slate-200/90 bg-white p-3 text-slate-900 tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.10)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.42)] space-y-2">
+      <h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8f9db3]">{props.title}</h3>
       {props.children}
     </section>
   );
@@ -50,10 +50,10 @@ function ResourceBar(props: {
       <div className="flex items-center gap-1.5 text-[11px]">
         {props.icon}
         <span className="w-8">{props.label}</span>
-        <div className="flex-1 h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--openbot-ring-track)" }}>
-          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: over ? "var(--openbot-danger)" : "var(--openbot-success)" }} />
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200/90 dark:bg-white/[0.08]">
+          <div className={cn("h-full rounded-full transition-[width]", over ? "bg-rose-500 dark:bg-[#f43f5e]" : "bg-lime-500 dark:bg-[#a3e635]")} style={{ width: `${pct}%` }} />
         </div>
-        <span className="w-14 text-right font-mono">{measured ? `${pct.toFixed(0)}%` : "측정 불가"}</span>
+        <span className="w-14 text-right font-mono tabular-nums text-slate-600 dark:text-[#8f9db3]">{measured ? `${pct.toFixed(0)}%` : "측정 불가"}</span>
       </div>
       <div className="flex items-center gap-2 text-[10px] text-muted-foreground pl-5">
         <span>알림 임계값 {props.threshold}%</span>
@@ -149,14 +149,14 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
   const auditPct = Math.min(100, ((audit?.completed ?? 0) / (audit?.total ?? HERMIT_AUDIT_TOTAL)) * 100);
 
   return (
-    <div className="space-y-3">
-      {opsError && <p className="text-[11px] px-1" style={{ color: "var(--openbot-danger-text)" }}>{opsError}</p>}
+    <div className="space-y-3 tabular-nums">
+      {opsError && <p className="rounded-[8px] border border-rose-500/25 bg-rose-500/10 px-2 py-1 text-[11px] font-medium text-rose-700 dark:border-[#f43f5e]/30 dark:bg-[#f43f5e]/12 dark:text-[#f43f5e]">{opsError}</p>}
       <Section title="Hermit 게이트 — 활성 경로 클레임">
         {stateQ.isError ? <Unavailable name="클레임" /> : (
           <div className="space-y-1">
             {claims.length === 0 && <p className="text-[11px] text-muted-foreground">활성 클레임 없음.</p>}
             {claims.map((c) => (
-              <div key={c.id} className="flex items-center gap-2 text-[11px] font-mono border border-border/50 rounded px-2 py-1">
+              <div key={c.id} className={cn("flex items-center gap-2 font-mono text-[11px] tabular-nums", INSET_ROW_CLASS)}>
                 <span className="shrink-0">{c.taskId}</span>
                 <span className="text-muted-foreground shrink-0">{c.worktreeName}</span>
                 <span className="flex-1 min-w-0 truncate text-muted-foreground">{c.paths.join(", ")}</span>
@@ -173,22 +173,22 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
           </div>
         )}
         <div className="flex flex-wrap items-center gap-1.5">
-          <Input className="h-7 w-24 text-[11px]" placeholder="taskId" value={claimForm.taskId} onChange={(e) => setClaimForm({ ...claimForm, taskId: e.target.value })} />
-          <Input className="h-7 w-28 text-[11px]" placeholder="worktree" value={claimForm.worktreeName} onChange={(e) => setClaimForm({ ...claimForm, worktreeName: e.target.value })} />
-          <Input className="h-7 flex-1 min-w-32 text-[11px]" placeholder="paths (쉼표 구분)" value={claimForm.paths} onChange={(e) => setClaimForm({ ...claimForm, paths: e.target.value })} />
+          <Input className={cn(INPUT_CLASS, "h-7 w-24 text-[11px]")} placeholder="taskId" value={claimForm.taskId} onChange={(e) => setClaimForm({ ...claimForm, taskId: e.target.value })} />
+          <Input className={cn(INPUT_CLASS, "h-7 w-28 text-[11px]")} placeholder="worktree" value={claimForm.worktreeName} onChange={(e) => setClaimForm({ ...claimForm, worktreeName: e.target.value })} />
+          <Input className={cn(INPUT_CLASS, "h-7 flex-1 min-w-32 text-[11px]")} placeholder="paths (쉼표 구분)" value={claimForm.paths} onChange={(e) => setClaimForm({ ...claimForm, paths: e.target.value })} />
           <Button size="sm" className="h-7 px-2 text-[11px]" onClick={submitClaim}>클레임</Button>
         </div>
-        {claimError && <p className="text-[11px]" style={{ color: "var(--openbot-danger-text)" }}>{claimError}</p>}
+        {claimError && <p className="text-[11px] font-medium text-rose-700 dark:text-[#f43f5e]">{claimError}</p>}
       </Section>
 
       <Section title={`25-PR 누적 감사 — ${auditProgressText(audit)}`}>
         {stateQ.isError ? <Unavailable name="감사 진행" /> : (
           <>
-            <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: "var(--openbot-ring-track)" }}>
-              <div className="h-full rounded-full" style={{ width: `${auditPct}%`, backgroundColor: "var(--openbot-ring-fill)" }} />
+            <div className="h-2 overflow-hidden rounded-full bg-slate-200/90 dark:bg-white/[0.08]">
+              <div className="h-full rounded-full bg-blue-500 transition-[width] dark:bg-[#60a5fa]" style={{ width: `${auditPct}%` }} />
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
-              <Input className="h-7 flex-1 min-w-32 text-[11px]" placeholder="보류 범위 (쉼표 구분)" value={pendingScope} onChange={(e) => setPendingScope(e.target.value)} />
+              <Input className={cn(INPUT_CLASS, "h-7 flex-1 min-w-32 text-[11px]")} placeholder="보류 범위 (쉼표 구분)" value={pendingScope} onChange={(e) => setPendingScope(e.target.value)} />
               <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" disabled={!pendingScope.trim()}
                 onClick={async () => {
                   const scopes = pendingScope.split(",").map((s) => s.trim()).filter(Boolean);
@@ -221,11 +221,11 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
           <div className="space-y-1">
             {decisions.length === 0 && <p className="text-[11px] text-muted-foreground">기록된 결정 없음.</p>}
             {decisions.map((d: CoreDecision) => (
-              <div key={d.id} className="text-[11px] border border-border/50 rounded px-2 py-1.5 space-y-0.5">
-                <div className="font-medium">{d.decision}</div>
-                <div className="text-muted-foreground">근거·가정 → {d.rationale}</div>
-                <div className="text-muted-foreground">영향 → {d.impact}</div>
-                <div className="text-muted-foreground">수정할 위치 → {d.amendTarget}</div>
+              <div key={d.id} className={cn("text-[11px] space-y-0.5", INSET_ROW_CLASS, "py-1.5")}>
+                <div className="font-medium text-slate-900 dark:text-slate-100">{d.decision}</div>
+                <div className="text-slate-500 dark:text-[#8f9db3]">근거·가정 → {d.rationale}</div>
+                <div className="text-slate-500 dark:text-[#8f9db3]">영향 → {d.impact}</div>
+                <div className="text-slate-500 dark:text-[#8f9db3]">수정할 위치 → {d.amendTarget}</div>
               </div>
             ))}
           </div>
@@ -257,7 +257,7 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
           <div className="space-y-1">
             {processes.length === 0 && <p className="text-[11px] text-muted-foreground">실행 중인 프로세스 없음.</p>}
             {processes.map((p) => (
-              <div key={p.pid} className={cn("flex items-center gap-2 text-[11px] font-mono border border-border/50 rounded px-2 py-1")}>
+              <div key={p.pid} className={cn("flex items-center gap-2 font-mono text-[11px] tabular-nums", INSET_ROW_CLASS)}>
                 <span className="w-14 shrink-0">{p.pid}</span>
                 <span className="w-16 shrink-0 text-muted-foreground">{p.etime}</span>
                 <span className="flex-1 min-w-0 truncate">{p.command}</span>

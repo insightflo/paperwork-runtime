@@ -16,9 +16,9 @@ import { cn, formatDateTime, relativeTime } from "../lib/utils";
 const CELL = "cockpit-cell min-w-0 flex-1 justify-center";
 const PILL = "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide";
 const INTERVAL_INPUT =
-  "h-7 w-20 rounded-md border border-[#242d3f] bg-[#0b0e14] px-2 text-right text-xs text-[#e6edf7] tabular-nums outline-none focus:border-[#5f8dff] aria-invalid:border-[#f87171]";
-const SAVE_CTA = "h-6 bg-[#2563eb] px-2 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]";
-const TOGGLE_CTA = "h-6 border border-[#242d3f] bg-[#111622] px-2 text-xs text-[#8b97ad] hover:bg-[#1a2131] hover:text-[#e6edf7]";
+  "h-7 w-20 rounded-lg border border-slate-200/90 bg-white px-2 text-right text-xs text-slate-950 tabular-nums outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 aria-invalid:border-rose-500 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20 dark:aria-invalid:border-[#f87171]";
+const SAVE_CTA = "h-6 border-0 bg-blue-600 px-2 text-xs text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.22)] hover:bg-blue-500 dark:bg-[#60a5fa] dark:text-[#07111f] dark:hover:bg-[#7bb7ff]";
+const TOGGLE_CTA = "h-6 border border-slate-200/80 bg-white px-2 text-xs text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]";
 const MONO_SNIPPET = "whitespace-pre-wrap font-mono";
 
 type HeartbeatPatch = {
@@ -153,29 +153,29 @@ export function InstanceSettings() {
   }
 
   return (
-    <div className="max-w-5xl space-y-2">
+    <div className="w-full space-y-3 tabular-nums">
       {/* 1-row cockpit strip: roster · active/off split · company groups · fastest cadence */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Scheduler heartbeat summary">
+      <div className="cockpit-strip w-full gap-0 rounded-xl border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]" role="group" aria-label="Scheduler heartbeat summary">
         <div className={CELL}><span className="truncate uppercase tracking-wide">Heartbeats</span><b className="ml-1">{agents.length}</b></div>
-        <div className={CELL}><span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#34d399]" /><span className="truncate uppercase tracking-wide">Active</span><b className="ml-1 text-[#34d399]">{activeCount}</b></div>
-        <div className={CELL}><span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#5c6a84]" /><span className="truncate uppercase tracking-wide">Off</span><b className="ml-1">{disabledCount}</b></div>
+        <div className={CELL}><span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-lime-500 dark:bg-[#a3e635]" /><span className="truncate uppercase tracking-wide">Active</span><b className="ml-1 text-lime-700 dark:text-[#a3e635]">{activeCount}</b></div>
+        <div className={CELL}><span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400 dark:bg-[#8b97ad]" /><span className="truncate uppercase tracking-wide">Off</span><b className="ml-1">{disabledCount}</b></div>
         <div className={CELL}><span className="truncate uppercase tracking-wide">{grouped.length === 1 ? "Company" : "Companies"}</span><b className="ml-1">{grouped.length}</b></div>
         <div className={cn(CELL, "shrink-0")}><span className="truncate uppercase tracking-wide">Fastest</span><b className="ml-1 font-mono">{fastestIntervalSec === null ? "—" : formatHeartbeatInterval(fastestIntervalSec)}</b></div>
       </div>
 
       {/* Tight 40px toolbar: section title · scope note · refresh */}
-      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-3">
-        <Settings className="h-3.5 w-3.5 shrink-0 text-[#8b97ad]" aria-hidden />
-        <h1 className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-[#e6edf7]">Scheduler Heartbeats</h1>
-        <p className="min-w-0 truncate text-xs text-[#8b97ad]">Agents with a timer heartbeat enabled across all of your companies.</p>
+      <div className="cockpit-toolbar h-10 rounded-xl border border-slate-200/90 bg-white px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
+        <Settings className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-[#8b97ad]" aria-hidden />
+        <h1 className="shrink-0 text-[11px] font-semibold uppercase tracking-wider text-slate-950 dark:text-[#edf2fb]">Scheduler Heartbeats</h1>
+        <p className="min-w-0 truncate text-xs text-slate-500 dark:text-[#8b97ad]">Agents with a timer heartbeat enabled across all of your companies.</p>
         <Button variant="ghost" size="xs" onClick={() => void heartbeatsQuery.refetch()} disabled={heartbeatsQuery.isFetching}
-          className={cn("ml-auto h-6 shrink-0 border border-[#242d3f] bg-[#0b0e14] px-2 text-xs text-[#8b97ad] hover:text-[#e6edf7]")}>
+          className={cn("ml-auto h-6 shrink-0 border border-slate-200/80 bg-white px-2 text-xs text-slate-600 hover:text-slate-950 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]")}>
           <RefreshCw className={cn("h-3 w-3", heartbeatsQuery.isFetching && "animate-spin")} /> Refresh
         </Button>
       </div>
 
       {actionError && (
-        <div role="alert" className="rounded-md border border-[#f87171]/40 bg-[#f87171]/5 px-3 py-2 text-xs text-[#f87171]">
+        <div role="alert" className="rounded-md border border-[#f87171]/40 bg-[#f87171]/5 px-3 py-2 text-xs text-rose-700 dark:text-[#f87171]">
           {actionError}
         </div>
       )}
@@ -188,12 +188,12 @@ export function InstanceSettings() {
       ) : (
         <div className="space-y-4">
           {grouped.map((group) => (
-            <section key={group.companyName} aria-label={group.companyName} className="overflow-hidden rounded-md border border-[#242d3f] bg-[#111622]">
-                <div className="flex items-center gap-2 border-b border-[#242d3f] bg-[#151b28] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]">
+            <section key={group.companyName} aria-label={group.companyName} className="overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
+                <div className="flex items-center gap-2 border-b border-slate-200/80 bg-slate-100/80 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#8b97ad]">
                   <span className="min-w-0 flex-1 truncate">{group.companyName}</span>
-                  <b className="font-mono text-[#e6edf7]">{group.agents.length}</b>
+                  <b className="font-mono text-slate-950 dark:text-[#edf2fb]">{group.agents.length}</b>
                 </div>
-                <div className="divide-y divide-[#242d3f]">
+                <div className="divide-y divide-slate-200/80 dark:divide-white/[0.06]">
                   {group.agents.map((agent) => {
                     const draftValue = intervalDrafts[agent.id] ?? intervalMinutesValue(agent.intervalSec);
                     const parsedIntervalSec = parseIntervalMinutesToSec(draftValue);
@@ -203,28 +203,28 @@ export function InstanceSettings() {
                     return (
                       <div
                         key={agent.id}
-                        className="flex flex-col gap-2 px-3 py-2 text-xs transition-colors hover:bg-[#151b28] md:flex-row md:items-center"
+                        className="flex flex-col gap-2 px-3 py-2 text-xs transition-colors hover:bg-slate-50 dark:hover:bg-[#141b29] md:flex-row md:items-center"
                       >
                         <div className="flex min-w-0 flex-1 items-center gap-2">
-                          <span className={cn(PILL, agent.schedulerActive ? "bg-[#34d399]/15 text-[#34d399]" : "bg-[#0b0e14] text-[#8b97ad] shadow-[inset_0_0_0_1px_#242d3f]")}>
+                          <span className={cn(PILL, agent.schedulerActive ? "bg-lime-500/10 text-lime-700 dark:bg-[#a3e635]/15 dark:text-[#a3e635]" : "bg-slate-100 text-slate-500 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.1)] dark:bg-[#090c12] dark:text-[#8b97ad] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]")}>
                             {agent.schedulerActive ? "On" : "Off"}
                           </span>
-                          <Link to={buildAgentHref(agent)} className="min-w-0 truncate font-medium text-[#e6edf7] hover:underline">
+                          <Link to={buildAgentHref(agent)} className="min-w-0 truncate font-medium text-slate-950 dark:text-[#edf2fb] hover:underline">
                             {agent.agentName}
                           </Link>
-                          <span className="hidden min-w-0 truncate text-[#8b97ad] sm:inline">
+                          <span className="hidden min-w-0 truncate text-slate-500 dark:text-[#8b97ad] sm:inline">
                             {humanize(agent.title ?? agent.role)}
                           </span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2 md:ml-auto md:shrink-0">
-                          <b className="shrink-0 font-mono font-semibold text-[#e6edf7]">{formatHeartbeatInterval(agent.intervalSec)}</b>
+                          <b className="shrink-0 font-mono font-semibold text-slate-950 dark:text-[#edf2fb]">{formatHeartbeatInterval(agent.intervalSec)}</b>
                           <span
-                            className="hidden min-w-0 truncate text-[#8b97ad] lg:inline"
+                            className="hidden min-w-0 truncate text-slate-500 dark:text-[#8b97ad] lg:inline"
                             title={agent.lastHeartbeatAt ? formatDateTime(agent.lastHeartbeatAt) : undefined}
                           >
                             {agent.lastHeartbeatAt ? relativeTime(agent.lastHeartbeatAt) : "never"}
                           </span>
-                          <label className="flex items-center gap-1.5 text-[#8b97ad]">
+                          <label className="flex items-center gap-1.5 text-slate-500 dark:text-[#8b97ad]">
                             <span className="hidden lg:inline">Interval</span>
                             <Input
                               aria-label={`${agent.agentName} heartbeat interval minutes`}
@@ -257,7 +257,7 @@ export function InstanceSettings() {
                           >
                             Save
                           </Button>
-                          <Link to={buildAgentHref(agent)} className="text-[#8b97ad] hover:text-[#e6edf7]" title="Full agent config">
+                          <Link to={buildAgentHref(agent)} className="text-slate-500 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:text-[#edf2fb]" title="Full agent config">
                             <ExternalLink className="h-3.5 w-3.5" />
                           </Link>
                           <Button

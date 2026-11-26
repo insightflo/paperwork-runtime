@@ -23,13 +23,13 @@ import { ChannelCollaborationBoard } from "../components/ChannelCollaborationBoa
 
 type ConnectionStatus = "unknown" | "checking" | "connected" | "error";
 
-// Cockpit primitives (approved Linear + Datadog palette; mirrors .cockpit-strip/.cockpit-toolbar).
-const CARD = "rounded-md border border-[#242d3f] bg-[#151b28]";
-const FIELD = "border-[#242d3f] bg-[#111622] text-[#e6edf7] outline-none focus:border-[#5f8dff] focus:ring-[#5f8dff]/40";
-const CTA = "bg-[#2563eb] text-[#f8fafc] hover:bg-[#5f8dff]";
+// Combo 1 tactile cockpit primitives: light-legible cards over obsidian dark surfaces.
+const CARD = "tactile-card dark:bg-none dark:border-white/[0.08] dark:bg-[#0e131d]";
+const FIELD = "border-slate-200/90 bg-white text-slate-900 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#eef2f8] dark:placeholder:text-[#627089] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25";
+const CTA = "bg-blue-600 text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]";
 const TAB_CLASS =
-  "h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors aria-pressed:bg-[#151b28] aria-pressed:text-[#e6edf7] aria-pressed:shadow-[inset_0_0_0_1px_#242d3f] text-[#8b97ad] hover:text-[#e6edf7]";
-const STATUS_DOT: Record<ConnectionStatus, string> = { unknown: "bg-[#8b97ad]", checking: "bg-[#fbbf24]", connected: "bg-[#34d399]", error: "bg-[#f87171]" };
+  "h-6 cursor-pointer rounded-md px-2 text-xs whitespace-nowrap transition-colors aria-pressed:bg-white aria-pressed:text-slate-950 aria-pressed:shadow-sm dark:aria-pressed:bg-[#151d2b] dark:aria-pressed:text-[#eef2f8] dark:aria-pressed:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] text-slate-600 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:text-[#eef2f8]";
+const STATUS_DOT: Record<ConnectionStatus, string> = { unknown: "bg-slate-400 dark:bg-[#64748b]", checking: "bg-amber-500 dark:bg-[#f59e0b]", connected: "bg-lime-500 dark:bg-[#a3e635]", error: "bg-rose-500 dark:bg-[#fb7185]" };
 const STATUS_LABEL: Record<ConnectionStatus, string> = { unknown: "Not tested", checking: "Testing", connected: "Connected", error: "Failed" };
 
 // ---------------------------------------------------------------------------
@@ -45,7 +45,7 @@ interface StatusIndicatorProps {
 function StatusIndicator({ status, errorMessage, botUsername }: StatusIndicatorProps) {
   if (status === "unknown") {
     return (
-      <div className="flex items-center gap-2 text-sm text-[#8b97ad]">
+      <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-[#8b97ad]">
         <AlertCircle className="h-4 w-4 shrink-0" />
         <span>Not tested</span>
       </div>
@@ -54,7 +54,7 @@ function StatusIndicator({ status, errorMessage, botUsername }: StatusIndicatorP
 
   if (status === "checking") {
     return (
-      <div className="flex items-center gap-2 text-sm text-[#8b97ad]">
+      <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-[#8b97ad]">
         <RefreshCw className="h-4 w-4 shrink-0 animate-spin" />
         <span>Testing connection...</span>
       </div>
@@ -63,12 +63,12 @@ function StatusIndicator({ status, errorMessage, botUsername }: StatusIndicatorP
 
   if (status === "connected") {
     return (
-      <div className="flex items-center gap-2 text-sm text-[#34d399]">
+      <div className="flex items-center gap-2 text-sm text-lime-700 dark:text-[#a3e635]">
         <CheckCircle2 className="h-4 w-4 shrink-0" />
         <span>
           Connected
           {botUsername && (
-            <span className="min-w-0 truncate text-[#8b97ad] ml-1">(@{botUsername})</span>
+            <span className="min-w-0 truncate text-slate-500 dark:text-[#8b97ad] ml-1">(@{botUsername})</span>
           )}
         </span>
       </div>
@@ -82,7 +82,7 @@ function StatusIndicator({ status, errorMessage, botUsername }: StatusIndicatorP
         <span>Connection failed</span>
       </div>
       {errorMessage && (
-        <p className="pl-6 text-xs text-[#8b97ad]">{errorMessage}</p>
+        <p className="pl-6 text-xs text-slate-500 dark:text-[#8b97ad]">{errorMessage}</p>
       )}
     </div>
   );
@@ -227,7 +227,7 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
         <Button
           variant="outline"
           size="sm"
-          className="h-7 shrink-0 text-xs border-[#242d3f] bg-[#111622] text-[#e6edf7] hover:bg-[#1a2131] hover:text-[#e6edf7]"
+          className="h-7 shrink-0 border-slate-200/90 bg-white text-xs text-slate-700 hover:border-blue-500/40 hover:bg-slate-50 hover:text-slate-950 dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#eef2f8] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#141b29] dark:hover:text-[#eef2f8]"
           onClick={() => testMutation.mutate()}
           disabled={!isConfigured || testMutation.isPending}
           title={!isConfigured ? "Save a configuration first" : undefined}
@@ -237,13 +237,13 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
         </Button>
       </div>
 
-      <Separator className="bg-[#242d3f]" />
+      <Separator className="bg-slate-200 dark:bg-white/[0.08]" />
 
       {/* Config form */}
-      <form onSubmit={handleSave} className={`space-y-4 ${CARD} p-4`}>
+      <form onSubmit={handleSave} className="space-y-4 rounded-xl border border-slate-200/90 bg-slate-50/95 p-4 dark:border-white/[0.08] dark:bg-[#090c12]">
         {/* Bot username */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#8b97ad]">
+          <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">
             Bot username
           </label>
           <Input
@@ -252,17 +252,17 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
             onChange={(e) => setBotUsername(e.target.value)}
             placeholder="e.g. papercompanyBot"
           />
-          <p className="text-xs text-[#8b97ad]">
+          <p className="text-xs text-slate-500 dark:text-[#8b97ad]">
             The Telegram username of your bot (without @).
           </p>
         </div>
 
         {/* Bot token */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#8b97ad]">
+          <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">
             Bot token
             {isConfigured && (
-              <span className="ml-2 font-normal text-[#34d399]">
+              <span className="ml-2 font-normal text-lime-700 dark:text-[#a3e635]">
                 (token stored — enter new value to rotate)
               </span>
             )}
@@ -275,7 +275,7 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
             placeholder={isConfigured ? "Leave blank to keep existing token" : "123456789:ABCdef..."}
             autoComplete="off"
           />
-          <p className="text-xs text-[#8b97ad]">
+          <p className="text-xs text-slate-500 dark:text-[#8b97ad]">
             Obtain from @BotFather on Telegram. Stored encrypted in company secrets.
           </p>
         </div>
@@ -283,7 +283,7 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
         {/* Secret name (only shown when not yet configured) */}
         {!isConfigured && (
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[#8b97ad]">
+            <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">
               Secret name
             </label>
             <Input
@@ -292,7 +292,7 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
               onChange={(e) => setSecretName(e.target.value)}
               placeholder="telegram_bot_token"
             />
-            <p className="text-xs text-[#8b97ad]">
+            <p className="text-xs text-slate-500 dark:text-[#8b97ad]">
               The name under which the token will be saved in company secrets.
             </p>
           </div>
@@ -301,10 +301,10 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
         {/* Existing secret selector (if token already stored) */}
         {isConfigured && config?.botTokenSecretId && (
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-[#8b97ad]">
+            <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">
               Stored secret
             </label>
-            <p className="truncate font-mono text-xs text-[#8b97ad]">
+            <p className="truncate font-mono text-xs text-slate-500 dark:text-[#8b97ad]">
               {secrets?.find((s) => s.id === config.botTokenSecretId)?.name ?? config.botTokenSecretId}
             </p>
           </div>
@@ -315,7 +315,7 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
         )}
 
         {saveSuccess && (
-          <p className="flex items-center gap-1.5 text-xs text-[#34d399]">
+          <p className="flex items-center gap-1.5 text-xs text-lime-700 dark:text-[#a3e635]">
             <CheckCircle2 className="h-3.5 w-3.5" />
             Configuration saved.
           </p>
@@ -372,9 +372,9 @@ export function ChannelConfig() {
 
   const isConfigured = !!config?.botTokenSecretId;
   const strip = [
-    { label: "Telegram", value: !config ? "—" : config.enabled ? "Enabled" : "Disabled", dot: !config ? "bg-[#8b97ad]" : config.enabled ? "bg-[#34d399]" : "bg-[#fbbf24]" },
-    { label: "Bot", value: !config ? "—" : config.botUsername ? `@${config.botUsername}` : "Not set", dot: "bg-[#5f8dff]" },
-    { label: "Token secret", value: !config ? "—" : isConfigured ? "Stored" : "Missing", dot: !config ? "bg-[#8b97ad]" : isConfigured ? "bg-[#34d399]" : "bg-[#f87171]" },
+    { label: "Telegram", value: !config ? "—" : config.enabled ? "Enabled" : "Disabled", dot: !config ? "bg-slate-400 dark:bg-[#64748b]" : config.enabled ? "bg-lime-500 dark:bg-[#a3e635]" : "bg-amber-500 dark:bg-[#f59e0b]" },
+    { label: "Bot", value: !config ? "—" : config.botUsername ? `@${config.botUsername}` : "Not set", dot: "bg-blue-600 dark:bg-[#60a5fa]" },
+    { label: "Token secret", value: !config ? "—" : isConfigured ? "Stored" : "Missing", dot: !config ? "bg-slate-400 dark:bg-[#64748b]" : isConfigured ? "bg-lime-500 dark:bg-[#a3e635]" : "bg-rose-500 dark:bg-[#fb7185]" },
     { label: "Connection test", value: STATUS_LABEL[testStatus], dot: STATUS_DOT[testStatus] },
   ];
 
@@ -387,13 +387,13 @@ export function ChannelConfig() {
       )}
 
       {/* 1-row 4-column cockpit strip; the Telegram cells jump to the Telegram tab */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Channel summary">
+      <div className="cockpit-strip h-10 w-full gap-0 overflow-hidden rounded-xl border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)]" role="group" aria-label="Channel summary">
         {strip.map((cell) => (
           <button
             key={cell.label}
             type="button"
             onClick={() => setChannelTab("telegram")}
-            className={`cockpit-cell min-w-0 flex-1 justify-center transition-colors ${channelTab === "telegram" ? "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_-1px_0_#5f8dff]" : "hover:bg-[#151b28] hover:text-[#e6edf7]"}`}
+            className={`cockpit-cell min-w-0 flex-1 justify-center transition-colors ${channelTab === "telegram" ? "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_#2563eb] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_#60a5fa]" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]"}`}
           >
             <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.dot}`} />
             <span className="truncate uppercase tracking-wide">{cell.label}</span>
@@ -403,12 +403,12 @@ export function ChannelConfig() {
       </div>
 
       {/* 40px unified toolbar: title · segmented tabs */}
-      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-2">
+      <div className="cockpit-toolbar tactile-card h-10 rounded-xl px-2 dark:bg-none dark:border-white/[0.08] dark:bg-[#0e131d]">
         <div className="flex min-w-0 items-baseline gap-2">
-          <h1 className="truncate text-sm font-semibold text-[#e6edf7]">Channel Configuration</h1>
-          <span className="hidden truncate text-xs text-[#8b97ad] md:inline">Configure external messaging channels for agent notifications.</span>
+          <h1 className="truncate text-sm font-semibold text-slate-950 dark:text-[#eef2f8]">Channel Configuration</h1>
+          <span className="hidden truncate text-xs text-slate-500 dark:text-[#8b97ad] md:inline">Configure external messaging channels for agent notifications.</span>
         </div>
-        <div role="group" aria-label="Channel views" className="ml-auto flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5">
+        <div role="group" aria-label="Channel views" className="ml-auto flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-100/90 p-0.5 dark:border-white/[0.08] dark:bg-[#090c12]">
           {([
             { id: "board", label: "협업 채널 보드" },
             { id: "telegram", label: "Telegram 연동 설정" },
@@ -432,17 +432,17 @@ export function ChannelConfig() {
 
       {channelTab === "telegram" && (
         /* Telegram section */
-        <div className={`max-w-2xl space-y-4 p-4 ${CARD}`}>
+        <div className={`w-full max-w-4xl space-y-4 p-4 ${CARD}`}>
           <div className="flex min-w-0 items-center gap-2">
-            <MessageSquare className="h-4 w-4 shrink-0 text-[#8b97ad]" />
-            <h2 className="truncate text-sm font-medium text-[#e6edf7]">Telegram</h2>
+            <MessageSquare className="h-4 w-4 shrink-0 text-slate-500 dark:text-[#8b97ad]" />
+            <h2 className="truncate text-sm font-medium text-slate-950 dark:text-[#eef2f8]">Telegram</h2>
             {config?.enabled && (
-              <span className="rounded border border-[#242d3f] bg-[#0b0e14] px-1.5 py-0.5 text-[11px] font-medium text-[#34d399]">
+              <span className="rounded-full border border-lime-500/30 bg-lime-500/10 px-1.5 py-0.5 text-[11px] font-semibold text-lime-700 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/10 dark:text-[#a3e635]">
                 Enabled
               </span>
             )}
             {config && !config.enabled && (
-              <span className="rounded border border-[#242d3f] bg-[#0b0e14] px-1.5 py-0.5 text-[11px] font-medium text-[#8b97ad]">
+              <span className="rounded-full border border-slate-200/90 bg-slate-100/80 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#8b97ad]">
                 Disabled
               </span>
             )}

@@ -22,27 +22,27 @@ type StatusFilter = "pending" | "all";
  * 1-row / 6-cell status telemetry. Cells double as shortcuts to the two route-backed
  * filters (pending queue vs. full history) and use micro status dots like the Work page. */
 const STATUS_GROUPS: { status: ApprovalStatus; label: { en: string; ko: string }; dot: string; to: StatusFilter }[] = [
-  { status: "pending", label: { en: "Pending", ko: "대기" }, dot: "bg-[#fbbf24]", to: "pending" },
-  { status: "revision_requested", label: { en: "Revision", ko: "수정 요청" }, dot: "bg-[#5f8dff]", to: "pending" },
-  { status: "approved", label: { en: "Approved", ko: "승인됨" }, dot: "bg-[#34d399]", to: "all" },
-  { status: "rejected", label: { en: "Rejected", ko: "거절됨" }, dot: "bg-[#f87171]", to: "all" },
-  { status: "cancelled", label: { en: "Cancelled", ko: "취소됨" }, dot: "bg-[#8b97ad]", to: "all" },
+  { status: "pending", label: { en: "Pending", ko: "대기" }, dot: "bg-amber-500 dark:bg-[#f59e0b]", to: "pending" },
+  { status: "revision_requested", label: { en: "Revision", ko: "수정 요청" }, dot: "bg-blue-500 dark:bg-[#60a5fa]", to: "pending" },
+  { status: "approved", label: { en: "Approved", ko: "승인됨" }, dot: "bg-lime-500 dark:bg-[#a3e635]", to: "all" },
+  { status: "rejected", label: { en: "Rejected", ko: "거절됨" }, dot: "bg-rose-500 dark:bg-[#f87171]", to: "all" },
+  { status: "cancelled", label: { en: "Cancelled", ko: "취소됨" }, dot: "bg-slate-400 dark:bg-[#8b97ad]", to: "all" },
 ];
 
 const STRIP_CELL_CLASS =
-  "cockpit-cell min-w-0 flex-1 justify-center transition-colors hover:bg-[#151b28] hover:text-[#e6edf7]";
-const STRIP_CELL_ACTIVE_CLASS = "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_-1px_0_#5f8dff]";
+  "flex h-10 min-w-0 items-center justify-center gap-2 px-3 text-[11px] transition-colors text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]";
+const STRIP_CELL_ACTIVE_CLASS = "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_#65a30d] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_#a3e635]";
 /** Semantic left rail per status so a long queue scans instantly without reading labels. */
 const STATUS_RAIL: Record<ApprovalStatus, string> = {
-  pending: "border-l-[#fbbf24]",
-  revision_requested: "border-l-[#5f8dff]",
-  approved: "border-l-[#34d399]",
-  rejected: "border-l-[#f87171]",
-  cancelled: "border-l-[#8b97ad]",
+  pending: "border-l-amber-500 dark:border-l-[#f59e0b]",
+  revision_requested: "border-l-blue-500 dark:border-l-[#60a5fa]",
+  approved: "border-l-lime-500 dark:border-l-[#a3e635]",
+  rejected: "border-l-rose-500 dark:border-l-[#f87171]",
+  cancelled: "border-l-slate-400 dark:border-l-[#8b97ad]",
 };
 /** Decision evidence (plan / raw payload blocks) renders as monospace, wrapped, on the canvas colour. */
 const ROW_EVIDENCE_CLASS =
-  "[&_pre]:whitespace-pre-wrap [&_pre]:border [&_pre]:border-[#242d3f] [&_pre]:bg-[#0b0e14] [&_pre]:text-[#b6c2d6] [&_.whitespace-pre-wrap]:font-mono";
+  "[&_pre]:whitespace-pre-wrap [&_pre]:border [&_pre]:border-slate-200/90 dark:[&_pre]:border-white/[0.08] [&_pre]:bg-slate-100 dark:[&_pre]:bg-[#090c12] [&_pre]:text-slate-600 dark:[&_pre]:text-[#cbd5e1] [&_.whitespace-pre-wrap]:font-mono";
 /** Server status filter behind each tab; the Pending tab additionally pins `revision_requested` rows (still actionable). */
 const TAB_STATUS: Record<StatusFilter, string | undefined> = { pending: "pending", all: undefined };
 const ACTIONABLE_FOLLOWUP_STATUS = "revision_requested";
@@ -160,9 +160,9 @@ export function Approvals() {
     <div
       key={approval.id}
       className={cn(
-        "border-l-2 bg-[#111622] px-3 py-2 transition-colors hover:bg-[#151b28]",
+        "border-l-2 bg-white dark:bg-[#0e131d] px-3 py-2 transition-colors hover:bg-slate-50 dark:hover:bg-[#141b29]",
         "[&>div]:rounded-none [&>div]:border-0 [&>div]:bg-transparent [&>div]:p-0 [&>div]:shadow-none",
-        STATUS_RAIL[approval.status as ApprovalStatus] ?? "border-l-[#8b97ad]",
+        STATUS_RAIL[approval.status as ApprovalStatus] ?? "border-l-slate-400 dark:border-l-[#8b97ad]",
       )}
     >
       <ApprovalCard
@@ -187,7 +187,7 @@ export function Approvals() {
   return (
     <div className="space-y-2 tabular-nums">
       {/* 1-row 6-cell cockpit strip: status counts double as route-backed filter shortcuts */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label={L(lang, { en: "Approvals by status", ko: "상태별 승인" })}>
+      <div className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-3 xl:grid-cols-6" role="group" aria-label={L(lang, { en: "Approvals by status", ko: "상태별 승인" })}>
         {STATUS_GROUPS.map((group) => {
           const active = group.to === statusFilter;
           return (
@@ -202,24 +202,24 @@ export function Approvals() {
             >
               <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${group.dot}`} />
               <span className="truncate uppercase tracking-wide">{L(lang, group.label)}</span>
-              <b className="ml-1">{data ? statusCounts[group.status] : "—"}</b>
+              <b className="ml-1 font-semibold text-slate-950 dark:text-[#edf2fb]">{data ? statusCounts[group.status] : "—"}</b>
             </button>
           );
         })}
-        <div className="cockpit-cell min-w-0 shrink-0">
+        <div className={cn(STRIP_CELL_CLASS, "cursor-default")}>
           <span className="truncate uppercase tracking-wide">{L(lang, { en: "Queue", ko: "대기열" })}</span>
-          <b className="ml-1 text-[#fbbf24]">{data ? pendingCount : "—"}</b>
+          <b className="ml-1 text-amber-600 dark:text-[#f59e0b]">{data ? pendingCount : "—"}</b>
         </div>
       </div>
 
       {/* Tight 40px toolbar: status tabs + shown count pinned right */}
-      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-2">
+      <div className="cockpit-toolbar h-auto min-h-10 flex-wrap gap-2 rounded-xl border border-slate-200/90 bg-slate-50/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
         <Tabs value={statusFilter} onValueChange={(v) => navigate(`/approvals/${v}`)}>
           <PageTabBar items={[
             { value: "pending", label: <>{L(lang, { en: "Pending", ko: "대기 중" })}{pendingCount > 0 && (
               <span className={cn(
                 "ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums",
-                "bg-[#fbbf24]/15 text-[#fbbf24]"
+                "bg-amber-500/15 dark:bg-[#f59e0b]/15 text-amber-600 dark:text-[#f59e0b]"
               )}>
                 {pendingCount}
               </span>
@@ -228,10 +228,10 @@ export function Approvals() {
           ]} />
         </Tabs>
         <div className="ml-auto flex shrink-0 items-baseline gap-2">
-          <span className="text-[10px] uppercase tracking-[0.16em] text-[#8b97ad]">
+          <span className="text-[10px] uppercase tracking-[0.16em] text-slate-500 dark:text-[#8b97ad]">
             {L(lang, { en: "Shown", ko: "표시" })}
           </span>
-          <b className="font-mono text-sm font-semibold leading-none text-[#e6edf7]">{rows.length + revisionQueue.length}</b>
+          <b className="font-mono text-sm font-semibold leading-none text-slate-900 dark:text-[#edf2fb]">{rows.length + revisionQueue.length}</b>
         </div>
       </div>
 
@@ -243,7 +243,7 @@ export function Approvals() {
         count={rows.length}
         hasMore={hasMore}
         loading={isFetching}
-        onPageChange={setPage}
+        onPageChange={setPage} className="rounded-xl border-slate-200/90 bg-slate-50/95 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] [&_button]:text-slate-600 dark:[&_button]:text-[#cbd5e1] [&_button:hover]:bg-white dark:[&_button:hover]:bg-[#141b29] [&_span]:text-slate-600 dark:[&_span]:text-[#8b97ad] [&_b]:text-slate-950 dark:[&_b]:text-[#edf2fb] [&_svg]:text-blue-600 dark:[&_svg]:text-[#60a5fa]"
         labels={{
           list: t("Approvals pagination", "승인 목록 페이징"),
           prev: t("Prev", "이전"),
@@ -255,9 +255,9 @@ export function Approvals() {
       />
 
       {rows.length === 0 && revisionQueue.length === 0 && !isFetching && (
-        <div className="flex flex-col items-center justify-center rounded-md border border-[#242d3f] bg-[#111622] py-14 text-center">
-          <ShieldCheck className="h-7 w-7 text-[#34d399] mb-3" />
-          <p className="text-xs text-[#8b97ad]">
+        <div className="flex flex-col items-center justify-center rounded-xl border border-slate-200/90 bg-white py-14 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] text-center">
+          <ShieldCheck className="h-7 w-7 text-lime-700 dark:text-[#a3e635] mb-3" />
+          <p className="text-xs text-slate-500 dark:text-[#8b97ad]">
             {statusFilter === "pending" ? L(lang, { en: "No pending approvals.", ko: "대기 중인 승인이 없습니다." }) : L(lang, { en: "No approvals yet.", ko: "아직 승인 요청이 없습니다." })}
           </p>
         </div>
@@ -268,17 +268,17 @@ export function Approvals() {
           ref={listRef}
           aria-busy={isFetching}
           className={cn(
-            "divide-y divide-[#242d3f] overflow-hidden rounded-md border border-[#242d3f] bg-[#111622] transition-opacity",
+            "divide-y divide-slate-200/75 dark:divide-white/[0.06] overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-opacity dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
             ROW_EVIDENCE_CLASS,
             isFetching && "opacity-70",
           )}
         >
           {revisionQueue.length > 0 && (
             <section aria-label={t("Revision requested", "수정 요청")}>
-              <header className="flex items-center gap-2 bg-[#0b0e14] px-3 py-1.5 text-[11px] uppercase tracking-wide text-[#8b97ad]">
-                <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#5f8dff]" />
+              <header className="flex items-center gap-2 bg-slate-100 dark:bg-[#090c12] px-3 py-1.5 text-[11px] uppercase tracking-wide text-slate-500 dark:text-[#8b97ad]">
+                <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 dark:bg-[#60a5fa]" />
                 <span className="truncate">{t("Revision requested", "수정 요청")}</span>
-                <b className="ml-1 font-mono text-[#5f8dff]">
+                <b className="ml-1 font-mono text-blue-600 dark:text-[#60a5fa]">
                   {revisionQueue.length}
                   {(revisionData?.length ?? 0) > PAGE_SIZE && "+"}
                 </b>
@@ -286,10 +286,10 @@ export function Approvals() {
                   {t("Still actionable · resubmission pending", "여전히 승인/거절 가능 · 재제출 대기")}
                 </span>
               </header>
-              <div className="divide-y divide-[#242d3f]">{revisionQueue.map(renderRow)}</div>
+              <div className="divide-y divide-slate-200/75 dark:divide-white/[0.06]">{revisionQueue.map(renderRow)}</div>
             </section>
           )}
-          {rows.length > 0 && <div className="divide-y divide-[#242d3f]">{rows.map(renderRow)}</div>}
+          {rows.length > 0 && <div className="divide-y divide-slate-200/75 dark:divide-white/[0.06]">{rows.map(renderRow)}</div>}
         </div>
       )}
     </div>

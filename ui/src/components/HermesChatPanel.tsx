@@ -453,13 +453,13 @@ function PageContextStrip({
   compact: boolean;
 }) {
   return (
-    <div className={cn("shrink-0 border-b border-border bg-muted/35", compact ? "px-3 py-2" : "px-4 py-2")}>
-      <div className={cn("flex items-center gap-2 text-xs", compact ? "" : "mx-auto max-w-4xl")}>
-        <Eye className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-        <span className="shrink-0 font-medium text-muted-foreground">
+    <div className={cn("shrink-0 border-b border-slate-200/80 bg-slate-50/90 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#090c12] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]", compact ? "px-3 py-2" : "px-4 py-2")}>
+      <div className={cn("flex items-center gap-2 text-xs tabular-nums", compact ? "" : "mx-auto max-w-4xl")}>
+        <Eye className="h-3.5 w-3.5 shrink-0 text-blue-600 dark:text-[#60a5fa]" />
+        <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8f9db3]">
           {loading ? "Reading page" : "Page context"}
         </span>
-        <span className="min-w-0 truncate text-foreground">
+        <span className="min-w-0 truncate text-slate-700 dark:text-slate-200">
           {context?.summary ?? context?.path ?? "Current route"}
         </span>
       </div>
@@ -476,15 +476,15 @@ function MessageBubble({ message, compact = false }: { message: HermesChatMessag
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "rounded-lg border px-3 py-2 text-sm",
+          "rounded-[10px] border px-3 py-2 text-sm",
           compact ? "max-w-[92%]" : "max-w-[78ch]",
           isUser
-            ? "border-primary/30 bg-primary text-primary-foreground"
-            : "border-border bg-card text-card-foreground",
+            ? "border-blue-600/30 bg-blue-600 text-white shadow-[0_8px_18px_rgba(37,99,235,0.18)] dark:border-[#60a5fa]/40 dark:bg-[#60a5fa] dark:text-[#06101f]"
+            : "border-slate-200/90 bg-white text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_18px_rgba(15,23,42,0.06)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_24px_rgba(0,0,0,0.32)]",
           message.status === "failed" && "border-destructive/40",
         )}
       >
-        <div className="mb-1 flex items-center gap-2 text-[11px] opacity-75">
+        <div className="mb-1 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.12em] opacity-75 tabular-nums">
           {isUser ? <span>Operator</span> : <span>Hermes</span>}
           <span>{relativeTime(message.createdAt)}</span>
           {status && (
@@ -505,7 +505,7 @@ function MessageBubble({ message, compact = false }: { message: HermesChatMessag
             {attachments.map((attachment) => (
               <span
                 key={attachment.id}
-                className="inline-flex max-w-full items-center gap-1 rounded border border-border/70 bg-background/70 px-1.5 py-0.5 text-[11px]"
+                className={cn("inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px]", isUser ? "border-white/25 bg-white/15 text-current" : "border-slate-200/80 bg-slate-50/80 text-slate-600 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-slate-300")}
               >
                 <Paperclip className="h-3 w-3 shrink-0" />
                 <span className="truncate">{attachment.name}</span>
@@ -532,15 +532,15 @@ function SessionRow({
       type="button"
       onClick={onSelect}
       className={cn(
-        "w-full border-b border-border px-3 py-2 text-left transition-colors hover:bg-accent/50",
-        selected && "bg-accent text-accent-foreground",
+        "w-full border-b border-slate-200/70 px-3 py-2 text-left transition-colors hover:bg-slate-50 dark:border-white/[0.06] dark:hover:bg-white/[0.04]",
+        selected && "bg-blue-50 text-slate-950 shadow-[inset_2px_0_0_#2563eb] dark:bg-[#60a5fa]/10 dark:text-slate-50 dark:shadow-[inset_2px_0_0_#60a5fa]",
       )}
     >
       <div className="flex items-center gap-2">
         <MessageSquareText className="h-4 w-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{sessionTitle(session)}</span>
       </div>
-      <div className="mt-1 flex items-center gap-2 pl-6 text-xs text-muted-foreground">
+      <div className="mt-1 flex items-center gap-2 pl-6 text-xs text-slate-500 tabular-nums dark:text-[#8f9db3]">
         <span>{session.lastMessageAt ? relativeTime(session.lastMessageAt) : relativeTime(session.createdAt)}</span>
         {session.messageCount !== undefined && <span>{session.messageCount} msg</span>}
       </div>
@@ -668,17 +668,17 @@ export function OperationsAgentSetupNotice({
 
   return (
     <div className={cn(
-      "shrink-0 border-b px-3 py-3",
+      "shrink-0 border-b px-3 py-3 tabular-nums",
       completed
-        ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-        : "border-amber-200 bg-amber-50 text-amber-950",
+        ? "border-lime-500/30 bg-lime-50 text-lime-950 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/10 dark:text-[#ecfccb]"
+        : "border-amber-500/35 bg-amber-50 text-amber-950 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#fffbeb]",
     )}>
       <div className={cn("flex items-center gap-3", compact ? "flex-col items-stretch" : "mx-auto max-w-4xl")}>
         <div className="flex min-w-0 flex-1 items-start gap-2">
           {completed ? (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" />
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-lime-700 dark:text-[#a3e635]" />
           ) : (
-            <Bot className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+            <Bot className="mt-0.5 h-4 w-4 shrink-0 text-amber-700 dark:text-[#f59e0b]" />
           )}
           <div className="min-w-0">
             <p className="text-sm font-semibold">{title}</p>
@@ -922,7 +922,7 @@ export function HermesChatPanel({ mode = "page", onCollapse }: HermesChatPanelPr
 
   if (!selectedCompanyId) {
     return (
-      <div className={cn(compact ? "h-full border-l border-border bg-background" : "")}>
+      <div className={cn(compact ? "h-full border-l border-slate-200/80 bg-white dark:border-white/[0.08] dark:bg-[#090c12]" : "")}>
         <EmptyState icon={Bot} message="Select a company." />
       </div>
     );
@@ -930,7 +930,7 @@ export function HermesChatPanel({ mode = "page", onCollapse }: HermesChatPanelPr
 
   const chatColumn = (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
+      <div className="flex h-12 shrink-0 items-center gap-2 border-b border-slate-200/80 bg-white/95 px-3 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
         <Button
           type="button"
           variant="ghost"
@@ -1000,7 +1000,7 @@ export function HermesChatPanel({ mode = "page", onCollapse }: HermesChatPanelPr
       )}
 
       {compact && sessionListOpen && (
-        <div className="max-h-56 shrink-0 overflow-y-auto border-b border-border bg-card">
+        <div className="max-h-56 shrink-0 overflow-y-auto overscroll-contain border-b border-slate-200/80 bg-white dark:border-white/[0.08] dark:bg-[#090c12]">
           <SessionsList
             loading={sessionsQuery.isLoading}
             sessions={activeSessions}
@@ -1017,7 +1017,7 @@ export function HermesChatPanel({ mode = "page", onCollapse }: HermesChatPanelPr
         </div>
       )}
 
-      <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain", compact ? "px-3 py-3" : "px-4 py-4")}>
+      <div className={cn("min-h-0 flex-1 overflow-y-auto overscroll-contain bg-slate-50/60 dark:bg-[#090c12]", compact ? "px-3 py-3" : "px-4 py-4")}>
         {detailQuery.isLoading && selectedSessionId ? (
           <PageSkeleton variant="detail" />
         ) : messages.length === 0 ? (
@@ -1032,14 +1032,14 @@ export function HermesChatPanel({ mode = "page", onCollapse }: HermesChatPanelPr
         )}
       </div>
 
-      <div className="sticky bottom-0 z-10 shrink-0 border-t border-border bg-card p-3">
+      <div className="sticky bottom-0 z-10 shrink-0 border-t border-slate-200/80 bg-white/95 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#0e131d]/95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
         {attachments.length > 0 && (
           <div className={cn("mb-2 flex flex-wrap gap-1.5", compact ? "" : "mx-auto max-w-4xl")}>
             {attachments.map((attachment) => (
               <button
                 key={attachment.id}
                 type="button"
-                className="inline-flex max-w-full items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs hover:bg-accent/50"
+                className="inline-flex max-w-full items-center gap-1 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-slate-200 dark:hover:bg-white/[0.05]"
                 onClick={() => setAttachments((current) => current.filter((item) => item.id !== attachment.id))}
                 title="Remove attachment"
               >
@@ -1081,10 +1081,10 @@ export function HermesChatPanel({ mode = "page", onCollapse }: HermesChatPanelPr
               }
             }}
             placeholder={operationsAgentReady ? "Ask Hermes..." : "Create Hermes Ops agent to start chatting..."}
-            className="min-h-11 max-h-40 resize-none"
+            className="min-h-11 max-h-40 resize-none border-slate-200/90 bg-white text-slate-900 placeholder:text-slate-400 focus-visible:border-blue-500 focus-visible:ring-blue-500/15 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus-visible:border-[#60a5fa] dark:focus-visible:ring-[#60a5fa]/20"
             disabled={!operationsAgentReady || ensureOperationsAgentMutation.isPending}
           />
-          <Button type="button" onClick={submit} disabled={!canSend} className="shrink-0">
+          <Button type="button" onClick={submit} disabled={!canSend} className="shrink-0 bg-blue-600 text-white hover:bg-blue-500 dark:bg-[#60a5fa] dark:text-[#06101f] dark:hover:bg-[#7db5fb]">
             <Send className="h-4 w-4" />
             <span className="sr-only">Send</span>
           </Button>
@@ -1105,8 +1105,8 @@ export function HermesChatPanel({ mode = "page", onCollapse }: HermesChatPanelPr
 
   if (compact) {
     return (
-      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden bg-white text-slate-900 dark:bg-[#090c12] dark:text-slate-100">
+        <div className="flex h-12 shrink-0 items-center gap-2 border-b border-slate-200/80 bg-white/95 px-3 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
           <Bot className="h-4 w-4 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate text-sm font-semibold">Hermes</span>
           <Button
@@ -1127,15 +1127,15 @@ export function HermesChatPanel({ mode = "page", onCollapse }: HermesChatPanelPr
   }
 
   return (
-    <div className="flex h-[calc(100dvh-7.5rem)] min-h-[520px] overflow-hidden border border-border bg-background">
+    <div className="flex h-[calc(100dvh-7.5rem)] min-h-[520px] overflow-hidden rounded-xl border border-slate-200/90 bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_44px_rgba(15,23,42,0.10)] dark:border-white/[0.08] dark:bg-[#090c12] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_18px_44px_rgba(0,0,0,0.45)]">
       <aside
         className={cn(
-          "min-h-0 border-r border-border bg-card transition-[width] duration-100",
+          "min-h-0 border-r border-slate-200/80 bg-slate-50/85 transition-[width] duration-100 dark:border-white/[0.08] dark:bg-[#090c12]",
           sessionListOpen ? "w-72" : "w-0",
         )}
       >
         <div className="flex h-full w-72 flex-col">
-          <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-3">
+          <div className="flex h-12 shrink-0 items-center gap-2 border-b border-slate-200/80 bg-white/95 px-3 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
             <Bot className="h-4 w-4 text-muted-foreground" />
             <span className="flex-1 text-sm font-semibold">Hermes</span>
             <Button
@@ -1150,7 +1150,7 @@ export function HermesChatPanel({ mode = "page", onCollapse }: HermesChatPanelPr
               <Plus className="h-4 w-4" />
             </Button>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <SessionsList
               loading={sessionsQuery.isLoading}
               sessions={activeSessions}

@@ -99,9 +99,9 @@ interface CompactPaginationProps {
   className?: string;
 }
 
-const NAV_CLASS = "cockpit-toolbar h-8 rounded-md border border-[#242d3f] bg-[#111622] px-2";
+const NAV_CLASS = "tactile-card h-8 rounded-[10px] border-slate-200/90 bg-white/95 px-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)]";
 const PAGER_BUTTON_CLASS =
-  "h-6 cursor-pointer rounded px-2 text-xs font-medium whitespace-nowrap transition-colors text-[#b6c2d6] hover:bg-[#151b28] hover:text-[#e6edf7] disabled:cursor-not-allowed disabled:opacity-40";
+  "h-6 cursor-pointer rounded-md px-2 text-xs font-medium whitespace-nowrap transition-colors text-slate-600 hover:bg-slate-100 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-40 dark:text-[#9aa7bd] dark:hover:bg-[#151d2b] dark:hover:text-[#eef2f8] dark:focus-visible:ring-[#60a5fa]/35";
 
 /**
  * Compact Cockpit-styled pager: `Prev · Page N · Showing X–Y · Next` with an inline loading slot.
@@ -120,16 +120,16 @@ export function CompactPagination({ page, count, hasMore, loading, pageSize = PA
         <button type="button" className={PAGER_BUTTON_CLASS} disabled={page <= 1} onClick={() => onPageChange(page - 1)}>
           {text.prev}
         </button>
-        <span className="min-w-14 px-1 text-center text-xs text-[#e6edf7]">
-          {text.page} <b className="font-mono font-semibold">{page}</b>
+        <span className="min-w-14 px-1 text-center text-xs text-slate-700 dark:text-[#eef2f8]">
+          {text.page} <b className="font-mono font-semibold tabular-nums">{page}</b>
         </span>
         <button type="button" className={PAGER_BUTTON_CLASS} disabled={!hasMore} onClick={() => onPageChange(page + 1)}>
           {text.next}
         </button>
       </div>
-      <div className="flex min-w-0 items-center gap-2 text-[11px] text-[#8b97ad]">
-        <span role="status" aria-live="polite" className="inline-flex min-w-20 justify-end items-center gap-1 whitespace-nowrap text-[#b6c2d6]">
-          <Loader2 aria-hidden className={cn("h-3.5 w-3.5 text-[#5f8dff] transition-opacity", loading ? "animate-spin opacity-100" : "opacity-0")} />
+      <div className="flex min-w-0 items-center gap-2 text-[11px] text-slate-500 dark:text-[#8f9db3]">
+        <span role="status" aria-live="polite" className="inline-flex min-w-20 justify-end items-center gap-1 whitespace-nowrap text-slate-600 dark:text-[#b6c2d6]">
+          <Loader2 aria-hidden className={cn("h-3.5 w-3.5 text-blue-600 transition-opacity dark:text-[#60a5fa]", loading ? "animate-spin opacity-100" : "opacity-0")} />
           {loading ? text.loading : ""}
         </span>
         <span className="truncate font-mono tabular-nums">

@@ -32,9 +32,9 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 const KIND_TONE: Record<string, string> = {
-  "chat-sidebar": "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/20",
-  "chat-telegram": "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20",
-  monitor: "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/20",
+  "chat-sidebar": "border-blue-500/25 bg-blue-500/10 text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]",
+  "chat-telegram": "border-lime-600/25 bg-lime-500/10 text-lime-700 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/12 dark:text-[#a3e635]",
+  monitor: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#f59e0b]",
 };
 
 export function HermesOpsRunSummary({ run }: { run: HermesRun }) {
@@ -65,19 +65,19 @@ export function HermesOpsRunSummary({ run }: { run: HermesRun }) {
     : [];
 
   return (
-    <div className="rounded-2xl border border-border/70 bg-background/40 p-3 sm:p-4 space-y-2.5">
+    <div className="tactile-card rounded-[12px] border-slate-200/90 bg-white p-3 text-slate-900 tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.10)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.42)] sm:p-4 space-y-2.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium",
-              KIND_TONE[kind] ?? "bg-muted text-muted-foreground border-border",
+              "inline-flex items-center rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em]",
+              KIND_TONE[kind] ?? "border-slate-200/90 bg-slate-100 text-slate-600 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-slate-400",
             )}
           >
             Hermes Ops - {KIND_LABEL[kind] ?? kind}
           </span>
           {decision && (
-            <span className="text-[11px] font-mono text-muted-foreground">
+            <span className="font-mono text-[11px] text-slate-500 tabular-nums dark:text-[#8f9db3]">
               decision={decision}
             </span>
           )}
@@ -87,7 +87,7 @@ export function HermesOpsRunSummary({ run }: { run: HermesRun }) {
             href={`/api/heartbeat-runs/${run.id}/log?offset=0&limitBytes=256000`}
             target="_blank"
             rel="noreferrer"
-            className="text-[11px] text-sky-600 hover:underline dark:text-sky-400"
+            className="font-mono text-[11px] font-semibold text-blue-700 transition-colors hover:text-blue-800 hover:underline dark:text-[#60a5fa] dark:hover:text-[#93c5fd]"
           >
             raw log
           </a>
@@ -96,32 +96,32 @@ export function HermesOpsRunSummary({ run }: { run: HermesRun }) {
 
       {question && (
         <div className="text-xs">
-          <span className="text-muted-foreground">Q </span>
-          <span className="text-foreground">{question}</span>
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-700 dark:text-[#60a5fa]">Q </span>
+          <span className="text-slate-800 dark:text-slate-100">{question}</span>
         </div>
       )}
 
       {advice && (
-        <div className="rounded-xl border border-border/60 bg-muted/30 p-2.5 space-y-1.5">
+        <div className="rounded-[10px] border border-slate-200/80 bg-slate-50/75 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/[0.07] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] space-y-1.5">
           {targetIdentifier && (
             <div className="text-xs">
-              <span className="text-muted-foreground">Target </span>
-              <span className="font-medium text-foreground">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8f9db3]">Target </span>
+              <span className="font-medium text-slate-900 dark:text-slate-100">
                 {targetIdentifier}
-                {targetRole ? <span className="text-muted-foreground"> ({targetRole})</span> : null}
+                {targetRole ? <span className="text-slate-500 dark:text-[#8f9db3]"> ({targetRole})</span> : null}
               </span>
-              {targetAction ? <span className="text-muted-foreground"> · action: {targetAction}</span> : null}
-              {targetTitle ? <span className="text-muted-foreground"> · {targetTitle}</span> : null}
+              {targetAction ? <span className="text-slate-500 dark:text-[#8f9db3]"> · action: {targetAction}</span> : null}
+              {targetTitle ? <span className="text-slate-500 dark:text-[#8f9db3]"> · {targetTitle}</span> : null}
             </div>
           )}
           {leafCause && (
-            <div className="text-xs text-foreground">
-              <span className="text-muted-foreground">Leaf cause </span>
+            <div className="text-xs text-slate-800 dark:text-slate-200">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8f9db3]">Leaf cause </span>
               {leafCause}
             </div>
           )}
           {evidence.length > 0 && (
-            <ul className="text-xs text-muted-foreground list-disc pl-4 space-y-0.5">
+            <ul className="list-disc pl-4 text-xs text-slate-500 marker:text-blue-500 dark:text-slate-400 dark:marker:text-[#60a5fa] space-y-0.5">
               {evidence.slice(0, 4).map((e, i) => {
                 const rec = e as Record<string, unknown>;
                 const label = asString(rec.label) ?? "evidence";
@@ -131,18 +131,18 @@ export function HermesOpsRunSummary({ run }: { run: HermesRun }) {
             </ul>
           )}
           {operatorComment && (
-            <pre className="text-xs whitespace-pre-wrap text-foreground bg-background/60 rounded-md p-2">
+            <pre className="whitespace-pre-wrap rounded-md border border-slate-200/70 bg-white/80 p-2 font-mono text-xs tabular-nums text-slate-800 dark:border-white/[0.07] dark:bg-[#0e131d] dark:text-slate-200">
               {operatorComment}
             </pre>
           )}
           {doNot.length > 0 && (
-            <div className="text-xs text-amber-700 dark:text-amber-300">
+            <div className="text-xs font-medium text-rose-700 dark:text-[#f43f5e]">
               <span className="font-medium">Do NOT: </span>
               {(doNot as string[]).slice(0, 3).join(" / ")}
             </div>
           )}
           {missing.length > 0 && (
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-amber-700 dark:text-[#f59e0b]">
               <span className="font-medium">Missing evidence: </span>
               {(missing as string[]).slice(0, 3).join(" / ")}
             </div>
@@ -152,8 +152,8 @@ export function HermesOpsRunSummary({ run }: { run: HermesRun }) {
 
       {answer && (
         <div className="text-xs">
-          <span className="text-muted-foreground">A </span>
-          <span className="text-foreground">{answer.length > 280 ? `${answer.slice(0, 280)}...` : answer}</span>
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-lime-700 dark:text-[#a3e635]">A </span>
+          <span className="text-slate-800 dark:text-slate-100">{answer.length > 280 ? `${answer.slice(0, 280)}...` : answer}</span>
         </div>
       )}
     </div>

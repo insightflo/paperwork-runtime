@@ -37,15 +37,15 @@ const PROJECT_TABS: { value: ProjectTab; path: string; label: string }[] = [
   { value: "budget", path: "budget", label: "Budget" },
 ];
 
-// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
-const SEGMENT_ACTIVE = "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_0_0_1px_#242d3f]";
-const SEGMENT_IDLE = "text-[#8b97ad] hover:text-[#e6edf7]";
-/** Hairline card: #151b28 body inside a 1px #242d3f border. */
-const HAIRLINE_CARD = "min-w-0 rounded-md border border-[#242d3f] bg-[#151b28]";
-const HAIRLINE_LABEL = "text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]";
+// Tactile cockpit palette: white/slate light surfaces, #0e131d/#090c12 obsidian dark surfaces, cobalt focus, lime active pulses.
+const SEGMENT_ACTIVE = "bg-slate-100 text-slate-950 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.14)] dark:bg-[#151d2e] dark:text-[#eef2f8] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)]";
+const SEGMENT_IDLE = "text-slate-500 hover:text-slate-950 dark:text-[#8f9db3] dark:hover:text-[#eef2f8]";
+/** Tactile hairline card with a specular top highlight and obsidian dark surface. */
+const HAIRLINE_CARD = "tactile-card min-w-0 border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+const HAIRLINE_LABEL = "text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8f9db3]";
 /** Descendant override so ProjectProperties' inner bordered blocks inherit the hairline card look. */
 const HAIRLINE_DESCENDANTS =
-  "[&_.rounded-md.border.p-3]:border-[#242d3f] [&_.rounded-md.border.p-3]:bg-[#151b28] [&_.rounded-md.border.p-2]:border-[#242d3f] [&_.rounded-md.border.p-2]:bg-[#151b28]";
+  "[&_.rounded-md.border.p-3]:border-slate-200/90 dark:[&_.rounded-md.border.p-3]:border-white/[0.08] [&_.rounded-md.border.p-3]:bg-white dark:[&_.rounded-md.border.p-3]:bg-[#090c12] [&_.rounded-md.border.p-2]:border-slate-200/90 dark:[&_.rounded-md.border.p-2]:border-white/[0.08] [&_.rounded-md.border.p-2]:bg-slate-50 dark:[&_.rounded-md.border.p-2]:bg-[#090c12]";
 
 /** One cell of the 1-row cockpit strip: micro status dot (optional) · uppercase label · bold tabular fact. */
 function StripFact({ label, value, dot }: { label: string; value: string; dot?: string }) {
@@ -82,29 +82,29 @@ function OverviewContent({
   imageUploadHandler?: (file: File) => Promise<string>;
 }) {
   return (
-    <div className={cn(HAIRLINE_CARD, "divide-y divide-[#242d3f] tabular-nums")}>
+    <div className={cn(HAIRLINE_CARD, "divide-y divide-slate-200/80 dark:divide-white/[0.07] tabular-nums")}>
       <div className="px-4 py-3">
         <span className={HAIRLINE_LABEL}>Description</span>
         <InlineEditor
           value={project.description ?? ""}
           onSave={(description) => onUpdate({ description })}
           as="p"
-          className="mt-1 text-sm text-[#c9d3e4]"
+          className="mt-1 text-sm text-slate-700 dark:text-[#c9d3e4]"
           placeholder="Add a description..."
           multiline
           imageUploadHandler={imageUploadHandler}
         />
       </div>
-      <dl className="grid grid-cols-1 gap-px divide-y divide-[#242d3f] bg-[#242d3f] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-        <div className="bg-[#151b28] px-4 py-3">
+      <dl className="grid grid-cols-1 gap-px divide-y divide-slate-200/80 dark:divide-white/[0.07] bg-slate-200/80 dark:bg-white/[0.08] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+        <div className="bg-slate-50 dark:bg-[#090c12] px-4 py-3">
           <dt className={HAIRLINE_LABEL}>Status</dt>
           <dd className="mt-1.5">
             <StatusBadge status={project.status} />
           </dd>
         </div>
-        <div className="bg-[#151b28] px-4 py-3">
+        <div className="bg-slate-50 dark:bg-[#090c12] px-4 py-3">
           <dt className={HAIRLINE_LABEL}>Target Date</dt>
-          <dd className="mt-1.5 text-sm text-[#e6edf7]">{project.targetDate ?? "—"}</dd>
+          <dd className="mt-1.5 text-sm text-slate-950 dark:text-[#eef2f8]">{project.targetDate ?? "—"}</dd>
         </div>
       </dl>
     </div>
@@ -476,11 +476,11 @@ export function ProjectDetail() {
   return (
     <div className="space-y-2 tabular-nums">
       {/* 1-row 6-cell cockpit strip: identity + budget facts at a glance */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Work context summary">
+      <div className="cockpit-strip w-full gap-0 border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]" role="group" aria-label="Work context summary">
         <StripFact
           label="Status"
           value={project.status.replace("_", " ")}
-          dot={project.pausedAt ? "bg-[#f87171]" : project.status === "in_progress" ? "bg-[#34d399]" : "bg-[#8b97ad]"}
+          dot={project.pausedAt ? "bg-rose-500 dark:bg-[#fb7185]" : project.status === "in_progress" ? "bg-lime-500 dark:bg-[#a3e635]" : "bg-slate-400 dark:bg-[#627089]"}
         />
         <StripFact label="Target" value={project.targetDate ? formatDate(project.targetDate) : "—"} />
         <StripFact label="Spent" value={budgetActive ? formatCents(projectBudgetSummary.observedAmount) : "—"} />
@@ -490,23 +490,23 @@ export function ProjectDetail() {
       </div>
 
       {/* Tight single-row 40px toolbar: color · name · pause state · tabs · primary action. */}
-      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] pl-2 pr-1.5">
+      <div className="cockpit-toolbar h-10 w-full tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] pl-2 pr-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           <ColorPicker
             currentColor={project.color ?? "#6366f1"}
             onSelect={(color) => updateProject.mutate({ color })}
           />
-          <h2 className="min-w-0 truncate text-sm font-semibold text-[#e6edf7]">
+          <h2 className="min-w-0 truncate text-sm font-semibold text-slate-950 dark:text-[#eef2f8]">
             <InlineEditor
               value={project.name}
               onSave={(name) => updateProject.mutate({ name })}
               as="span"
-              className="text-sm font-semibold text-[#e6edf7]"
+              className="text-sm font-semibold text-slate-950 dark:text-[#eef2f8]"
             />
           </h2>
           {project.pauseReason === "budget" ? (
-            <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-red-200">
-              <span className="h-2 w-2 rounded-full bg-red-400" />
+            <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-rose-300/80 bg-rose-50 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-rose-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+              <span className="h-2 w-2 rounded-full bg-rose-500 dark:bg-red-400" />
               Paused by budget hard stop
             </div>
           ) : null}
@@ -517,14 +517,14 @@ export function ProjectDetail() {
             aria-label="Work context section"
             value={activeTab ?? "list"}
             onChange={(e) => handleTabChange(e.target.value as ProjectTab)}
-            className="h-7 shrink-0 rounded-md border border-[#242d3f] bg-[#0b0e14] px-2 text-xs text-[#e6edf7] outline-none focus:border-[#5f8dff]"
+            className="h-7 shrink-0 rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#090c12] px-2 text-xs text-slate-950 dark:text-[#eef2f8] outline-none focus:border-[#2563eb] dark:focus:border-[#60a5fa]"
           >
             {PROJECT_TABS.map((item) => (
               <option key={item.value} value={item.value}>{item.label}</option>
             ))}
           </select>
         ) : (
-          <div role="group" aria-label="Work context section" className="flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5">
+          <div role="group" aria-label="Work context section" className="flex shrink-0 items-center gap-0.5 rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#090c12] p-0.5">
             {PROJECT_TABS.map((item) => (
               <button
                 key={item.value}
@@ -568,7 +568,7 @@ export function ProjectDetail() {
       )}
 
       {activeTab === "configuration" && (
-        <div className={cn("max-w-4xl", HAIRLINE_CARD, "p-4 tabular-nums", HAIRLINE_DESCENDANTS)}>
+        <div className={cn("w-full max-w-6xl 2xl:max-w-none", HAIRLINE_CARD, "p-4 tabular-nums", HAIRLINE_DESCENDANTS)}>
           <ProjectProperties
             project={project}
             onUpdate={(data) => updateProject.mutate(data)}
@@ -581,10 +581,10 @@ export function ProjectDetail() {
       )}
 
       {activeTab === "budget" && resolvedCompanyId ? (
-        <section aria-label="Work context budget" className={cn("max-w-3xl divide-y divide-[#242d3f]", HAIRLINE_CARD)}>
-          <header className="flex h-9 items-center px-4 text-xs font-semibold text-[#e6edf7]">
+        <section aria-label="Work context budget" className={cn("w-full max-w-5xl divide-y divide-slate-200/80 dark:divide-white/[0.07] 2xl:max-w-none [&_.text-red-300]:text-rose-700 dark:[&_.text-red-300]:text-red-300 [&_.text-amber-200]:text-amber-700 dark:[&_.text-amber-200]:text-amber-200 [&_.text-red-100]:text-rose-700 dark:[&_.text-red-100]:text-red-100", HAIRLINE_CARD)}>
+          <header className="flex h-9 items-center px-4 text-xs font-semibold text-slate-950 dark:text-[#eef2f8]">
             Budget Policy
-            <span className="ml-auto text-[11px] font-normal text-[#8b97ad]">Lifetime · billed spend</span>
+            <span className="ml-auto text-[11px] font-normal text-slate-500 dark:text-[#8f9db3]">Lifetime · billed spend</span>
           </header>
           <div className="p-4">
             <BudgetPolicyCard

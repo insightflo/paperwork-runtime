@@ -10,12 +10,14 @@ import { executionWorkspacesApi } from "../api/execution-workspaces";
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "@/lib/utils";
 
-// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
-const HAIRLINE_CARD = "min-w-0 rounded-md border border-[#242d3f] bg-[#151b28]";
-const HAIRLINE_LABEL = "text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]";
+// Combo 1 Tactile Telemetry Cockpit surfaces: obsidian #07090d/#0e131d with 1px specular top highlight in dark mode, crisp slate/white in light mode.
+const TACTILE_CARD =
+  "tactile-card min-w-0 rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_-14px_rgba(0,0,0,0.72)]";
+const HAIRLINE_LABEL = "text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]";
 /** Monospace value block: wraps long paths/refs instead of forcing horizontal scroll. */
-const MONO_VALUE = "min-w-0 whitespace-pre-wrap break-all font-mono text-xs text-[#c9d3e4]";
-const CTA_PRIMARY = "h-7 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]";
+const MONO_VALUE = "min-w-0 whitespace-pre-wrap break-all font-mono text-xs text-slate-800 dark:text-[#c9d3e4]";
+const CTA_PRIMARY =
+  "h-7 rounded-lg bg-blue-600 px-2.5 text-xs font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-blue-700 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]";
 
 function isSafeExternalUrl(value: string | null | undefined) {
   if (!value) return false;
@@ -30,28 +32,34 @@ function isSafeExternalUrl(value: string | null | undefined) {
 /** One cell of the 1-row cockpit strip: micro status dot (optional) · uppercase label · bold tabular fact. */
 function StripFact({ label, value, dot }: { label: string; value: string; dot?: string }) {
   return (
-    <span className="cockpit-cell min-w-0 flex-1">
+    <span className="cockpit-cell min-w-0 flex-1 border-slate-200/80 text-slate-500 dark:border-white/[0.07] dark:text-[#8b97ad]">
       {dot && <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />}
-      <span className="truncate uppercase tracking-wide">{label}</span>
-      <b className="truncate normal-case tracking-normal" title={value}>{value}</b>
+      <span className="truncate text-[10.5px] font-semibold uppercase tracking-[0.1em]">{label}</span>
+      <b className="truncate font-semibold normal-case tracking-normal text-slate-950 dark:text-[#edf2fb]" title={value}>
+        {value}
+      </b>
     </span>
   );
 }
 
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-start gap-3 py-2">
-      <div className={cn("w-28 shrink-0 truncate", HAIRLINE_LABEL)}>{label}</div>
-      <div className="min-w-0 flex-1 text-sm text-[#e6edf7]">{children}</div>
+    <div className="flex items-start gap-3 py-2.5">
+      <div className={cn("w-32 shrink-0 truncate pt-0.5", HAIRLINE_LABEL)}>{label}</div>
+      <div className="min-w-0 flex-1 text-sm text-slate-900 dark:text-[#edf2fb]">{children}</div>
     </div>
   );
 }
 
 function statusDot(status: string) {
   const value = status.toLowerCase();
-  if (value.includes("clos") || value.includes("archiv") || value.includes("cleanup")) return "bg-[#8b97ad]";
-  if (value.includes("active") || value.includes("open") || value.includes("run")) return "bg-[#34d399]";
-  return "bg-[#fbbf24]";
+  if (value.includes("clos") || value.includes("archiv") || value.includes("cleanup")) {
+    return "bg-slate-400 dark:bg-[#8b97ad]";
+  }
+  if (value.includes("active") || value.includes("open") || value.includes("run")) {
+    return "bg-lime-500 shadow-[0_0_8px_rgba(163,230,53,0.75)] dark:bg-[#a3e635]";
+  }
+  return "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.65)] dark:bg-[#f59e0b]";
 }
 
 function formatDateTime(value: Date | string) {
@@ -67,8 +75,21 @@ export function ExecutionWorkspaceDetail() {
     enabled: Boolean(workspaceId),
   });
 
-  if (isLoading) return <p className="font-mono text-xs text-[#8b97ad]">Loading...</p>;
-  if (error) return <p className="text-sm text-destructive">{error instanceof Error ? error.message : "Failed to load execution context"}</p>;
+  if (isLoading) {
+    return (
+      <div className={cn(TACTILE_CARD, "inline-flex items-center gap-2 px-4 py-3 font-mono text-xs text-slate-500 dark:text-[#8b97ad]")}>
+        <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-blue-500 dark:bg-[#60a5fa]" />
+        Loading...
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3.5 py-2.5 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300">
+        {error instanceof Error ? error.message : "Failed to load execution context"}
+      </p>
+    );
+  }
   if (!workspace) return null;
 
   const repoLink = workspace.repoUrl && isSafeExternalUrl(workspace.repoUrl) ? workspace.repoUrl : null;
@@ -77,9 +98,15 @@ export function ExecutionWorkspaceDetail() {
     : "Not scheduled";
 
   return (
-    <div className="space-y-2 tabular-nums">
+    <div className="space-y-3 tabular-nums">
       {/* 1-row 6-cell cockpit strip: runtime facts at a glance */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Execution context summary">
+      <div
+        className={cn(
+          "cockpit-strip h-9 w-full gap-0 rounded-xl border border-slate-200/90 bg-white px-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_22px_-12px_rgba(0,0,0,0.65)]",
+        )}
+        role="group"
+        aria-label="Execution context summary"
+      >
         <StripFact label="Status" value={workspace.status} dot={statusDot(workspace.status)} />
         <StripFact label="Mode" value={workspace.mode} />
         <StripFact label="Provider" value={workspace.providerType} />
@@ -89,17 +116,21 @@ export function ExecutionWorkspaceDetail() {
       </div>
 
       {/* Tight single-row 40px toolbar: name · scope · primary action. */}
-      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] pl-2 pr-1.5">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-          <h1 className="min-w-0 truncate text-sm font-semibold text-[#e6edf7]">{workspace.name}</h1>
-          <span className="hidden shrink-0 text-[11px] uppercase tracking-wider text-[#8b97ad] sm:inline">Execution context</span>
+      <div className={cn(TACTILE_CARD, "cockpit-toolbar h-11 w-full justify-between px-3")}>
+        <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
+          <h1 className="min-w-0 truncate text-sm font-semibold tracking-tight text-slate-950 dark:text-[#edf2fb]">
+            {workspace.name}
+          </h1>
+          <span className="hidden shrink-0 rounded-full border border-blue-500/25 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-700 dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa] sm:inline-flex">
+            Execution context
+          </span>
         </div>
         {repoLink && (
           <a
             href={repoLink}
             target="_blank"
             rel="noreferrer"
-            className={cn("inline-flex shrink-0 items-center gap-1.5 rounded-md font-medium", CTA_PRIMARY)}
+            className={cn("inline-flex shrink-0 items-center gap-1.5", CTA_PRIMARY)}
           >
             Open repo
             <ExternalLink className="h-3 w-3" />
@@ -107,13 +138,35 @@ export function ExecutionWorkspaceDetail() {
         )}
       </div>
 
-      <section aria-label="Execution context details" className={cn("max-w-3xl divide-y divide-[#242d3f]/70", HAIRLINE_CARD)}>
-        <div className="px-4">
+      <section aria-label="Execution context details" className={cn(TACTILE_CARD, "max-w-3xl overflow-hidden")}>
+        <header className="flex items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/80 px-4 py-2.5 dark:border-white/[0.06] dark:bg-[#090d14]/80">
+          <span className={HAIRLINE_LABEL}>Telemetry metadata</span>
+          <span className="font-mono text-[11px] text-slate-500 dark:text-[#8b97ad]">{workspace.id}</span>
+        </header>
+        <div className="divide-y divide-slate-200/75 px-4 dark:divide-white/[0.06]">
           <DetailRow label="Work Context">
-            {workspace.projectId ? <Link to={`/projects/${workspace.projectId}`} className="font-mono text-xs hover:text-[#5f8dff]">{workspace.projectId}</Link> : "None"}
+            {workspace.projectId ? (
+              <Link
+                to={`/projects/${workspace.projectId}`}
+                className="font-mono text-xs text-blue-600 transition-colors hover:text-blue-700 hover:underline dark:text-[#60a5fa] dark:hover:text-[#93c5fd]"
+              >
+                {workspace.projectId}
+              </Link>
+            ) : (
+              <span className="text-slate-500 dark:text-[#8b97ad]">None</span>
+            )}
           </DetailRow>
           <DetailRow label="Source work item">
-            {workspace.sourceIssueId ? <Link to={`/issues/${workspace.sourceIssueId}`} className="font-mono text-xs hover:text-[#5f8dff]">{workspace.sourceIssueId}</Link> : "None"}
+            {workspace.sourceIssueId ? (
+              <Link
+                to={`/issues/${workspace.sourceIssueId}`}
+                className="font-mono text-xs text-blue-600 transition-colors hover:text-blue-700 hover:underline dark:text-[#60a5fa] dark:hover:text-[#93c5fd]"
+              >
+                {workspace.sourceIssueId}
+              </Link>
+            ) : (
+              <span className="text-slate-500 dark:text-[#8b97ad]">None</span>
+            )}
           </DetailRow>
           <DetailRow label="Branch"><span className={MONO_VALUE}>{workspace.branchName ?? "None"}</span></DetailRow>
           <DetailRow label="Base ref"><span className={MONO_VALUE}>{workspace.baseRef ?? "None"}</span></DetailRow>
@@ -121,18 +174,30 @@ export function ExecutionWorkspaceDetail() {
           <DetailRow label="Provider ref"><span className={MONO_VALUE}>{workspace.providerRef ?? "None"}</span></DetailRow>
           <DetailRow label="Repo URL">
             {repoLink ? (
-              <a href={repoLink} target="_blank" rel="noreferrer" className="inline-flex min-w-0 items-center gap-1 hover:underline">
-                <span className={MONO_VALUE}>{repoLink}</span>
+              <a
+                href={repoLink}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex min-w-0 items-center gap-1.5 text-blue-600 transition-colors hover:text-blue-700 hover:underline dark:text-[#60a5fa] dark:hover:text-[#93c5fd]"
+              >
+                <span className="min-w-0 whitespace-pre-wrap break-all font-mono text-xs">{repoLink}</span>
                 <ExternalLink className="h-3 w-3 shrink-0" />
               </a>
             ) : (
               <span className={MONO_VALUE}>{workspace.repoUrl ?? "None"}</span>
             )}
           </DetailRow>
-          <DetailRow label="Opened">{formatDateTime(workspace.openedAt)}</DetailRow>
-          <DetailRow label="Last used">{formatDateTime(workspace.lastUsedAt)}</DetailRow>
+          <DetailRow label="Opened"><span className="tabular-nums">{formatDateTime(workspace.openedAt)}</span></DetailRow>
+          <DetailRow label="Last used"><span className="tabular-nums">{formatDateTime(workspace.lastUsedAt)}</span></DetailRow>
           <DetailRow label="Cleanup">
-            {workspace.cleanupEligibleAt ? <span className="whitespace-pre-wrap">{cleanup}</span> : "Not scheduled"}
+            {workspace.cleanupEligibleAt ? (
+              <span className="inline-flex items-center gap-1.5 whitespace-pre-wrap text-amber-700 dark:text-[#f59e0b]">
+                <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500 dark:bg-[#f59e0b]" />
+                {cleanup}
+              </span>
+            ) : (
+              <span className="text-slate-500 dark:text-[#8b97ad]">Not scheduled</span>
+            )}
           </DetailRow>
         </div>
       </section>

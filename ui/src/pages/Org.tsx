@@ -11,30 +11,30 @@ import { PageSkeleton } from "../components/PageSkeleton";
 import { ChevronRight, GitBranch } from "lucide-react";
 import { cn } from "../lib/utils";
 
-// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
-const PANEL = "rounded-md border border-[#242d3f] bg-[#111622]";
+// Combo 1 cockpit palette: light slate surfaces, obsidian #0e131d/#090c12 dark surfaces, cobalt/lime/amber signals.
+const PANEL = "tactile-card rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-[#0e131d]";
 /** Deep-cobalt primary CTA — the single governing action of this page. */
 const PRIMARY_CTA =
-  "ml-auto inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-[#2563eb] px-2.5 text-xs font-medium text-[#f8fafc] no-underline transition-colors hover:bg-[#1d4fd8]";
+  "ml-auto inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-blue-600 px-2.5 text-xs font-medium text-white no-underline shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-blue-500 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]";
 /** Fixed column tracks: name (flexes, truncates) | role (truncates) | status pill (never wraps). */
 const ROW_TRACKS = "grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_max-content]";
 
 type StatusFilter = "all" | "active" | "paused" | "pending_approval" | "error";
 
 const STATUS_FILTERS: { value: StatusFilter; label: string; dot: string }[] = [
-  { value: "all", label: "Total", dot: "bg-[#5f8dff]" },
-  { value: "active", label: "Active", dot: "bg-[#34d399]" },
-  { value: "paused", label: "Paused", dot: "bg-[#fbbf24]" },
-  { value: "pending_approval", label: "Approval", dot: "bg-[#a78bfa]" },
-  { value: "error", label: "Error", dot: "bg-[#f87171]" },
+  { value: "all", label: "Total", dot: "bg-blue-600 dark:bg-[#60a5fa]" },
+  { value: "active", label: "Active", dot: "bg-lime-600 dark:bg-[#a3e635]" },
+  { value: "paused", label: "Paused", dot: "bg-amber-600 dark:bg-[#f59e0b]" },
+  { value: "pending_approval", label: "Approval", dot: "bg-violet-600 dark:bg-[#a78bfa]" },
+  { value: "error", label: "Error", dot: "bg-rose-600 dark:bg-[#f87171]" },
 ];
 
 function statusDot(status: string): string {
-  if (status === "active") return "bg-green-400";
-  if (status === "paused") return "bg-yellow-400";
-  if (status === "pending_approval") return "bg-amber-400";
-  if (status === "error") return "bg-red-400";
-  return "bg-neutral-400";
+  if (status === "active") return "bg-lime-500 dark:bg-[#a3e635]";
+  if (status === "paused") return "bg-amber-500 dark:bg-[#f59e0b]";
+  if (status === "pending_approval") return "bg-amber-500 dark:bg-[#f59e0b]";
+  if (status === "error") return "bg-rose-500 dark:bg-[#f87171]";
+  return "bg-slate-400 dark:bg-[#8b97ad]";
 }
 
 /** Keep a node when it matches the filter itself or has a matching descendant, so the reporting path stays visible. */
@@ -80,13 +80,13 @@ function OrgTreeNode({
     <div>
       <Link
         to={hrefFn(node.id)}
-        className={cn(ROW_TRACKS, "h-9 px-3 text-sm no-underline text-inherit transition-colors hover:bg-[#151b28]")}
+        className={cn(ROW_TRACKS, "h-9 px-3 text-sm no-underline text-inherit transition-colors hover:bg-slate-50 dark:hover:bg-[#141b29]")}
         style={{ paddingLeft: `${depth * 16 + 12}px` }}
       >
         <span className="flex min-w-0 items-center gap-2">
           {hasChildren ? (
             <button
-              className="p-0.5"
+              className="p-0.5 text-slate-500 transition-colors hover:text-slate-900 dark:text-[#8b97ad] dark:hover:text-[#edf2fb]"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -101,9 +101,9 @@ function OrgTreeNode({
             <span className="w-4" />
           )}
           <span className={cn("h-2 w-2 shrink-0 rounded-full", statusDot(node.status))} />
-          <span className="min-w-0 truncate font-medium text-[#e6edf7]">{node.name}</span>
+          <span className="min-w-0 truncate font-medium text-slate-900 dark:text-[#edf2fb]">{node.name}</span>
         </span>
-        <span className="hidden min-w-0 truncate text-xs text-[#8b97ad] sm:block">{node.role}</span>
+        <span className="hidden min-w-0 truncate text-xs text-slate-500 dark:text-[#8b97ad] sm:block">{node.role}</span>
         <StatusBadge status={node.status} />
       </Link>
       {hasChildren && expanded && (
@@ -152,15 +152,15 @@ export function Org() {
   }
 
   return (
-    <div className="space-y-2 tabular-nums">
+    <div className="mx-auto w-full max-w-[1180px] space-y-3 tabular-nums">
       {/* 1-row cockpit strip: agent counts double as status-filter shortcuts */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Agents in the org chart by status">
+      <div className="cockpit-strip tactile-card w-full gap-0 border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-[#0e131d]" role="group" aria-label="Agents in the org chart by status">
         <span className="cockpit-cell min-w-0 shrink-0">
           <GitBranch className="h-3.5 w-3.5 shrink-0" aria-hidden />
           <span className="truncate uppercase tracking-wide">Org Chart</span>
         </span>
         <span className="cockpit-cell shrink-0" title="Top-level agents">
-          Roots <b className="ml-1">{stats.roots}</b>
+          Roots <b className="ml-1 font-mono">{stats.roots}</b>
         </span>
         {STATUS_FILTERS.map((item) => (
           <button
@@ -171,20 +171,22 @@ export function Org() {
             onClick={() => setFilter(item.value)}
             className={cn(
               "cockpit-cell min-w-0 flex-1 cursor-pointer justify-center transition-colors",
-              filter === item.value ? "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_-1px_0_#5f8dff]" : "hover:bg-[#151b28] hover:text-[#e6edf7]",
+              filter === item.value
+                ? "bg-blue-600/10 text-slate-900 shadow-[inset_0_-1px_0_#2563eb] dark:bg-[#151d2c] dark:text-[#edf2fb] dark:shadow-[inset_0_-1px_0_#60a5fa]"
+                : "hover:bg-slate-100/80 hover:text-slate-900 dark:hover:bg-[#151d2c] dark:hover:text-[#edf2fb]",
             )}
           >
             <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", item.dot)} />
             <span className="truncate uppercase tracking-wide">{item.label}</span>
-            <b className="ml-1">{stats[item.value] ?? 0}</b>
+            <b className="ml-1 font-mono">{stats[item.value] ?? 0}</b>
           </button>
         ))}
       </div>
 
       {/* Tight single-row 40px toolbar: visible/total readout · deep-cobalt canvas CTA. */}
-      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] pl-1.5 pr-1.5">
-        <span className="shrink-0 text-[11px] text-[#8b97ad]">
-          <b className="font-mono text-[#e6edf7]">{visible.length}</b> of {stats.all} agents shown
+      <div className="cockpit-toolbar tactile-card h-10 w-full rounded-[12px] border-slate-200/90 bg-white/95 pl-1.5 pr-1.5 dark:border-white/[0.08] dark:bg-[#0e131d]">
+        <span className="shrink-0 text-[11px] text-slate-500 dark:text-[#8b97ad]">
+          <b className="font-mono text-slate-900 dark:text-[#edf2fb]">{visible.length}</b> of {stats.all} agents shown
         </span>
         <Link to="/org" className={PRIMARY_CTA} title="Open the interactive org chart canvas">
           Open Org Chart
@@ -203,13 +205,13 @@ export function Org() {
 
       {data && data.length > 0 && (
         <div aria-label="Org chart" className={cn(PANEL, "overflow-hidden")}>
-          <div className={cn(ROW_TRACKS, "h-7 border-b border-[#242d3f] px-3 text-[10.5px] uppercase tracking-[0.08em] text-[#8b97ad]")}>
+          <div className={cn(ROW_TRACKS, "h-7 border-b border-slate-200/90 px-3 text-[10.5px] uppercase tracking-[0.08em] text-slate-500 dark:border-white/[0.08] dark:text-[#8b97ad]")}>
             <span>Agent</span>
             <span className="hidden sm:block">Role</span>
             <span className="text-right">Status</span>
           </div>
           {visible.length === 0 && (
-            <div className="px-3 py-6 text-center text-xs text-[#8b97ad]">No agents match this filter.</div>
+            <div className="px-3 py-6 text-center text-xs text-slate-500 dark:text-[#8b97ad]">No agents match this filter.</div>
           )}
           <OrgTree nodes={visible} hrefFn={(id) => `/agents/${id}`} />
         </div>

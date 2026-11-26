@@ -73,16 +73,16 @@ import { AgentConfigurePage } from "../components/agent-detail/ConfigureViews";
 import { AgentSkillsTab } from "../components/agent-detail/AgentSkillsTab";
 import { parseAgentDetailView, runMetrics, setsEqual, type AgentDetailView } from "./agent-detail-view-helpers";
 
-// Cockpit status pill tones (approved mockup `.st` semantics: active=cobalt, planning=amber, blocked=crimson, completed=muted).
+// Cockpit status pill tones: active=lime pulse, running/in-progress=cobalt, attention=amber, blocked/failed=crimson.
 const PILL_TONE: Record<string, string> = {
-  active: "text-[#5f8dff]", running: "text-[#5f8dff]", in_progress: "text-[#5f8dff]",
-  planning: "text-[#fbbf24]", paused: "text-[#fbbf24]", idle: "text-[#fbbf24]", pending_approval: "text-[#fbbf24]",
-  failed: "text-[#f87171]", blocked: "text-[#f87171]", cancelled: "text-[#f87171]", canceled: "text-[#f87171]", terminated: "text-[#f87171]", error: "text-[#f87171]",
+  active: "text-lime-700 dark:text-[#a3e635]", running: "text-blue-600 dark:text-[#60a5fa]", in_progress: "text-blue-600 dark:text-[#60a5fa]",
+  planning: "text-amber-600 dark:text-[#f59e0b]", paused: "text-amber-600 dark:text-[#f59e0b]", idle: "text-amber-600 dark:text-[#f59e0b]", pending_approval: "text-amber-600 dark:text-[#f59e0b]",
+  failed: "text-rose-600 dark:text-[#fb7185]", blocked: "text-rose-600 dark:text-[#fb7185]", cancelled: "text-rose-600 dark:text-[#fb7185]", canceled: "text-rose-600 dark:text-[#fb7185]", terminated: "text-rose-600 dark:text-[#fb7185]", error: "text-rose-600 dark:text-[#fb7185]",
 };
 
 function StatusPill({ status }: { status: string }) {
   return (
-    <span className={`inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-[#242d3f] bg-[#0b0e14] px-2 text-[10.5px] font-semibold capitalize ${PILL_TONE[status.toLowerCase()] ?? "text-[#8b97ad]"}`}>
+    <span className={`inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-slate-200/90 bg-white px-2 text-[10.5px] font-semibold capitalize shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ${PILL_TONE[status.toLowerCase()] ?? "text-slate-500 dark:text-[#8f9db3]"}`}>
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
       {status.replace(/_/g, " ")}
     </span>
@@ -394,34 +394,34 @@ export function AgentDetail() {
   const budget = agentBudgetSummary;
 
   return (
-    <div className={cn("space-y-3 tabular-nums", activeView === "dashboard" && "[&_h3]:text-[11px] [&_h3]:font-semibold [&_h3]:uppercase [&_h3]:tracking-wider [&_h3]:text-muted-foreground", "[&_.border.rounded-lg]:rounded-lg [&_.border.rounded-lg.border-border]:border-[#242d3f] [&_.border.rounded-lg.border-border]:bg-[#111622] [&_a.border.rounded-lg:hover]:bg-muted/50", isMobile && showConfigActionBar && "pb-24")}>
+    <div className={cn("space-y-3 tabular-nums", activeView === "dashboard" && "[&_h3]:text-[11px] [&_h3]:font-semibold [&_h3]:uppercase [&_h3]:tracking-wider [&_h3]:text-muted-foreground", "[&_.border.rounded-lg]:rounded-xl [&_.border.rounded-lg.border-border]:border-slate-200/90 dark:[&_.border.rounded-lg.border-border]:border-white/[0.08] [&_.border.rounded-lg.border-border]:bg-white dark:[&_.border.rounded-lg.border-border]:bg-[#0e131d] [&_.border.rounded-lg.border-border]:shadow-[inset_0_1px_0_var(--pw-specular)] [&_a.border.rounded-lg:hover]:bg-slate-50 dark:[&_a.border.rounded-lg:hover]:bg-white/[0.05] [&_.text-red-300]:text-rose-700 dark:[&_.text-red-300]:text-red-300 [&_.text-amber-200]:text-amber-700 dark:[&_.text-amber-200]:text-amber-200 [&_.text-emerald-200]:text-lime-700 dark:[&_.text-emerald-200]:text-[#a3e635] [&_.text-red-100]:text-rose-700 dark:[&_.text-red-100]:text-red-100", isMobile && showConfigActionBar && "pb-24")}>
       {/* 48px detail header — full-bleed inside <main> padding, sticky within the desktop scroll container. */}
-      <header className="-mx-4 -mt-4 flex h-12 items-center gap-2 border-b border-[#242d3f] bg-[#0b0e14]/95 px-4 md:sticky md:top-0 md:z-10 md:-mx-6 md:-mt-6 md:px-6">
-        <nav aria-label="Agent breadcrumb" className="flex min-w-0 shrink-0 items-center gap-1.5 text-xs text-[#8b97ad]">
-          <Link to="/agents" className="hidden shrink-0 hover:text-[#e6edf7] sm:inline">Agents</Link>
+      <header className="-mx-4 -mt-4 flex h-12 items-center gap-2 border-b border-slate-200/90 bg-white/95 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12]/95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] md:sticky md:top-0 md:z-10 md:-mx-6 md:-mt-6 md:px-6">
+        <nav aria-label="Agent breadcrumb" className="flex min-w-0 shrink-0 items-center gap-1.5 text-xs text-slate-500 dark:text-[#8f9db3]">
+          <Link to="/agents" className="hidden shrink-0 hover:text-slate-950 dark:hover:text-[#eef2f8] sm:inline">Agents</Link>
           <span aria-hidden className="hidden shrink-0 text-[#4a5670] sm:inline">/</span>
           <span className="shrink-0 font-mono tabular-nums">{agent.id.slice(0, 8)}</span>
         </nav>
         <AgentIconPicker value={agent.icon} onChange={(icon) => updateIcon.mutate(icon)}>
-          <button type="button" title="Change agent icon" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#151b28] transition-colors hover:bg-[#1b2433]">
+          <button type="button" title="Change agent icon" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 dark:bg-[#090c12] transition-colors hover:bg-slate-100 dark:hover:bg-white/[0.08]">
             <AgentIcon icon={agent.icon} className="h-5 w-5" />
           </button>
         </AgentIconPicker>
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold leading-tight text-[#e6edf7]">{agent.name}</h2>
-          <p className="truncate text-[11px] leading-tight text-[#8b97ad]">
+          <h2 className="truncate text-sm font-semibold leading-tight text-slate-950 dark:text-[#eef2f8]">{agent.name}</h2>
+          <p className="truncate text-[11px] leading-tight text-slate-500 dark:text-[#8f9db3]">
             {roleLabels[agent.role] ?? agent.role}{agent.title ? ` · ${agent.title}` : ""}
           </p>
         </div>
         <StatusPill status={agent.status} />
         {mobileLiveRun && (
           <Link to={`/agents/${canonicalAgentRef}/runs/${mobileLiveRun.id}`} title="Open live run"
-            className="flex shrink-0 items-center gap-1.5 rounded-full border border-[#5f8dff]/30 bg-[#5f8dff]/10 px-2 py-0.5 no-underline transition-colors hover:bg-[#5f8dff]/20 sm:hidden">
+            className="flex shrink-0 items-center gap-1.5 rounded-full border border-lime-500/30 dark:border-[#a3e635]/30 bg-lime-500/10 dark:bg-[#a3e635]/10 px-2 py-0.5 no-underline transition-colors hover:bg-lime-500/15 dark:hover:bg-[#a3e635]/15 sm:hidden">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-[#5f8dff] opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#5f8dff]" />
+              <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-lime-500 opacity-75 dark:bg-[#a3e635]" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-lime-500 dark:bg-[#a3e635]" />
             </span>
-            <span className="text-[11px] font-semibold text-[#5f8dff]">Live</span>
+            <span className="text-[11px] font-semibold text-lime-700 dark:text-[#a3e635]">Live</span>
           </Link>
         )}
         {/* Tight action cluster: every button is 28px so the whole bar stays exactly 48px. */}
@@ -469,10 +469,10 @@ export function AgentDetail() {
       </header>
 
       {/* 1-row key-metric summary strip (dashboard-only queries render "—" until loaded; secondary cells fold below sm). */}
-      <div className="cockpit-strip w-full gap-0 overflow-hidden" role="group" aria-label="Agent summary">
+      <div className="cockpit-strip w-full gap-0 overflow-hidden border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]" role="group" aria-label="Agent summary">
         <span className="cockpit-cell min-w-0"><span className={metricLabel}>Runs 14d</span><b>{runStats?.total ?? "—"}</b></span>
         <span className="cockpit-cell"><span className={metricLabel}>Cost</span><b>{runPage ? `$${runsCost.toFixed(4)}` : "—"}</b></span>
-        <span className="cockpit-cell"><span className={metricLabel}>Live</span><b className={liveRunCount ? "text-[#5f8dff]" : undefined}>{liveRunCount}</b></span>
+        <span className="cockpit-cell"><span className={metricLabel}>Live</span><b className={liveRunCount ? "text-lime-700 dark:text-[#a3e635]" : undefined}>{liveRunCount}</b></span>
         <span className="cockpit-cell"><span className={metricLabel}>Budget</span><b>{usd(budget.observedAmount)}</b>{budget.amount > 0 ? `${usd(budget.amount)} · ${budget.utilizationPercent}%` : "no cap"}</span>
         <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Assigned</span><b>{allIssues ? assignedIssues.length : "—"}</b></span>
         <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Reports</span><b>{allAgents ? directReports.length : "—"}</b></span>
@@ -519,7 +519,7 @@ export function AgentDetail() {
               : "opacity-0 pointer-events-none"
           )}
         >
-          <div className="flex items-center gap-2 rounded-lg border border-[#242d3f] bg-[#111622]/95 px-3 py-1.5 shadow-lg backdrop-blur-sm">
+          <div className="tactile-card flex items-center gap-2 border-slate-200/90 bg-white/95 px-3 py-1.5 backdrop-blur-sm dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]/95">
             <Button
               variant="ghost"
               size="sm"
@@ -541,7 +541,7 @@ export function AgentDetail() {
 
       {/* Mobile bottom Save/Cancel bar */}
       {isMobile && showConfigActionBar && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[#242d3f] bg-[#0b0e14]/95 backdrop-blur-sm">
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200/90 bg-white/95 backdrop-blur-sm dark:border-white/[0.08] dark:bg-[#090c12]/95">
           <div
             className="flex items-center justify-end gap-2 px-3 py-2"
             style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.5rem)" }}
@@ -623,7 +623,7 @@ export function AgentDetail() {
       )}
 
       {activeView === "budget" && resolvedCompanyId ? (
-        <div className="max-w-3xl">
+        <div className="w-full max-w-5xl 2xl:max-w-none">
           <BudgetPolicyCard
             summary={agentBudgetSummary}
             isSaving={budgetMutation.isPending}

@@ -20,12 +20,15 @@ import { StatusBadge } from "../components/StatusBadge";
 import { ActivityRow } from "../components/ActivityRow";
 import { Identity } from "../components/Identity";
 import { timeAgo } from "../lib/timeAgo";
-import { agentUrl, formatCents, relativeTime } from "../lib/utils";
+import { formatCents, relativeTime } from "../lib/utils";
 import { Bot, ChevronDown, ChevronRight, LayoutDashboard, Rocket } from "lucide-react";
 import { ActiveAgentsPanel } from "../components/ActiveAgentsPanel";
 import { HarnessDiagnosisCard } from "../components/HarnessDiagnosisCard";
 import { HarnessProposalsCard } from "../components/HarnessProposalsCard";
 import { DashboardCommandHeader } from "../components/DashboardCommandHeader";
+import { ActionRequiredStrip } from "../components/ActionRequiredStrip";
+import { FleetHealthCard } from "../components/FleetHealthCard";
+import { BudgetBurnCard } from "../components/BudgetBurnCard";
 import { ChartCard, RunActivityChart, PriorityChart, IssueStatusChart, SuccessRateChart } from "../components/ActivityCharts";
 import { RadialVelocityGauge } from "../components/dashboard/RadialVelocityGauge";
 import { HealthAndQuotaPanel } from "../components/dashboard/HealthAndQuotaPanel";
@@ -123,93 +126,6 @@ function TelemetryCell({
   );
 }
 
-const ACTION_CHIP = "inline-flex h-7 min-w-0 max-w-[16rem] items-center gap-1.5 truncate rounded-md border border-border bg-background px-2 text-xs no-underline text-inherit transition-colors hover:bg-accent";
-
-function plural(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? "" : "s"}`;
-}
-
-/** Inline strip for anything waiting on the operator. Shown only when non-empty. */
-function ActionRequiredStrip({ data, agents, issues }: { data: DashboardSummary; agents?: Agent[]; issues?: Issue[] }) {
-  const approvals = data.pendingApprovals + data.budgets.pendingApprovals;
-  const erroredAgents = (agents ?? []).filter((agent) => agent.status === "error");
-  const blockedIssues = issues
-    ? issues.filter((issue) => issue.status === "blocked").sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-    : [];
-  const chips: ReactNode[] = [];
-
-  if (approvals > 0) {
-    chips.push(
-      <Link key="approvals" to="/approvals" className={ACTION_CHIP} title={`${plural(approvals, "approval")} waiting`}>
-        <span className="font-mono font-semibold text-amber-600 tabular-nums dark:text-amber-300">{approvals}</span>
-        <span className="truncate">{approvals === 1 ? "approval waiting" : "approvals waiting"}</span>
-      </Link>,
-    );
-  }
-  if (data.budgets.activeIncidents > 0) {
-    chips.push(
-      <Link key="incidents" to="/costs" className={ACTION_CHIP} title={`Budget incidents · ${plural(data.budgets.pausedProjects, "work context")} paused`}>
-        <span className="font-mono font-semibold text-red-600 tabular-nums dark:text-red-300">{data.budgets.activeIncidents}</span>
-        <span className="truncate">budget {data.budgets.activeIncidents === 1 ? "incident" : "incidents"} · {plural(data.budgets.pausedAgents, "agent")} paused{data.budgets.pausedProjects > 0 ? ` · ${plural(data.budgets.pausedProjects, "context")}` : ""}</span>
-      </Link>,
-    );
-  }
-  for (const agent of erroredAgents.slice(0, 2)) {
-    chips.push(
-      <Link key={`agent:${agent.id}`} to={agentUrl(agent)} className={ACTION_CHIP}>
-        <span className="font-mono font-semibold text-red-600 dark:text-red-300">error</span>
-        <span className="truncate">{agent.name}</span>
-      </Link>,
-    );
-  }
-  if (erroredAgents.length === 0 && data.agents.error > 0) {
-    chips.push(
-      <Link key="agent-errors" to="/agents" className={ACTION_CHIP}>
-        <span className="font-mono font-semibold text-red-600 tabular-nums dark:text-red-300">{data.agents.error}</span>
-        <span className="truncate">{data.agents.error === 1 ? "agent has" : "agents have"} errors</span>
-      </Link>,
-    );
-  }
-  for (const issue of blockedIssues.slice(0, 3)) {
-    chips.push(
-      <Link key={`issue:${issue.id}`} to={`/issues/${issue.identifier ?? issue.id}`} className={ACTION_CHIP} title={issue.title}>
-        <span className="font-mono font-semibold text-amber-600 dark:text-amber-300">{issue.identifier ?? issue.id.slice(0, 8)}</span>
-        <span className="truncate">{issue.title}</span>
-      </Link>,
-    );
-  }
-  if (blockedIssues.length > 3 || (!issues && data.tasks.blocked > 0)) {
-    const more = issues ? blockedIssues.length - 3 : data.tasks.blocked;
-    chips.push(
-      <Link key="blocked" to="/issues" className={ACTION_CHIP}>
-        <span className="font-mono font-semibold text-amber-600 tabular-nums dark:text-amber-300">{more}</span>
-        <span className="truncate">blocked {more === 1 ? "work" : "work items"}</span>
-      </Link>,
-    );
-  }
-  if (chips.length === 0) return null;
-
-  return (
-    <section
-      aria-label="Action required"
-      data-testid="dashboard-action-required"
-      className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/[0.07] px-3 py-2"
-    >
-      <span className="inline-flex shrink-0 items-center gap-2 text-xs font-semibold text-amber-700 dark:text-amber-300">
-        <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-60 dark:bg-amber-400" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500 dark:bg-amber-400" />
-        </span>
-        Action required
-      </span>
-      {chips}
-      <Link to="/inbox" className="ml-auto shrink-0 text-xs font-medium text-foreground underline underline-offset-2 hover:text-amber-700 dark:hover:text-amber-200">
-        Review in Inbox →
-      </Link>
-    </section>
-  );
-}
-
 function LiveRunRow({ run, issue }: { run: LiveRunForIssue; issue?: Issue }) {
   const live = isLiveRun(run);
   return (
@@ -237,137 +153,6 @@ function LiveRunRow({ run, issue }: { run: LiveRunForIssue; issue?: Issue }) {
         {live ? `live ${elapsedLabel(run.startedAt ?? run.createdAt)}` : relativeTime(run.finishedAt ?? run.createdAt)}
       </span>
     </Link>
-  );
-}
-
-const AGENT_HEALTH_ORDER: Record<string, number> = { error: 0, running: 1, paused: 2, active: 3, idle: 3 };
-
-function utilization(spent: number, budget: number): number | null {
-  if (budget <= 0) return null;
-  return Math.max(0, Math.min(100, Math.round((spent / budget) * 100)));
-}
-
-function utilizationTone(percent: number): string {
-  if (percent >= 100) return "bg-red-500 dark:bg-red-400";
-  if (percent >= 80) return "bg-amber-500 dark:bg-amber-400";
-  return "bg-primary";
-}
-
-function FleetHealthCard({ agents }: { agents: Agent[] }) {
-  const ranked = [...agents].sort((a, b) => {
-    const order = (AGENT_HEALTH_ORDER[a.status] ?? 4) - (AGENT_HEALTH_ORDER[b.status] ?? 4);
-    return order !== 0 ? order : (b.lastHeartbeatAt ? new Date(b.lastHeartbeatAt).getTime() : 0) - (a.lastHeartbeatAt ? new Date(a.lastHeartbeatAt).getTime() : 0);
-  });
-  const counts = { running: 0, idle: 0, paused: 0, error: 0 };
-  for (const agent of agents) {
-    if (agent.status === "running") counts.running += 1;
-    else if (agent.status === "active" || agent.status === "idle") counts.idle += 1;
-    else if (agent.status === "paused") counts.paused += 1;
-    else if (agent.status === "error") counts.error += 1;
-  }
-  return (
-    <section className="@container min-w-0 rounded-lg border border-border" aria-label="Agent fleet health">
-      <header className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-3 py-2">
-        <h3 className="text-xs font-semibold">Agent fleet health</h3>
-        <span className="text-[11px] text-muted-foreground tabular-nums">
-          {counts.running} running · {counts.idle} idle · {counts.paused} paused · {counts.error} error
-        </span>
-      </header>
-      {ranked.length === 0 ? (
-        <p className="px-3 py-3 text-sm text-muted-foreground">No agents yet.</p>
-      ) : (
-        <ul className="divide-y divide-border/60">
-          {ranked.slice(0, 8).map((agent) => {
-            const percent = utilization(agent.spentMonthlyCents, agent.budgetMonthlyCents);
-            const dot = agent.status === "error" ? "bg-red-500 dark:bg-red-400" : agent.status === "running" ? "bg-emerald-500 dark:bg-emerald-400" : agent.status === "paused" ? "bg-amber-500 dark:bg-amber-400" : "bg-muted-foreground/50";
-            return (
-              <li key={agent.id}>
-                <Link
-                  to={agentUrl(agent)}
-                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-3 py-1.5 text-xs no-underline text-inherit transition-colors hover:bg-accent/40 @[19rem]:grid-cols-[minmax(0,1fr)_4.5rem_5rem]"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
-                    <span className="min-w-0 truncate">{agent.name}</span>
-                  </span>
-                  {/* Narrow columns: the bar drops to its own full-width row so the
-                      agent name keeps the width. Wide: single row like the mockup. */}
-                  <span className="col-span-2 row-start-2 h-1.5 overflow-hidden rounded-sm border border-border bg-background @[19rem]:col-span-1 @[19rem]:col-start-2 @[19rem]:row-start-1" aria-hidden="true">
-                    <span className={`block h-full rounded-sm ${percent === null ? "bg-transparent" : utilizationTone(percent)}`} style={{ width: `${percent ?? 0}%` }} />
-                  </span>
-                  <span className="col-start-2 row-start-1 truncate text-right text-muted-foreground @[19rem]:col-start-3">
-                    {percent === null ? agent.status : `${percent}% · ${agent.status}`}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {ranked.length > 8 && (
-        <Link to="/agents" className="block border-t border-border px-3 py-1.5 text-xs text-muted-foreground no-underline hover:text-foreground">
-          +{ranked.length - 8} more agents
-        </Link>
-      )}
-    </section>
-  );
-}
-
-function BudgetBurnCard({ agents, monthSpendCents, monthBudgetCents }: { agents: Agent[]; monthSpendCents: number; monthBudgetCents: number }) {
-  const spenders = agents
-    .filter((agent) => agent.spentMonthlyCents > 0)
-    .sort((a, b) => b.spentMonthlyCents - a.spentMonthlyCents)
-    .slice(0, 6);
-  const maxSpend = spenders[0]?.spentMonthlyCents ?? 0;
-  const companyPercent = utilization(monthSpendCents, monthBudgetCents);
-  return (
-    <section className="min-w-0 rounded-lg border border-border" aria-label="Budget burn">
-      <header className="flex items-center justify-between gap-3 border-b border-border px-3 py-2">
-        <h3 className="text-xs font-semibold">Budget burn by agent</h3>
-        <span className="text-[11px] text-muted-foreground">This month</span>
-      </header>
-      {spenders.length === 0 ? (
-        <p className="px-3 py-3 text-sm text-muted-foreground">No agent spend recorded this month.</p>
-      ) : (
-        <ul className="divide-y divide-border/60">
-          {spenders.map((agent) => {
-            const share = monthSpendCents > 0 ? Math.round((agent.spentMonthlyCents / monthSpendCents) * 100) : 0;
-            const percent = utilization(agent.spentMonthlyCents, agent.budgetMonthlyCents);
-            return (
-              <li key={agent.id} className="px-3 py-1.5">
-                <Link to={agentUrl(agent)} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-xs no-underline text-inherit hover:text-foreground">
-                  <span className="min-w-0 truncate">{agent.name}</span>
-                  <span className="shrink-0 tabular-nums">
-                    <span className="font-mono font-semibold">{formatCents(agent.spentMonthlyCents)}</span>
-                    <span className="ml-1.5 text-[11px] text-muted-foreground">{share}%</span>
-                  </span>
-                </Link>
-                <div className="mt-1 h-1.5 overflow-hidden rounded-sm border border-border bg-background" aria-hidden="true">
-                  <div className="h-full rounded-sm bg-primary" style={{ width: `${maxSpend > 0 ? (agent.spentMonthlyCents / maxSpend) * 100 : 0}%` }} />
-                </div>
-                <p className="mt-0.5 text-[10px] text-muted-foreground tabular-nums">
-                  {percent === null ? "No monthly cap" : `${percent}% of ${formatCents(agent.budgetMonthlyCents)} cap`}
-                </p>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <footer className="border-t border-border px-3 py-2 text-xs">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-muted-foreground">Total month to date</span>
-          <span className="font-mono font-semibold tabular-nums">{formatCents(monthSpendCents)}</span>
-        </div>
-        {companyPercent !== null && (
-          <>
-            <div className="mt-1.5 h-1.5 overflow-hidden rounded-sm border border-border bg-background" aria-hidden="true">
-              <div className={`h-full rounded-sm ${utilizationTone(companyPercent)}`} style={{ width: `${companyPercent}%` }} />
-            </div>
-            <p className="mt-0.5 text-[10px] text-muted-foreground tabular-nums">{companyPercent}% of {formatCents(monthBudgetCents)} budget</p>
-          </>
-        )}
-      </footer>
-    </section>
   );
 }
 

@@ -174,25 +174,25 @@ export function NewProjectDialog() {
     >
       <DialogContent
         showCloseButton={false}
-        className={cn("p-0 gap-0", expanded ? "sm:max-w-2xl" : "sm:max-w-lg")}
+        className={cn("tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_50px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_50px_rgba(0,0,0,0.48)] p-0 gap-0", expanded ? "sm:max-w-2xl" : "sm:max-w-lg")}
         onKeyDown={handleKeyDown}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200/80 bg-slate-50/70 dark:border-white/10 dark:bg-[#07090d]">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             {selectedCompany && (
-              <span className="bg-muted px-1.5 py-0.5 rounded text-xs font-medium">
+              <span className="rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600 tabular-nums dark:border-white/10 dark:bg-[#0e131d] dark:text-slate-300">
                 {selectedCompany.name.slice(0, 3).toUpperCase()}
               </span>
             )}
             <span className="text-muted-foreground/60">&rsaquo;</span>
-            <span>New work context</span>
+            <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">New work context</span>
           </div>
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon-xs"
-              className="text-muted-foreground"
+              className="text-slate-500 hover:text-[#2563eb] dark:text-slate-400 dark:hover:text-[#60a5fa]"
               onClick={() => setExpanded(!expanded)}
             >
               {expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
@@ -200,7 +200,7 @@ export function NewProjectDialog() {
             <Button
               variant="ghost"
               size="icon-xs"
-              className="text-muted-foreground"
+              className="text-slate-500 hover:text-[#2563eb] dark:text-slate-400 dark:hover:text-[#60a5fa]"
               onClick={() => { reset(); closeNewProject(); }}
             >
               <span className="text-lg leading-none">&times;</span>
@@ -211,7 +211,7 @@ export function NewProjectDialog() {
         {/* Name */}
         <div className="px-4 pt-4 pb-2 shrink-0">
           <input
-            className="w-full text-lg font-semibold bg-transparent outline-none placeholder:text-muted-foreground/50"
+            className="w-full text-lg font-semibold bg-transparent text-slate-950 caret-[#65a30d] outline-none placeholder:text-slate-400 dark:text-slate-50 dark:caret-[#a3e635] dark:placeholder:text-slate-500"
             placeholder="Work context name"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -233,7 +233,7 @@ export function NewProjectDialog() {
             onChange={setDescription}
             placeholder="Add description..."
             bordered={false}
-            contentClassName={cn("text-sm text-muted-foreground", expanded ? "min-h-[220px]" : "min-h-[120px]")}
+            contentClassName={cn("text-sm text-slate-600 dark:text-slate-300", expanded ? "min-h-[220px]" : "min-h-[120px]")}
             imageUploadHandler={async (file) => {
               const asset = await uploadDescriptionImage.mutateAsync(file);
               return asset.contentPath;
@@ -241,11 +241,11 @@ export function NewProjectDialog() {
           />
         </div>
 
-        <div className="px-4 pt-3 pb-3 space-y-3 border-t border-border">
+        <div className="px-4 pt-3 pb-3 space-y-3 border-t border-slate-200/80 bg-slate-50/40 dark:border-white/10 dark:bg-[#07090d]/60">
           <div>
             <div className="mb-1 flex items-center gap-1.5">
               <label className="block text-xs text-muted-foreground">Repo URL</label>
-              <span className="text-xs text-muted-foreground/50">optional</span>
+              <span className="text-xs font-medium text-[#b45309] dark:text-[#f59e0b]">optional</span>
               <Tooltip delayDuration={300}>
                 <TooltipTrigger asChild>
                   <HelpCircle className="h-3 w-3 text-muted-foreground/50 cursor-help" />
@@ -256,7 +256,7 @@ export function NewProjectDialog() {
               </Tooltip>
             </div>
             <input
-              className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
+              className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
               value={workspaceRepoUrl}
               onChange={(e) => { setWorkspaceRepoUrl(e.target.value); setWorkspaceError(null); }}
               placeholder="https://github.com/org/repo"
@@ -266,7 +266,7 @@ export function NewProjectDialog() {
           <div>
             <div className="mb-1 flex items-center gap-1.5">
               <label className="block text-xs text-muted-foreground">Local folder</label>
-              <span className="text-xs text-muted-foreground/50">optional</span>
+              <span className="text-xs font-medium text-[#b45309] dark:text-[#f59e0b]">optional</span>
               <Tooltip delayDuration={300}>
                 <TooltipTrigger asChild>
                   <HelpCircle className="h-3 w-3 text-muted-foreground/50 cursor-help" />
@@ -278,7 +278,7 @@ export function NewProjectDialog() {
             </div>
             <div className="flex items-center gap-2">
               <input
-                className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs font-mono outline-none"
+                className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-xs text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 tabular-nums dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
                 value={workspaceLocalPath}
                 onChange={(e) => { setWorkspaceLocalPath(e.target.value); setWorkspaceError(null); }}
                 placeholder="/absolute/path/to/execution-context"
@@ -293,21 +293,21 @@ export function NewProjectDialog() {
         </div>
 
         {/* Property chips */}
-        <div className="flex items-center gap-1.5 px-4 py-2 border-t border-border flex-wrap">
+        <div className="flex items-center gap-1.5 px-4 py-2 border-t border-slate-200/80 bg-slate-50/50 flex-wrap dark:border-white/10 dark:bg-[#07090d]">
           {/* Status */}
           <Popover open={statusOpen} onOpenChange={setStatusOpen}>
             <PopoverTrigger asChild>
-              <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-accent/50 transition-colors">
+              <button className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
                 <StatusBadge status={status} />
               </button>
             </PopoverTrigger>
-            <PopoverContent className="w-40 p-1" align="start">
+            <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-40 p-1" align="start">
               {projectStatuses.map((s) => (
                 <button
                   key={s.value}
                   className={cn(
-                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/50",
-                    s.value === status && "bg-accent"
+                    "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5",
+                    s.value === status && "bg-[var(--pw-cobalt-soft)] text-slate-950 dark:text-slate-50"
                   )}
                   onClick={() => { setStatus(s.value); setStatusOpen(false); }}
                 >
@@ -318,11 +318,11 @@ export function NewProjectDialog() {
           </Popover>
 
           {/* Target date */}
-          <div className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs">
-            <Calendar className="h-3 w-3 text-muted-foreground" />
+          <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/10 dark:bg-[#0e131d] dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+            <Calendar className="h-3 w-3 text-[#b45309] dark:text-[#f59e0b]" />
             <input
               type="date"
-              className="bg-transparent outline-none text-xs w-24"
+              className="w-24 bg-transparent text-xs text-slate-700 outline-none tabular-nums dark:text-slate-200"
               value={targetDate}
               onChange={(e) => setTargetDate(e.target.value)}
               placeholder="Target date"
@@ -331,14 +331,14 @@ export function NewProjectDialog() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-border">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-200/80 bg-slate-50/50 dark:border-white/10 dark:bg-[#07090d]">
           {createProject.isError ? (
             <p className="text-xs text-destructive">Failed to create work context.</p>
           ) : (
             <span />
           )}
           <Button
-            size="sm"
+            size="sm" className="bg-[#4d7c0f] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:bg-[#3f6212] dark:bg-[#a3e635] dark:text-[#07090d] dark:hover:bg-[#bef264] tabular-nums"
             disabled={!name.trim() || createProject.isPending}
             onClick={handleSubmit}
           >

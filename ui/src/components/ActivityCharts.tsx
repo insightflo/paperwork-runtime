@@ -46,7 +46,7 @@ function ChartLegend({ items }: { items: { color: string; label: string }[] }) {
 
 export function ChartCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="border border-border rounded-lg p-4 space-y-3">
+    <div className="tactile-card dark:bg-[#0e131d] dark:[background-image:none] p-4 space-y-3 tabular-nums">
       <div>
         <h3 className="text-xs font-medium text-muted-foreground">{title}</h3>
         {subtitle && <span className="text-[10px] text-muted-foreground/60">{subtitle}</span>}
@@ -101,12 +101,12 @@ export function RunActivityChart({ runs }: { runs: HeartbeatRunDailyStat[] }) {
             <div key={day} className="flex-1 h-full flex flex-col justify-end" title={`${day}: ${total} runs`}>
               {total > 0 ? (
                 <div className="flex flex-col-reverse gap-px overflow-hidden" style={{ height: `${heightPct}%`, minHeight: 2 }}>
-                  {entry.succeeded > 0 && <div className="bg-emerald-500" style={{ flex: entry.succeeded }} />}
-                  {entry.failed > 0 && <div className="bg-red-500" style={{ flex: entry.failed }} />}
-                  {entry.other > 0 && <div className="bg-neutral-500" style={{ flex: entry.other }} />}
+                  {entry.succeeded > 0 && <div className="bg-lime-500 dark:bg-[#a3e635]" style={{ flex: entry.succeeded }} />}
+                  {entry.failed > 0 && <div className="bg-rose-500" style={{ flex: entry.failed }} />}
+                  {entry.other > 0 && <div className="bg-amber-500 dark:bg-[#f59e0b]" style={{ flex: entry.other }} />}
                 </div>
               ) : (
-                <div className="bg-muted/30 rounded-sm" style={{ height: 2 }} />
+                <div className="bg-slate-200/70 dark:bg-[#07090d] rounded-sm" style={{ height: 2 }} />
               )}
             </div>
           );
@@ -118,10 +118,10 @@ export function RunActivityChart({ runs }: { runs: HeartbeatRunDailyStat[] }) {
 }
 
 const priorityColors: Record<string, string> = {
-  critical: "#ef4444",
-  high: "#f97316",
-  medium: "#eab308",
-  low: "#6b7280",
+  critical: "#f43f5e",
+  high: "#f59e0b",
+  medium: "#60a5fa",
+  low: "#64748b",
 };
 
 const priorityOrder = ["critical", "high", "medium", "low"] as const;
@@ -158,7 +158,7 @@ export function PriorityChart({ issues }: { issues: { priority: string; createdA
                   ) : null)}
                 </div>
               ) : (
-                <div className="bg-muted/30 rounded-sm" style={{ height: 2 }} />
+                <div className="bg-slate-200/70 dark:bg-[#07090d] rounded-sm" style={{ height: 2 }} />
               )}
             </div>
           );
@@ -171,13 +171,13 @@ export function PriorityChart({ issues }: { issues: { priority: string; createdA
 }
 
 const statusColors: Record<string, string> = {
-  todo: "#3b82f6",
-  in_progress: "#8b5cf6",
-  in_review: "#a855f7",
-  done: "#10b981",
-  blocked: "#ef4444",
-  cancelled: "#6b7280",
-  backlog: "#64748b",
+  todo: "#60a5fa",
+  in_progress: "#f59e0b",
+  in_review: "#a78bfa",
+  done: "#a3e635",
+  blocked: "#f43f5e",
+  cancelled: "#64748b",
+  backlog: "#475569",
 };
 
 const statusLabels: Record<string, string> = {
@@ -221,18 +221,18 @@ export function IssueStatusChart({ issues }: { issues: { status: string; created
               {total > 0 ? (
                 <div className="flex flex-col-reverse gap-px overflow-hidden" style={{ height: `${heightPct}%`, minHeight: 2 }}>
                   {statusOrder.map(s => (entry[s] ?? 0) > 0 ? (
-                    <div key={s} style={{ flex: entry[s], backgroundColor: statusColors[s] ?? "#6b7280" }} />
+                    <div key={s} style={{ flex: entry[s], backgroundColor: statusColors[s] ?? "#64748b" }} />
                   ) : null)}
                 </div>
               ) : (
-                <div className="bg-muted/30 rounded-sm" style={{ height: 2 }} />
+                <div className="bg-slate-200/70 dark:bg-[#07090d] rounded-sm" style={{ height: 2 }} />
               )}
             </div>
           );
         })}
       </div>
       <DateLabels days={days} />
-      <ChartLegend items={statusOrder.map(s => ({ color: statusColors[s] ?? "#6b7280", label: statusLabels[s] ?? s }))} />
+      <ChartLegend items={statusOrder.map(s => ({ color: statusColors[s] ?? "#64748b", label: statusLabels[s] ?? s }))} />
     </div>
   );
 }
@@ -257,13 +257,13 @@ export function SuccessRateChart({ runs }: { runs: HeartbeatRunDailyStat[] }) {
         {days.map(day => {
           const entry = grouped.get(day)!;
           const rate = entry.total > 0 ? entry.succeeded / entry.total : 0;
-          const color = entry.total === 0 ? undefined : rate >= 0.8 ? "#10b981" : rate >= 0.5 ? "#eab308" : "#ef4444";
+          const color = entry.total === 0 ? undefined : rate >= 0.8 ? "#a3e635" : rate >= 0.5 ? "#f59e0b" : "#f43f5e";
           return (
             <div key={day} className="flex-1 h-full flex flex-col justify-end" title={`${day}: ${entry.total > 0 ? Math.round(rate * 100) : 0}% (${entry.succeeded}/${entry.total})`}>
               {entry.total > 0 ? (
                 <div style={{ height: `${rate * 100}%`, minHeight: 2, backgroundColor: color }} />
               ) : (
-                <div className="bg-muted/30 rounded-sm" style={{ height: 2 }} />
+                <div className="bg-slate-200/70 dark:bg-[#07090d] rounded-sm" style={{ height: 2 }} />
               )}
             </div>
           );

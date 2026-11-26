@@ -192,16 +192,16 @@ function ActorIdentity({ evt, agentMap }: { evt: ActivityEvent; agentMap: Map<st
   return <Identity name={id || "Unknown"} size="sm" />;
 }
 
-// Cockpit status pill tones (approved mockup `.st` semantics: active=cobalt, planning=amber, blocked=crimson, completed=muted).
+// Cockpit status pill tones: active=lime pulse, running/in-progress=cobalt, attention=amber, blocked/failed=crimson.
 const PILL_TONE: Record<string, string> = {
-  active: "text-[#5f8dff]", running: "text-[#5f8dff]", in_progress: "text-[#5f8dff]", in_review: "text-[#5f8dff]", todo: "text-[#5f8dff]",
-  planning: "text-[#fbbf24]", paused: "text-[#fbbf24]", pending_approval: "text-[#fbbf24]",
-  failed: "text-[#f87171]", blocked: "text-[#f87171]", cancelled: "text-[#f87171]", canceled: "text-[#f87171]", terminated: "text-[#f87171]",
+  active: "text-lime-700 dark:text-[#a3e635]", running: "text-blue-600 dark:text-[#60a5fa]", in_progress: "text-blue-600 dark:text-[#60a5fa]", in_review: "text-blue-600 dark:text-[#60a5fa]", todo: "text-blue-600 dark:text-[#60a5fa]",
+  planning: "text-amber-600 dark:text-[#f59e0b]", paused: "text-amber-600 dark:text-[#f59e0b]", pending_approval: "text-amber-600 dark:text-[#f59e0b]",
+  failed: "text-rose-600 dark:text-[#fb7185]", blocked: "text-rose-600 dark:text-[#fb7185]", cancelled: "text-rose-600 dark:text-[#fb7185]", canceled: "text-rose-600 dark:text-[#fb7185]", terminated: "text-rose-600 dark:text-[#fb7185]",
 };
 
 function StatusPill({ status }: { status: string }) {
   return (
-    <span className={`inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-[#242d3f] bg-[#0b0e14] px-2 text-[10.5px] font-semibold capitalize ${PILL_TONE[status.toLowerCase()] ?? "text-[#8b97ad]"}`}>
+    <span className={`inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-slate-200/90 bg-white px-2 text-[10.5px] font-semibold capitalize shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ${PILL_TONE[status.toLowerCase()] ?? "text-slate-500 dark:text-[#8f9db3]"}`}>
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
       {status.replace(/_/g, " ")}
     </span>
@@ -678,9 +678,9 @@ export function IssueDetail() {
   return (
     <div className="space-y-3 tabular-nums">
       {/* 48px detail header — full-bleed inside <main> padding, sticky within the desktop scroll container. */}
-      <header className="-mx-4 -mt-4 flex h-12 items-center gap-2 border-b border-[#242d3f] bg-[#0b0e14]/95 px-4 md:sticky md:top-0 md:z-10 md:-mx-6 md:-mt-6 md:px-6">
-        <nav aria-label="Work item breadcrumb" className="flex min-w-0 shrink-0 items-center gap-1.5 text-xs text-[#8b97ad]">
-          <Link to={sourceBreadcrumb.href} state={location.state} className="shrink-0 hover:text-[#e6edf7]">{sourceBreadcrumb.label}</Link>
+      <header className="-mx-4 -mt-4 flex h-12 items-center gap-2 border-b border-slate-200/90 bg-white/95 px-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12]/95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] md:sticky md:top-0 md:z-10 md:-mx-6 md:-mt-6 md:px-6">
+        <nav aria-label="Work item breadcrumb" className="flex min-w-0 shrink-0 items-center gap-1.5 text-xs text-slate-500 dark:text-[#8f9db3]">
+          <Link to={sourceBreadcrumb.href} state={location.state} className="shrink-0 hover:text-slate-950 dark:hover:text-[#eef2f8]">{sourceBreadcrumb.label}</Link>
           <span aria-hidden className="shrink-0 text-[#4a5670]">/</span>
           <span className="shrink-0 font-mono tabular-nums">{issue.identifier ?? issue.id.slice(0, 8)}</span>
         </nav>
@@ -689,15 +689,15 @@ export function IssueDetail() {
           <PriorityIcon priority={issue.priority} onChange={(priority) => updateIssue.mutate({ priority })} />
           <div className="min-w-0 flex-1 truncate">
             <InlineEditor value={issue.title} onSave={(title) => updateIssue.mutateAsync({ title })} as="h2"
-              className="inline text-sm font-semibold text-[#e6edf7]" />
+              className="inline text-sm font-semibold text-slate-950 dark:text-[#eef2f8]" />
           </div>
         </div>
         <StatusPill status={issue.status} />
         {hasLiveRuns && (
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#5f8dff]/30 bg-[#5f8dff]/10 px-2 py-0.5 text-[10px] font-semibold text-[#5f8dff]">
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-lime-500/30 dark:border-[#a3e635]/30 bg-lime-500/10 dark:bg-[#a3e635]/10 px-2 py-0.5 text-[10px] font-semibold text-lime-700 dark:text-[#a3e635]">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-[#5f8dff] opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#5f8dff]" />
+              <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-lime-500 opacity-75 dark:bg-[#a3e635]" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-lime-500 dark:bg-[#a3e635]" />
             </span>
             Live
           </span>
@@ -736,7 +736,7 @@ export function IssueDetail() {
       </header>
 
       {issue.hiddenAt && (
-        <div className="flex items-center gap-2 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-3 py-2 text-sm text-[#f87171]">
+        <div className="flex items-center gap-2 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-3 py-2 text-sm text-rose-600 dark:text-[#fb7185]">
           <EyeOff className="h-4 w-4 shrink-0" />
           This work item is hidden
         </div>
@@ -744,20 +744,20 @@ export function IssueDetail() {
 
       {/* Parent chain (oldest → immediate parent); the current item is the header title. */}
       {ancestors.length > 0 && (
-        <nav aria-label="Parent work items" className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-xs text-[#8b97ad]">
+        <nav aria-label="Parent work items" className="flex items-center gap-1 overflow-hidden whitespace-nowrap text-xs text-slate-500 dark:text-[#8f9db3]">
           {[...ancestors].reverse().map((ancestor) => (
             <span key={ancestor.id} className="flex min-w-0 items-center gap-1">
               <ChevronRight className="h-3 w-3 shrink-0 text-[#4a5670]" />
-              <Link to={`/issues/${ancestor.identifier ?? ancestor.id}`} state={location.state} title={ancestor.title} className="truncate hover:text-[#e6edf7]">{ancestor.title}</Link>
+              <Link to={`/issues/${ancestor.identifier ?? ancestor.id}`} state={location.state} title={ancestor.title} className="truncate hover:text-slate-950 dark:hover:text-[#eef2f8]">{ancestor.title}</Link>
             </span>
           ))}
         </nav>
       )}
 
       {/* 1-row key-metric summary strip (secondary cells fold below sm; the row never wraps or widens the page). */}
-      <div className="cockpit-strip w-full gap-0 overflow-hidden" role="group" aria-label="Work item summary">
+      <div className="cockpit-strip w-full gap-0 overflow-hidden border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]" role="group" aria-label="Work item summary">
         {issue.projectId ? (
-          <Link to={`/projects/${issue.projectId}`} className="cockpit-cell min-w-0 hover:text-[#e6edf7]">
+          <Link to={`/projects/${issue.projectId}`} className="cockpit-cell min-w-0 hover:text-slate-950 dark:hover:text-[#eef2f8]">
             <Hexagon className="h-3 w-3 shrink-0" /><span className={metricLabel}>Project</span><b className="truncate" title={projectName}>{projectName}</b>
           </Link>
         ) : (
@@ -778,7 +778,7 @@ export function IssueDetail() {
         <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Created</span><b>{formatDate(issue.createdAt)}</b></span>
       </div>
 
-      <section className="rounded-lg border border-[#242d3f] bg-[#111622] px-3 py-2">
+      <section className="tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] px-3 py-2">
         <InlineEditor
           value={issue.description ?? ""}
           onSave={(description) => updateIssue.mutateAsync({ description })}
@@ -808,7 +808,7 @@ export function IssueDetail() {
       {hasAttachments ? (
         <div
         className={cn(
-          "space-y-3 rounded-lg border border-[#242d3f] bg-[#111622] p-3 transition-colors",
+          "space-y-3 tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] p-3 transition-colors",
         )}
         onDragEnter={(evt) => {
           evt.preventDefault();
@@ -835,7 +835,7 @@ export function IssueDetail() {
 
         <div className="space-y-2">
           {attachmentList.map((attachment) => (
-            <div key={attachment.id} className="rounded-md border border-[#242d3f] bg-[#151b28] p-2">
+            <div key={attachment.id} className="rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-slate-50 dark:bg-[#090c12] p-2">
               <div className="flex items-center justify-between gap-2">
                 <a
                   href={attachment.contentPath}
@@ -856,7 +856,7 @@ export function IssueDetail() {
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <p className="font-mono text-[11px] text-[#8b97ad]">
+              <p className="font-mono text-[11px] text-slate-500 dark:text-[#8f9db3]">
                 {attachment.contentType} · {(attachment.byteSize / 1024).toFixed(1)} KB
               </p>
               {isImageAttachment(attachment) && (
@@ -864,7 +864,7 @@ export function IssueDetail() {
                   <img
                     src={attachment.contentPath}
                     alt={attachment.originalFilename ?? "attachment"}
-                    className="mt-2 max-h-56 rounded border border-border object-contain bg-accent/10"
+                    className="mt-2 max-h-56 rounded border border-border object-contain bg-accent/10 outline -outline-offset-1 outline-black/10 dark:outline-white/10"
                     loading="lazy"
                   />
                 </a>
@@ -934,7 +934,7 @@ export function IssueDetail() {
           ) : childIssues.length === 0 ? (
             <p className="text-xs text-muted-foreground">No sub-items.</p>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-[#242d3f] bg-[#111622] divide-y divide-[#242d3f]">
+            <div className="overflow-hidden tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] divide-y divide-slate-200/80 dark:divide-white/[0.07]">
               {childIssues.map((child) => (
                 <Link
                   key={child.id}
@@ -964,7 +964,7 @@ export function IssueDetail() {
 
         <TabsContent value="activity">
           {linkedRuns && linkedRuns.length > 0 && (
-            <div className="mb-3 rounded-lg border border-[#242d3f] bg-[#111622] px-3 py-2">
+            <div className="mb-3 tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] px-3 py-2">
               <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cost Summary</div>
               {!issueCostSummary.hasCost && !issueCostSummary.hasTokens ? (
                 <div className="text-xs text-muted-foreground">No cost data yet.</div>
@@ -1008,13 +1008,13 @@ export function IssueDetail() {
           id="work-products"
           open={secondaryOpen.workProducts}
           onOpenChange={(open) => setSecondaryOpen((prev) => ({ ...prev, workProducts: open }))}
-          className="rounded-lg border border-[#242d3f] bg-[#111622]"
+          className="tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]"
         >
           <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground tabular-nums">Work Products ({workProducts.length})</span>
             <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", secondaryOpen.workProducts && "rotate-180")} />
           </CollapsibleTrigger>
-          <CollapsibleContent><div className="border-t border-[#242d3f] divide-y divide-[#242d3f]">
+          <CollapsibleContent><div className="border-t border-slate-200/90 dark:border-white/[0.08] divide-y divide-slate-200/80 dark:divide-white/[0.07]">
             {workProducts.map((product) => <div key={product.id} id={`work-product-${product.id}`} className="flex items-start justify-between gap-3 px-3 py-2 text-xs">
               <div><p className="font-medium">{product.title}</p><p className="text-muted-foreground">{product.summary ?? `${product.provider} · ${product.type}`}</p><p className="mt-1 font-mono text-[11px] text-muted-foreground tabular-nums">{product.id}</p></div>
               <Button size="sm" variant="outline" onClick={() => void openWorkProductInBrowser(product.id)}>원본 열기</Button>
@@ -1027,7 +1027,7 @@ export function IssueDetail() {
         <Collapsible
           open={secondaryOpen.approvals}
           onOpenChange={(open) => setSecondaryOpen((prev) => ({ ...prev, approvals: open }))}
-          className="rounded-lg border border-[#242d3f] bg-[#111622]"
+          className="tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]"
         >
           <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground tabular-nums">
@@ -1038,7 +1038,7 @@ export function IssueDetail() {
             />
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div className="border-t border-[#242d3f] divide-y divide-[#242d3f]">
+            <div className="border-t border-slate-200/90 dark:border-white/[0.08] divide-y divide-slate-200/80 dark:divide-white/[0.07]">
               {linkedApprovals.map((approval) => (
                 <Link
                   key={approval.id}

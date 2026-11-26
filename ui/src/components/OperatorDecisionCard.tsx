@@ -37,9 +37,9 @@ interface OperatorDecisionCardProps {
 }
 
 function toneClass(tone: OperatorDecisionAction["tone"]) {
-  if (tone === "danger") return "border-destructive text-destructive hover:bg-destructive/10";
-  if (tone === "primary") return "border-primary bg-primary text-primary-foreground hover:bg-primary/90";
-  return "border-border bg-background text-foreground hover:bg-accent";
+  if (tone === "danger") return "border-destructive/60 bg-destructive/5 text-destructive shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] hover:bg-destructive/10 dark:border-red-400/40 dark:bg-red-500/10 dark:text-red-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:bg-red-500/15";
+  if (tone === "primary") return "border-[#4d7c0f] bg-[#4d7c0f] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:bg-[#3f6212] dark:border-[#a3e635]/50 dark:bg-[#a3e635] dark:text-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.34)] dark:hover:bg-[#bef264]";
+  return "border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]";
 }
 
 function sourceLabel(decision: OperatorDecisionView, lang: ReturnType<typeof useCompanyLanguage>) {
@@ -236,22 +236,22 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
     />
   );
   return (
-    <article className="border border-border bg-card p-4" aria-labelledby={`operator-decision-${decision.id}-heading`}>
+    <article className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white p-4 text-slate-900 tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.10)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.42)]" aria-labelledby={`operator-decision-${decision.id}-heading`}>
       {(decision.missionTitle || decision.issueIdentifier || decision.issueTitle) && (
-        <div data-operator-decision-context className="mb-2 flex flex-col gap-0.5 border-b border-border pb-2 text-xs">
-          {decision.missionTitle && <span className="text-muted-foreground">{L(lang, { en: "Mission:", ko: "미션:" })} {decision.missionTitle}</span>}
+        <div data-operator-decision-context className="mb-2 flex flex-col gap-0.5 border-b border-slate-200/80 pb-2 text-xs text-slate-600 dark:border-white/[0.07] dark:text-slate-400">
+          {decision.missionTitle && <span className="text-slate-500 dark:text-[#8f9db3]">{L(lang, { en: "Mission:", ko: "미션:" })} {decision.missionTitle}</span>}
           {(decision.issueIdentifier || decision.issueTitle) && (
-            <span className="font-medium text-foreground">
+            <span className="font-medium text-slate-900 dark:text-slate-100">
               {L(lang, { en: "Issue:", ko: "이슈:" })} {decision.issueIdentifier ?? ""}{decision.issueIdentifier && decision.issueTitle ? " — " : ""}{decision.issueTitle ?? ""}
             </span>
           )}
         </div>
       )}
-      <div data-operator-decision-meta className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span className="font-semibold text-foreground" title={decision.priority}>{humanLabel(lang, "priority", decision.priority).label}</span>
+      <div data-operator-decision-meta className="flex flex-wrap items-center gap-2 text-xs tabular-nums text-slate-500 dark:text-[#8f9db3]">
+        <span className="rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#f59e0b]" title={decision.priority}>{humanLabel(lang, "priority", decision.priority).label}</span>
         {/* [owner-choice-card] choice 카드는 오류·실패 톤이 아닌 결정 요청 배지 + 한국어 결정 지점 라벨로 표시한다. */}
         {choiceCard.isChoiceCard && (
-          <span data-operator-choice-badge className="border border-primary/40 bg-primary/10 px-1.5 py-0.5 font-semibold text-primary">
+          <span data-operator-choice-badge className="rounded-md border border-blue-500/30 bg-blue-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]">
             {choiceCard.decisionPointLabel === null
               ? L(lang, { en: "Decision request", ko: "결정 요청" })
               : `${L(lang, { en: "Decision request", ko: "결정 요청" })} · ${choiceCard.decisionPointLabel}`}
@@ -260,20 +260,20 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
         <span>{L(lang, { en: "Requested by", ko: "요청:" })} {sourceLabel(decision, lang)}</span>
         <span>{timeAgo(decision.createdAt)}</span>
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">{L(lang, { en: "What needs deciding?", ko: "무엇을 결정해야 하나요?" })}</p>
+      <p className="mt-3 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-[#8f9db3]">{L(lang, { en: "What needs deciding?", ko: "무엇을 결정해야 하나요?" })}</p>
       <h2
         id={`operator-decision-${decision.id}-heading`}
         data-operator-decision-heading
         tabIndex={-1}
-        className="mt-2 text-base font-semibold"
+        className="mt-1.5 text-lg font-semibold tracking-[-0.01em] text-slate-950 dark:text-slate-50"
       >
         {subject}
       </h2>
       {/* 신형 축소 카드에서는 제목과 decisionSubject 가 중복되므로 부제목(title) 은 펼치지 않는다. */}
-      {subject !== decision.title && !compactCard && <p className="mt-1 text-xs text-muted-foreground">{decision.title}</p>}
+      {subject !== decision.title && !compactCard && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{decision.title}</p>}
       {/* 판단 카드(humanReview)가 있으면 마크다운 description 은 중복 — 표시하지 않는다. */}
       {!decision.definition.humanReview && (
-        <p id={descriptionId} className="mt-1 whitespace-pre-line text-sm text-muted-foreground">{decision.description}</p>
+        <p id={descriptionId} className="mt-1 whitespace-pre-line text-sm leading-relaxed text-slate-600 dark:text-slate-300">{decision.description}</p>
       )}
 
       {/* [owner-choice-card] choice 옵션 블록 — 요약·추천 표시·(해당 시) 2시간 자동 진행 안내 배너.
@@ -281,7 +281,7 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
       {choiceOptionsShown && (
         <section data-operator-choice-options className="mt-3 space-y-2">
           {choiceCard.autoAdvanceNotice && (
-            <p data-operator-choice-auto-advance role="status" className="border border-primary/30 bg-primary/10 px-3 py-2 text-xs text-primary">
+            <p data-operator-choice-auto-advance role="status" className="rounded-[10px] border border-blue-500/25 bg-blue-500/10 px-3 py-2 text-xs font-medium text-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
               {choiceCard.autoAdvanceNotice}
             </p>
           )}
@@ -292,20 +292,20 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
               data-operator-choice-option={option.id}
               onClick={() => chooseChoiceOption(option.id)}
               disabled={submittingActionId !== null}
-              className="w-full border border-border bg-background px-3 py-2 text-left text-sm hover:bg-accent disabled:opacity-50"
+              className="w-full rounded-[10px] border border-slate-200/90 bg-white px-3 py-2 text-left text-sm text-slate-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-[color,background-color,border-color,box-shadow,transform] hover:border-blue-500/35 hover:bg-blue-50/60 disabled:opacity-50 motion-safe:enabled:active:scale-[0.96] dark:border-white/10 dark:bg-[#07090d] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#101827]"
             >
               <span className="flex flex-wrap items-center gap-2 font-medium">
                 {option.label}
                 {option.recommended && (
-                  <span data-operator-choice-recommended className="border border-primary/40 px-1.5 py-0.5 text-xs font-semibold text-primary">
+                  <span data-operator-choice-recommended className="rounded border border-lime-600/35 bg-lime-500/10 px-1.5 py-0.5 text-xs font-semibold text-lime-700 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/12 dark:text-[#a3e635]">
                     {L(lang, { en: "Recommended", ko: "추천" })}
                   </span>
                 )}
                 {option.irreversible && (
-                  <span className="px-1.5 py-0.5 text-xs text-muted-foreground">{L(lang, { en: "Irreversible", ko: "되돌릴 수 없음" })}</span>
+                  <span className="rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-xs text-amber-700 dark:border-[#f59e0b]/30 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]">{L(lang, { en: "Irreversible", ko: "되돌릴 수 없음" })}</span>
                 )}
               </span>
-              {option.summary !== "" && <span className="mt-1 block text-xs text-muted-foreground">{option.summary}</span>}
+              {option.summary !== "" && <span className="mt-1 block text-xs leading-relaxed text-slate-500 dark:text-slate-400">{option.summary}</span>}
             </button>
           ))}
         </section>
@@ -351,12 +351,12 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
 
       <div className="mt-3 flex flex-wrap gap-2">
         {decision.issueId && (
-          <Button asChild variant="outline" size="sm">
+          <Button asChild variant="outline" size="sm" className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-blue-500/35 hover:bg-blue-50/70 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-[#60a5fa]/35 dark:hover:bg-[#101827]">
             <Link to={`/issues/${decision.issueId}`}>{L(lang, { en: "Open linked work", ko: "연관 업무 열기" })}<ExternalLink className="ml-1.5 h-3.5 w-3.5" /></Link>
           </Button>
         )}
         {decision.sourceContext.missionId && (
-          <Button asChild variant="outline" size="sm">
+          <Button asChild variant="outline" size="sm" className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-blue-500/35 hover:bg-blue-50/70 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-[#60a5fa]/35 dark:hover:bg-[#101827]">
             <Link to={`/missions/${decision.sourceContext.missionId}`}>{L(lang, { en: "Open mission", ko: "미션 열기" })}<ExternalLink className="ml-1.5 h-3.5 w-3.5" /></Link>
           </Button>
         )}
@@ -371,7 +371,7 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
         ))}
       </div>
 
-      {commonFacts.length > 0 && <section className="mt-4"><h3 className="text-sm font-medium">{L(lang, { en: "Common facts", ko: "공통 사실" })}</h3><OperatorDecisionFacts facts={commonFacts} /></section>}
+      {commonFacts.length > 0 && <section className="mt-4"><h3 className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-[#8f9db3]">{L(lang, { en: "Common facts", ko: "공통 사실" })}</h3><OperatorDecisionFacts facts={commonFacts} /></section>}
       {/* 구형 카드는 기존 위치(근거·사실 아래)에 선택지를 표시한다. 신형 축소 카드의 선택지는 위로 올렸다. */}
       {!compactCard && !choiceOptionsShown && (
         <OperatorDecisionOptions
@@ -390,7 +390,7 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
 
       {decision.definition.comment.mode !== "disabled" && (
         <div className="mt-4">
-          <label htmlFor={commentId} className="text-sm font-medium">{decision.definition.comment.label}</label>
+          <label htmlFor={commentId} className="font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8f9db3]">{decision.definition.comment.label}</label>
           <textarea
             id={commentId}
             value={comment}
@@ -401,12 +401,12 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
             aria-describedby={`${descriptionId} ${errorId}`}
             disabled={submittingActionId !== null || (!decision.definition.humanReview && !choiceOptionsShown)}
             title={!decision.definition.humanReview && !choiceOptionsShown ? L(lang, { en: "Decision information and source locations are required before deciding.", ko: "판단 정보와 원본 위치를 보완해야 결정할 수 있습니다." }) : undefined}
-            className="mt-1 min-h-20 w-full border border-border bg-background p-2 text-sm"
+            className="mt-1 min-h-20 w-full rounded-md border border-slate-200 bg-white p-2 text-sm text-slate-800 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] outline-none transition-colors placeholder:text-slate-400 focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 disabled:opacity-60 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-100 dark:shadow-none dark:placeholder:text-slate-500 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
           />
         </div>
       )}
 
-      <div ref={errorRef} id={errorId} role="alert" aria-live="assertive" tabIndex={-1} className="mt-3 text-sm text-destructive">
+      <div ref={errorRef} id={errorId} role="alert" aria-live="assertive" tabIndex={-1} className="mt-3 text-sm font-medium text-destructive dark:text-red-300">
         {error}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
@@ -417,7 +417,7 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
             onClick={() => void submit(action)}
             disabled={submittingActionId !== null || (!decision.definition.humanReview && !choiceOptionsShown)}
             title={!decision.definition.humanReview && !choiceOptionsShown ? L(lang, { en: "Decision information and source locations are required before deciding.", ko: "판단 정보와 원본 위치를 보완해야 결정할 수 있습니다." }) : undefined}
-            className={cn("border px-3 py-2 text-sm font-medium disabled:opacity-50", toneClass(action.tone))}
+            className={cn("rounded-lg border px-3 py-2 text-sm font-semibold transition-[color,background-color,border-color,box-shadow,transform] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 disabled:opacity-50 motion-safe:enabled:active:scale-[0.96] dark:focus-visible:ring-[#60a5fa]/30", toneClass(action.tone))}
           >
             {submittingActionId === action.id ? L(lang, { en: "Submitting…", ko: "제출 중…" }) : action.label}
           </button>

@@ -8,6 +8,9 @@ import { Input } from "@/components/ui/input";
 import { L, useCompanyLanguage } from "../lib/companyLanguage";
 import { humanLabel } from "../lib/humanLabels";
 
+const TACTILE_ALERT_CARD_CLASS =
+  "tactile-card overflow-hidden border-red-200/90 bg-red-50/70 text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-red-500/30 dark:bg-[#0e131d] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.36)] tabular-nums";
+
 function centsInputValue(value: number) {
   return (value / 100).toFixed(2);
 }
@@ -37,25 +40,25 @@ export function BudgetIncidentCard({
   const parsed = parseDollarInput(draftAmount);
 
   return (
-    <Card className="overflow-hidden border-red-500/20 bg-[linear-gradient(180deg,rgba(255,70,70,0.10),rgba(255,255,255,0.02))]">
-      <CardHeader className="px-5 pt-5 pb-3">
+    <Card className={TACTILE_ALERT_CARD_CLASS}>
+      <CardHeader className="px-5 pb-3 pt-5">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.22em] text-red-200/80">
+          <div className="min-w-0">
+            <div className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-red-700 dark:text-red-200/80">
               {L(lang, { en: `${scope} budget hard stop`, ko: `${scope} 예산 초과 자동 정지` })}
             </div>
-            <CardTitle className="mt-1 text-base text-red-50">{incident.scopeName}</CardTitle>
-            <CardDescription className="mt-1 text-red-100/70">
+            <CardTitle className="mt-1 text-base text-red-950 dark:text-red-50">{incident.scopeName}</CardTitle>
+            <CardDescription className="mt-1 text-red-800/80 dark:text-red-100/70">
               {L(lang, { en: `Spending reached ${formatCents(incident.amountObserved)} against a limit of ${formatCents(incident.amountLimit)}.`, ko: `지출 ${formatCents(incident.amountObserved)}이 상한 ${formatCents(incident.amountLimit)}에 도달해 작업이 자동으로 멈췄습니다.` })}
             </CardDescription>
           </div>
-          <div className="rounded-full border border-red-400/30 bg-red-500/10 p-2 text-red-200">
+          <div className="rounded-lg border border-red-300/70 bg-white/80 p-2 text-red-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200 dark:shadow-none">
             <AlertOctagon className="h-4 w-4" />
           </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4 px-5 pb-5 pt-0">
-        <div className="flex items-start gap-2 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-50/90">
+        <div className="flex items-start gap-2 rounded-xl border border-red-200/90 bg-white/75 px-3 py-2 text-sm text-red-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-red-400/20 dark:bg-red-500/10 dark:text-red-50/90 dark:shadow-none">
           <PauseCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             {incident.scopeType === "project"
@@ -64,8 +67,8 @@ export function BudgetIncidentCard({
           </div>
         </div>
 
-        <div className="rounded-xl border border-border/60 bg-background/60 p-3">
-          <label className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+        <div className="rounded-xl border border-slate-200/85 bg-white/85 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.07] dark:bg-[#07090d]/85 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+          <label className="text-[10.5px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-[#8b97ad]">
             {L(lang, { en: "New budget (USD)", ko: "새 상한(달러)" })}
           </label>
           <div className="mt-2 flex flex-col gap-3 sm:flex-row">
@@ -74,9 +77,10 @@ export function BudgetIncidentCard({
               onChange={(event) => setDraftAmount(event.target.value)}
               inputMode="decimal"
               placeholder="0.00"
+              className="border-slate-200/90 bg-white font-mono tabular-nums text-slate-950 shadow-none focus-visible:border-blue-500 dark:border-white/[0.1] dark:bg-[#0e131d] dark:text-[#eef2f8] dark:focus-visible:border-[#60a5fa]"
             />
             <Button
-              className="gap-2"
+              className="gap-2 bg-lime-600 font-semibold text-white hover:bg-lime-600/90 dark:bg-[#a3e635] dark:text-[#0b0f05] dark:hover:bg-[#a3e635]/90"
               disabled={isMutating || parsed === null || parsed <= incident.amountObserved}
               onClick={() => {
                 if (typeof parsed === "number") onRaiseAndResume(parsed);
@@ -87,14 +91,19 @@ export function BudgetIncidentCard({
             </Button>
           </div>
           {parsed !== null && parsed <= incident.amountObserved ? (
-            <p className="mt-2 text-xs text-red-200/80">
+            <p className="mt-2 text-xs text-red-700 dark:text-red-200/80">
               {L(lang, { en: "The new budget must exceed current observed spend.", ko: "새 상한은 현재 지출보다 커야 합니다." })}
             </p>
           ) : null}
         </div>
 
         <div className="flex justify-end">
-          <Button variant="ghost" className="text-muted-foreground" disabled={isMutating} onClick={onKeepPaused}>
+          <Button
+            variant="ghost"
+            className="text-slate-500 hover:bg-white/70 hover:text-slate-900 dark:text-[#8b97ad] dark:hover:bg-white/[0.06] dark:hover:text-[#eef2f8]"
+            disabled={isMutating}
+            onClick={onKeepPaused}
+          >
             {L(lang, { en: "Keep paused", ko: "정지 유지" })}
           </Button>
         </div>

@@ -57,11 +57,11 @@ import {
 } from "lucide-react";
 
 // Cockpit primitives (approved Linear + Datadog palette; mirrors .cockpit-strip/.cockpit-toolbar).
-const CARD = "rounded-md border border-[#242d3f] bg-[#151b28]";
-const LABEL = "text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]";
-const CTA = "bg-[#2563eb] text-[#f8fafc] hover:bg-[#5f8dff]";
+const CARD = "rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
+const LABEL = "text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad]";
+const CTA = "bg-blue-600 text-[#f8fafc] hover:bg-blue-500 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]";
 const TAB_CLASS =
-  "h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors aria-pressed:bg-[#151b28] aria-pressed:text-[#e6edf7] aria-pressed:shadow-[inset_0_0_0_1px_#242d3f] text-[#8b97ad] hover:text-[#e6edf7]";
+  "h-7 cursor-pointer rounded-md px-2.5 text-xs whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 dark:focus-visible:ring-[#60a5fa]/30 aria-pressed:bg-white aria-pressed:text-slate-950 aria-pressed:shadow-[inset_0_-2px_0_#65a30d,0_1px_2px_rgba(15,23,42,0.08)] dark:aria-pressed:bg-[#141c2b] dark:aria-pressed:text-[#edf2fb] dark:aria-pressed:shadow-[inset_0_-2px_0_#a3e635,inset_0_1px_0_rgba(255,255,255,0.08)] text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]";
 
 type SkillTreeNode = {
   name: string;
@@ -265,34 +265,34 @@ function NewSkillForm({
   const canCreate = name.trim().length > 0 || sourceLocator.trim().length > 0;
 
   return (
-    <div className="border-b border-[#242d3f] bg-[#111622] px-4 py-4">
+    <div className="border-b border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] px-4 py-4">
       <div className="space-y-3">
         <Input
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder="Skill name"
-          className="h-9 rounded-none border-0 border-b border-[#242d3f] px-0 text-[#e6edf7] shadow-none focus-visible:ring-0"
+          className="h-9 rounded-none border-0 border-b border-slate-200/90 dark:border-white/[0.08] px-0 text-slate-900 dark:text-[#edf2fb] shadow-none focus-visible:ring-0"
         />
         <Input
           value={slug}
           onChange={(event) => setSlug(event.target.value)}
           placeholder="optional-shortname"
-          className="h-9 rounded-none border-0 border-b border-[#242d3f] px-0 text-[#e6edf7] shadow-none focus-visible:ring-0"
+          className="h-9 rounded-none border-0 border-b border-slate-200/90 dark:border-white/[0.08] px-0 text-slate-900 dark:text-[#edf2fb] shadow-none focus-visible:ring-0"
         />
         <Input
           value={sourceLocator}
           onChange={(event) => setSourceLocator(event.target.value)}
           placeholder="/srv/papercompany/company-skills/my-skill"
-          className="h-9 rounded-none border-0 border-b border-[#242d3f] px-0 text-[#e6edf7] shadow-none focus-visible:ring-0"
+          className="h-9 rounded-none border-0 border-b border-slate-200/90 dark:border-white/[0.08] px-0 text-slate-900 dark:text-[#edf2fb] shadow-none focus-visible:ring-0"
         />
         <Textarea
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           placeholder="Short description"
-          className="min-h-20 rounded-none border-0 border-b border-[#242d3f] px-0 text-[#e6edf7] shadow-none focus-visible:ring-0"
+          className="min-h-20 rounded-none border-0 border-b border-slate-200/90 dark:border-white/[0.08] px-0 text-slate-900 dark:text-[#edf2fb] shadow-none focus-visible:ring-0"
         />
         <div className="flex items-center justify-end gap-2">
-          <Button variant="ghost" size="sm" className="text-[#8b97ad] hover:text-[#e6edf7]" onClick={onCancel} disabled={isPending}>
+          <Button variant="ghost" size="sm" className="text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]" onClick={onCancel} disabled={isPending}>
             Cancel
           </Button>
           <Button
@@ -385,7 +385,7 @@ function SkillTree({
             className={cn(
               "flex w-full items-center gap-2 pr-3 text-left text-sm text-muted-foreground hover:bg-accent/30 hover:text-foreground",
               SKILL_TREE_ROW_HEIGHT_CLASS,
-              node.path === selectedPath && "text-foreground",
+              node.path === selectedPath && "bg-slate-50 text-foreground shadow-[inset_2px_0_0_#65a30d] dark:bg-[#141b29] dark:shadow-[inset_2px_0_0_#a3e635]",
             )}
             style={{ paddingInlineStart: `${SKILL_TREE_BASE_INDENT + depth * SKILL_TREE_STEP_INDENT}px` }}
             to={skillRoute(skillId, node.path)}
@@ -451,7 +451,7 @@ function SkillList({
             <div
               className={cn(
                 "group grid grid-cols-[minmax(0,1fr)_2.25rem] items-center gap-x-1 px-3 py-1.5 hover:bg-accent/30",
-                skill.id === selectedSkillId && "text-foreground",
+                skill.id === selectedSkillId && "bg-slate-50 text-foreground shadow-[inset_2px_0_0_#65a30d] dark:bg-[#141b29] dark:shadow-[inset_2px_0_0_#a3e635]",
               )}
             >
               <Link
@@ -554,12 +554,7 @@ function SkillPane({
     if (loading) {
       return <PageSkeleton variant="detail" />;
     }
-    return (
-      <EmptyState
-        icon={Boxes}
-        message="Select a skill to inspect its files."
-      />
-    );
+    return <EmptyState icon={Boxes} message="Select a skill to inspect its files." />;
   }
 
   const source = sourceMeta(detail.sourceBadge, detail.sourceLabel);
@@ -570,42 +565,42 @@ function SkillPane({
   const latestPin = shortRef(updateStatus?.latestRef);
 
   return (
-    <div className="min-w-0 bg-[#151b28]">
-      <div className="border-b border-[#242d3f] px-5 py-4">
+    <div className="min-w-0 bg-white dark:bg-[#0e131d]">
+      <div className="border-b border-slate-200/90 dark:border-white/[0.08] px-5 py-4">
         <div className="flex min-w-0 flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="flex min-w-0 items-center gap-2 truncate text-xl font-semibold text-[#e6edf7]">
-              <SourceIcon className="h-5 w-5 shrink-0 text-[#8b97ad]" />
+            <h1 className="flex min-w-0 items-center gap-2 truncate text-xl font-semibold text-slate-900 dark:text-[#edf2fb]">
+              <SourceIcon className="h-5 w-5 shrink-0 text-slate-500 dark:text-[#8b97ad]" />
               {detail.name}
             </h1>
             {detail.description && (
-              <p className="mt-2 max-w-3xl text-sm text-[#8b97ad]">{detail.description}</p>
+              <p className="mt-2 max-w-3xl text-sm text-slate-500 dark:text-[#8b97ad]">{detail.description}</p>
             )}
           </div>
           {detail.editable ? (
             <button
               type="button"
-              className="inline-flex shrink-0 items-center gap-2 text-sm text-[#8b97ad] hover:text-[#e6edf7]"
+              className="inline-flex shrink-0 items-center gap-2 text-sm text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]"
               onClick={() => setEditMode(!editMode)}
             >
               <Pencil className="h-3.5 w-3.5" />
               {editMode ? "Stop editing" : "Edit"}
             </button>
           ) : (
-            <div className="min-w-0 truncate text-sm text-[#8b97ad]">{detail.editableReason}</div>
+            <div className="min-w-0 truncate text-sm text-slate-500 dark:text-[#8b97ad]">{detail.editableReason}</div>
           )}
         </div>
 
-        <div className="mt-4 space-y-3 border-t border-[#242d3f] pt-4 text-sm">
+        <div className="mt-4 space-y-3 border-t border-slate-200/90 dark:border-white/[0.08] pt-4 text-sm">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <div className="flex min-w-0 items-center gap-2">
               <span className={LABEL}>Source</span>
               <span className="flex min-w-0 items-center gap-2">
-                <SourceIcon className="h-3.5 w-3.5 shrink-0 text-[#8b97ad]" />
+                <SourceIcon className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-[#8b97ad]" />
                 {detail.sourcePath ? (
                   <button
                     type="button"
-                    className="truncate text-[#8b97ad] transition-colors hover:text-[#e6edf7] cursor-pointer"
+                    className="truncate text-slate-500 dark:text-[#8b97ad] transition-colors hover:text-slate-950 dark:hover:text-[#edf2fb] cursor-pointer"
                     onClick={() => {
                       navigator.clipboard.writeText(detail.sourcePath!);
                       pushToast({ title: "Copied path to workspace" });
@@ -614,21 +609,21 @@ function SkillPane({
                     {source.label}
                   </button>
                 ) : (
-                  <span className="truncate text-[#8b97ad]">{source.label}</span>
+                  <span className="truncate text-slate-500 dark:text-[#8b97ad]">{source.label}</span>
                 )}
               </span>
             </div>
             {detail.sourceType === "github" && (
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <span className={LABEL}>Pin</span>
-                <span className="font-mono text-xs text-[#5f8dff]">{currentPin ?? "untracked"}</span>
+                <span className="font-mono text-xs text-blue-600 dark:text-[#60a5fa]">{currentPin ?? "untracked"}</span>
                 {updateStatus?.trackingRef && (
-                  <span className="truncate text-xs text-[#8b97ad]">tracking {updateStatus.trackingRef}</span>
+                  <span className="truncate text-xs text-slate-500 dark:text-[#8b97ad]">tracking {updateStatus.trackingRef}</span>
                 )}
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 border border-[#242d3f] bg-[#111622] text-xs text-[#e6edf7] hover:bg-[#1a2131] hover:text-[#e6edf7]"
+                  className="h-7 border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] text-xs text-slate-900 dark:text-[#edf2fb] hover:bg-slate-100 dark:hover:bg-[#141b29] hover:text-slate-950 dark:hover:text-[#edf2fb]"
                   onClick={onCheckUpdates}
                   disabled={checkUpdatesPending || updateStatusLoading}
                 >
@@ -647,33 +642,33 @@ function SkillPane({
                   </Button>
                 )}
                 {updateStatus?.supported && !updateStatus.hasUpdate && !updateStatusLoading && (
-                  <span className="text-xs text-[#34d399]">Up to date</span>
+                  <span className="text-xs text-lime-700 dark:text-[#a3e635]">Up to date</span>
                 )}
                 {!updateStatus?.supported && updateStatus?.reason && (
-                  <span className="min-w-0 truncate text-xs text-[#8b97ad]">{updateStatus.reason}</span>
+                  <span className="min-w-0 truncate text-xs text-slate-500 dark:text-[#8b97ad]">{updateStatus.reason}</span>
                 )}
               </div>
             )}
             <div className="flex min-w-0 items-center gap-2">
               <span className={LABEL}>Key</span>
-              <span className="truncate font-mono text-xs text-[#e6edf7]">{detail.key}</span>
+              <span className="truncate font-mono text-xs text-slate-900 dark:text-[#edf2fb]">{detail.key}</span>
             </div>
             <div className="flex items-center gap-2">
               <span className={LABEL}>Mode</span>
-              <span className={detail.editable ? "text-[#34d399]" : "text-[#8b97ad]"}>{detail.editable ? "Editable" : "Read only"}</span>
+              <span className={detail.editable ? "text-lime-700 dark:text-[#a3e635]" : "text-slate-500 dark:text-[#8b97ad]"}>{detail.editable ? "Editable" : "Read only"}</span>
             </div>
           </div>
           <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-1">
             <span className={LABEL}>Used by</span>
             {usedBy.length === 0 ? (
-              <span className="text-[#8b97ad]">No agents attached</span>
+              <span className="text-slate-500 dark:text-[#8b97ad]">No agents attached</span>
             ) : (
               <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1">
                 {usedBy.map((agent) => (
                   <Link
                     key={agent.id}
                     to={`/agents/${agent.urlKey}/skills`}
-                    className="min-w-0 truncate text-[#e6edf7] no-underline hover:underline"
+                    className="min-w-0 truncate text-slate-900 dark:text-[#edf2fb] no-underline hover:underline"
                   >
                     {agent.name}
                   </Link>
@@ -684,17 +679,17 @@ function SkillPane({
         </div>
       </div>
 
-      <div className="border-b border-[#242d3f] px-5 py-3">
+      <div className="border-b border-slate-200/90 dark:border-white/[0.08] px-5 py-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <div className="truncate font-mono text-sm text-[#e6edf7]">{file?.path ?? "SKILL.md"}</div>
+            <div className="truncate font-mono text-sm text-slate-900 dark:text-[#edf2fb]">{file?.path ?? "SKILL.md"}</div>
           </div>
           <div className="flex items-center gap-2">
             {file?.markdown && !editMode && (
-              <div className="flex items-center border border-[#242d3f]">
+              <div className="flex items-center overflow-hidden rounded-md border border-slate-200/90 bg-slate-100 dark:border-white/[0.08] dark:bg-[#090c12]">
                 <button
                   type="button"
-                  className={cn("px-3 py-1.5 text-sm", viewMode === "preview" && "bg-[#111622] text-[#e6edf7]", viewMode !== "preview" && "text-[#8b97ad]")}
+                  className={cn("px-3 py-1.5 text-sm", viewMode === "preview" && "bg-white text-slate-900 shadow-[inset_0_-2px_0_#65a30d] dark:bg-[#0e131d] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_#a3e635]", viewMode !== "preview" && "text-slate-500 dark:text-[#8b97ad]")}
                   onClick={() => setViewMode("preview")}
                 >
                   <span className="flex items-center gap-1.5">
@@ -704,7 +699,7 @@ function SkillPane({
                 </button>
                 <button
                   type="button"
-                  className={cn("border-l border-[#242d3f] px-3 py-1.5 text-sm", viewMode === "code" && "bg-[#111622] text-[#e6edf7]", viewMode !== "code" && "text-[#8b97ad]")}
+                  className={cn("border-l border-slate-200/90 dark:border-white/[0.08] px-3 py-1.5 text-sm", viewMode === "code" && "bg-white text-slate-900 shadow-[inset_0_-2px_0_#65a30d] dark:bg-[#0e131d] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_#a3e635]", viewMode !== "code" && "text-slate-500 dark:text-[#8b97ad]")}
                   onClick={() => setViewMode("code")}
                 >
                   <span className="flex items-center gap-1.5">
@@ -716,7 +711,7 @@ function SkillPane({
             )}
             {editMode && file?.editable && (
               <>
-                <Button variant="ghost" size="sm" className="text-[#8b97ad] hover:text-[#e6edf7]" onClick={() => setEditMode(false)} disabled={savePending}>
+                <Button variant="ghost" size="sm" className="text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]" onClick={() => setEditMode(false)} disabled={savePending}>
                   Cancel
                 </Button>
                 <Button size="sm" className={`h-7 text-xs ${CTA}`} onClick={onSave} disabled={savePending}>
@@ -733,7 +728,7 @@ function SkillPane({
         {fileLoading ? (
           <PageSkeleton variant="detail" />
         ) : !file ? (
-          <div className="text-sm text-[#8b97ad]">Select a file to inspect.</div>
+          <div className="text-sm text-slate-500 dark:text-[#8b97ad]">Select a file to inspect.</div>
         ) : editMode && file.editable ? (
           file.markdown ? (
             <MarkdownEditor
@@ -1034,11 +1029,11 @@ export function CompanySkills() {
   const skillList = skillsQuery.data ?? [];
   const editableCount = skillList.filter((skill) => skill.editable).length;
   const skillStrip = [
-    { label: "Skills", value: skillsQuery.data ? skillList.length : "—", dot: "bg-[#5f8dff]" },
-    { label: "Editable", value: skillsQuery.data ? editableCount : "—", dot: "bg-[#34d399]" },
-    { label: "Read only", value: skillsQuery.data ? skillList.length - editableCount : "—", dot: "bg-[#8b97ad]" },
-    { label: "GitHub pinned", value: skillsQuery.data ? skillList.filter((skill) => skill.sourceBadge === "github").length : "—", dot: "bg-[#fbbf24]" },
-    { label: "Agent attachments", value: skillsQuery.data ? skillList.reduce((sum, skill) => sum + skill.attachedAgentCount, 0) : "—", dot: "bg-[#5f8dff]" },
+    { label: "Skills", value: skillsQuery.data ? skillList.length : "—", dot: "bg-blue-500 dark:bg-[#60a5fa]" },
+    { label: "Editable", value: skillsQuery.data ? editableCount : "—", dot: "bg-lime-500 dark:bg-[#a3e635]" },
+    { label: "Read only", value: skillsQuery.data ? skillList.length - editableCount : "—", dot: "bg-slate-400 dark:bg-[#8b97ad]" },
+    { label: "GitHub pinned", value: skillsQuery.data ? skillList.filter((skill) => skill.sourceBadge === "github").length : "—", dot: "bg-amber-500 dark:bg-[#f59e0b]" },
+    { label: "Agent attachments", value: skillsQuery.data ? skillList.reduce((sum, skill) => sum + skill.attachedAgentCount, 0) : "—", dot: "bg-blue-500 dark:bg-[#60a5fa]" },
   ];
 
   return (
@@ -1056,29 +1051,29 @@ export function CompanySkills() {
               href="https://skills.sh"
               target="_blank"
               rel="noreferrer"
-              className="flex items-start justify-between px-3 py-3 text-[#e6edf7] no-underline transition-colors hover:bg-[#1a2131] border border-[#242d3f] bg-[#151b28] rounded-md"
+              className="flex items-start justify-between px-3 py-3 text-slate-900 dark:text-[#edf2fb] no-underline transition-colors hover:bg-slate-100 dark:hover:bg-[#141b29] border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] rounded-md"
             >
               <span className="min-w-0">
                 <span className="block font-medium">Browse skills.sh</span>
-                <span className="mt-1 block text-[#8b97ad]">
+                <span className="mt-1 block text-slate-500 dark:text-[#8b97ad]">
                   Find install commands and paste one here.
                 </span>
               </span>
-              <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-[#8b97ad]" />
+              <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-[#8b97ad]" />
             </a>
             <a
               href="https://github.com/search?q=SKILL.md&type=code"
               target="_blank"
               rel="noreferrer"
-              className="flex items-start justify-between px-3 py-3 text-[#e6edf7] no-underline transition-colors hover:bg-[#1a2131] border border-[#242d3f] bg-[#151b28] rounded-md"
+              className="flex items-start justify-between px-3 py-3 text-slate-900 dark:text-[#edf2fb] no-underline transition-colors hover:bg-slate-100 dark:hover:bg-[#141b29] border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] rounded-md"
             >
               <span className="min-w-0">
                 <span className="block font-medium">Search GitHub</span>
-                <span className="mt-1 block text-[#8b97ad]">
+                <span className="mt-1 block text-slate-500 dark:text-[#8b97ad]">
                   Look for repositories with `SKILL.md`, then paste the repo URL here.
                 </span>
               </span>
-              <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-slate-500 dark:text-[#8b97ad]" />
             </a>
           </div>
           <DialogFooter showCloseButton />
@@ -1087,19 +1082,19 @@ export function CompanySkills() {
 
       <div className="space-y-2 tabular-nums">
       {/* 1-row 5-column cockpit strip: live skill library summary */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Skills summary">
+      <div className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-3 xl:grid-cols-5" role="group" aria-label="Skills summary">
         {skillStrip.map((cell) => (
-          <div key={cell.label} className="cockpit-cell min-w-0 flex-1 justify-center">
+          <div key={cell.label} className="flex h-10 min-w-0 items-center justify-center gap-2 px-3 text-[11px] text-slate-600 dark:text-[#8b97ad]">
             <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.dot}`} />
             <span className="truncate uppercase tracking-wide">{cell.label}</span>
-            <b className="ml-1 truncate">{cell.value}</b>
+            <b className="ml-1 min-w-0 truncate font-semibold text-slate-950 dark:text-[#edf2fb]">{cell.value}</b>
           </div>
         ))}
       </div>
 
       {/* 40px unified toolbar: Skills / Tools surface switch */}
-      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-2">
-        <div role="group" aria-label="Skills surfaces" className="flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5">
+      <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-xl border border-slate-200/90 bg-slate-50/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+        <div role="group" aria-label="Skills surfaces" className="flex shrink-0 items-center gap-0.5 rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-slate-100 dark:bg-[#090c12] p-0.5">
           {([
             { key: "skills", label: "Skills", icon: Boxes },
             { key: "tools", label: "Tools", icon: Wrench },
@@ -1109,20 +1104,20 @@ export function CompanySkills() {
             </button>
           ))}
         </div>
-        <h1 className="ml-3 truncate text-sm font-semibold text-[#e6edf7]">Company Skills</h1>
-        <span className="truncate text-xs text-[#8b97ad]">Skill library shared by agents in this company</span>
+        <h1 className="ml-3 truncate text-sm font-semibold text-slate-900 dark:text-[#edf2fb]">Company Skills</h1>
+        <span className="truncate text-xs text-slate-500 dark:text-[#8b97ad]">Skill library shared by agents in this company</span>
       </div>
 
       {surface === "tools" ? (
         <ToolAdminPanel companyId={selectedCompanyId} />
       ) : (
-      <div className={`grid min-h-[calc(100vh-13rem)] min-w-0 gap-0 overflow-hidden tabular-nums xl:grid-cols-[19rem_minmax(0,1fr)] ${CARD}`}>
-        <aside className="min-w-0 border-r border-[#242d3f] bg-[#111622]">
-          <div className="border-b border-[#242d3f] px-4 py-3">
+      <div className={`grid min-h-[calc(100vh-13rem)] min-w-0 gap-0 overflow-hidden tabular-nums xl:grid-cols-[21rem_minmax(0,1fr)] 2xl:grid-cols-[22rem_minmax(0,1fr)] ${CARD}`}>
+        <aside className="min-w-0 border-r border-slate-200/90 bg-slate-50/80 dark:border-white/[0.08] dark:bg-[#090c12]">
+          <div className="border-b border-slate-200/90 dark:border-white/[0.08] px-4 py-3">
             <div className="flex min-w-0 items-center justify-between gap-2">
               <div className="min-w-0">
                 <h2 className={LABEL}>Skills</h2>
-                <p className="truncate text-xs text-[#8b97ad] tabular-nums">
+                <p className="truncate text-xs text-slate-500 dark:text-[#8b97ad] tabular-nums">
                   {skillsQuery.data?.length ?? 0} available
                 </p>
               </div>
@@ -1130,40 +1125,40 @@ export function CompanySkills() {
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className="text-[#8b97ad] hover:text-[#e6edf7]"
+                  className="text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]"
                   onClick={() => scanProjects.mutate()}
                   disabled={scanProjects.isPending}
                   title="Scan project workspaces for skills"
                 >
                   <RefreshCw className={cn("h-4 w-4", scanProjects.isPending && "animate-spin")} />
                 </Button>
-                <Button variant="ghost" size="icon-sm" className="text-[#8b97ad] hover:text-[#e6edf7]" onClick={() => setCreateOpen((value) => !value)}>
+                <Button variant="ghost" size="icon-sm" className="text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]" onClick={() => setCreateOpen((value) => !value)}>
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
             </div>
 
-            <div className="mt-3 flex min-w-0 items-center gap-2 border-b border-[#242d3f] pb-2">
-              <Search className="h-4 w-4 shrink-0 text-[#8b97ad]" />
+            <div className="mt-3 flex min-w-0 items-center gap-2 rounded-md border border-slate-200/90 bg-white px-2 pb-2 pt-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-white/[0.08] dark:bg-[#0e131d] dark:focus-within:border-[#60a5fa] dark:focus-within:ring-[#60a5fa]/25">
+              <Search className="h-4 w-4 shrink-0 text-slate-500 dark:text-[#8b97ad]" />
               <input
                 value={skillFilter}
                 onChange={(event) => setSkillFilter(event.target.value)}
                 placeholder="Filter skills"
-                className="w-full bg-transparent text-sm text-[#e6edf7] outline-none placeholder:text-[#8b97ad]"
+                className="w-full bg-transparent text-sm text-slate-900 dark:text-[#edf2fb] outline-none placeholder:text-slate-400 dark:placeholder:text-[#8b97ad]"
               />
             </div>
 
-            <div className="mt-3 flex min-w-0 items-center gap-2 border-b border-[#242d3f] pb-2">
+            <div className="mt-3 flex min-w-0 items-center gap-2 rounded-md border border-slate-200/90 bg-white px-2 pb-2 pt-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-white/[0.08] dark:bg-[#0e131d] dark:focus-within:border-[#60a5fa] dark:focus-within:ring-[#60a5fa]/25">
               <input
                 value={source}
                 onChange={(event) => setSource(event.target.value)}
                 placeholder="Paste path, GitHub URL, or skills.sh command"
-                className="w-full bg-transparent text-sm text-[#e6edf7] outline-none placeholder:text-[#8b97ad]"
+                className="w-full bg-transparent text-sm text-slate-900 dark:text-[#edf2fb] outline-none placeholder:text-slate-400 dark:placeholder:text-[#8b97ad]"
               />
               <Button
                 size="sm"
                 variant="ghost"
-                className="shrink-0 text-[#8b97ad] hover:text-[#e6edf7]"
+                className="shrink-0 text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]"
                 onClick={handleAddSkillSource}
                 disabled={importSkill.isPending}
               >
@@ -1171,7 +1166,7 @@ export function CompanySkills() {
               </Button>
             </div>
             {scanStatusMessage && (
-              <p className="mt-3 truncate text-xs text-[#8b97ad] tabular-nums">
+              <p className="mt-3 truncate text-xs text-slate-500 dark:text-[#8b97ad] tabular-nums">
                 {scanStatusMessage}
               </p>
             )}

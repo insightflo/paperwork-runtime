@@ -29,13 +29,13 @@ const DONE_STATUSES = new Set(["succeeded", "completed", "done"]);
 const PROVIDER_COLORS: Record<string, string> = {
   claude: "#f59e0b",
   anthropic: "#f59e0b",
-  codex: "#10b981",
-  openai: "#10b981",
-  gemini: "#3b82f6",
-  google: "#3b82f6",
+  codex: "#a3e635",
+  openai: "#a3e635",
+  gemini: "#60a5fa",
+  google: "#60a5fa",
   pi: "#a855f7",
   hermes: "#06b6d4",
-  commandcode: "#84cc16",
+  commandcode: "#a3e635",
 };
 
 function isSessionActive(status: string): boolean {
@@ -105,8 +105,8 @@ function computeBurnRate(session: LiveSessionRow): number {
 function burnArcColor(ratio: number): string {
   if (ratio >= 0.85) return "#f43f5e";
   if (ratio >= 0.6) return "#f59e0b";
-  if (ratio >= 0.25) return "#22c55e";
-  return "#84cc16";
+  if (ratio >= 0.25) return "#60a5fa";
+  return "#a3e635";
 }
 
 function MiniBurnGauge({ rate, maxRate }: { rate: number; maxRate: number }) {
@@ -150,10 +150,10 @@ function StatusPill({ status }: { status: string }) {
   const normalized = status.toLowerCase();
   if (ACTIVE_STATUSES.has(normalized)) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/35 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-[#a3e635]/35 bg-[#a3e635]/10 px-2 py-0.5 text-[10px] font-semibold text-[#4d7c0f] dark:text-[#a3e635]">
         <span className="relative flex h-1.5 w-1.5">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
+          <span className="absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full bg-[#a3e635] opacity-75" />
+          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#65a30d] dark:bg-[#a3e635]" />
         </span>
         작업 중
       </span>
@@ -169,14 +169,14 @@ function StatusPill({ status }: { status: string }) {
   }
   if (DONE_STATUSES.has(normalized)) {
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2 py-0.5 text-[10px] font-medium text-muted-foreground dark:border-[#242d3f] dark:bg-[#151b28]">
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-slate-100/80 px-2 py-0.5 text-[10px] font-medium text-muted-foreground dark:border-white/[0.08] dark:bg-[#07090d] dark:text-[#8b97ad]">
         <span className="h-1.5 w-1.5 rounded-full bg-slate-400 dark:bg-slate-500" />
         완료
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground dark:border-[#242d3f] dark:bg-[#151b28]">
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-slate-100/70 px-2 py-0.5 text-[10px] font-medium text-muted-foreground dark:border-white/[0.08] dark:bg-[#07090d] dark:text-[#8b97ad]">
       <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50" />
       대기
     </span>
@@ -281,7 +281,7 @@ export function LiveSessionsTable({
     return (
       <div
         className={cn(
-          "rounded-lg border border-border bg-card p-4 dark:border-[#242d3f] dark:bg-[#0f1117]",
+          "tactile-card border rounded-[12px] border-slate-200/90 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
           className,
         )}
         aria-busy="true"
@@ -295,7 +295,7 @@ export function LiveSessionsTable({
           {[0, 1, 2, 3].map((idx) => (
             <div
               key={idx}
-              className="h-11 w-full animate-pulse rounded-md border border-border/60 bg-muted/30 dark:border-[#242d3f] dark:bg-[#131823]"
+              className="h-11 w-full animate-pulse rounded-md border border-slate-200/80 bg-slate-100/80 dark:border-white/[0.07] dark:bg-[#07090d]"
             />
           ))}
         </div>
@@ -304,32 +304,32 @@ export function LiveSessionsTable({
   }
 
   const selectClass =
-    "h-7 rounded-md border border-border bg-background px-2 text-[11px] text-foreground outline-none transition-colors hover:border-foreground/30 focus:border-[#5f8dff] dark:border-[#242d3f] dark:bg-[#131823]";
+    "h-7 rounded-md border border-slate-200/90 bg-white px-2 text-[11px] text-foreground outline-none transition-colors hover:border-slate-300 focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 dark:border-white/[0.09] dark:bg-[#07090d] dark:text-[#edf2fb] dark:hover:border-white/[0.16] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20";
 
   return (
     <div
       className={cn(
-        "flex flex-col rounded-lg border border-border bg-card dark:border-[#242d3f] dark:bg-[#0f1117]",
+        "tactile-card border flex flex-col rounded-[12px] border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
         className,
       )}
     >
       {/* Header & Status Counters */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3 dark:border-[#242d3f]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/70 px-4 py-3 dark:border-white/[0.07] dark:bg-[#090d14]/85">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="text-xs font-semibold tracking-tight text-foreground">실행 중인 세션</h3>
-          <span className="rounded-full border border-border bg-muted/50 px-2 py-0.5 font-mono text-[10px] font-semibold text-foreground tabular-nums dark:border-[#242d3f] dark:bg-[#151b28]">
+          <span className="rounded-full border border-slate-200/90 bg-slate-100/85 px-2 py-0.5 font-mono text-[10px] font-semibold text-foreground tabular-nums dark:border-white/[0.08] dark:bg-[#07090d]">
             {sessions.length}
           </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/35 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 tabular-nums dark:text-emerald-400">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-[#a3e635]/35 bg-[#a3e635]/10 px-2 py-0.5 text-[10px] font-medium text-[#4d7c0f] tabular-nums dark:text-[#a3e635]">
             <span className="relative flex h-1.5 w-1.5">
               {activeCount > 0 && (
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full bg-[#a3e635] opacity-75" />
               )}
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#65a30d] dark:bg-[#a3e635]" />
             </span>
             작업 중 {activeCount}
           </span>
-          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/35 px-2 py-0.5 text-[10px] text-muted-foreground tabular-nums dark:border-[#242d3f] dark:bg-[#151b28]">
+          <span className="inline-flex items-center gap-1 rounded-full border border-slate-200/90 bg-slate-100/75 px-2 py-0.5 text-[10px] text-muted-foreground tabular-nums dark:border-white/[0.08] dark:bg-[#07090d] dark:text-[#8b97ad]">
             대기 중 {idleCount}
           </span>
         </div>
@@ -344,7 +344,7 @@ export function LiveSessionsTable({
               onChange={(e) => setSearch(e.target.value)}
               placeholder="에이전트, 프로젝트, 이슈, 모델 검색"
               aria-label="에이전트, 프로젝트, 이슈, 모델 검색"
-              className="h-7 w-52 rounded-md border border-border bg-background pl-7 pr-2 text-[11px] text-foreground placeholder:text-muted-foreground/75 outline-none transition-colors focus:border-[#5f8dff] dark:border-[#242d3f] dark:bg-[#131823]"
+              className="h-7 w-52 rounded-md border border-slate-200/90 bg-white pl-7 pr-2 text-[11px] text-foreground placeholder:text-muted-foreground/75 outline-none transition-colors focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 dark:border-white/[0.09] dark:bg-[#07090d] dark:text-[#edf2fb] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
             />
           </div>
 
@@ -403,7 +403,7 @@ export function LiveSessionsTable({
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left text-xs tabular-nums">
             <thead>
-              <tr className="border-b border-border/80 bg-muted/25 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:border-[#242d3f] dark:bg-[#111520]">
+              <tr className="border-b border-slate-200/80 bg-slate-100/70 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground dark:border-white/[0.07] dark:bg-[#07090d]">
                 <th className="px-4 py-2">상태</th>
                 <th className="px-3 py-2">실행 위치 · 프로젝트 / 이슈</th>
                 <th className="px-3 py-2">AI 도구 · 모델</th>
@@ -413,7 +413,7 @@ export function LiveSessionsTable({
                 <th className="px-4 py-2 text-right">경과 시간</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border/60 dark:divide-[#242d3f]/70">
+            <tbody className="divide-y divide-slate-200/75 dark:divide-white/[0.06]">
               {filtered.map(({ raw, recentTokens, totalTokens, outputTokens, burnRate }) => {
                 const targetHref = raw.issueId
                   ? `/issues/${raw.issueIdentifier ?? raw.issueId}`
@@ -425,7 +425,7 @@ export function LiveSessionsTable({
                   <tr
                     key={raw.runId}
                     data-session-row={raw.runId}
-                    className="transition-colors hover:bg-accent/35 dark:hover:bg-[#151b28]/70"
+                    className="transition-colors hover:bg-slate-50/90 dark:hover:bg-[#111927]/75"
                   >
                     {/* Status */}
                     <td className="whitespace-nowrap px-4 py-2.5">
@@ -440,11 +440,11 @@ export function LiveSessionsTable({
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
                           {raw.issueIdentifier && (
-                            <span className="shrink-0 rounded border border-border/80 bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-foreground dark:border-[#242d3f] dark:bg-[#151b28]">
+                            <span className="shrink-0 rounded border border-slate-200/90 bg-slate-100/85 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-foreground dark:border-white/[0.08] dark:bg-[#07090d]">
                               {raw.issueIdentifier}
                             </span>
                           )}
-                          <span className="truncate font-medium text-foreground group-hover:text-[#5f8dff] transition-colors">
+                          <span className="truncate font-medium text-foreground group-hover:text-[#2563eb] dark:group-hover:text-[#60a5fa] transition-colors">
                             {raw.issueTitle ?? raw.agentName}
                           </span>
                         </div>
