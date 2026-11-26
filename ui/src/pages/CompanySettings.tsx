@@ -22,10 +22,10 @@ import {
 import { AccessSettingsSection } from "../components/access-settings/AccessSettingsSection";
 
 // Cockpit primitives (approved Linear + Datadog palette; mirrors .cockpit-strip/.cockpit-toolbar).
-const CARD = "rounded-md border border-[#242d3f] bg-[#151b28]";
-const FIELD = "rounded-md border border-[#242d3f] bg-[#111622] text-[#e6edf7] outline-none focus:border-[#5f8dff] focus:ring-[#5f8dff]/40";
-const LABEL = "text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]";
-const CTA = "bg-[#2563eb] text-[#f8fafc] hover:bg-[#5f8dff]";
+const CARD = "rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
+const FIELD = "rounded-md border border-slate-200/90 bg-slate-50/80 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25";
+const LABEL = "text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad]";
+const CTA = "bg-blue-600 text-[#f8fafc] hover:bg-blue-500 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]";
 const LANGUAGE_LABEL: Record<CompanyDefaultLanguage, string> = { en: "English", ko: "한국어" };
 
 export function CompanySettings() {
@@ -240,41 +240,41 @@ export function CompanySettings() {
 
   const archived = selectedCompany.status === "archived";
   const strip = [
-    { label: "Company", value: selectedCompany.name, dot: brandColor || "bg-[#5f8dff]" },
-    { label: "Timezone", value: selectedCompany.timezone ?? "System default", dot: "bg-[#5f8dff]" },
-    { label: "Language", value: LANGUAGE_LABEL[selectedCompany.defaultLanguage], dot: "bg-[#5f8dff]" },
-    { label: "Hire approvals", value: selectedCompany.requireBoardApprovalForNewAgents ? "Required" : "Optional", dot: selectedCompany.requireBoardApprovalForNewAgents ? "bg-[#fbbf24]" : "bg-[#8b97ad]" },
-    { label: "Status", value: archived ? "Archived" : "Active", dot: archived ? "bg-[#8b97ad]" : "bg-[#34d399]" },
+    { label: "Company", value: selectedCompany.name, dot: brandColor || "var(--pw-cobalt)" },
+    { label: "Timezone", value: selectedCompany.timezone ?? "System default", dot: "var(--pw-cobalt)" },
+    { label: "Language", value: LANGUAGE_LABEL[selectedCompany.defaultLanguage], dot: "var(--pw-cobalt)" },
+    { label: "Hire approvals", value: selectedCompany.requireBoardApprovalForNewAgents ? "Required" : "Optional", dot: selectedCompany.requireBoardApprovalForNewAgents ? "var(--pw-amber)" : "var(--pw-muted)" },
+    { label: "Status", value: archived ? "Archived" : "Active", dot: archived ? "var(--pw-muted)" : "var(--pw-lime)" },
   ];
 
   return (
-    <div className="max-w-3xl space-y-2 tabular-nums">
+    <div className="grid max-w-none gap-3 tabular-nums xl:grid-cols-2">
       {/* 1-row 5-column cockpit strip: live company summary (reflects saved state) */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Company summary">
+      <div className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-3 xl:col-span-2 xl:grid-cols-5" role="group" aria-label="Company summary">
         {strip.map((cell) => (
-          <div key={cell.label} className="cockpit-cell min-w-0 flex-1 justify-center">
-            <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.dot}`} />
+          <div key={cell.label} className="flex h-10 min-w-0 items-center justify-center gap-2 px-3 text-[11px] text-slate-600 dark:text-[#8b97ad]">
+            <span aria-hidden style={{ backgroundColor: cell.dot }} className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.label === "Status" && !archived ? "animate-pulse" : ""}`} />
             <span className="truncate uppercase tracking-wide">{cell.label}</span>
-            <b className="ml-1 truncate">{cell.value}</b>
+            <b className="ml-1 min-w-0 truncate font-semibold text-slate-950 dark:text-[#edf2fb]">{cell.value}</b>
           </div>
         ))}
       </div>
 
       {/* 40px unified toolbar; the deep-cobalt save CTA appears only while dirty */}
-      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-2">
+      <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-xl border border-slate-200/90 bg-slate-50/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] xl:col-span-2">
         <div className="flex min-w-0 items-baseline gap-2">
-          <h1 className="flex min-w-0 items-center gap-2 truncate text-sm font-semibold text-[#e6edf7]">
-            <Settings className="h-4 w-4 shrink-0 text-[#8b97ad]" aria-hidden />
+          <h1 className="flex min-w-0 items-center gap-2 truncate text-sm font-semibold text-slate-900 dark:text-[#edf2fb]">
+            <Settings className="h-4 w-4 shrink-0 text-slate-500 dark:text-[#8b97ad]" aria-hidden />
             Company Settings
           </h1>
-          <span className={`truncate text-xs ${generalDirty ? "text-[#fbbf24]" : "text-[#8b97ad]"}`}>
+          <span className={`truncate text-xs ${generalDirty ? "text-amber-600 dark:text-[#f59e0b]" : "text-slate-500 dark:text-[#8b97ad]"}`}>
             {generalDirty ? "Unsaved changes in General / Appearance" : "All changes saved"}
           </span>
         </div>
         {generalDirty && (
           <div className="ml-auto flex shrink-0 items-center gap-2">
             {generalMutation.isSuccess && (
-              <span className="text-xs text-[#34d399]">Saved</span>
+              <span className="text-xs text-lime-700 dark:text-[#a3e635]">Saved</span>
             )}
             {generalMutation.isError && (
               <span className="text-xs text-destructive">
@@ -382,14 +382,14 @@ export function CompanySettings() {
                     type="file"
                     accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
                     onChange={handleLogoFileChange}
-                    className={`w-full px-2.5 py-1.5 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-[#111622] file:px-2.5 file:py-1 file:text-xs file:text-[#e6edf7] ${FIELD}`}
+                    className={`w-full px-2.5 py-1.5 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-blue-600 dark:file:bg-[#2563eb] file:px-2.5 file:py-1 file:text-xs file:text-white dark:file:text-[#f8fafc] ${FIELD}`}
                   />
                   {logoUrl && (
                     <div className="flex items-center gap-2">
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 border-[#242d3f] bg-[#111622] text-xs text-[#e6edf7] hover:bg-[#1a2131] hover:text-[#e6edf7]"
+                        className="h-7 border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] text-xs text-slate-900 dark:text-[#edf2fb] hover:bg-slate-100 dark:hover:bg-[#141b29] hover:text-slate-950 dark:hover:text-[#edf2fb]"
                         onClick={handleClearLogo}
                         disabled={clearLogoMutation.isPending}
                       >
@@ -410,7 +410,7 @@ export function CompanySettings() {
                     </span>
                   )}
                   {logoUploadMutation.isPending && (
-                    <span className="text-xs text-[#8b97ad]">Uploading logo...</span>
+                    <span className="text-xs text-slate-500 dark:text-[#8b97ad]">Uploading logo...</span>
                   )}
                 </div>
               </Field>
@@ -423,7 +423,7 @@ export function CompanySettings() {
                     type="color"
                     value={brandColor || "#6366f1"}
                     onChange={(e) => setBrandColor(e.target.value)}
-                    className="h-8 w-8 cursor-pointer rounded border border-[#242d3f] bg-[#111622] p-0"
+                    className="h-8 w-8 cursor-pointer rounded border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] p-0"
                   />
                   <input
                     type="text"
@@ -442,7 +442,7 @@ export function CompanySettings() {
                       size="sm"
                       variant="ghost"
                       onClick={() => setBrandColor("")}
-                      className="text-xs text-[#8b97ad] hover:text-[#e6edf7]"
+                      className="text-xs text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]"
                     >
                       Clear
                     </Button>
@@ -477,7 +477,7 @@ export function CompanySettings() {
         <div className={LABEL}>Invites</div>
         <div className={`space-y-3 px-4 py-4 ${CARD}`}>
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-[#8b97ad]">
+            <span className="text-xs text-slate-500 dark:text-[#8b97ad]">
               Generate an OpenClaw agent invite snippet.
             </span>
             <HintIcon text="Creates a short-lived OpenClaw agent invite and renders a copy-ready prompt." />
@@ -498,15 +498,15 @@ export function CompanySettings() {
             <p className="text-sm text-destructive">{inviteError}</p>
           )}
           {inviteSnippet && (
-            <div className="rounded-md border border-[#242d3f] bg-[#111622] p-2">
+            <div className="rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] p-2">
               <div className="flex min-w-0 items-center justify-between gap-2">
-                <div className="min-w-0 truncate text-xs text-[#8b97ad]">
+                <div className="min-w-0 truncate text-xs text-slate-500 dark:text-[#8b97ad]">
                   OpenClaw Invite Prompt
                 </div>
                 {snippetCopied && (
                   <span
                     key={snippetCopyDelightId}
-                    className="flex shrink-0 items-center gap-1 text-xs text-[#34d399] animate-pulse"
+                    className="flex shrink-0 items-center gap-1 text-xs text-lime-700 dark:text-[#a3e635] animate-pulse"
                   >
                     <Check className="h-3 w-3" />
                     Copied
@@ -523,7 +523,7 @@ export function CompanySettings() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="text-xs text-[#8b97ad] hover:text-[#e6edf7]"
+                    className="text-xs text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]"
                     onClick={async () => {
                       try {
                         await navigator.clipboard.writeText(inviteSnippet);
@@ -550,7 +550,7 @@ export function CompanySettings() {
           Danger Zone
         </div>
         <div className={`space-y-3 px-4 py-4 ${CARD}`}>
-          <p className="text-sm text-[#8b97ad]">
+          <p className="text-sm text-slate-500 dark:text-[#8b97ad]">
             Archive this company to hide it from the sidebar. This persists in
             the database.
           </p>

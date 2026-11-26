@@ -29,18 +29,18 @@ const NEXT_PAGE_PREFETCH_STALE_MS = 30_000;
  * Categories carry a micro status dot so the 1-row strip, the 40px tab group and the
  * DiffBadge pills below all speak the same emerald/amber/crimson/cobalt language. */
 const CATEGORY_PILLS: { id: ActivityCategory; label: string; dot: string }[] = [
-  { id: "all", label: "전체", dot: "bg-[#5f8dff]" },
-  { id: "agent", label: "에이전트", dot: "bg-[#34d399]" },
-  { id: "mission", label: "미션", dot: "bg-[#5f8dff]" },
-  { id: "decision", label: "결정", dot: "bg-[#fbbf24]" },
-  { id: "worktree", label: "워크트리", dot: "bg-[#8b97ad]" },
+  { id: "all", label: "전체", dot: "bg-blue-500 dark:bg-[#60a5fa]" },
+  { id: "agent", label: "에이전트", dot: "bg-lime-500 dark:bg-[#a3e635]" },
+  { id: "mission", label: "미션", dot: "bg-blue-500 dark:bg-[#60a5fa]" },
+  { id: "decision", label: "결정", dot: "bg-amber-500 dark:bg-[#f59e0b]" },
+  { id: "worktree", label: "워크트리", dot: "bg-slate-400 dark:bg-[#8b97ad]" },
 ];
 
 const TAB_CLASS =
-  "h-6 cursor-pointer rounded px-2 text-xs whitespace-nowrap transition-colors aria-pressed:bg-[#151b28] aria-pressed:text-[#e6edf7] aria-pressed:shadow-[inset_0_0_0_1px_#242d3f] text-[#8b97ad] hover:text-[#e6edf7]";
+  "h-7 cursor-pointer rounded-md px-2.5 text-xs whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 dark:focus-visible:ring-[#60a5fa]/30 aria-pressed:bg-white aria-pressed:text-slate-950 aria-pressed:shadow-[inset_0_-2px_0_#65a30d,0_1px_2px_rgba(15,23,42,0.08)] dark:aria-pressed:bg-[#141c2b] dark:aria-pressed:text-[#edf2fb] dark:aria-pressed:shadow-[inset_0_-2px_0_#a3e635,inset_0_1px_0_rgba(255,255,255,0.08)] text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]";
 const STRIP_CELL_CLASS =
-  "cockpit-cell min-w-0 flex-1 justify-center transition-colors hover:bg-[#151b28] hover:text-[#e6edf7]";
-const STRIP_CELL_ACTIVE_CLASS = "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_-1px_0_#5f8dff]";
+  "flex h-10 min-w-0 items-center justify-center gap-2 px-3 text-[11px] transition-colors text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]";
+const STRIP_CELL_ACTIVE_CLASS = "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_#65a30d] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_#a3e635]";
 
 export function categorizeActivityEvent(event: ActivityEvent): Exclude<ActivityCategory, "all"> | null {
   const hay = `${event.entityType} ${event.action}`.toLowerCase();
@@ -80,7 +80,7 @@ function DiffBadge({ diff }: { diff: ActivityDiffBadge }) {
       <span style={{ color: "var(--openbot-diff-before-text)", backgroundColor: "var(--openbot-diff-before-bg)" }} className="rounded px-1">
         {diff.from}
       </span>
-      <span className="text-[#8b97ad]">→</span>
+      <span className="text-slate-500 dark:text-[#8b97ad]">→</span>
       <span style={{ color: "var(--openbot-diff-after-text)", backgroundColor: "var(--openbot-diff-after-bg)" }} className="rounded px-1">
         {diff.to}
       </span>
@@ -200,7 +200,7 @@ export function Activity() {
   return (
     <div className="space-y-2 tabular-nums">
       {/* 1-row 5-cell cockpit strip: event totals per category double as filter shortcuts */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="활동 유형별 건수" title="현재 페이지 기준 건수">
+      <div className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-3 xl:grid-cols-6" role="group" aria-label="활동 유형별 건수" title="현재 페이지 기준 건수">
         {CATEGORY_PILLS.map((pill) => {
           const active = category === pill.id;
           return (
@@ -213,19 +213,19 @@ export function Activity() {
             >
               <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${pill.dot}`} />
               <span className="truncate uppercase tracking-wide">{pill.label}</span>
-              <b className="ml-1">{data ? categoryCounts[pill.id] : "—"}</b>
+              <b className="ml-1 font-semibold text-slate-950 dark:text-[#edf2fb]">{data ? categoryCounts[pill.id] : "—"}</b>
             </button>
           );
         })}
-        <div className="cockpit-cell min-w-0 shrink-0">
+        <div className={cn(STRIP_CELL_CLASS, "cursor-default")}>
           <span className="truncate uppercase tracking-wide">표시</span>
-          <b className="ml-1 text-[#5f8dff]">{filtered.length}</b>
+          <b className="ml-1 text-blue-600 dark:text-[#60a5fa]">{filtered.length}</b>
         </div>
       </div>
 
       {/* Tight 40px toolbar: category tabs + local search */}
-      <div className="cockpit-toolbar h-10 rounded-md border border-[#242d3f] bg-[#111622] px-2">
-        <div role="group" aria-label="활동 유형 필터" className="flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5">
+      <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-xl border border-slate-200/90 bg-slate-50/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+        <div role="group" aria-label="활동 유형 필터" className="flex shrink-0 items-center gap-0.5 rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-slate-100 dark:bg-[#090c12] p-0.5">
           {CATEGORY_PILLS.map((pill) => (
             <button
               key={pill.id}
@@ -235,7 +235,7 @@ export function Activity() {
               className={TAB_CLASS}
             >
               {pill.label}
-              <span className={cn("ml-1 font-mono text-[10px] tabular-nums", category === pill.id ? "text-[#5f8dff]" : "text-[#8b97ad]")}>
+              <span className={cn("ml-1 font-mono text-[10px] tabular-nums", category === pill.id ? "text-blue-600 dark:text-[#60a5fa]" : "text-slate-500 dark:text-[#8b97ad]")}>
                 {data ? categoryCounts[pill.id] : "—"}
               </span>
             </button>
@@ -243,20 +243,20 @@ export function Activity() {
         </div>
 
         <div className="relative ml-2 min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#8b97ad]" />
+          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-[#8b97ad]" />
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="활동 검색…"
             aria-label="활동 검색"
-            className="h-7 w-full rounded-md border border-[#242d3f] bg-[#0b0e14] pl-7 pr-2 text-xs text-[#e6edf7] outline-none placeholder:text-[#8b97ad] focus:border-[#5f8dff] focus:ring-[#5f8dff]/40"
+            className="h-7 w-full rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-slate-100 dark:bg-[#090c12] pl-7 pr-2 text-xs text-slate-900 dark:text-[#edf2fb] outline-none placeholder:text-slate-400 dark:placeholder:text-[#8b97ad] focus:border-blue-500 dark:focus:border-[#60a5fa] focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-[#60a5fa]/25"
           />
         </div>
       </div>
 
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
-      <CompactPagination page={page} count={filtered.length} hasMore={hasMore} loading={isFetching} onPageChange={setPage} />
+      <CompactPagination page={page} count={filtered.length} hasMore={hasMore} loading={isFetching} onPageChange={setPage} className="rounded-xl border-slate-200/90 bg-slate-50/95 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] [&_button]:text-slate-600 dark:[&_button]:text-[#cbd5e1] [&_button:hover]:bg-white dark:[&_button:hover]:bg-[#141b29] [&_span]:text-slate-600 dark:[&_span]:text-[#8b97ad] [&_b]:text-slate-950 dark:[&_b]:text-[#edf2fb] [&_svg]:text-blue-600 dark:[&_svg]:text-[#60a5fa]" />
 
       {filtered.length === 0 && !isFetching && (
         <EmptyState icon={History} message={filterActive ? "이 페이지에 조건에 맞는 활동이 없습니다." : "No activity yet."} />
@@ -266,7 +266,7 @@ export function Activity() {
         <div
           ref={listRef}
           aria-busy={isFetching}
-          className={cn("divide-y divide-[#242d3f] overflow-hidden rounded-md border border-[#242d3f] bg-[#111622] transition-opacity [&>*]:hover:bg-[#151b28] [&_article]:px-3 [&_article]:py-1.5", isFetching && "opacity-70")}
+          className={cn("divide-y divide-slate-200/75 dark:divide-white/[0.06] overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-opacity dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] [&>*]:hover:bg-slate-50 dark:[&>*]:hover:bg-[#141b29] [&_article]:px-3 [&_article]:py-1.5", isFetching && "opacity-70")}
         >
           {filtered.map((event) => {
             const diff = extractActivityDiff(event.details);
