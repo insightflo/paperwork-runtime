@@ -7,6 +7,14 @@ import { ACTIONABLE_APPROVAL_STATUSES } from "../lib/inbox";
 import { approvalLabel, defaultTypeIcon, typeIcon } from "./ApprovalPayload";
 import { Button } from "./ui/button";
 
+const STATUS_DOT: Record<string, string> = {
+  pending: "bg-[#f59e0b]",
+  revision_requested: "bg-[#60a5fa]",
+  approved: "bg-[#a3e635]",
+  rejected: "bg-[#f43f5e]",
+  cancelled: "bg-slate-400 dark:bg-slate-600",
+};
+
 export function ApprovalInboxRow({ approval, requesterName }: {
   approval: Approval; requesterName: string | null;
   onApprove: () => void; onReject: () => void; isPending: boolean;
@@ -16,15 +24,15 @@ export function ApprovalInboxRow({ approval, requesterName }: {
   const label = approvalLabel(approval.type, approval.payload as Record<string, unknown> | null, lang);
   const showResolutionButtons = approval.type !== "budget_override_required" && ACTIONABLE_APPROVAL_STATUSES.has(approval.status);
   return (
-    <div className="border-b border-border px-2 py-2.5 last:border-b-0 sm:px-1 sm:pr-3 sm:py-2">
+    <div className="border-b border-slate-200/80 px-2 py-2.5 tabular-nums last:border-b-0 dark:border-white/[0.07] sm:px-1 sm:pr-3 sm:py-2">
       <div className="flex items-start gap-2 sm:items-center">
-        <Link to={`/approvals/${approval.id}`} className="flex min-w-0 flex-1 items-start gap-2 no-underline text-inherit transition-colors hover:bg-accent/50">
-          <span className="hidden h-2 w-2 shrink-0 sm:inline-flex" aria-hidden="true" />
+        <Link to={`/approvals/${approval.id}`} className="flex min-w-0 flex-1 items-start gap-2 rounded-[8px] no-underline text-inherit transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.04] sm:items-center">
+          <span className={`hidden h-2 w-2 shrink-0 rounded-full sm:inline-flex ${STATUS_DOT[approval.status] ?? "bg-slate-400 dark:bg-slate-600"}`} aria-hidden="true" />
           <span className="hidden h-3.5 w-3.5 shrink-0 sm:inline-flex" aria-hidden="true" />
-          <span className="mt-0.5 shrink-0 rounded-md bg-muted p-1.5 sm:mt-0"><Icon className="h-4 w-4 text-muted-foreground" /></span>
+          <span className="mt-0.5 shrink-0 rounded-[9px] border border-slate-200/80 bg-white p-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:mt-0"><Icon className="h-4 w-4 text-slate-500 dark:text-[#60a5fa]" /></span>
           <span className="min-w-0 flex-1">
-            <span className="line-clamp-2 text-sm font-medium sm:truncate sm:line-clamp-none">{label}</span>
-            <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            <span className="line-clamp-2 text-sm font-medium text-slate-900 dark:text-slate-100 sm:truncate sm:line-clamp-none">{label}</span>
+            <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 tabular-nums dark:text-[#8f9db3]">
               <span title={approval.status}>{humanLabel(lang, "approvalStatus", approval.status).label}</span>
               {requesterName ? <span>{L(lang, { en: `requested by ${requesterName}`, ko: `요청: ${requesterName}` })}</span> : null}
               <span>{L(lang, { en: `updated ${timeAgo(approval.updatedAt)}`, ko: `${timeAgo(approval.updatedAt)} 갱신` })}</span>
@@ -32,11 +40,11 @@ export function ApprovalInboxRow({ approval, requesterName }: {
           </span>
         </Link>
         {showResolutionButtons ? <div className="hidden shrink-0 items-center gap-2 sm:flex">
-          <Button size="sm" variant="outline" className="h-8 px-3" asChild><Link to={`/approvals/${approval.id}`}>{L(lang, { en: "Review & decide", ko: "검토 후 결정" })}</Link></Button>
+          <Button size="sm" variant="outline" className="h-8 border-slate-200/90 bg-white px-3 text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-blue-500/35 hover:bg-blue-50 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#101827]" asChild><Link to={`/approvals/${approval.id}`}>{L(lang, { en: "Review & decide", ko: "검토 후 결정" })}</Link></Button>
         </div> : null}
       </div>
       {showResolutionButtons ? <div className="mt-3 flex gap-2 sm:hidden">
-        <Button size="sm" variant="outline" className="h-8 px-3" asChild><Link to={`/approvals/${approval.id}`}>{L(lang, { en: "Review & decide", ko: "검토 후 결정" })}</Link></Button>
+        <Button size="sm" variant="outline" className="h-8 border-slate-200/90 bg-white px-3 text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-blue-500/35 hover:bg-blue-50 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#101827]" asChild><Link to={`/approvals/${approval.id}`}>{L(lang, { en: "Review & decide", ko: "검토 후 결정" })}</Link></Button>
       </div> : null}
     </div>
   );
