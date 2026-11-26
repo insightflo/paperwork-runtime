@@ -139,15 +139,28 @@ function clampText(text: string, maxChars: number): string {
   return text.length > maxChars ? `${text.slice(0, maxChars)}\n… (truncated)` : text;
 }
 
-const PILL = "shrink-0 rounded px-1.5 py-px text-[9.5px] font-bold uppercase leading-4 tracking-wider";
+const PILL = "shrink-0 rounded-md px-1.5 py-0.5 text-[9.5px] font-bold uppercase leading-3.5 tracking-[0.1em]";
 
 const CATEGORY: Record<TriageKind, { label: string; className: string }> = {
-  issue: { label: "Issue", className: "bg-primary/15 text-primary" },
-  approval: { label: "Approval", className: "bg-amber-500/15 text-amber-700 dark:text-amber-300" },
-  failed_run: { label: "Failed run", className: "bg-red-500/15 text-red-700 dark:text-red-300" },
+  issue: {
+    label: "Issue",
+    className: "border border-blue-500/25 bg-blue-500/10 text-blue-700 dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/12 dark:text-[#93c5fd]",
+  },
+  approval: {
+    label: "Approval",
+    className: "border border-amber-500/30 bg-amber-500/10 text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#fcd34d]",
+  },
+  failed_run: {
+    label: "Failed run",
+    className: "border border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-[#f87171]/35 dark:bg-[#f87171]/12 dark:text-[#fca5a5]",
+  },
 };
 
-const KBD = "rounded border border-border bg-background px-1.5 font-mono text-[10px] leading-4 text-muted-foreground";
+const TACTILE_SURFACE =
+  "rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
+
+const KBD =
+  "rounded-md border border-slate-200/90 bg-white px-1.5 font-mono text-[10px] leading-4 text-slate-600 shadow-[inset_0_-1px_0_rgba(15,23,42,0.06)] dark:border-white/[0.1] dark:bg-[#07090d] dark:text-[#8b97ad]";
 
 function Kbd({ children }: { children: string }) {
   return <kbd className={KBD}>{children}</kbd>;
@@ -194,7 +207,7 @@ function summarizeItem(item: TriageItem, lang: ReturnType<typeof useCompanyLangu
   };
 }
 
-/** Compact scannable master-list row. */
+/** Compact scannable master-list row with Combo 1 status pulses. */
 function TriageListRow({ item, summary, selected, live, onSelect }: {
   item: TriageItem;
   summary: TriageSummary;
@@ -203,6 +216,15 @@ function TriageListRow({ item, summary, selected, live, onSelect }: {
   onSelect: () => void;
 }) {
   const category = CATEGORY[item.kind];
+  const indicatorClass = live
+    ? "bg-lime-500 shadow-[0_0_8px_rgba(163,230,53,0.75)] animate-pulse dark:bg-[#a3e635]"
+    : item.kind === "failed_run"
+      ? "bg-rose-500 shadow-[0_0_8px_rgba(248,113,113,0.7)] animate-pulse dark:bg-[#f87171]"
+      : item.kind === "approval" && summary.unread
+        ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.65)] animate-pulse dark:bg-[#f59e0b]"
+        : summary.unread
+          ? "bg-blue-500 shadow-[0_0_6px_rgba(96,165,250,0.65)] dark:bg-[#60a5fa]"
+          : "bg-transparent";
   return (
     <li>
       <button
@@ -211,24 +233,29 @@ function TriageListRow({ item, summary, selected, live, onSelect }: {
         data-triage-key={triageKey(item)}
         aria-current={selected ? "true" : undefined}
         className={cn(
-          "grid w-full grid-cols-[0.625rem_minmax(0,1fr)] items-start gap-x-2.5 border-b border-border/60 px-3 py-2 text-left transition-colors last:border-b-0",
-          selected ? "bg-primary/15 shadow-[inset_2px_0_0_var(--primary)]" : "hover:bg-accent/50",
+          "grid w-full cursor-pointer grid-cols-[0.625rem_minmax(0,1fr)] items-start gap-x-2.5 border-b border-slate-200/75 px-3.5 py-2.5 text-left transition-colors last:border-b-0 dark:border-white/[0.06]",
+          selected
+            ? "bg-blue-50/80 shadow-[inset_2px_0_0_#2563eb] dark:bg-[#60a5fa]/12 dark:shadow-[inset_2px_0_0_#60a5fa]"
+            : "hover:bg-slate-50/90 dark:hover:bg-[#141b29]",
         )}
       >
-        <span className={cn("mt-[7px] h-1.5 w-1.5 rounded-full", summary.unread ? "bg-primary" : "bg-transparent")} aria-hidden="true" />
+        <span className={cn("mt-[6px] h-2 w-2 rounded-full", indicatorClass)} aria-hidden="true" />
         <span className="block min-w-0">
           <span className="flex min-w-0 items-center gap-1.5">
             <span className={cn(PILL, category.className)}>{category.label}</span>
-            <span className={cn("min-w-0 truncate text-xs", summary.unread ? "font-semibold" : "font-medium text-foreground/85")}>
+            <span className={cn("min-w-0 truncate text-xs", summary.unread ? "font-semibold text-slate-950 dark:text-[#edf2fb]" : "font-medium text-slate-700 dark:text-[#cbd5e1]")}>
               {summary.title}
             </span>
           </span>
-          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground tabular-nums">
+          <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-slate-500 tabular-nums dark:text-[#8b97ad]">
             {live && (
-              <span className="shrink-0 rounded-full bg-blue-500/10 px-1.5 py-px text-[10px] font-medium text-blue-600 dark:text-blue-400">Live</span>
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-lime-500/35 bg-lime-500/10 px-1.5 py-px text-[10px] font-semibold text-lime-700 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/12 dark:text-[#a3e635]">
+                <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-lime-500 animate-pulse dark:bg-[#a3e635]" />
+                Live
+              </span>
             )}
-            <span className="min-w-0 truncate font-medium text-foreground/75">{summary.agent}</span>
-            <span className="shrink-0">·</span>
+            <span className="min-w-0 truncate font-medium text-slate-700 dark:text-[#cbd5e1]">{summary.agent}</span>
+            <span className="shrink-0 opacity-50">·</span>
             <span className="shrink-0">{summary.time}</span>
           </span>
         </span>
@@ -311,17 +338,18 @@ function DetailPane({ shown, onBack, actionBar, children }: {
       aria-label="Inbox detail"
       data-testid="inbox-detail"
       className={cn(
-        "min-w-0 flex-col rounded-lg border border-border bg-card/60 lg:flex lg:h-[calc(100dvh-5.75rem)]",
+        TACTILE_SURFACE,
+        "min-w-0 flex-col overflow-hidden lg:flex lg:h-[calc(100dvh-5.75rem)]",
         shown ? "flex" : "hidden",
       )}
     >
-      <div className="rounded-t-lg border-b border-border bg-background/95 px-3 py-1.5 lg:hidden">
+      <div className="rounded-t-xl border-b border-slate-200/80 bg-slate-50/95 px-3 py-1.5 dark:border-white/[0.06] dark:bg-[#090d14]/95 lg:hidden">
         <Button type="button" variant="ghost" size="xs" onClick={onBack}>
           ← Back to list
         </Button>
       </div>
-      <div className="min-w-0 flex-1 p-4 lg:overflow-y-auto">{children}</div>
-      <div className="sticky bottom-0 flex flex-none flex-wrap items-center gap-2 rounded-b-lg border-t border-border bg-background/95 px-3 py-2 backdrop-blur">
+      <div className="min-w-0 flex-1 p-5 lg:overflow-y-auto">{children}</div>
+      <div className="sticky bottom-0 flex flex-none flex-wrap items-center gap-2 rounded-b-xl border-t border-slate-200/80 bg-slate-50/95 px-4 py-2.5 backdrop-blur dark:border-white/[0.06] dark:bg-[#090d14]/95">
         {actionBar}
       </div>
     </section>
@@ -966,8 +994,8 @@ export function Inbox() {
 
   return (
     <div className="space-y-4 tabular-nums">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-3 rounded-xl border border-slate-200/90 bg-slate-50/95 px-3.5 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090d14] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2.5">
           <Tabs value={tab} onValueChange={(value) => navigate(`/inbox/${value}`)}>
             <PageTabBar
               items={[
@@ -980,7 +1008,12 @@ export function Inbox() {
               ]}
             />
           </Tabs>
-          {unreadIssueIds.length > 0 && <span className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-card/60 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Unread issues <span className="font-mono text-foreground tabular-nums">{unreadIssueIds.length}</span></span>}
+          {unreadIssueIds.length > 0 && (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-blue-500/30 bg-blue-500/10 px-2.5 py-0.5 text-[11px] font-medium uppercase tracking-wider text-blue-700 dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/12 dark:text-[#93c5fd]">
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-blue-500 dark:bg-[#60a5fa]" />
+              Unread issues <span className="font-mono font-semibold text-slate-950 tabular-nums dark:text-[#edf2fb]">{unreadIssueIds.length}</span>
+            </span>
+          )}
           {canMarkAllRead && (
             <Button
               type="button"
@@ -1057,22 +1090,23 @@ export function Inbox() {
         <>
           {showSeparatorBefore("work_items") && <Separator />}
           <div>
-            <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Work Items</h3>
-            {/* Master-detail triage: 42 / 58 split from lg, stacked below. */}
+            <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]">Work Items</h3>
+            {/* Balanced widescreen master-detail triage: 46/54 at lg, 48/52 at xl, stacked below lg. */}
             <div
               data-testid="inbox-triage"
-              className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(320px,42%)_minmax(0,58%)] lg:items-start"
+              className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(340px,46%)_minmax(0,54%)] lg:items-start xl:grid-cols-[minmax(400px,48%)_minmax(0,52%)]"
             >
               <div
                 ref={listRef}
                 className={cn(
-                  "min-w-0 rounded-lg border border-border bg-card/60 lg:h-[calc(100dvh-5.75rem)] lg:overflow-y-auto",
+                  TACTILE_SURFACE,
+                  "min-w-0 overflow-hidden lg:h-[calc(100dvh-5.75rem)] lg:overflow-y-auto",
                   mobileDetail ? "hidden lg:block" : "block",
                 )}
               >
-                <div className="sticky top-0 z-[1] flex items-center justify-between gap-3 border-b border-border bg-popover/95 px-3 py-1.5 text-[10.5px] uppercase tracking-wider text-muted-foreground backdrop-blur">
+                <div className="sticky top-0 z-[1] flex items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/95 px-3.5 py-2 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-500 backdrop-blur dark:border-white/[0.06] dark:bg-[#090d14]/95 dark:text-[#8b97ad]">
                   <span>{triageItems.length} item{triageItems.length === 1 ? "" : "s"} · {tabLabel}</span>
-                  {selectedKey && <span className="hidden normal-case tracking-normal lg:inline">{selectedIndex + 1} / {triageItems.length}</span>}
+                  {selectedKey && <span className="hidden font-mono normal-case tracking-normal text-slate-700 dark:text-[#cbd5e1] lg:inline">{selectedIndex + 1} / {triageItems.length}</span>}
                 </div>
                 {triageItems.length === 0 ? (
                   <p className="px-3 py-6 text-center text-sm text-muted-foreground">No items in this view.</p>
@@ -1094,7 +1128,7 @@ export function Inbox() {
                   </ul>
                 )}
                 {attentionHasMore && (
-                  <div className="border-t border-border px-3 py-2 text-center">
+                  <div className="border-t border-slate-200/80 px-3 py-2 text-center dark:border-white/[0.06]">
                     <Button
                       type="button"
                       variant="outline"
@@ -1106,7 +1140,7 @@ export function Inbox() {
                     </Button>
                   </div>
                 )}
-                <div className="hidden items-center gap-1.5 border-t border-border bg-popover/95 px-3 py-1.5 text-[11px] text-muted-foreground lg:flex" data-testid="inbox-keyboard-hints">
+                <div className="hidden items-center gap-1.5 border-t border-slate-200/80 bg-slate-50/95 px-3.5 py-2 text-[11px] text-slate-500 dark:border-white/[0.06] dark:bg-[#090d14]/95 dark:text-[#8b97ad] lg:flex" data-testid="inbox-keyboard-hints">
                   <Kbd>j</Kbd>
                   <Kbd>k</Kbd>
                   <span>navigate</span>
@@ -1131,12 +1165,12 @@ export function Inbox() {
         <>
           {showSeparatorBefore("join_requests") && <Separator />}
           <div>
-            <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]">
               Join Requests
             </h3>
             <div className="grid gap-3">
               {joinRequests.map((joinRequest) => (
-                <div key={joinRequest.id} id={`join-request-${joinRequest.id}`} className="rounded-md border border-border/80 bg-card/60 p-4">
+                <div key={joinRequest.id} id={`join-request-${joinRequest.id}`} className={cn(TACTILE_SURFACE, "p-4")}>
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="space-y-1">
                       <p className="text-sm font-medium">
@@ -1194,19 +1228,19 @@ export function Inbox() {
         <>
           {showSeparatorBefore("alerts") && <Separator />}
           <div>
-            <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]">
               Alerts
             </h3>
-            <div className="divide-y divide-border/60 overflow-hidden rounded-md border border-border/80 bg-card/60">
+            <div className={cn(TACTILE_SURFACE, "divide-y divide-slate-200/75 overflow-hidden dark:divide-white/[0.06]")}>
               {showAggregateAgentError && (
-                <div className="group/alert relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50">
+                <div className="group/alert relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-[#141b29]">
                   <Link
                     to="/agents"
                     className="flex flex-1 cursor-pointer items-center gap-3 no-underline text-inherit"
                   >
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-red-600 dark:text-red-400" />
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600 dark:text-[#f87171]" />
                     <span className="text-sm">
-                      <span className="font-medium tabular-nums">{dashboard!.agents.error}</span>{" "}
+                      <span className="font-semibold tabular-nums">{dashboard!.agents.error}</span>{" "}
                       {dashboard!.agents.error === 1 ? "agent has" : "agents have"} errors
                     </span>
                   </Link>
@@ -1221,15 +1255,15 @@ export function Inbox() {
                 </div>
               )}
               {showBudgetAlert && (
-                <div className="group/alert relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50">
+                <div className="group/alert relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-[#141b29]">
                   <Link
                     to="/costs"
                     className="flex flex-1 cursor-pointer items-center gap-3 no-underline text-inherit"
                   >
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-yellow-400" />
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500 dark:text-[#f59e0b]" />
                     <span className="text-sm">
                       Budget at{" "}
-                      <span className="font-medium tabular-nums">{dashboard!.costs.monthUtilizationPercent}%</span>{" "}
+                      <span className="font-semibold tabular-nums">{dashboard!.costs.monthUtilizationPercent}%</span>{" "}
                       utilization this month
                     </span>
                   </Link>

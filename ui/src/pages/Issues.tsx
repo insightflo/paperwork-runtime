@@ -26,15 +26,45 @@ import { CircleDot } from "lucide-react";
 
 /* ── Cockpit telemetry strip ──
  * One row, four columns. Each cell is both a count and a status-group filter
- * shortcut. `cancelled` is intentionally not surfaced. Dot colors mirror the
- * approved cockpit palette (--pw-cobalt / --pw-amber / --pw-emerald). */
+ * shortcut. `cancelled` is intentionally not surfaced. Dot colors follow the
+ * Combo 1 tactile telemetry palette (slate / cobalt #60a5fa / amber #f59e0b / lime #a3e635). */
 type StatusGroup = "open" | "in_progress" | "blocked" | "completed";
 
-const STATUS_GROUPS: { key: StatusGroup; label: string; statuses: string[]; dot: string }[] = [
-  { key: "open", label: "Open", statuses: ["todo", "backlog"], dot: "bg-[#8b97ad]" },
-  { key: "in_progress", label: "In Progress", statuses: ["in_progress", "in_review"], dot: "bg-[#5f8dff]" },
-  { key: "blocked", label: "Blocked", statuses: ["blocked"], dot: "bg-[#fbbf24]" },
-  { key: "completed", label: "Completed", statuses: ["done"], dot: "bg-[#34d399]" },
+const STATUS_GROUPS: {
+  key: StatusGroup;
+  label: string;
+  statuses: string[];
+  dot: string;
+  activeAccent: string;
+}[] = [
+  {
+    key: "open",
+    label: "Open",
+    statuses: ["todo", "backlog"],
+    dot: "bg-slate-400 dark:bg-[#8b97ad]",
+    activeAccent: "shadow-[inset_0_-2px_0_#64748b] dark:shadow-[inset_0_-2px_0_#8b97ad]",
+  },
+  {
+    key: "in_progress",
+    label: "In Progress",
+    statuses: ["in_progress", "in_review"],
+    dot: "bg-blue-500 dark:bg-[#60a5fa] shadow-[0_0_6px_rgba(96,165,250,0.45)]",
+    activeAccent: "shadow-[inset_0_-2px_0_#2563eb] dark:shadow-[inset_0_-2px_0_#60a5fa]",
+  },
+  {
+    key: "blocked",
+    label: "Blocked",
+    statuses: ["blocked"],
+    dot: "bg-amber-500 dark:bg-[#f59e0b] shadow-[0_0_6px_rgba(245,158,11,0.45)]",
+    activeAccent: "shadow-[inset_0_-2px_0_#d97706] dark:shadow-[inset_0_-2px_0_#f59e0b]",
+  },
+  {
+    key: "completed",
+    label: "Completed",
+    statuses: ["done"],
+    dot: "bg-lime-500 dark:bg-[#a3e635] shadow-[0_0_6px_rgba(163,230,53,0.45)]",
+    activeAccent: "shadow-[inset_0_-2px_0_#65a30d] dark:shadow-[inset_0_-2px_0_#a3e635]",
+  },
 ];
 
 /* Server-side status window per tab. Each status group maps to its own server status
@@ -257,11 +287,16 @@ export function Issues() {
   }
 
   return (
-    <div ref={pageRef} className="scroll-mt-16 space-y-2 tabular-nums">
-      {/* 1-row 4-column cockpit strip: counts double as status-group shortcuts */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Work items by status">
+    <div ref={pageRef} className="scroll-mt-16 space-y-3 tabular-nums">
+      {/* 1-row 4-column Combo 1 tactile telemetry strip: counts double as status-group shortcuts */}
+      <div
+        className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-4"
+        role="group"
+        aria-label="Work items by status"
+      >
         {STATUS_GROUPS.map((group) => {
           const active = activeGroup === group.key;
+          const isLivePulse = group.key === "in_progress" && liveIssueIds.size > 0;
           return (
             <button
               key={group.key}
@@ -270,15 +305,26 @@ export function Issues() {
               disabled={searchActive}
               title={searchActive ? "Clear the search to filter by status" : group.key === "completed" && !archivedIssues ? "Load done work items" : `Show ${group.label.toLowerCase()} work items`}
               onClick={() => setActiveGroup(active ? null : group.key)}
-              className={`cockpit-cell min-w-0 flex-1 justify-center transition-colors disabled:cursor-default disabled:opacity-60 ${
+              className={`flex h-10 min-w-0 cursor-pointer items-center justify-center gap-2 px-3 text-xs transition-colors disabled:cursor-default disabled:opacity-60 ${
                 active
-                  ? "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_-1px_0_#5f8dff]"
-                  : "hover:bg-[#151b28] hover:text-[#e6edf7]"
+                  ? `bg-slate-100/90 text-slate-950 dark:bg-[#151d2b] dark:text-[#edf2fb] ${group.activeAccent}`
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]"
               }`}
             >
-              <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${group.dot}`} />
-              <span className="truncate uppercase tracking-wide">{group.label}</span>
-              <b className="ml-1">{groupCount(group.key)}</b>
+              <span
+                aria-hidden
+                className={`h-2 w-2 shrink-0 rounded-full ${group.dot} ${isLivePulse ? "animate-pulse" : ""}`}
+              />
+              <span className="truncate text-[11px] font-semibold uppercase tracking-[0.12em]">{group.label}</span>
+              <b className="ml-0.5 font-mono text-xs font-semibold tabular-nums text-slate-950 dark:text-[#edf2fb]">
+                {groupCount(group.key)}
+              </b>
+              {isLivePulse && (
+                <span className="hidden items-center gap-1 rounded-full border border-lime-500/30 bg-lime-500/10 px-1.5 py-px text-[10px] font-semibold text-lime-700 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/10 dark:text-[#a3e635] md:inline-flex">
+                  <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-lime-500 animate-pulse dark:bg-[#a3e635]" />
+                  {liveIssueIds.size} live
+                </span>
+              )}
             </button>
           );
         })}
@@ -286,7 +332,7 @@ export function Issues() {
 
       <div
         ref={listRef}
-        className={`${ISSUES_TOOLBAR_CLASS} transition-opacity ${listBusy ? "opacity-60" : ""}`}
+        className={`${ISSUES_TOOLBAR_CLASS} overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-opacity dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] ${listBusy ? "opacity-60" : ""}`}
         aria-busy={listBusy}
       >
         <IssuesList
@@ -306,15 +352,17 @@ export function Issues() {
         />
       </div>
       {paged && (visibleIssues.length > 0 || paging.page > 1) && (
-        <IssuesPagination
-          page={paging.page}
-          rowCount={visibleIssues.length}
-          hasMore={hasMore}
-          isFetching={isFetching}
-          onPrev={paging.goToPrev}
-          onNext={paging.goToNext}
-          onPrefetchNext={prefetchNext}
-        />
+        <div className="rounded-xl border border-slate-200/90 bg-slate-50/90 px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090d14] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+          <IssuesPagination
+            page={paging.page}
+            rowCount={visibleIssues.length}
+            hasMore={hasMore}
+            isFetching={isFetching}
+            onPrev={paging.goToPrev}
+            onNext={paging.goToNext}
+            onPrefetchNext={prefetchNext}
+          />
+        </div>
       )}
     </div>
   );
