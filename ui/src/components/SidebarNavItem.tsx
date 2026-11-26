@@ -59,27 +59,27 @@ function renderCompactIndicator(opts: {
 }
 
 /**
- * Compact right-aligned Combo 1 `.nav-count` mono pill. Never shrinks or wraps and is width-capped,
- * turning lime-tinted when the parent NavLink carries `aria-current="page"`.
+ * Compact right-aligned `.nav-count` mono pill. Never shrinks or wraps and is width-capped,
+ * staying calm and muted when the parent NavLink carries `aria-current="page"`.
  */
 const COUNT_PILL =
   "inline-flex h-[18px] min-w-[18px] max-w-[7.5rem] shrink-0 tabular-nums items-center justify-center gap-1 whitespace-nowrap rounded-[5px] px-1.5 font-mono text-[10.5px] font-medium leading-none transition-colors";
 const SUBTLE_PILL = cn(
   "bg-slate-200/70 text-muted-foreground dark:bg-white/[0.04] dark:text-muted-foreground",
-  "group-aria-[current=page]:bg-[#65a30d]/15 group-aria-[current=page]:text-[#4d7c0f]",
-  "dark:group-aria-[current=page]:bg-[#a3e635]/14 dark:group-aria-[current=page]:text-[#a3e635]",
+  "group-aria-[current=page]:bg-slate-200/80 group-aria-[current=page]:text-slate-800",
+  "dark:group-aria-[current=page]:bg-white/[0.07] dark:group-aria-[current=page]:text-slate-200",
 );
 const AMBER_PILL = "bg-amber-500/15 text-amber-700 dark:bg-amber-500/15 dark:text-[var(--pw-amber)]";
-/** Combo 1 `.nav-item.active`: top-lit obsidian surface with specular top hairline. */
+/** Calm, cool-toned border-first active row (uses background-color in both modes so dark overrides light cleanly). */
 const ACTIVE_ROW = cn(
-  "border-slate-200/90 bg-white text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(15,23,42,0.04)]",
-  "dark:border-white/[0.065] dark:bg-[linear-gradient(180deg,rgba(255,255,255,0.065),rgba(255,255,255,0.03))] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.095)]",
+  "border-slate-300/90 bg-slate-100/90 text-slate-900",
+  "dark:border-white/[0.15] dark:bg-white/[0.04] dark:text-slate-100",
 );
 const INACTIVE_ICON = "h-3.5 w-3.5 shrink-0";
 /** The link carries `group`; NavLink sets `aria-current="page"` on the active route. */
 const ACTIVE_ICON = cn(
   INACTIVE_ICON,
-  "group-aria-[current=page]:text-[#4d7c0f] dark:group-aria-[current=page]:text-[#a3e635]",
+  "group-aria-[current=page]:text-slate-700 dark:group-aria-[current=page]:text-slate-200",
 );
 
 export function SidebarNavItem({
@@ -188,9 +188,9 @@ export function SidebarNavItem({
                 badgeTone === "danger"
                   ? "bg-red-600/90 text-red-50"
                   : cn(
-                      "bg-slate-200/80 text-foreground dark:bg-white/[0.08] dark:text-[#eef2f8]",
-                      "group-aria-[current=page]:bg-[#65a30d]/15 group-aria-[current=page]:text-[#4d7c0f]",
-                      "dark:group-aria-[current=page]:bg-[#a3e635]/14 dark:group-aria-[current=page]:text-[#a3e635]",
+                      "bg-slate-200/80 text-slate-700 dark:bg-white/[0.06] dark:text-slate-300",
+                      "group-aria-[current=page]:bg-slate-200/80 group-aria-[current=page]:text-slate-800",
+                      "dark:group-aria-[current=page]:bg-white/[0.07] dark:group-aria-[current=page]:text-slate-200",
                     ),
               )}
             >
