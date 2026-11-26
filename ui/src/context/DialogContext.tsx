@@ -140,3 +140,7 @@ export function useDialog() {
   }
   return ctx;
 }
+
+export function useOptionalDialog() {
+  return useContext(DialogContext);
+}

@@ -1,5 +1,5 @@
 export type CallerRole = "owner" | "admin" | "member" | "viewer";
-export type BotKind = "personal" | "team";
+export type BotKind = "personal" | "team" | "company";
 export type CallableBy = "self_only" | "team" | "company";
 export type DataScope = "self" | "team" | "company";
 export type TerminalKind = "personal_terminal" | "worker_node";
@@ -38,7 +38,7 @@ export interface ChannelInvokeInput {
 }
 
 const callerRoles: readonly CallerRole[] = ["owner", "admin", "member", "viewer"];
-const botKinds: readonly BotKind[] = ["personal", "team"];
+const botKinds: readonly BotKind[] = ["personal", "team", "company"];
 const callableByValues: readonly CallableBy[] = ["self_only", "team", "company"];
 const dataScopes: readonly DataScope[] = ["self", "team", "company"];
 const terminalKinds: readonly TerminalKind[] = ["personal_terminal", "worker_node"];
@@ -80,6 +80,7 @@ function isOneOf<T extends string>(value: unknown, values: readonly T[]): value 
   return typeof value === "string" && (values as readonly string[]).includes(value);
 }
 function hasRequiredBotScope(kind: BotKind, ownerUserId: string | null, teamId: string | null): boolean {
+  if (kind === "company") return true;
   return kind === "personal" ? ownerUserId !== null : teamId !== null;
 }
 function hasRequiredTerminalScope(kind: TerminalKind, ownerUserId: string | null, teamId: string | null): boolean {
@@ -210,7 +211,9 @@ export function evaluateTerminalCommand(input: TerminalCommandInput): Governance
   }
   if (source.callerRole === "viewer") return deny("worker_node_viewer_denied");
   if (botActor) {
-    return botKind === "team" && botApproved && botTeamId !== null && botTeamId === teamId
+    const teamAllowed = botKind === "team" && botApproved && botTeamId !== null && botTeamId === teamId;
+    const companyAllowed = botKind === "company" && botApproved;
+    return teamAllowed || companyAllowed
       ? decision(true, "allowed")
       : deny("worker_node_access_denied");
   }

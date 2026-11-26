@@ -16,10 +16,28 @@ import type { CompanySelectionSource } from "../lib/company-selection";
 import { CompanyLanguageProvider, resolveCompanyLanguage } from "../lib/companyLanguage";
 type CompanySelectionOptions = { source?: CompanySelectionSource };
 
+export type CompanyRole = "owner" | "admin" | "member" | "viewer";
+
+type CompanyWithRole = Company & {
+  myRole?: CompanyRole | null;
+};
+
+function resolveCompanyRole(company: Company | null): CompanyRole {
+  const raw = (company as CompanyWithRole | null)?.myRole;
+  if (raw === "owner" || raw === "admin" || raw === "member" || raw === "viewer") {
+    return raw;
+  }
+  return "owner";
+}
+
 interface CompanyContextValue {
   companies: Company[];
   selectedCompanyId: string | null;
   selectedCompany: Company | null;
+  currentRole: CompanyRole;
+  canWrite: boolean;
+  canAdmin: boolean;
+  isViewer: boolean;
   selectionSource: CompanySelectionSource;
   loading: boolean;
   error: Error | null;
@@ -117,11 +135,23 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     [companies, selectedCompanyId],
   );
 
+  const currentRole = useMemo(
+    () => resolveCompanyRole(selectedCompany),
+    [selectedCompany],
+  );
+  const canWrite = currentRole === "owner" || currentRole === "admin" || currentRole === "member";
+  const canAdmin = currentRole === "owner" || currentRole === "admin";
+  const isViewer = currentRole === "viewer";
+
   const value = useMemo(
     () => ({
       companies,
       selectedCompanyId,
       selectedCompany,
+      currentRole,
+      canWrite,
+      canAdmin,
+      isViewer,
       selectionSource,
       loading: isLoading,
       error: error as Error | null,
@@ -133,6 +163,10 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       companies,
       selectedCompanyId,
       selectedCompany,
+      currentRole,
+      canWrite,
+      canAdmin,
+      isViewer,
       selectionSource,
       isLoading,
       error,

@@ -46,7 +46,7 @@ function createApp(actor: Record<string, unknown> = {
   userId: "board-user-1",
   companyIds: [COMPANY_ID],
   source: "authenticated",
-  isInstanceAdmin: false,
+  isInstanceAdmin: true,
 }, db: unknown = {}, options: { executeTest?: unknown } = {}) {
   const app = express();
   app.use(express.json());
@@ -75,7 +75,13 @@ describe("tool definition routes", () => {
   });
 
   it("blocks tool definition reads across company boundaries", async () => {
-    const res = await request(createApp()).get(`/api/companies/${OTHER_COMPANY_ID}/tools`);
+    const res = await request(createApp({
+      type: "board",
+      userId: "board-user-1",
+      companyIds: [COMPANY_ID],
+      source: "authenticated",
+      isInstanceAdmin: false,
+    })).get(`/api/companies/${OTHER_COMPANY_ID}/tools`);
 
     expect(res.status).toBe(403);
     expect(mockToolService.listDefinitions).not.toHaveBeenCalled();

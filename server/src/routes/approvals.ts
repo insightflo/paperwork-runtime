@@ -5,8 +5,9 @@ import { addApprovalCommentSchema, createApprovalSchema, requestApprovalRevision
 import { validate } from "../middleware/validate.js";
 import { logger } from "../middleware/logger.js";
 import { agentService, approvalService, heartbeatService, issueApprovalService, logActivity, secretService } from "../services/index.js";
+import { accessService } from "../services/access.js";
 import { forbidden, notFound } from "../errors.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess, assertCompanyWriteAccess, getActorInfo } from "./authz.js";
 import { redactEventPayload } from "../redaction.js";
 import { shouldEmitApprovalDecided, buildApprovalDecidedDetails } from "../services/approval-decision-event.js";
 import { cardSummaryService, type CardSummaryRow } from "../services/card-summaries.js";
@@ -59,9 +60,10 @@ async function assertCanResolveApproval(
   req: Request,
   approval: { companyId: string },
   agentsSvc: ReturnType<typeof agentService>,
+  access: ReturnType<typeof accessService>,
 ) {
   if (req.actor.type === "board") {
-    assertCompanyAccess(req, approval.companyId);
+    await assertCompanyAdminAccess(access, req, approval.companyId);
     return;
   }
 
@@ -131,6 +133,7 @@ function parseApprovalOffset(value: unknown): number {
 export function approvalRoutes(db: Db) {
   const router = Router();
   const svc = approvalService(db);
+  const access = accessService(db);
   const heartbeat = heartbeatService(db);
   const issueApprovalsSvc = issueApprovalService(db);
   const secretsSvc = secretService(db);
@@ -186,7 +189,7 @@ export function approvalRoutes(db: Db) {
       return;
     }
     assertBoard(req);
-    assertCompanyAccess(req, approval.companyId);
+    await assertCompanyWriteAccess(access, req, approval.companyId);
     const adapterType = typeof req.body?.adapterType === "string" ? req.body.adapterType : undefined;
     const model = typeof req.body?.model === "string" ? req.body.model : undefined;
     const row = await summariesSvc.retranslate(approval.companyId, "approval", approval.id, {
@@ -199,7 +202,7 @@ export function approvalRoutes(db: Db) {
 
   router.post("/companies/:companyId/approvals", validate(createApprovalSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const rawIssueIds = req.body.issueIds;
     const issueIds = Array.isArray(rawIssueIds)
       ? rawIssueIds.filter((value: unknown): value is string => typeof value === "string")
@@ -266,7 +269,7 @@ export function approvalRoutes(db: Db) {
     const id = req.params.id as string;
     const existing = await svc.getById(id);
     if (!existing) throw notFound("Approval not found");
-    await assertCanResolveApproval(req, existing, agentsSvc);
+    await assertCanResolveApproval(req, existing, agentsSvc, access);
     const actor = getApprovalDecisionActor(req);
     const { approval, applied } = await svc.approve(
       id,
@@ -369,7 +372,7 @@ export function approvalRoutes(db: Db) {
     const id = req.params.id as string;
     const existing = await svc.getById(id);
     if (!existing) throw notFound("Approval not found");
-    await assertCanResolveApproval(req, existing, agentsSvc);
+    await assertCanResolveApproval(req, existing, agentsSvc, access);
     const actor = getApprovalDecisionActor(req);
     const { approval, applied } = await svc.reject(
       id,
@@ -402,7 +405,7 @@ export function approvalRoutes(db: Db) {
       const id = req.params.id as string;
       const existing = await svc.getById(id);
       if (!existing) throw notFound("Approval not found");
-      await assertCanResolveApproval(req, existing, agentsSvc);
+      await assertCanResolveApproval(req, existing, agentsSvc, access);
       const actor = getApprovalDecisionActor(req);
       const approval = await svc.requestRevision(
         id,
@@ -432,7 +435,7 @@ export function approvalRoutes(db: Db) {
       res.status(404).json({ error: "Approval not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    await assertCompanyWriteAccess(access, req, existing.companyId);
 
     if (req.actor.type === "agent" && req.actor.agentId !== existing.requestedByAgentId) {
       res.status(403).json({ error: "Only requesting agent can resubmit this approval" });
@@ -482,7 +485,7 @@ export function approvalRoutes(db: Db) {
       res.status(404).json({ error: "Approval not found" });
       return;
     }
-    assertCompanyAccess(req, approval.companyId);
+    await assertCompanyWriteAccess(access, req, approval.companyId);
     const actor = getActorInfo(req);
     const comment = await svc.addComment(id, req.body.body, {
       agentId: actor.agentId ?? undefined,

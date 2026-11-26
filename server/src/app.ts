@@ -79,7 +79,11 @@ import { setPluginEventBus } from "./services/activity-log.js";
 import { createPluginHostServiceCleanup } from "./services/plugin-host-service-cleanup.js";
 import { createHostClientHandlers } from "@paperclipai/plugin-sdk";
 import { heartbeatService } from "./services/heartbeat.js";
-import { createBotTerminalChannelService, createDrizzleEnterpriseBotStore } from "./services/bot-terminal-channel.js";
+import {
+  createBotTerminalChannelService,
+  createDrizzleEnterpriseBotRuntimeOptions,
+  createDrizzleEnterpriseBotStore,
+} from "./services/bot-terminal-channel.js";
 import { createScheduler } from "./services/scheduler/index.js";
 import { createDeliveryRetryWorker } from "./services/srb/delivery-retry-worker.js";
 import { createNonceCleanupJob } from "./services/srb/nonce-cleanup.js";
@@ -685,7 +689,17 @@ export async function createApp(
   api.use(qualityEvaluationRoutes(db));
   api.use(harnessRsiRoutes(db));
   api.use(sidebarBadgeRoutes(db));
-  api.use("/enterprise-bots", requireEnterpriseBotsBoardActor, createEnterpriseBotsRouter(createBotTerminalChannelService(createDrizzleEnterpriseBotStore(db)), resolveEnterpriseBotActor(db)));
+  api.use(
+    "/enterprise-bots",
+    requireEnterpriseBotsBoardActor,
+    createEnterpriseBotsRouter(
+      createBotTerminalChannelService(
+        createDrizzleEnterpriseBotStore(db),
+        createDrizzleEnterpriseBotRuntimeOptions(db),
+      ),
+      resolveEnterpriseBotActor(db),
+    ),
+  );
   api.use(instanceSettingsRoutes(db));
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();

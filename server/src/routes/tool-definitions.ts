@@ -16,7 +16,8 @@ import { toolService } from "../services/tools/registry.js";
 import { assertHttpArtifactAssertionFloor } from "../services/tools/response-contract-floor.js";
 import { executeToolTest, type ToolTestDispatcher, type ToolTestExecutor } from "../services/tools/test-executor.js";
 import type { createHttpHandlerLifetime } from "../services/http-handler-lifetime.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { accessService } from "../services/access.js";
+import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess, getActorInfo } from "./authz.js";
 
 type ToolDefinitionRoutesOptions = {
   strictSecretsMode?: boolean;
@@ -55,6 +56,7 @@ function throwToolNameConflict(error: unknown, name: string): never {
 
 export function toolDefinitionRoutes(db: Db, options: ToolDefinitionRoutesOptions = {}) {
   const { toolDispatcher, executeTest = executeToolTest, strictSecretsMode = false } = options;
+  const access = accessService(db);
   const secrets = secretService(db);
   const maskTool = (tool: { adapterConfig: Record<string, unknown> }) => {
     const adapterConfig = sanitizeRecord(tool.adapterConfig);
@@ -87,8 +89,7 @@ export function toolDefinitionRoutes(db: Db, options: ToolDefinitionRoutesOption
 
   router.post("/companies/:companyId/tools", validate(createToolDefinitionSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
+    await assertCompanyAdminAccess(access, req, companyId);
     assertHttpArtifactAssertionFloor(req.body);
     if (req.body.adapterConfig !== undefined) {
       req.body.adapterConfig = await secrets.normalizeAdapterConfigForPersistence(
@@ -123,8 +124,7 @@ export function toolDefinitionRoutes(db: Db, options: ToolDefinitionRoutesOption
   router.patch("/companies/:companyId/tools/:toolId", validate(updateToolDefinitionSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
     const toolId = req.params.toolId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
+    await assertCompanyAdminAccess(access, req, companyId);
     const existing = await requireCompanyTool(db, companyId, toolId);
     const detachesSourceOwnership =
       existing.adapterConfig.source === "tool-registry"
@@ -175,8 +175,7 @@ export function toolDefinitionRoutes(db: Db, options: ToolDefinitionRoutesOption
   router.delete("/companies/:companyId/tools/:toolId", async (req, res) => {
     const companyId = req.params.companyId as string;
     const toolId = req.params.toolId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
+    await assertCompanyAdminAccess(access, req, companyId);
     const existing = await requireCompanyTool(db, companyId, toolId);
     assertMutableTool(existing);
     const deleted = await toolService.deleteDefinition(db, toolId);
@@ -207,8 +206,7 @@ export function toolDefinitionRoutes(db: Db, options: ToolDefinitionRoutesOption
     async (req, res) => {
       const companyId = req.params.companyId as string;
       const toolId = req.params.toolId as string;
-      assertCompanyAccess(req, companyId);
-      assertBoard(req);
+      await assertCompanyAdminAccess(access, req, companyId);
       const tool = await requireCompanyTool(db, companyId, toolId);
       const outcome = await executeTest({
         db,

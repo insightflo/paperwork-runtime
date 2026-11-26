@@ -1,16 +1,18 @@
+import { createServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import request from "supertest";
-import { sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { companies, companyMemberships, createDb } from "@paperclipai/db";
+import { channelMembers, channels, companies, companyMemberships, createDb } from "@paperclipai/db";
 import { createApp } from "../app.js";
 import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 
 const COMPANY = "00000000-0000-4000-8000-00000000b401";
 const OTHER_COMPANY = "00000000-0000-4000-8000-00000000b402";
 const USER = "enterprise-bot-user";
+const ADMIN_USER = "enterprise-bot-admin";
+const VIEWER_USER = "enterprise-bot-viewer";
 
 describe("enterprise bots app mount", () => {
   let db!: ReturnType<typeof createDb>;
@@ -24,31 +26,29 @@ describe("enterprise bots app mount", () => {
     db = createDb(database.connectionString);
     await db.insert(companies).values({ id: COMPANY, name: "Enterprise Bots", issuePrefix: "EB1" });
     await db.insert(companies).values({ id: OTHER_COMPANY, name: "Other Company", issuePrefix: "EB2" });
-    await db.insert(companyMemberships).values({
-      companyId: COMPANY,
-      principalType: "user",
-      principalId: USER,
-      status: "active",
-      membershipRole: "member",
-    });
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS client_terminals (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        company_id uuid NOT NULL REFERENCES companies(id) ON DELETE cascade,
-        kind text NOT NULL,
-        name text NOT NULL,
-        owner_user_id text,
-        team_id uuid,
-        bot_id uuid,
-        token_hash text NOT NULL,
-        transport text NOT NULL DEFAULT 'outbound_wss',
-        status text NOT NULL DEFAULT 'offline',
-        last_heartbeat_at timestamptz,
-        revoked_at timestamptz,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now()
-      )
-    `);
+    await db.insert(companyMemberships).values([
+      {
+        companyId: COMPANY,
+        principalType: "user",
+        principalId: USER,
+        status: "active",
+        membershipRole: "member",
+      },
+      {
+        companyId: COMPANY,
+        principalType: "user",
+        principalId: ADMIN_USER,
+        status: "active",
+        membershipRole: "admin",
+      },
+      {
+        companyId: COMPANY,
+        principalType: "user",
+        principalId: VIEWER_USER,
+        status: "active",
+        membershipRole: "viewer",
+      },
+    ]);
     localPluginDir = await mkdtemp(path.join(tmpdir(), "enterprise-bots-plugins-"));
     app = await createApp(db, {
       uiMode: "none",
@@ -172,4 +172,273 @@ describe("enterprise bots app mount", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it("blocks viewer role from registering terminals", async () => {
+    sessionUserId = VIEWER_USER;
+    const res = await post("/api/enterprise-bots/terminals/register").send({
+      companyId: COMPANY,
+      kind: "personal_terminal",
+      name: "viewer-blocked",
+    });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("viewer_cannot_register_terminal");
+  });
+
+  it("supports OpenBot snapshot, CRUD, ping, and token-authenticated inbound webhook against Postgres", async () => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ pong: true }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+
+    try {
+      // Member cannot create bots
+      sessionUserId = USER;
+      await post(`/api/enterprise-bots/companies/${COMPANY}/bots`).send({
+        kind: "company",
+        name: "Unauthorized Bot",
+      }).expect(403);
+
+      // Admin creates a company OpenBot
+      sessionUserId = ADMIN_USER;
+      const created = await post(`/api/enterprise-bots/companies/${COMPANY}/bots`).send({
+        kind: "company",
+        name: "Mounted OpenBot",
+        webhookUrl: `http://127.0.0.1:${port}/webhook`,
+        capabilities: [{ capabilityKey: "ops.ping", callableBy: "company", dataScope: "company" }],
+      }).expect(201);
+      expect(created.body.inboundToken).toMatch(/^pcp_bot_/);
+      expect(created.body.bot).toMatchObject({ kind: "company", name: "Mounted OpenBot", hasInboundToken: true });
+      expect(created.body.bot).not.toHaveProperty("inboundTokenHash");
+      const botId = created.body.bot.id as string;
+      const inboundToken = created.body.inboundToken as string;
+
+      // Snapshot returns bot & terminals without token hashes
+      const snap = await request(app)
+        .get(`/api/enterprise-bots/companies/${COMPANY}/snapshot`)
+        .set("Origin", "http://localhost:3100")
+        .expect(200);
+      expect(snap.body.bots.some((b: { id: string }) => b.id === botId)).toBe(true);
+      expect(snap.body.bots.every((b: Record<string, unknown>) => !("inboundTokenHash" in b))).toBe(true);
+
+      // Ping hits local test server and persists lastPingStatus = ok
+      const ping = await post(`/api/enterprise-bots/companies/${COMPANY}/bots/${botId}/ping`).expect(200);
+      expect(ping.body).toMatchObject({ ok: true, statusCode: 200 });
+
+      // Inbound works without a board session (Bearer pcp_bot_...)
+      sessionUserId = null;
+      await request(app)
+        .post(`/api/enterprise-bots/bots/${botId}/inbound`)
+        .set("Authorization", "Bearer pcp_bot_invalid")
+        .send({ title: "Should fail" })
+        .expect(401);
+
+      const inbound = await request(app)
+        .post(`/api/enterprise-bots/bots/${botId}/inbound`)
+        .set("Authorization", `Bearer ${inboundToken}`)
+        .send({ event: "webhook", title: "Inbound Alert", message: "All systems nominal" })
+        .expect(200);
+      expect(inbound.body).toMatchObject({ ok: true, botId });
+      expect(typeof inbound.body.issueId).toBe("string");
+
+      // Revoke bot -> inbound returns 403
+      sessionUserId = ADMIN_USER;
+      await request(app)
+        .patch(`/api/enterprise-bots/companies/${COMPANY}/bots/${botId}`)
+        .set("Origin", "http://localhost:3100")
+        .send({ status: "revoked" })
+        .expect(200);
+
+      sessionUserId = null;
+      const revoked = await request(app)
+        .post(`/api/enterprise-bots/bots/${botId}/inbound`)
+        .set("Authorization", `Bearer ${inboundToken}`)
+        .send({ message: "Should be forbidden" })
+        .expect(403);
+      expect(revoked.body.error).toBe("bot_revoked");
+
+      // Delete bot
+      sessionUserId = ADMIN_USER;
+      await request(app)
+        .delete(`/api/enterprise-bots/companies/${COMPANY}/bots/${botId}`)
+        .set("Origin", "http://localhost:3100")
+        .expect(200);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 30_000);
+
+  it("supports Stage 20C compatibility, telemetry + healthHistory ring, capabilities batch PATCH, dryRun preview, and audit against Postgres", async () => {
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ pong: true }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+
+    try {
+      // 1. Public /compatibility works without a board session
+      sessionUserId = null;
+      const compat = await request(app).get("/api/enterprise-bots/compatibility").expect(200);
+      expect(compat.body).toEqual({
+        protocol: { minimum: 1, maximum: 2 },
+        capabilities: [
+          "terminal.telemetry.v1",
+          "bot.capabilities_matrix.v1",
+          "channel.invoke_preview.v1",
+          "bot.audit.v1",
+        ],
+      });
+
+      // 2. Terminal heartbeat with telemetry + bounded 20-sample healthHistory ring
+      sessionUserId = USER;
+      const reg = await post("/api/enterprise-bots/terminals/register").send({
+        companyId: COMPANY,
+        kind: "personal_terminal",
+        name: "pg-telemetry-terminal",
+      }).expect(201);
+      const terminalId = reg.body.terminal.id as string;
+      const termToken = reg.body.token as string;
+
+      sessionUserId = null;
+      for (let i = 1; i <= 21; i += 1) {
+        await request(app)
+          .post(`/api/enterprise-bots/terminals/${terminalId}/heartbeat`)
+          .set("Authorization", `Bearer ${termToken}`)
+          .send({
+            telemetry: {
+              os: "linux",
+              arch: "x86_64",
+              daemonVersion: "1.0.0",
+              protocolVersion: 2,
+              uptimeSecs: i * 30,
+              cpuPct: 5.5,
+              memRssMb: 32,
+              activeChildren: 1,
+              lastRttMs: i,
+            },
+          })
+          .expect(200);
+      }
+
+      // 3. Create bot, batch update capabilities, ping (persists bot healthHistory), and trigger inbound audit row
+      sessionUserId = ADMIN_USER;
+      const botCreated = await post(`/api/enterprise-bots/companies/${COMPANY}/bots`).send({
+        kind: "personal",
+        name: "Stage20C Bot",
+        ownerUserId: ADMIN_USER,
+        webhookUrl: `http://127.0.0.1:${port}/webhook`,
+      }).expect(201);
+      const botId = botCreated.body.bot.id as string;
+      const inboundToken = botCreated.body.inboundToken as string;
+
+      // Non-admin cannot batch-update capabilities
+      sessionUserId = USER;
+      await request(app)
+        .patch(`/api/enterprise-bots/companies/${COMPANY}/bots/${botId}/capabilities`)
+        .set("Origin", "http://localhost:3100")
+        .send({ capabilities: [{ capabilityKey: "ops.read", callableBy: "company", dataScope: "self", requiresApproval: false }] })
+        .expect(403);
+
+      // Admin updates capabilities matrix
+      sessionUserId = ADMIN_USER;
+      const capsRes = await request(app)
+        .patch(`/api/enterprise-bots/companies/${COMPANY}/bots/${botId}/capabilities`)
+        .set("Origin", "http://localhost:3100")
+        .send({
+          capabilities: [
+            { capabilityKey: "ops.read", callableBy: "company", dataScope: "self", requiresApproval: false },
+            { capabilityKey: "ops.deploy", callableBy: "company", dataScope: "company", requiresApproval: true },
+          ],
+        })
+        .expect(200);
+      expect(capsRes.body.capabilities).toHaveLength(2);
+
+      // Ping bot -> persists healthHistory sample
+      await post(`/api/enterprise-bots/companies/${COMPANY}/bots/${botId}/ping`).expect(200);
+
+      // Snapshot exposes terminal telemetry + 20-sample healthHistory and bot healthHistory
+      const snap = await request(app)
+        .get(`/api/enterprise-bots/companies/${COMPANY}/snapshot`)
+        .set("Origin", "http://localhost:3100")
+        .expect(200);
+      const snapTerm = snap.body.terminals.find((t: { id: string }) => t.id === terminalId);
+      expect(snapTerm.telemetry).toMatchObject({ os: "linux", daemonVersion: "1.0.0", lastRttMs: 21 });
+      expect(snapTerm.healthHistory).toHaveLength(20);
+      expect(snapTerm.healthHistory[0].rttMs).toBe(2);
+      expect(snapTerm.healthHistory[19].rttMs).toBe(21);
+      const snapBot = snap.body.bots.find((b: { id: string }) => b.id === botId);
+      expect(snapBot.healthHistory).toHaveLength(1);
+      expect(snapBot.healthHistory[0]).toMatchObject({ ok: true, statusCode: 200 });
+
+      // 4. Seed channel + members for dryRun=true preview
+      const [chan] = await db.insert(channels).values({
+        companyId: COMPANY,
+        kind: "shared",
+        name: "dryrun-channel",
+        createdByUserId: ADMIN_USER,
+      }).returning();
+      await db.insert(channelMembers).values([
+        { channelId: chan.id, principalKind: "human", principalId: USER, role: "member" },
+        { channelId: chan.id, principalKind: "personal_bot", principalId: botId, role: "member" },
+      ]);
+
+      sessionUserId = USER;
+      const dryDenied = await post(`/api/enterprise-bots/channels/${chan.id}/invoke?dryRun=true`).send({
+        companyId: COMPANY,
+        targetBotId: botId,
+        executionTarget: "personal_terminal",
+        capabilityKey: "ops.read",
+      }).expect(200);
+      expect(dryDenied.body).toEqual({
+        dryRun: true,
+        outcome: "denied",
+        reason: "personal_terminal_requires_owner_approval",
+        forcedFilter: null,
+        requiresApproval: true,
+      });
+
+      const dryApproval = await post(`/api/enterprise-bots/channels/${chan.id}/invoke?dryRun=true`).send({
+        companyId: COMPANY,
+        targetBotId: botId,
+        executionTarget: "none",
+        capabilityKey: "ops.deploy",
+      }).expect(200);
+      expect(dryApproval.body).toEqual({
+        dryRun: true,
+        outcome: "requires_approval",
+        reason: "requires_approval",
+        forcedFilter: { companyId: COMPANY },
+        requiresApproval: true,
+      });
+
+      // 5. Trigger inbound activity -> GET /audit returns structured row without raw tokens
+      sessionUserId = null;
+      await request(app)
+        .post(`/api/enterprise-bots/bots/${botId}/inbound`)
+        .set("Authorization", `Bearer ${inboundToken}`)
+        .send({ event: "telemetry_check", title: "Audit Check" })
+        .expect(200);
+
+      sessionUserId = USER;
+      const auditRes = await request(app)
+        .get(`/api/enterprise-bots/companies/${COMPANY}/audit?limit=10`)
+        .set("Origin", "http://localhost:3100")
+        .expect(200);
+      expect(auditRes.body.events.length).toBeGreaterThanOrEqual(1);
+      expect(auditRes.body.events[0]).toMatchObject({
+        companyId: COMPANY,
+        action: "enterprise_bot.inbound",
+        entityType: "bot",
+        entityId: botId,
+      });
+      expect(JSON.stringify(auditRes.body)).not.toContain(inboundToken);
+      expect(JSON.stringify(auditRes.body)).not.toContain(termToken);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 30_000);
 });

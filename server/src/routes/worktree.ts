@@ -24,7 +24,9 @@ import { z } from "zod";
 import type { Db } from "@paperclipai/db";
 import { ruleStore } from "../services/worktree/rule-store.js";
 import { proposalStore } from "../services/worktree/proposal-store.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { accessService } from "../services/access.js";
+import { assertCompanyAccess, assertCompanyAdminAccess, getActorInfo } from "./authz.js";
+import { assertCompanyWriteAccess } from "./authz-write.js";
 import { badRequest, notFound } from "../errors.js";
 import { logActivity } from "../services/activity-log.js";
 import { getHermitGateService } from "../services/hermit-gate.js";
@@ -45,11 +47,20 @@ import { opsConsoleTelemetryService } from "../services/ops-console-telemetry.js
 
 export function worktreeRoutes(db: Db) {
   const router = Router();
+  const access = accessService(db);
   const rules = ruleStore(db);
   const proposals = proposalStore(db);
   const gate = getHermitGateService();
   const queue = operatorQueueViewService(db);
   const telemetry = opsConsoleTelemetryService(db, gate);
+
+  async function assertWorktreeAdminAccess(req: Request, companyId: string) {
+    if (req.actor.type === "board") {
+      await assertCompanyAdminAccess(access, req, companyId);
+      return;
+    }
+    assertCompanyAccess(req, companyId);
+  }
 
   function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
     const parsed = schema.safeParse(body ?? {});
@@ -119,7 +130,7 @@ export function worktreeRoutes(db: Db) {
    */
   router.post("/companies/:companyId/worktree/rules", async (req, res) => {
     const { companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertWorktreeAdminAccess(req, companyId);
 
     const { name, severity, action, predicate, decisionMap, message, enabled } = req.body;
 
@@ -174,7 +185,7 @@ export function worktreeRoutes(db: Db) {
    */
   router.patch("/worktree/rules/:id", async (req, res) => {
     const existing = await rules.getById(req.params.id);
-    assertCompanyAccess(req, existing.companyId);
+    await assertWorktreeAdminAccess(req, existing.companyId);
 
     const { name, severity, action, predicate, decisionMap, message, enabled } = req.body;
     const updated = await rules.update(req.params.id, {
@@ -210,7 +221,7 @@ export function worktreeRoutes(db: Db) {
    */
   router.delete("/worktree/rules/:id", async (req, res) => {
     const existing = await rules.getById(req.params.id);
-    assertCompanyAccess(req, existing.companyId);
+    await assertWorktreeAdminAccess(req, existing.companyId);
 
     await rules.delete(req.params.id);
 
@@ -271,7 +282,7 @@ export function worktreeRoutes(db: Db) {
    */
   router.post("/companies/:companyId/worktree/proposals", async (req, res) => {
     const { companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
 
     const { proposedByAgentId, ruleId, proposedChange, rationale } = req.body;
 
@@ -321,7 +332,7 @@ export function worktreeRoutes(db: Db) {
    */
   router.patch("/worktree/proposals/:id/review", async (req, res) => {
     const existing = await proposals.getById(req.params.id);
-    assertCompanyAccess(req, existing.companyId);
+    await assertWorktreeAdminAccess(req, existing.companyId);
 
     const { status, reviewedByAgentId, reviewNote, reviewAcknowledged } = req.body;
 
@@ -367,7 +378,7 @@ export function worktreeRoutes(db: Db) {
 
   router.post("/companies/:companyId/hermit-gate/claims", async (req, res) => {
     const { companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const input = parseBody(ClaimRequestSchema, req.body);
     const result = await gate.claimPaths(companyId, input);
     if (result.ok) {
@@ -386,7 +397,7 @@ export function worktreeRoutes(db: Db) {
 
   router.delete("/companies/:companyId/hermit-gate/claims/:taskId", async (req, res) => {
     const { companyId, taskId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const released = await gate.releaseTaskClaims(companyId, taskId);
     if (released === 0) throw notFound("해제할 클레임이 없습니다");
     await audit(req, companyId, "hermit_gate", "hermit_gate.claim.released", taskId, { released });
@@ -395,7 +406,7 @@ export function worktreeRoutes(db: Db) {
 
   router.post("/companies/:companyId/hermit-gate/verify", async (req, res) => {
     const { companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const input = parseBody(ChangeVerificationInputSchema, req.body);
     const verdict = await gate.verifyChanges(companyId, input);
     if (verdict.decision !== "proceed") {
@@ -408,7 +419,7 @@ export function worktreeRoutes(db: Db) {
 
   router.post("/companies/:companyId/hermit-gate/merges", async (req, res) => {
     const { companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const input = parseBody(MergeRecordInputSchema, req.body);
     const result = await gate.recordMergedPr(companyId, input);
     await audit(req, companyId, "hermit_gate", "hermit_gate.merge.recorded", String(input.prNumber), {
@@ -421,14 +432,14 @@ export function worktreeRoutes(db: Db) {
 
   router.post("/companies/:companyId/hermit-gate/merges/check", async (req, res) => {
     const { companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const input = parseBody(z.object({ changedPaths: z.array(z.string()), isAuditFix: z.boolean().optional() }), req.body);
     res.json(await gate.checkMergeGate(companyId, input));
   });
 
   router.post("/companies/:companyId/hermit-gate/audit/scope", async (req, res) => {
     const { companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const input = parseBody(AuditScopeInputSchema, req.body);
     const auditState = await gate.setAuditScope(companyId, input.blockedScopes);
     await audit(req, companyId, "hermit_gate", "hermit_gate.audit.scope_set", "audit", input);
@@ -437,7 +448,7 @@ export function worktreeRoutes(db: Db) {
 
   router.post("/companies/:companyId/hermit-gate/audit/complete", async (req, res) => {
     const { companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const input = parseBody(AuditCompleteInputSchema, req.body);
     const auditState = await gate.completeAudit(companyId, input.auditedThroughSha);
     await audit(req, companyId, "hermit_gate", "hermit_gate.audit.completed", "audit", input);
@@ -446,7 +457,7 @@ export function worktreeRoutes(db: Db) {
 
   router.post("/companies/:companyId/hermit-gate/decisions", async (req, res) => {
     const { companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const input = parseBody(DecisionRecordSchema, req.body);
     const decision = await gate.recordDecision(companyId, input);
     await audit(req, companyId, "hermit_gate", "hermit_gate.decision.recorded", decision.id, {
@@ -458,7 +469,7 @@ export function worktreeRoutes(db: Db) {
 
   router.patch("/companies/:companyId/hermit-gate/decisions/:decisionId", async (req, res) => {
     const { companyId, decisionId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const input = parseBody(DecisionUpdateInputSchema, req.body);
     const updated = await gate.updateDecision(companyId, decisionId, input.reason);
     if (!updated) throw notFound("결정 기록을 찾을 수 없습니다");
@@ -483,7 +494,7 @@ export function worktreeRoutes(db: Db) {
 
   router.put("/companies/:companyId/ops-console/thresholds", async (req, res) => {
     const { companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertWorktreeAdminAccess(req, companyId);
     const input = parseBody(ThresholdsInputSchema, req.body);
     const thresholds = await telemetry.updateThresholds(companyId, input);
     await audit(req, companyId, "ops_console", "ops_console.thresholds.updated", "resources", { ...thresholds });
@@ -492,7 +503,7 @@ export function worktreeRoutes(db: Db) {
 
   router.post("/companies/:companyId/ops-console/processes/:pid/stop", async (req, res) => {
     const { companyId, pid } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertWorktreeAdminAccess(req, companyId);
     const pidNumber = Number(pid);
     if (!Number.isInteger(pidNumber)) throw badRequest("pid 는 정수여야 합니다");
     const result = await telemetry.stopBackgroundProcess(companyId, pidNumber);
@@ -513,7 +524,7 @@ export function worktreeRoutes(db: Db) {
 
   router.post("/companies/:companyId/ops-console/queue/reorder", async (req, res) => {
     const { companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertWorktreeAdminAccess(req, companyId);
     const input = parseBody(QueueReorderInputSchema, req.body);
     const items = await queue.reorderQueue(companyId, input.orderedIds);
     await audit(req, companyId, "ops_console", "ops_console.queue.reordered", "queue", input);
@@ -522,7 +533,7 @@ export function worktreeRoutes(db: Db) {
 
   router.patch("/companies/:companyId/ops-console/queue/:wakeupId", async (req, res) => {
     const { companyId, wakeupId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertWorktreeAdminAccess(req, companyId);
     const input = parseBody(QueueEditInputSchema, req.body);
     const item = await queue.editQueuedWakeup(companyId, wakeupId, input);
     await audit(req, companyId, "ops_console", "ops_console.queue.edited", wakeupId, input);
@@ -531,7 +542,7 @@ export function worktreeRoutes(db: Db) {
 
   router.post("/companies/:companyId/ops-console/queue/:wakeupId/cancel", async (req, res) => {
     const { companyId, wakeupId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertWorktreeAdminAccess(req, companyId);
     const cancelled = await queue.cancelQueuedWakeup(companyId, wakeupId);
     if (!cancelled) throw notFound("취소할 대기 항목을 찾을 수 없습니다");
     await audit(req, companyId, "ops_console", "ops_console.queue.cancelled", wakeupId, {});

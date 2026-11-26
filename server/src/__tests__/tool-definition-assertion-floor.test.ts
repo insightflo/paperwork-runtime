@@ -68,7 +68,7 @@ function createApp(actor: Record<string, unknown> = {
   userId: "board-user-1",
   companyIds: [COMPANY_ID],
   source: "authenticated",
-  isInstanceAdmin: false,
+  isInstanceAdmin: true,
 }, db: unknown = {}) {
   const app = express();
   app.use(express.json());

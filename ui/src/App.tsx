@@ -36,6 +36,7 @@ const MissionDetail = lazy(async () => ({ default: (await import("./pages/Missio
 const Workflows = lazy(async () => ({ default: (await import("./pages/Workflows")).Workflows }));
 const SchedulerConfig = lazy(async () => ({ default: (await import("./pages/SchedulerConfig")).SchedulerConfig }));
 const ChannelConfig = lazy(async () => ({ default: (await import("./pages/ChannelConfig")).ChannelConfig }));
+const EnterpriseBots = lazy(async () => ({ default: (await import("./pages/EnterpriseBots")).EnterpriseBots }));
 const WorktreeRules = lazy(async () => ({ default: (await import("./pages/WorktreeRules")).WorktreeRules }));
 const WorktreeProposals = lazy(async () => ({ default: (await import("./pages/WorktreeProposals")).WorktreeProposals }));
 const Approvals = lazy(async () => ({ default: (await import("./pages/Approvals")).Approvals }));
@@ -71,6 +72,7 @@ const ROUTE_CHUNK_LOADERS: Record<string, () => Promise<unknown>> = {
   "/skills": () => import("./pages/CompanySkills"),
   "/scheduler": () => import("./pages/SchedulerConfig"),
   "/channels": () => import("./pages/ChannelConfig"),
+  "/bots": () => import("./pages/EnterpriseBots"),
 };
 /** Top sidebar routes warmed once the first paint is done, in likely-visit order. */
 const IDLE_PREFETCH_ROUTES = ["/missions", "/dashboard", "/inbox", "/issues", "/agents"];
@@ -257,6 +259,7 @@ function boardRoutes() {
       <Route path="missions/:missionId" element={lazyRoute(<MissionDetail />)} />
       <Route path="scheduler" element={lazyRoute(<SchedulerConfig />)} />
       <Route path="channels" element={lazyRoute(<ChannelConfig />)} />
+      <Route path="bots" element={lazyRoute(<EnterpriseBots />)} />
       <Route path="worktree/rules" element={lazyRoute(<WorktreeRules />)} />
       <Route path="worktree/proposals" element={lazyRoute(<WorktreeProposals />)} />
       <Route path="approvals" element={<Navigate to="/approvals/pending" replace />} />
@@ -440,6 +443,7 @@ export function App() {
           <Route path="skills/*" element={<UnprefixedBoardRedirect />} />
           <Route path="instructions" element={<UnprefixedBoardRedirect />} />
           <Route path="human-operator" element={<UnprefixedBoardRedirect />} />
+          <Route path="bots" element={<UnprefixedBoardRedirect />} />
           <Route path="settings" element={<LegacySettingsRedirect />} />
           <Route path="settings/*" element={<LegacySettingsRedirect />} />
           <Route path="agents" element={<UnprefixedBoardRedirect />} />

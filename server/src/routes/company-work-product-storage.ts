@@ -9,7 +9,8 @@ import {
   type CompanyWorkProductStorageService,
   type CompanyWorkProductStorageTestResult,
 } from "../services/company-work-product-storage.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { accessService } from "../services/access.js";
+import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess, getActorInfo } from "./authz.js";
 
 export interface CompanyWorkProductStorageRouteOptions {
   service?: CompanyWorkProductStorageService;
@@ -29,6 +30,7 @@ export function companyWorkProductStorageRoutes(
   options: CompanyWorkProductStorageRouteOptions = {},
 ) {
   const router = Router();
+  const access = accessService(db);
   const service = options.service ?? createCompanyWorkProductStorageService(db);
 
   router.get("/companies/:companyId/work-product-storage", async (req, res) => {
@@ -42,9 +44,8 @@ export function companyWorkProductStorageRoutes(
     "/companies/:companyId/work-product-storage",
     validate(companyWorkProductStorageConfigSchema),
     async (req, res) => {
-      assertBoard(req);
       const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
+      await assertCompanyAdminAccess(access, req, companyId);
       const saved = await service.save(companyId, req.body);
       const actor = getActorInfo(req);
 
@@ -65,9 +66,8 @@ export function companyWorkProductStorageRoutes(
   );
 
   router.post("/companies/:companyId/work-product-storage/test", async (req, res) => {
-    assertBoard(req);
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyAdminAccess(access, req, companyId);
     if (hasConnectionTestBody(req.body)) {
       throw badRequest("Connection tests do not accept a request body");
     }

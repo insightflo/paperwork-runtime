@@ -21,6 +21,7 @@ import {
   PanelLeftOpen,
   ChevronRight,
   FolderKanban,
+  Bot,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { SidebarNavItem } from "./SidebarNavItem";
@@ -136,7 +137,7 @@ export function Sidebar({ onToggleCompact }: SidebarProps = {}) {
         </div>
       ) : (
         <div className="shrink-0 px-2.5 pt-2.5 pb-1">
-          <div className="flex items-center justify-between gap-2 rounded-[9px] border border-slate-200/90 bg-white px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.065] dark:bg-[linear-gradient(180deg,rgba(22,28,42,0.9),rgba(14,18,28,0.9))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.095)]">
+          <div className="flex items-center justify-between gap-2 rounded-[9px] border border-slate-200/90 bg-white px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.065] dark:bg-transparent dark:bg-[linear-gradient(180deg,rgba(22,28,42,0.9),rgba(14,18,28,0.9))] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.095)]">
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
               <div className="flex min-w-0 items-center gap-1.5">
                 {selectedCompany?.brandColor && (
@@ -229,10 +230,11 @@ export function Sidebar({ onToggleCompact }: SidebarProps = {}) {
                 />
                 {!compact && <span>관리 · 도구</span>}
               </span>
-              {!compact && <span className="font-mono text-[10px] text-muted-foreground/70">14</span>}
+              {!compact && <span className="font-mono text-[10px] text-muted-foreground/70">15</span>}
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-1 max-h-[40vh] overflow-y-auto scrollbar-auto-hide">
               <div className="flex flex-col gap-0.5">
+                <SidebarNavItem to="/bots" label="Bots" icon={Bot} />
                 <SidebarNavItem to="/quality" label="Quality" icon={ListChecks} />
                 <SidebarNavItem to="/org" label="Org" icon={Network} />
                 <SidebarNavItem to="/skills" label="Skills" icon={Boxes} />

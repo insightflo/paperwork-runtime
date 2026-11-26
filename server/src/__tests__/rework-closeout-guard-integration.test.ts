@@ -1,12 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { activityLog, companies, createDb, heartbeatRuns } from "@paperclipai/db";
+import { activityLog, agents, companies, createDb, heartbeatRuns } from "@paperclipai/db";
 
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
-import { hermesChatService } from "../services/hermes-chat.js";
 import { isWorkflowReworkRun, runMadeObservableProgress } from "../services/workflow/agent-api.js";
 
 // [목적] QA rework closeout guard의 두 helper(rework run 판별 + 진행 증거)가 exact run attribution으로 동작하는지 검증.
@@ -41,7 +40,20 @@ describeEmbeddedPostgres("QA rework closeout guard helpers", () => {
       requireBoardApprovalForNewAgents: false,
     });
 
-    agentId = (await hermesChatService(db).ensureOperationsAgent(companyId)).id;
+    const [createdAgent] = await db
+      .insert(agents)
+      .values({
+        companyId,
+        name: "Rework Test Agent",
+        role: "pm",
+        status: "idle",
+        adapterType: "codex_local",
+        adapterConfig: {},
+        runtimeConfig: {},
+        permissions: {},
+      })
+      .returning({ id: agents.id });
+    agentId = createdAgent.id;
 
     const [r1] = await db
       .insert(heartbeatRuns)

@@ -17,12 +17,14 @@ import {
   heartbeatService,
   logActivity,
 } from "../services/index.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { accessService } from "../services/access.js";
+import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess, assertCompanyWriteAccess, getActorInfo } from "./authz.js";
 import { createQuotaWindowsCache, parseForceRefresh } from "../services/quota-windows-cache.js";
 import { badRequest } from "../errors.js";
 
 export function costRoutes(db: Db) {
   const router = Router();
+  const access = accessService(db);
   const heartbeat = heartbeatService(db);
   const budgetHooks = {
     cancelWorkForScope: heartbeat.cancelBudgetScopeWork,
@@ -37,7 +39,7 @@ export function costRoutes(db: Db) {
 
   router.post("/companies/:companyId/cost-events", validate(createCostEventSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
 
     if (req.actor.type === "agent" && req.actor.agentId !== req.body.agentId) {
       res.status(403).json({ error: "Agent can only report its own costs" });
@@ -66,8 +68,7 @@ export function costRoutes(db: Db) {
 
   router.post("/companies/:companyId/finance-events", validate(createFinanceEventSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
-    assertBoard(req);
+    await assertCompanyAdminAccess(access, req, companyId);
 
     const event = await finance.createEvent(companyId, {
       ...req.body,
@@ -235,9 +236,8 @@ export function costRoutes(db: Db) {
     "/companies/:companyId/budgets/policies",
     validate(upsertBudgetPolicySchema),
     async (req, res) => {
-      assertBoard(req);
       const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
+      await assertCompanyAdminAccess(access, req, companyId);
       const summary = await budgets.upsertPolicy(companyId, req.body, req.actor.userId ?? "board");
       res.json(summary);
     },
@@ -247,10 +247,9 @@ export function costRoutes(db: Db) {
     "/companies/:companyId/budget-incidents/:incidentId/resolve",
     validate(resolveBudgetIncidentSchema),
     async (req, res) => {
-      assertBoard(req);
       const companyId = req.params.companyId as string;
       const incidentId = req.params.incidentId as string;
-      assertCompanyAccess(req, companyId);
+      await assertCompanyAdminAccess(access, req, companyId);
       const incident = await budgets.resolveIncident(companyId, incidentId, req.body, req.actor.userId ?? "board");
       res.json(incident);
     },
@@ -265,9 +264,8 @@ export function costRoutes(db: Db) {
   });
 
   router.patch("/companies/:companyId/budgets", validate(updateBudgetSchema), async (req, res) => {
-    assertBoard(req);
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyAdminAccess(access, req, companyId);
     const company = await companies.update(companyId, { budgetMonthlyCents: req.body.budgetMonthlyCents });
     if (!company) {
       res.status(404).json({ error: "Company not found" });
@@ -306,12 +304,15 @@ export function costRoutes(db: Db) {
       return;
     }
 
-    assertCompanyAccess(req, agent.companyId);
-
-    if (req.actor.type === "agent") {
-      if (req.actor.agentId !== agentId) {
-        res.status(403).json({ error: "Agent can only change its own budget" });
-        return;
+    if (req.actor.type === "board") {
+      await assertCompanyAdminAccess(access, req, agent.companyId);
+    } else {
+      assertCompanyAccess(req, agent.companyId);
+      if (req.actor.type === "agent") {
+        if (req.actor.agentId !== agentId) {
+          res.status(403).json({ error: "Agent can only change its own budget" });
+          return;
+        }
       }
     }
 

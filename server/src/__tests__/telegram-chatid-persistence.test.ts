@@ -25,7 +25,7 @@ vi.mock("../services/heartbeat-run-summary.js", () => ({
   summarizeHeartbeatRunResultJson: vi.fn().mockResolvedValue(null),
 }));
 
-vi.mock("../services/hermes-chat.js", () => ({
+vi.mock("../services/run-honesty-guard.js", () => ({
   applyRunHonestyCaveat: vi.fn((text: string) => text),
 }));
 

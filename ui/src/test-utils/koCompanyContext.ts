@@ -3,6 +3,7 @@ import { CompanyContext } from "../context/CompanyContext";
 
 export const koCompanyContext = {
   companies: [], selectedCompanyId: "company", selectionSource: "bootstrap", loading: false, error: null,
+  currentRole: "owner" as const, canWrite: true, canAdmin: true, isViewer: false,
   selectedCompany: {
     id: "company", name: "Company", description: null, status: "active", pauseReason: null, pausedAt: null,
     issuePrefix: "CO", issueCounter: 0, budgetMonthlyCents: 0, spentMonthlyCents: 0,

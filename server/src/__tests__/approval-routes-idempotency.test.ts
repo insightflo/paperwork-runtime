@@ -60,7 +60,7 @@ function createApp(actor: Record<string, unknown> = {
   userId: "user-1",
   companyIds: ["company-1"],
   source: "session",
-  isInstanceAdmin: false,
+  isInstanceAdmin: true,
 }) {
   const app = express();
   app.use(express.json());

@@ -33,6 +33,14 @@ import {
   readRememberedInstanceSettingsPath,
 } from "./LayoutChrome";
 
+const WORKSPACE_SHORTCUT_PATHS = [
+  "/dashboard",
+  "/missions",
+  "/issues",
+  "/inbox",
+  "/human-operator",
+] as const;
+
 export function Layout() {
   const { sidebarOpen, setSidebarOpen, toggleSidebar, isMobile } = useSidebar();
   const { openNewIssue, openOnboarding } = useDialog();
@@ -120,6 +128,10 @@ export function Layout() {
     onNewIssue: () => openNewIssue(),
     onToggleSidebar: isMobile ? toggleSidebar : slide.toggleNav,
     onTogglePanel: inspector.toggleInspector,
+    onNavigateWorkspace: (index) => {
+      const path = WORKSPACE_SHORTCUT_PATHS[index - 1];
+      if (path) navigate(path);
+    },
   });
 
   useMobileEdgeSwipe(isMobile, sidebarOpen, setSidebarOpen);

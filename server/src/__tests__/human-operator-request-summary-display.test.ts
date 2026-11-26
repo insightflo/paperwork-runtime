@@ -56,7 +56,7 @@ const boardActor = {
   userId: "user-1",
   companyIds: ["company-1"],
   source: "session",
-  isInstanceAdmin: false,
+  isInstanceAdmin: true,
 };
 
 function makeRequest(id: string, overrides: Partial<HumanOperatorRequest> = {}): HumanOperatorRequest {

@@ -45,13 +45,13 @@ function createApp(actor: Record<string, unknown>, service = createFakeService()
   return { app, service };
 }
 
-function boardActor(companyIds = [companyId]) {
+function boardActor(companyIds = [companyId], isInstanceAdmin = true) {
   return {
     type: "board",
     userId: "board-1",
     companyIds,
     source: "session",
-    isInstanceAdmin: false,
+    isInstanceAdmin,
   };
 }
 
@@ -132,7 +132,7 @@ describe("company work-product storage routes", () => {
       companyId,
       source: "agent_key",
     });
-    const outsider = createApp(boardActor(["company-2"]));
+    const outsider = createApp(boardActor(["company-2"], false));
 
     const [agentRes, outsiderRes] = await Promise.all([
       request(agent.app).get(`/api/companies/${companyId}/work-product-storage`),

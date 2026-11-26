@@ -139,7 +139,7 @@ describe("tool env secrets (real DB and child process)", () => {
   function app(strictSecretsMode = false) {
     const app = express(); app.use(express.json());
     app.use((req, _res, next) => {
-      req.actor = { type: "board", userId: "test-board", companyIds: [companyId], source: "session" } as never;
+      req.actor = { type: "board", userId: "test-board", companyIds: [companyId], source: "session", isInstanceAdmin: true } as never;
       next();
     });
     app.use("/api", toolDefinitionRoutes(db, { strictSecretsMode }));

@@ -81,7 +81,6 @@ import { normalizeUsageTotals, readRawUsageTotals, deriveNormalizedUsageDelta, f
 import { MISSION_CHILD_RUN_OUTPUT_COMMENT_MAX_CHARS, runText, buildMissionChildRunOutputComment, buildSuccessfulIssueRunAutoCompletedComment, buildNoProgressAutoBlockedComment, buildMissionWorkerNoProgressOversightComment, buildFailedIssueRunAutoBlockedComment, buildMissionWorkerFailureOversightComment, buildMissionOversightRunFailureComment, buildMissionOversightRunSucceededReleaseComment } from "./heartbeat-run-presentation.js";
 import { buildRequestChangesValidationGateComment, buildMissingWorkflowValidationVerdictGateComment, buildInsufficientEvidenceWorkflowVerdictGateComment, buildRequestChangesOwnerActionDescription, type RequestChangesVerdict } from "./heartbeat-validation-presentation.js";
 export { classifyHeartbeatRunFailure, type HeartbeatFailureClassification } from "./heartbeat-failure-classification.js";
-import { finalizeHermesChatRun } from "./hermes-chat.js";
 import { missionSessionStore } from "./sessions/mission-session-store.js";
 import { resolveDefaultAgentWorkspaceDir } from "../home-paths.js";
 import { capHeartbeatRunResultJsonForStorage, summarizeHeartbeatRunResultJson } from "./heartbeat-run-summary.js";
@@ -4611,9 +4610,6 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       });
 
       if (finalizedRun) {
-        await finalizeHermesChatRun(db, finalizedRun.id).catch((err) => {
-          logger.warn({ err, runId: finalizedRun.id }, "failed to finalize Hermes chat response");
-        });
         if (!latestTerminalRun) {
           await appendRunEvent(finalizedRun, seq++, {
             eventType: "lifecycle",
@@ -4893,9 +4889,6 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
 
       if (failedRun) {
         await failWakeupForFailedHeartbeat(db, failedRun);
-        if (!c5Held) await finalizeHermesChatRun(db, failedRun.id).catch((finalizeErr) => {
-          logger.warn({ err: finalizeErr, runId: failedRun.id }, "failed to finalize Hermes chat failure response");
-        });
         await appendRunEvent(failedRun, seq++, {
           eventType: "error",
           stream: "system",

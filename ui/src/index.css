@@ -124,23 +124,16 @@
       radial-gradient(640px 280px at 24% 0%, rgba(163, 230, 53, 0.045), transparent 70%),
       radial-gradient(560px 260px at 82% 0%, rgba(96, 165, 250, 0.04), transparent 72%);
   }
-  /* Combo 1 tactile sidebar active pill styling */
+  /* Calm, cool-toned border-first sidebar active styling (aligned with SidebarNavItem) */
   .cockpit-sidebar-nav a[aria-current="page"] {
-    background: linear-gradient(180deg, rgba(15, 23, 42, 0.06), rgba(15, 23, 42, 0.025));
-    border-color: rgba(15, 23, 42, 0.1);
-    border-left-color: var(--pw-cobalt);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
-    color: var(--pw-ink);
+    background-color: rgba(241, 245, 249, 0.9);
+    border-color: rgba(203, 213, 225, 0.9);
+    color: #0f172a;
   }
   .dark .cockpit-sidebar-nav a[aria-current="page"] {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.03));
-    border-color: rgba(255, 255, 255, 0.08);
-    border-left-color: var(--pw-lime);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.095), 0 4px 12px rgba(0, 0, 0, 0.28);
-    color: #eef2f8;
-  }
-  .dark .cockpit-sidebar-nav a[aria-current="page"] svg {
-    color: var(--pw-lime);
+    background-color: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: #f1f5f9;
   }
   /* Refine 48px command header for both light-mode legibility and dark obsidian translucency. */
   :root:not(.dark) .cockpit-header-slot > div {

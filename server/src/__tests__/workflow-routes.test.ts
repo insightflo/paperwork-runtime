@@ -137,7 +137,7 @@ function createApp(actor: Record<string, unknown> = {
   userId: "board-user-1",
   companyIds: [COMPANY_ID],
   source: "authenticated",
-  isInstanceAdmin: false,
+  isInstanceAdmin: true,
 }, db: unknown = {}) {
   const app = express();
   app.use(express.json());
@@ -289,7 +289,14 @@ describe("workflow routes", () => {
   });
 
   it("does not expose workflow tools across company boundaries", async () => {
-    const res = await request(createApp()).get(`/api/companies/${OTHER_COMPANY_ID}/workflows/tools`);
+    const nonAdminActor = {
+      type: "board",
+      userId: "board-user-1",
+      companyIds: [COMPANY_ID],
+      source: "authenticated",
+      isInstanceAdmin: false,
+    };
+    const res = await request(createApp(nonAdminActor)).get(`/api/companies/${OTHER_COMPANY_ID}/workflows/tools`);
 
     expect(res.status).toBe(403);
     expect(mockWorkflowToolCatalog.listWorkflowToolCatalog).not.toHaveBeenCalled();
@@ -429,7 +436,14 @@ describe("workflow routes", () => {
   });
 
   it("blocks cross-company and agent QA cap acceptance rollout", async () => {
-    const crossCompany = await request(createApp())
+    const nonAdminActor = {
+      type: "board",
+      userId: "board-user-1",
+      companyIds: [COMPANY_ID],
+      source: "authenticated",
+      isInstanceAdmin: false,
+    };
+    const crossCompany = await request(createApp(nonAdminActor))
       .post(`/api/companies/${OTHER_COMPANY_ID}/workflows/qa-cap-acceptance/enable`)
       .send({});
     expect(crossCompany.status).toBe(403);

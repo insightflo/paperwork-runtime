@@ -4,19 +4,32 @@ import { z } from "zod";
 import { companyMemberships, type Db } from "@paperclipai/db";
 import { badRequest, forbidden, unauthorized } from "../errors.js";
 import { validate } from "../middleware/validate.js";
-import type {
-  BotActor,
-  BotTerminalChannelService,
-  BotTerminalRecord,
-  TerminalTransport,
+import {
+  ENTERPRISE_BOTS_COMPATIBILITY,
+  type BotActor,
+  type BotCapabilityRecord,
+  type BotTerminalChannelService,
+  type BotTerminalRecord,
+  type EnterpriseBotRecord,
+  type TerminalTelemetry,
+  type TerminalTransport,
 } from "../services/bot-terminal-channel.js";
 
 /**
- * Enterprise bot terminal + channel relay routes.
+ * Enterprise bot terminal, channel relay, and OpenBot attachment routes.
+ * Existing 4 routes:
  * - `POST /terminals/register`            → 201 { terminal, token } (token returned exactly once)
  * - `POST /terminals/:terminalId/heartbeat` → 200 { terminal }   (Bearer terminal token)
  * - `POST /terminals/:terminalId/commands`  → 200 { terminal, action, decision }
  * - `POST /channels/:channelId/invoke`      → 200 | 202 relay decision
+ * Stage 19 OpenBot routes:
+ * - `GET  /companies/:companyId/snapshot`
+ * - `POST /companies/:companyId/bots`
+ * - `PATCH /companies/:companyId/bots/:botId`
+ * - `DELETE /companies/:companyId/bots/:botId`
+ * - `POST /companies/:companyId/bots/:botId/ping`
+ * - `POST /bots/:botId/inbound`            (Bearer pcp_bot_... token)
+ * - `POST /companies/:companyId/approvals/:approvalId/decision`
  * Every denial maps to 401/403/400/404 with a reason code; raw tokens are never logged or echoed.
  */
 
@@ -51,6 +64,71 @@ const invokeSchema = z.object({
     teamId: uuidSchema.nullable(),
     companyId: uuidSchema.nullable().optional(),
   }).strict().optional(),
+}).strict();
+
+const botCapabilitySchema = z.object({
+  capabilityKey: z.string().trim().min(1).max(128),
+  callableBy: z.enum(["self_only", "team", "company"]),
+  dataScope: z.enum(["self", "team", "company"]).optional(),
+  requiresApproval: z.boolean().optional(),
+}).strict();
+
+const createBotSchema = z.object({
+  kind: z.enum(["personal", "team", "company"]),
+  name: z.string().trim().min(1).max(120),
+  ownerUserId: userText.nullable().optional(),
+  teamId: uuidSchema.nullable().optional(),
+  agentId: uuidSchema.nullable().optional(),
+  callableBy: z.enum(["self_only", "team", "company"]).optional(),
+  webhookUrl: z.string().trim().min(1).max(2048).nullable().optional(),
+  tokenSecretId: uuidSchema.nullable().optional(),
+  mintInboundToken: z.boolean().optional(),
+  capabilities: z.array(botCapabilitySchema).max(50).optional(),
+}).strict();
+
+const updateBotSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  status: z.enum(["active", "paused", "revoked"]).optional(),
+  webhookUrl: z.string().trim().min(1).max(2048).nullable().optional(),
+  tokenSecretId: uuidSchema.nullable().optional(),
+  agentId: uuidSchema.nullable().optional(),
+  callableBy: z.enum(["self_only", "team", "company"]).optional(),
+  rotateInboundToken: z.boolean().optional(),
+  capabilities: z.array(botCapabilitySchema).max(50).optional(),
+}).strict();
+
+const inboundSchema = z.object({
+  event: z.string().trim().min(1).max(120).optional(),
+  title: z.string().trim().min(1).max(240).optional(),
+  description: z.string().max(16_000).optional(),
+  message: z.string().max(16_000).optional(),
+  priority: z.enum(["critical", "high", "medium", "low"]).optional(),
+  metadata: z.record(z.unknown()).optional(),
+});
+
+const approvalDecisionSchema = z.object({
+  decision: z.enum(["approve", "deny"]),
+  note: z.string().max(2000).nullable().optional(),
+}).strict();
+
+const terminalTelemetrySchema = z.object({
+  os: z.string().trim().min(1).max(64).optional(),
+  arch: z.string().trim().min(1).max(64).optional(),
+  daemonVersion: z.string().trim().min(1).max(64).optional(),
+  protocolVersion: z.number().int().min(1).max(100).optional(),
+  uptimeSecs: z.number().finite().nonnegative().max(1e12).optional(),
+  cpuPct: z.number().finite().min(0).max(10_000).optional(),
+  memRssMb: z.number().finite().nonnegative().max(1e9).optional(),
+  activeChildren: z.number().int().nonnegative().max(100_000).optional(),
+  lastRttMs: z.number().finite().nonnegative().max(600_000).optional(),
+}).strict();
+
+const heartbeatBodySchema = z.object({
+  telemetry: terminalTelemetrySchema.optional(),
+}).strict();
+
+const updateBotCapabilitiesSchema = z.object({
+  capabilities: z.array(botCapabilitySchema).max(50),
 }).strict();
 
 const callerRoles = new Set<BotActor["role"]>(["owner", "admin", "member", "viewer"]);
@@ -91,6 +169,18 @@ export function toPublicBotTerminal(terminal: BotTerminalRecord): PublicBotTermi
   return rest;
 }
 
+export interface PublicEnterpriseBot extends Omit<EnterpriseBotRecord, "inboundTokenHash"> {
+  hasInboundToken: boolean;
+  capabilities?: BotCapabilityRecord[];
+}
+
+export function toPublicEnterpriseBot(
+  bot: EnterpriseBotRecord & { capabilities?: BotCapabilityRecord[] },
+): PublicEnterpriseBot {
+  const { inboundTokenHash, ...rest } = bot;
+  return { ...rest, hasInboundToken: Boolean(inboundTokenHash) };
+}
+
 function bearerToken(req: Request): string | null {
   const header = req.headers.authorization;
   if (typeof header !== "string") return null;
@@ -101,8 +191,12 @@ function bearerToken(req: Request): string | null {
 }
 
 export function requireEnterpriseBotsBoardActor(req: Request, _res: Response, next: NextFunction) {
-  const isHeartbeat = /^\/terminals\/[^/]+\/heartbeat\/?$/.test(req.path);
-  if (!isHeartbeat && (req.actor.type !== "board" || !req.actor.userId)) {
+  const isPublicCompatibility =
+    req.method === "GET" && /^\/compatibility\/?$/.test(req.path);
+  const isTokenAuthed =
+    /^\/terminals\/[^/]+\/heartbeat\/?$/.test(req.path) ||
+    /^\/bots\/[^/]+\/inbound\/?$/.test(req.path);
+  if (!isPublicCompatibility && !isTokenAuthed && (req.actor.type !== "board" || !req.actor.userId)) {
     next(unauthorized());
     return;
   }
@@ -119,12 +213,22 @@ export function createEnterpriseBotsRouter(service: BotTerminalChannelService, r
     return actor;
   }
 
+  async function requireAdminActor(req: Request, companyId: string): Promise<BotActor> {
+    const actor = await requireActor(req, companyId);
+    if (actor.role !== "owner" && actor.role !== "admin") throw forbidden("admin_role_required");
+    return actor;
+  }
+
   function idParam(req: Request, name: string): string {
     const raw = req.params[name];
     const value = Array.isArray(raw) ? "" : (raw ?? "");
     if (!UUID_PATTERN.test(value)) throw badRequest(`${name}_invalid`);
     return value;
   }
+
+  const compatibility: RequestHandler = (_req, res) => {
+    res.json(ENTERPRISE_BOTS_COMPATIBILITY);
+  };
 
   const register: RequestHandler = async (req, res) => {
     const body = req.body as z.infer<typeof registerSchema>;
@@ -136,7 +240,16 @@ export function createEnterpriseBotsRouter(service: BotTerminalChannelService, r
   const heartbeat: RequestHandler = async (req, res) => {
     const token = bearerToken(req);
     if (!token) throw unauthorized("terminal_token_rejected");
-    const terminal = await service.heartbeatTerminal(idParam(req, "terminalId"), token);
+    const parsed = heartbeatBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: "Validation error", details: parsed.error.errors });
+      return;
+    }
+    const terminal = await service.heartbeatTerminal(
+      idParam(req, "terminalId"),
+      token,
+      parsed.data.telemetry as TerminalTelemetry | undefined,
+    );
     res.json({ terminal: toPublicBotTerminal(terminal) });
   };
 
@@ -152,6 +265,18 @@ export function createEnterpriseBotsRouter(service: BotTerminalChannelService, r
     const body = req.body as z.infer<typeof invokeSchema>;
     const actor = await requireActor(req, body.companyId);
     const channelId = idParam(req, "channelId");
+    if (req.query.dryRun === "true") {
+      const preview = await service.previewChannelInvoke(
+        actor,
+        channelId,
+        body.targetBotId,
+        body.executionTarget,
+        body.capabilityKey,
+        body.targetRecord,
+      );
+      res.json(preview);
+      return;
+    }
     const result = await service.invokeChannelMention(actor, channelId, body.targetBotId, body.executionTarget, body.capabilityKey, body.targetRecord);
     const payload = {
       channel: { id: result.channel.id, kind: result.channel.kind },
@@ -165,9 +290,122 @@ export function createEnterpriseBotsRouter(service: BotTerminalChannelService, r
     else res.json({ outcome: "allowed", ...payload });
   };
 
+  const snapshot: RequestHandler = async (req, res) => {
+    const companyId = idParam(req, "companyId");
+    await requireActor(req, companyId);
+    const data = await service.getCompanySnapshot(companyId);
+    res.json({
+      bots: data.bots.map((b) => toPublicEnterpriseBot(b)),
+      terminals: data.terminals.map((t) => toPublicBotTerminal(t)),
+      channels: data.channels,
+      pendingApprovals: data.pendingApprovals,
+    });
+  };
+
+  const createBot: RequestHandler = async (req, res) => {
+    const companyId = idParam(req, "companyId");
+    const actor = await requireAdminActor(req, companyId);
+    const body = req.body as z.infer<typeof createBotSchema>;
+    const result = await service.createBot(companyId, actor, body);
+    res.status(201).json({
+      bot: toPublicEnterpriseBot({ ...result.bot, capabilities: result.capabilities }),
+      capabilities: result.capabilities,
+      inboundToken: result.inboundToken,
+    });
+  };
+
+  const updateBot: RequestHandler = async (req, res) => {
+    const companyId = idParam(req, "companyId");
+    const botId = idParam(req, "botId");
+    const actor = await requireAdminActor(req, companyId);
+    const body = req.body as z.infer<typeof updateBotSchema>;
+    const result = await service.updateBot(companyId, botId, actor, body);
+    res.json({
+      bot: toPublicEnterpriseBot({ ...result.bot, capabilities: result.capabilities }),
+      capabilities: result.capabilities,
+      ...(result.inboundToken ? { inboundToken: result.inboundToken } : {}),
+    });
+  };
+
+  const deleteBot: RequestHandler = async (req, res) => {
+    const companyId = idParam(req, "companyId");
+    const botId = idParam(req, "botId");
+    const actor = await requireAdminActor(req, companyId);
+    const result = await service.deleteBot(companyId, botId, actor);
+    res.json(result);
+  };
+
+  const pingBot: RequestHandler = async (req, res) => {
+    const companyId = idParam(req, "companyId");
+    const botId = idParam(req, "botId");
+    const actor = await requireAdminActor(req, companyId);
+    const result = await service.pingBot(companyId, botId, actor);
+    res.json(result);
+  };
+
+  const inbound: RequestHandler = async (req, res) => {
+    const token = bearerToken(req);
+    if (!token) throw unauthorized("bot_token_rejected");
+    const botId = idParam(req, "botId");
+    const body = (req.body ?? {}) as z.infer<typeof inboundSchema>;
+    const result = await service.handleBotInbound(botId, token, body);
+    res.json(result);
+  };
+
+  const decideApproval: RequestHandler = async (req, res) => {
+    const companyId = idParam(req, "companyId");
+    const approvalId = idParam(req, "approvalId");
+    const actor = await requireAdminActor(req, companyId);
+    const body = req.body as z.infer<typeof approvalDecisionSchema>;
+    const approval = await service.decideBotApproval(companyId, approvalId, actor, body.decision, body.note ?? null);
+    res.json({ approval });
+  };
+
+  const updateBotCapabilities: RequestHandler = async (req, res) => {
+    const companyId = idParam(req, "companyId");
+    const botId = idParam(req, "botId");
+    const actor = await requireAdminActor(req, companyId);
+    const body = req.body as z.infer<typeof updateBotCapabilitiesSchema>;
+    const result = await service.updateBotCapabilities(companyId, botId, actor, body.capabilities);
+    res.json({
+      bot: toPublicEnterpriseBot({ ...result.bot, capabilities: result.capabilities }),
+      capabilities: result.capabilities,
+    });
+  };
+
+  const audit: RequestHandler = async (req, res) => {
+    const companyId = idParam(req, "companyId");
+    const actor = await requireActor(req, companyId);
+    let limit = 50;
+    if (req.query.limit !== undefined) {
+      const raw = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+      const parsed = Number(raw);
+      if (!Number.isInteger(parsed) || parsed < 1) throw badRequest("invalid_limit");
+      limit = Math.min(200, parsed);
+    }
+    const events = await service.listCompanyAudit(companyId, actor, limit);
+    res.json({ events });
+  };
+
+  router.get("/compatibility", compatibility);
   router.post("/terminals/register", validate(registerSchema), register);
   router.post("/terminals/:terminalId/heartbeat", heartbeat);
   router.post("/terminals/:terminalId/commands", validate(commandSchema), command);
   router.post("/channels/:channelId/invoke", validate(invokeSchema), invoke);
+
+  router.get("/companies/:companyId/snapshot", snapshot);
+  router.get("/companies/:companyId/audit", audit);
+  router.post("/companies/:companyId/bots", validate(createBotSchema), createBot);
+  router.patch("/companies/:companyId/bots/:botId", validate(updateBotSchema), updateBot);
+  router.patch(
+    "/companies/:companyId/bots/:botId/capabilities",
+    validate(updateBotCapabilitiesSchema),
+    updateBotCapabilities,
+  );
+  router.delete("/companies/:companyId/bots/:botId", deleteBot);
+  router.post("/companies/:companyId/bots/:botId/ping", pingBot);
+  router.post("/bots/:botId/inbound", validate(inboundSchema), inbound);
+  router.post("/companies/:companyId/approvals/:approvalId/decision", validate(approvalDecisionSchema), decideApproval);
+
   return router;
 }

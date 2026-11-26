@@ -8,7 +8,7 @@ import { companiesApi } from "../api/companies";
 import { assetsApi } from "../api/assets";
 import { queryKeys } from "../lib/queryKeys";
 import { Button } from "@/components/ui/button";
-import { Settings } from "lucide-react";
+import { Copy, Lock, RotateCcw, Settings } from "lucide-react";
 import { CompanyPatternIcon } from "../components/CompanyPatternIcon";
 import { CompanyWorkProductStorageSettings } from "../components/CompanyWorkProductStorageSettings";
 import { CompanyDataStorageSettings } from "../components/CompanyDataStorageSettings";
@@ -30,7 +30,9 @@ export function CompanySettings() {
     companies,
     selectedCompany,
     selectedCompanyId,
-    setSelectedCompanyId
+    setSelectedCompanyId,
+    canAdmin,
+    currentRole,
   } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
@@ -76,7 +78,15 @@ export function CompanySettings() {
     }) => companiesApi.update(selectedCompanyId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
-    }
+      pushToast({ title: "Company settings saved", tone: "success" });
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Failed to save company settings",
+        body: err instanceof Error ? err.message : "Unknown error",
+        tone: "error",
+      });
+    },
   });
 
   const settingsMutation = useMutation({
@@ -86,7 +96,15 @@ export function CompanySettings() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.companies.all });
-    }
+      pushToast({ title: "Hiring approval policy updated", tone: "success" });
+    },
+    onError: (err) => {
+      pushToast({
+        title: "Failed to update hiring policy",
+        body: err instanceof Error ? err.message : "Unknown error",
+        tone: "error",
+      });
+    },
   });
 
   const syncLogoState = (nextLogoUrl: string | null) => {
@@ -159,6 +177,7 @@ export function CompanySettings() {
   }
 
   function handleSaveGeneral() {
+    if (!canAdmin) return;
     generalMutation.mutate({
       name: companyName.trim(),
       description: description.trim() || null,
@@ -167,6 +186,26 @@ export function CompanySettings() {
       workProductRoot: workProductRoot.trim() || null,
       defaultLanguage
     });
+  }
+
+  function handleDiscardGeneral() {
+    if (!selectedCompany) return;
+    setCompanyName(selectedCompany.name);
+    setDescription(selectedCompany.description ?? "");
+    setBrandColor(selectedCompany.brandColor ?? "");
+    setTimezone(selectedCompany.timezone ?? "");
+    setWorkProductRoot((selectedCompany as { workProductRoot?: string | null }).workProductRoot ?? "");
+    setDefaultLanguage(selectedCompany.defaultLanguage);
+    generalMutation.reset();
+  }
+
+  async function copyChipValue(label: string, value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      pushToast({ title: `${label} copied`, body: value, tone: "success" });
+    } catch {
+      pushToast({ title: `Failed to copy ${label}`, tone: "error" });
+    }
   }
 
   const archived = selectedCompany.status === "archived";
@@ -193,20 +232,41 @@ export function CompanySettings() {
 
       {/* 40px unified toolbar; the deep-cobalt save CTA appears only while dirty */}
       <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-xl border border-slate-200/90 bg-slate-50/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] xl:col-span-2">
-        <div className="flex min-w-0 items-baseline gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h1 className="flex min-w-0 items-center gap-2 truncate text-sm font-semibold text-slate-900 dark:text-[#edf2fb]">
             <Settings className="h-4 w-4 shrink-0 text-slate-500 dark:text-[#8b97ad]" aria-hidden />
             Company Settings
           </h1>
+          <button
+            type="button"
+            onClick={() => void copyChipValue("Company prefix", selectedCompany.issuePrefix)}
+            title={`Click to copy prefix (${selectedCompany.issuePrefix})`}
+            className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-slate-200/90 bg-white px-2 font-mono text-[11px] font-medium text-slate-700 transition-colors hover:border-blue-500/40 hover:text-blue-700 dark:border-white/[0.09] dark:bg-[#0e131d] dark:text-[#cbd5e1] dark:hover:border-[#60a5fa]/40 dark:hover:text-[#60a5fa]"
+          >
+            <span>{selectedCompany.issuePrefix}</span>
+            <Copy className="h-3 w-3 opacity-70" />
+          </button>
+          <button
+            type="button"
+            onClick={() => void copyChipValue("Company ID", selectedCompany.id)}
+            title={`Click to copy Company ID (${selectedCompany.id})`}
+            className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-slate-200/90 bg-white px-2 font-mono text-[11px] text-slate-600 transition-colors hover:border-blue-500/40 hover:text-blue-700 dark:border-white/[0.09] dark:bg-[#0e131d] dark:text-[#9aa7bd] dark:hover:border-[#60a5fa]/40 dark:hover:text-[#60a5fa]"
+          >
+            <span>ID: {selectedCompany.id.slice(0, 8)}…</span>
+            <Copy className="h-3 w-3 opacity-70" />
+          </button>
           <span className={`truncate text-xs ${generalDirty ? "text-amber-600 dark:text-[#f59e0b]" : "text-slate-500 dark:text-[#8b97ad]"}`}>
             {generalDirty ? "Unsaved changes in General / Appearance" : "All changes saved"}
           </span>
         </div>
-        {generalDirty && (
+        {!canAdmin && (
+          <div className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#fde68a]">
+            <Lock className="h-3 w-3 shrink-0" />
+            <span>Read-only ({currentRole}) · Admin or owner role required to modify settings</span>
+          </div>
+        )}
+        {canAdmin && generalDirty && (
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            {generalMutation.isSuccess && (
-              <span className="text-xs text-lime-700 dark:text-[#a3e635]">Saved</span>
-            )}
             {generalMutation.isError && (
               <span className="text-xs text-destructive">
                 {generalMutation.error instanceof Error
@@ -214,6 +274,16 @@ export function CompanySettings() {
                   : "Failed to save"}
               </span>
             )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              onClick={handleDiscardGeneral}
+              disabled={generalMutation.isPending}
+            >
+              <RotateCcw className="h-3 w-3" />
+              Discard
+            </Button>
             <Button
               size="sm"
               className={`h-7 text-xs ${CTA}`}
@@ -312,10 +382,11 @@ export function CompanySettings() {
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                    disabled={!canAdmin}
                     onChange={handleLogoFileChange}
-                    className={`w-full px-2.5 py-1.5 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-blue-600 dark:file:bg-[#2563eb] file:px-2.5 file:py-1 file:text-xs file:text-white dark:file:text-[#f8fafc] ${FIELD}`}
+                    className={`w-full px-2.5 py-1.5 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-blue-600 dark:file:bg-[#2563eb] file:px-2.5 file:py-1 file:text-xs file:text-white dark:file:text-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-60 ${FIELD}`}
                   />
-                  {logoUrl && (
+                  {logoUrl && canAdmin && (
                     <div className="flex items-center gap-2">
                       <Button
                         size="sm"
@@ -391,12 +462,15 @@ export function CompanySettings() {
       {/* Hiring */}
       <div className="space-y-2">
         <div className={LABEL}>Hiring</div>
-        <div className={`px-4 py-3 ${CARD}`}>
+        <div className={`px-4 py-3 ${CARD} ${!canAdmin ? "pointer-events-none opacity-60" : ""}`}>
           <ToggleField
             label="Require board approval for new hires"
             hint="New agent hires stay pending until approved by board."
             checked={!!selectedCompany.requireBoardApprovalForNewAgents}
-            onChange={(v) => settingsMutation.mutate(v)}
+            onChange={(v) => {
+              if (!canAdmin) return;
+              settingsMutation.mutate(v);
+            }}
           />
         </div>
       </div>
@@ -418,11 +492,13 @@ export function CompanySettings() {
               size="sm"
               variant="destructive"
               disabled={
+                !canAdmin ||
                 archiveMutation.isPending ||
                 archived
               }
+              title={!canAdmin ? "Admin or owner role required" : undefined}
               onClick={() => {
-                if (!selectedCompanyId) return;
+                if (!canAdmin || !selectedCompanyId) return;
                 const confirmed = window.confirm(
                   `Archive company "${selectedCompany.name}"? It will be hidden from the sidebar.`
                 );

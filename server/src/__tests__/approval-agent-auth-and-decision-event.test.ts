@@ -117,7 +117,7 @@ describe("approval agent-key access + decision event", () => {
   });
 
   it("emits a minimal plugin-only approval.decided event (no payload) on approve", async () => {
-    await request(createApp({ type: "board", userId: "board-1", companyIds: ["company-1"], source: "session", isInstanceAdmin: false }))
+    await request(createApp({ type: "board", userId: "board-1", companyIds: ["company-1"], source: "session", isInstanceAdmin: true }))
       .post("/api/approvals/approval-1/approve")
       .send({ decisionNote: "lgtm" });
     const decidedCall = mockLogActivity.mock.calls.find((call: any[]) => call[1]?.action === "approval.decided");
@@ -141,7 +141,7 @@ describe("approval agent-key access + decision event", () => {
       },
       applied: true,
     });
-    await request(createApp({ type: "board", userId: "board-1", companyIds: ["company-1"], source: "session", isInstanceAdmin: false }))
+    await request(createApp({ type: "board", userId: "board-1", companyIds: ["company-1"], source: "session", isInstanceAdmin: true }))
       .post("/api/approvals/approval-2/approve")
       .send({});
     const decidedCall = mockLogActivity.mock.calls.find((call: any[]) => call[1]?.action === "approval.decided");

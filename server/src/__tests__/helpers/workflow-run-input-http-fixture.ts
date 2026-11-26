@@ -69,22 +69,26 @@ export async function seedWebhookFixture(db: Db, fields: WorkflowRunInput[]) {
   return { ...seed, secret, app: buildWebhookApp(db) };
 }
 
-export function boardActorFor(companyId: string) {
-  // source가 local_implicit이 아니므로 companyIds 회사 스코프 강제가 활성화된다.
+export function boardActorFor(companyId: string, opts?: { isInstanceAdmin?: boolean }) {
+  // source가 local_implicit이 아니므로 non-admin일 때 companyIds 회사 스코프 강제가 활성화된다.
   return {
     type: "board",
     userId: "board-user-run-input",
     companyIds: [companyId],
     source: "session",
-    isInstanceAdmin: false,
+    isInstanceAdmin: opts?.isInstanceAdmin ?? true,
   };
 }
 
-export function buildBoardApp(db: Db, companyId: string): express.Express {
+export function buildBoardApp(
+  db: Db,
+  companyId: string,
+  opts?: { isInstanceAdmin?: boolean },
+): express.Express {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    (req as unknown as { actor: unknown }).actor = boardActorFor(companyId);
+    (req as unknown as { actor: unknown }).actor = boardActorFor(companyId, opts);
     next();
   });
   app.use("/api", workflowRoutes(db));

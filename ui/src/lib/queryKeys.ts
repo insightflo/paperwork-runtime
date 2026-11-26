@@ -194,6 +194,10 @@ export const queryKeys = {
   channel: {
     config: (companyId: string) => ["channel-config", companyId] as const,
   },
+  enterpriseBots: {
+    snapshot: (companyId: string) => ["enterprise-bots", "snapshot", companyId] as const,
+    audit: (companyId: string) => ["enterprise-bots", "audit", companyId] as const,
+  },
   worktree: {
     rules: (companyId: string) => ["worktree-rules", companyId] as const,
     ruleDetail: (id: string) => ["worktree-rules", "detail", id] as const,

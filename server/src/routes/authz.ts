@@ -97,6 +97,35 @@ export async function assertCompanyAdminAccess(
   }
 }
 
+export async function assertCompanyWriteAccess(
+  access: Pick<CompanyAdminAccessChecker, "getMembership">,
+  req: Request,
+  companyId: string,
+) {
+  assertCompanyAccess(req, companyId);
+  if (req.actor.type === "agent") {
+    return;
+  }
+  if (req.actor.type === "board") {
+    if (req.actor.source === "local_implicit" || req.actor.isInstanceAdmin) {
+      return;
+    }
+    const userId = req.actor.userId;
+    if (!userId) {
+      throw forbidden("Viewer role is read-only");
+    }
+    const membership = await access.getMembership(companyId, "user", userId);
+    if (
+      membership &&
+      membership.status === "active" &&
+      hasMinimumTeamRole(membership.membershipRole, "member")
+    ) {
+      return;
+    }
+    throw forbidden("Viewer role is read-only");
+  }
+}
+
 export function getActorInfo(req: Request) {
   if (req.actor.type === "none") {
     throw unauthorized();

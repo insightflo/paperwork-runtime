@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type CSSProperties } from "react";
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from "react";
 import { Link, useNavigate, useLocation } from "@/lib/router";
 import { useQuery } from "@tanstack/react-query";
 import { agentsApi, type OrgNode } from "../api/agents";
@@ -30,6 +30,7 @@ import {
   LayoutGrid,
   SlidersHorizontal,
   Search,
+  X,
 } from "lucide-react";
 import { AGENT_ROLE_LABELS, type Agent, type HeartbeatRun } from "@paperclipai/shared";
 
@@ -144,6 +145,29 @@ export function Agents() {
   const [query, setQuery] = useState("");
   const [adapterFilter, setAdapterFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      const isTyping = Boolean(
+        target && (target.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(target.tagName)),
+      );
+      if (isTyping) {
+        if (event.key === "Escape" && target === searchInputRef.current) {
+          searchInputRef.current?.blur();
+        }
+        return;
+      }
+      if (event.key === "/") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const { data: agents, isLoading, error } = useQuery({
     queryKey: queryKeys.agents.list(selectedCompanyId!),
@@ -322,6 +346,24 @@ export function Agents() {
     (adapterFilter !== "all" ? 1 : 0) +
     (roleFilter !== "all" ? 1 : 0);
 
+  const hasActiveFilters =
+    statusFilter !== "all" ||
+    query.trim() !== "" ||
+    adapterFilter !== "all" ||
+    roleFilter !== "all" ||
+    showTerminated;
+
+  const resetAllFilters = () => {
+    setQuery("");
+    setAdapterFilter("all");
+    setRoleFilter("all");
+    setShowTerminated(false);
+    setFiltersOpen(false);
+    if (statusFilter !== "all") {
+      handleStatusSelect("all");
+    }
+  };
+
   return (
     <div className="mx-auto w-full space-y-4 tabular-nums">
       {/* 1-row 4-column fleet telemetry strip */}
@@ -382,9 +424,10 @@ export function Agents() {
               aria-hidden
             />
             <input
+              ref={searchInputRef}
               type="search"
               aria-label="에이전트 검색"
-              placeholder="이름, 역할, 어댑터, 모델 검색"
+              placeholder="이름, 역할, 어댑터, 모델 검색 (/)"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className={cn(CONTROL, "w-full pl-8")}
@@ -420,6 +463,17 @@ export function Agents() {
               </option>
             ))}
           </select>
+
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={resetAllFilters}
+              className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-500/15 dark:border-[#60a5fa]/35 dark:bg-[#2563eb]/15 dark:text-[#60a5fa] dark:hover:bg-[#2563eb]/25"
+            >
+              <X className="h-3 w-3" />
+              필터 초기화
+            </button>
+          )}
 
           <span className="hidden text-[11px] text-muted-foreground xl:inline dark:text-[#627089]">
             표시{" "}

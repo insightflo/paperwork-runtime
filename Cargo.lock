@@ -868,6 +868,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "paperwork-bot-runtime"
+version = "0.1.0"
+dependencies = [
+ "paperclip-ops-control",
+ "paperclip-process-supervisor",
+ "paperclip-redactor-core",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "paperwork-engine"
 version = "0.1.0"
 dependencies = [

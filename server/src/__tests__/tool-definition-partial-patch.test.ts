@@ -34,7 +34,7 @@ let fixture: Awaited<ReturnType<typeof progressDatabase>>, companyId: string;
 function app() {
   const server = express(); server.use(express.json());
   server.use((req, _res, next) => {
-    req.actor = { type: 'board', userId: 'test-board', companyIds: [companyId], source: 'authenticated', isInstanceAdmin: false };
+    req.actor = { type: 'board', userId: 'test-board', companyIds: [companyId], source: 'authenticated', isInstanceAdmin: true };
     next();
   });
   server.use('/api', toolDefinitionRoutes(fixture.db)); server.use(errorHandler); return server;

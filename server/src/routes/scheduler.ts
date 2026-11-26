@@ -15,13 +15,15 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
 import { scheduleStore } from "../services/scheduler/index.js";
-import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { accessService } from "../services/access.js";
+import { assertCompanyAccess, assertCompanyAdminAccess, getActorInfo } from "./authz.js";
 import { notFound, unprocessable } from "../errors.js";
 import { validateCron } from "../services/cron.js";
 import { logActivity } from "../services/activity-log.js";
 
 export function schedulerRoutes(db: Db) {
   const router = Router();
+  const access = accessService(db);
 
   /**
    * GET /scheduler/schedules
@@ -47,7 +49,11 @@ export function schedulerRoutes(db: Db) {
    */
   router.post("/companies/:companyId/schedules", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    if (req.actor.type === "board") {
+      await assertCompanyAdminAccess(access, req, companyId);
+    } else {
+      assertCompanyAccess(req, companyId);
+    }
 
     const { cronExpression, timezone, agentId, missionId, enabled } = req.body;
 
@@ -119,7 +125,11 @@ export function schedulerRoutes(db: Db) {
     if (!existing) {
       throw notFound("Schedule not found");
     }
-    assertCompanyAccess(req, existing.companyId);
+    if (req.actor.type === "board") {
+      await assertCompanyAdminAccess(access, req, existing.companyId);
+    } else {
+      assertCompanyAccess(req, existing.companyId);
+    }
 
     const updates: Record<string, unknown> = {};
 
@@ -176,7 +186,11 @@ export function schedulerRoutes(db: Db) {
     if (!existing) {
       throw notFound("Schedule not found");
     }
-    assertCompanyAccess(req, existing.companyId);
+    if (req.actor.type === "board") {
+      await assertCompanyAdminAccess(access, req, existing.companyId);
+    } else {
+      assertCompanyAccess(req, existing.companyId);
+    }
 
     await scheduleStore.deleteSchedule(db, req.params.id as string);
 

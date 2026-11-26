@@ -13,7 +13,7 @@ import { agents, channelConfigs, companies, heartbeatRuns, issues, missions } fr
 import { getChannelRegistry } from "../index.js";
 import { logger } from "../../middleware/logger.js";
 import { summarizeHeartbeatRunResultJson } from "../../services/heartbeat-run-summary.js";
-import { applyRunHonestyCaveat } from "../../services/hermes-chat.js";
+import { applyRunHonestyCaveat } from "../../services/run-honesty-guard.js";
 
 /**
  * Map of companyId → chatId for users who have messaged the bot.
@@ -147,6 +147,7 @@ async function formatTelegramConversationReply(
       id: heartbeatRuns.id,
       companyId: heartbeatRuns.companyId,
       agentId: heartbeatRuns.agentId,
+      agentName: agents.name,
       contextSnapshot: heartbeatRuns.contextSnapshot,
       resultJson: heartbeatRuns.resultJson,
       error: heartbeatRuns.error,
@@ -155,6 +156,7 @@ async function formatTelegramConversationReply(
       createdAt: heartbeatRuns.createdAt,
     })
     .from(heartbeatRuns)
+    .leftJoin(agents, eq(heartbeatRuns.agentId, agents.id))
     .where(eq(heartbeatRuns.id, runId))
     .limit(1);
   if (!run) return null;
@@ -171,8 +173,9 @@ async function formatTelegramConversationReply(
     readString(summary?.message) ??
     readString(run.error) ??
     `Run ${run.status}.`;
-  const prefix = run.status === "succeeded" ? "Hermes Operations Manager" : `Hermes Operations Manager (${run.status})`;
-  // [P5] honesty guard — telegram 답변 경로도 finalizeRunResponse와 동일하게 durable proof 대조.
+  const agentName = readString(run.agentName) ?? "Operations Manager";
+  const prefix = run.status === "succeeded" ? agentName : `${agentName} (${run.status})`;
+  // [P5] honesty guard — telegram 답변 경로도 durable proof 대조.
   //   claimed action인데 이 run의 wakeup/comment proof가 0이면 caveat 부착(거짓 "깨웠다" 방지).
   const body = await applyRunHonestyCaveat(db, run, resultText);
   return {
