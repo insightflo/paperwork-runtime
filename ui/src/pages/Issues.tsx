@@ -11,6 +11,17 @@ import { queryKeys } from "../lib/queryKeys";
 import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
 import { EmptyState } from "../components/EmptyState";
 import { IssuesList } from "../components/IssuesList";
+import {
+  ISSUES_PREFETCH_STALE_MS,
+  ISSUES_TOOLBAR_CLASS,
+  IssuesPagination,
+  hasIssuePageMore,
+  issuePageQueryFilters,
+  issuePageRequestFilters,
+  issueWindowRows,
+  prefetchIssuePage,
+  useIssuePaging,
+} from "../components/IssuesListChrome";
 import { CircleDot } from "lucide-react";
 
 /* ── Cockpit telemetry strip ──
@@ -26,77 +37,11 @@ const STATUS_GROUPS: { key: StatusGroup; label: string; statuses: string[]; dot:
   { key: "completed", label: "Completed", statuses: ["done"], dot: "bg-[#34d399]" },
 ];
 
-/* Server-side status filter per tab. Active rows are the default payload; archived
- * rows are requested only after an explicit Completed press. Open / In Progress /
- * Blocked stay client-side filters over the active payload. */
+/* Server-side status window per tab. Each status group maps to its own server status
+ * list (the API accepts a comma-separated set), so a tab's pages are that tab's rows.
+ * Archived rows are requested only after an explicit Completed press. */
 const statusFilterFor = (group: StatusGroup | null) =>
-  group === "completed" ? "done" : ACTIVE_ISSUE_STATUS_FILTER;
-
-/* ── Restyle hooks for the IssuesList chrome ──
- * The component contract is unchanged; the page-owned wrapper restyles its
- * toolbar and rows. Tailwind only emits candidates that appear verbatim in
- * source, so every selector is spelled out here rather than composed. */
-const TOOLBAR_CLASS = [
-  // 40px single-row cockpit toolbar
-  "[&>div>div:first-child]:h-auto",
-  "[&>div>div:first-child]:sm:h-10",
-  "[&>div>div:first-child]:rounded-md",
-  "[&>div>div:first-child]:border",
-  "[&>div>div:first-child]:border-[#242d3f]",
-  "[&>div>div:first-child]:bg-[#111622]",
-  "[&>div>div:first-child]:py-0",
-  "[&>div>div:first-child]:pl-2",
-  "[&>div>div:first-child]:pr-1.5",
-  // Deep-cobalt "+ New" CTA
-  "[&>div>div:first-child>div:first-child>button:first-child]:h-7",
-  "[&>div>div:first-child>div:first-child>button:first-child]:rounded-md",
-  "[&>div>div:first-child>div:first-child>button:first-child]:border-[#5f8dff]/50",
-  "[&>div>div:first-child>div:first-child>button:first-child]:bg-[#2563eb]",
-  "[&>div>div:first-child>div:first-child>button:first-child]:font-semibold",
-  "[&>div>div:first-child>div:first-child>button:first-child]:text-[#f8fafc]",
-  "[&>div>div:first-child>div:first-child>button:first-child]:shadow-[inset_0_0_0_1px_rgba(95,141,255,0.45)]",
-  "[&>div>div:first-child>div:first-child>button:first-child]:hover:bg-[#1d4ed8]",
-  // Search field
-  "[&>div>div:first-child>div:first-child_input]:h-7",
-  "[&>div>div:first-child>div:first-child_input]:rounded-md",
-  "[&>div>div:first-child>div:first-child_input]:border-[#242d3f]",
-  "[&>div>div:first-child>div:first-child_input]:bg-[#0b0e14]",
-  "[&>div>div:first-child>div:first-child_input]:text-[#e6edf7]",
-  "[&>div>div:first-child>div:first-child_input]:placeholder:text-[#8b97ad]",
-  "[&>div>div:first-child>div:first-child_input]:focus-visible:border-[#5f8dff]",
-  "[&>div>div:first-child>div:first-child_input]:focus-visible:ring-[#5f8dff]/40",
-  // View-mode toggle (list / board) styled as status tabs
-  "[&>div>div:first-child>div:last-child>div:first-child]:rounded-md",
-  "[&>div>div:first-child>div:last-child>div:first-child]:border-[#242d3f]",
-  "[&>div>div:first-child>div:last-child>div:first-child]:bg-[#0b0e14]",
-  "[&>div>div:first-child>div:last-child>div:first-child>button]:h-6",
-  "[&>div>div:first-child>div:last-child>div:first-child>button]:w-7",
-  "[&>div>div:first-child>div:last-child>div:first-child>button]:p-0",
-  "[&>div>div:first-child>div:last-child>div:first-child>button]:text-[#8b97ad]",
-  "[&>div>div:first-child>div:last-child>div:first-child>button]:hover:text-[#e6edf7]",
-  "[&>div>div:first-child>div:last-child>div:first-child>button.bg-accent]:bg-[#151b28]",
-  "[&>div>div:first-child>div:last-child>div:first-child>button.bg-accent]:text-[#e6edf7]",
-  "[&>div>div:first-child>div:last-child>div:first-child>button.bg-accent]:shadow-[inset_0_0_0_1px_#242d3f]",
-  // Filter / Sort / Group
-  "[&>div>div:first-child>div:last-child>button]:h-7",
-  "[&>div>div:first-child>div:last-child>button]:rounded-md",
-  "[&>div>div:first-child>div:last-child>button]:text-xs",
-  "[&>div>div:first-child>div:last-child>button]:text-[#8b97ad]",
-  "[&>div>div:first-child>div:last-child>button]:hover:bg-[#151b28]",
-  "[&>div>div:first-child>div:last-child>button]:hover:text-[#e6edf7]",
-  "[&>div>div:first-child>div:last-child>button.text-blue-600]:text-[#5f8dff]",
-  // Group headers
-  "[&_button[data-state]]:text-[11px]",
-  "[&_button[data-state]]:uppercase",
-  "[&_button[data-state]]:tracking-[0.08em]",
-  "[&_button[data-state]]:text-[#8b97ad]",
-  // High-density rows with crisp hairlines
-  "[&_[data-state=open]>a[href^='/issues']]:border-[#242d3f]",
-  "[&_[data-state=open]>a[href^='/issues']]:sm:py-1.5",
-  // j/k selection highlight
-  "[&_[data-state=open]>a[data-pw-selected=true]]:bg-[#151b28]",
-  "[&_[data-state=open]>a[data-pw-selected=true]]:shadow-[inset_2px_0_0_#5f8dff]",
-].join(" ");
+  group ? STATUS_GROUPS.find((g) => g.key === group)!.statuses.join(",") : ACTIVE_ISSUE_STATUS_FILTER;
 
 function isTypingTarget(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null;
@@ -122,6 +67,10 @@ export function Issues() {
   const [activeGroup, setActiveGroup] = useState<StatusGroup | null>(null);
   const [searchActive, setSearchActive] = useState(initialSearch.trim().length > 0);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  // Client-side filters (Filter popover) narrow rows inside IssuesList; while any is active the
+  // list leaves paging mode and shows the whole filtered payload, exactly as before.
+  const [clientFilterCount, setClientFilterCount] = useState(0);
+  const pageRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const handleSearchChange = useCallback((search: string) => {
@@ -191,11 +140,25 @@ export function Issues() {
   }, [setBreadcrumbs]);
 
   const statusFilter = statusFilterFor(activeGroup);
-  const { data: issues, isLoading, error, isPlaceholderData } = useQuery({
-    queryKey: queryKeys.issues.list(selectedCompanyId!, { status: statusFilter }),
-    queryFn: () => issuesApi.list(selectedCompanyId!, { status: statusFilter }),
-    enabled: !!selectedCompanyId,
+  // Server-backed paging only without search or client filters; both bypass the paged `issues` prop.
+  const paged = !searchActive && clientFilterCount === 0;
+  const paging = useIssuePaging({
+    resetKey: `${selectedCompanyId ?? ""}|${activeGroup ?? "all"}|${searchActive}|${clientFilterCount > 0}`,
+    scrollTarget: pageRef,
+  });
+  const { data: issues, isLoading, isFetching, error, isPlaceholderData } = useQuery({
+    queryKey: queryKeys.issues.list(
+      selectedCompanyId!,
+      paged ? issuePageQueryFilters(statusFilter, paging.page) : { status: statusFilter },
+    ),
+    queryFn: () => issuesApi.list(
+      selectedCompanyId!,
+      paged ? issuePageRequestFilters(statusFilter, paging.page) : { status: statusFilter },
+    ),
+    enabled: !!selectedCompanyId && !searchActive, // search results bypass this prop
     placeholderData: keepPreviousData,
+    // A prefetched page must not re-fetch the moment Next lands on it; mutations still invalidate.
+    staleTime: paged ? ISSUES_PREFETCH_STALE_MS : 0,
   });
   // Keeps the Open / In Progress / Blocked counts correct while Completed shows archived rows.
   const { data: activeIssues } = useQuery({
@@ -203,20 +166,24 @@ export function Issues() {
     queryFn: () => issuesApi.list(selectedCompanyId!, { status: ACTIVE_ISSUE_STATUS_FILTER }),
     enabled: !!selectedCompanyId,
   });
+  // The Completed count needs the whole archived payload; the list itself stays paged.
+  const { data: doneIssues } = useQuery({
+    queryKey: queryKeys.issues.list(selectedCompanyId!, { status: statusFilterFor("completed") }),
+    queryFn: () => issuesApi.list(selectedCompanyId!, { status: statusFilterFor("completed") }),
+    enabled: !!selectedCompanyId && activeGroup === "completed",
+  });
 
   const updateIssue = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       issuesApi.update(id, data),
     onSuccess: () => {
+      // Prefix match covers every status tab and page window of this company's list.
       queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId!) });
-      for (const status of [ACTIVE_ISSUE_STATUS_FILTER, statusFilterFor("completed")]) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.issues.list(selectedCompanyId!, { status }) });
-      }
     },
   });
 
   // Archived rows exist in cache only once the Completed tab has loaded them.
-  const archivedIssues = activeGroup === "completed" && !isPlaceholderData ? issues : undefined;
+  const archivedIssues = activeGroup === "completed" ? doneIssues : undefined;
   const groupCounts = useMemo(() => {
     const counts: Record<StatusGroup, number> = { open: 0, in_progress: 0, blocked: 0, completed: 0 };
     for (const issue of [...(activeIssues ?? []), ...(archivedIssues ?? [])]) {
@@ -230,12 +197,25 @@ export function Issues() {
     return loaded ? groupCounts[group] : "—";
   };
 
-  const activeStatuses = STATUS_GROUPS.find((g) => g.key === activeGroup)?.statuses;
+  const hasMore = paged && hasIssuePageMore(issues);
   const visibleIssues = useMemo(() => {
-    // keepPreviousData hands us the previous tab's rows while the new tab loads; show those untouched.
-    if (!activeStatuses || isPlaceholderData) return issues ?? [];
-    return (issues ?? []).filter((issue) => activeStatuses.includes(issue.status));
-  }, [issues, activeStatuses, isPlaceholderData]);
+    // keepPreviousData hands us the previous tab/page's rows while the next loads; show those untouched.
+    if (isPlaceholderData || !paged) return issues ?? [];
+    return issueWindowRows(issues);
+  }, [issues, paged, isPlaceholderData]);
+  const listBusy = isFetching && !isLoading;
+
+  const prefetchNext = useCallback(() => {
+    if (!selectedCompanyId || !hasMore) return;
+    void prefetchIssuePage(queryClient, selectedCompanyId, statusFilter, paging.page + 1);
+  }, [queryClient, selectedCompanyId, statusFilter, hasMore, paging.page]);
+  // Warm the next page once the current one settles; hover/focus on Next re-checks it cheaply.
+  useEffect(() => {
+    if (!isLoading && !isFetching) prefetchNext();
+  }, [isLoading, isFetching, prefetchNext]);
+  useEffect(() => {
+    setSelectedPath(null);
+  }, [paging.page]);
 
   const visibleRowPaths = useCallback(() => {
     const root = listRef.current;
@@ -277,7 +257,7 @@ export function Issues() {
   }
 
   return (
-    <div className="space-y-2 tabular-nums">
+    <div ref={pageRef} className="scroll-mt-16 space-y-2 tabular-nums">
       {/* 1-row 4-column cockpit strip: counts double as status-group shortcuts */}
       <div className="cockpit-strip w-full gap-0" role="group" aria-label="Work items by status">
         {STATUS_GROUPS.map((group) => {
@@ -306,7 +286,8 @@ export function Issues() {
 
       <div
         ref={listRef}
-        className={TOOLBAR_CLASS}
+        className={`${ISSUES_TOOLBAR_CLASS} transition-opacity ${listBusy ? "opacity-60" : ""}`}
+        aria-busy={listBusy}
       >
         <IssuesList
           issues={visibleIssues}
@@ -320,9 +301,21 @@ export function Issues() {
           initialAssignees={searchParams.get("assignee") ? [searchParams.get("assignee")!] : undefined}
           initialSearch={initialSearch}
           onSearchChange={handleSearchChange}
+          onFiltersChange={setClientFilterCount}
           onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
         />
       </div>
+      {paged && (visibleIssues.length > 0 || paging.page > 1) && (
+        <IssuesPagination
+          page={paging.page}
+          rowCount={visibleIssues.length}
+          hasMore={hasMore}
+          isFetching={isFetching}
+          onPrev={paging.goToPrev}
+          onNext={paging.goToNext}
+          onPrefetchNext={prefetchNext}
+        />
+      )}
     </div>
   );
 }
