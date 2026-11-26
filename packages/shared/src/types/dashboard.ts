@@ -115,3 +115,87 @@ export interface DgateSnapshotPushResponse {
   ok: true;
   fetchedAt: string;
 }
+
+export type ControlPlaneGateKind =
+  | "approval"
+  | "operator_decision"
+  | "worktree_proposal"
+  | "budget_incident";
+
+export type ControlPlaneSeverity = "critical" | "high" | "medium" | "low";
+
+export interface ControlPlaneSummary {
+  activeRuns: number;
+  queuedRuns: number;
+  activeAgents: number;
+  totalAgents: number;
+  pendingApprovals: number;
+  pendingDecisions: number;
+  openBudgetIncidents: number;
+  pendingWorktreeProposals: number;
+  passRatePct: number;
+}
+
+export interface ControlPlaneWorker {
+  agentId: string;
+  agentName: string;
+  role: string;
+  adapterType: string;
+  model: string | null;
+  status: string;
+  runId: string;
+  startedAt: string | null;
+  durationMs: number;
+  contextLabel: string;
+}
+
+export interface ControlPlaneGateItem {
+  id: string;
+  kind: ControlPlaneGateKind;
+  title: string;
+  status: string;
+  severity: ControlPlaneSeverity;
+  createdAt: string;
+  linkPath: string;
+}
+
+export interface ControlPlaneGates {
+  approvals: ControlPlaneGateItem[];
+  operatorDecisions: ControlPlaneGateItem[];
+  worktreeProposals: ControlPlaneGateItem[];
+  budgetIncidents: ControlPlaneGateItem[];
+}
+
+export interface ControlPlaneOutcomes {
+  windowHours: number;
+  total: number;
+  succeeded: number;
+  failed: number;
+  cancelled: number;
+  timedOut: number;
+  running: number;
+  queued: number;
+  byAdapter: Record<string, number>;
+  byProvider: Record<string, number>;
+}
+
+export interface ControlPlaneEvent {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId: string;
+  actorType: string;
+  createdAt: string;
+  summary: string;
+}
+
+export interface ControlPlaneSnapshotResponse {
+  connected: true;
+  source: "paperwork_internal";
+  timestamp: string;
+  summary: ControlPlaneSummary;
+  workers: ControlPlaneWorker[];
+  gates: ControlPlaneGates;
+  outcomes: ControlPlaneOutcomes;
+  recentEvents: ControlPlaneEvent[];
+}

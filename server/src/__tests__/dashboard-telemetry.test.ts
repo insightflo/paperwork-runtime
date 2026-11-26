@@ -1,12 +1,23 @@
 import express from "express";
 import request from "supertest";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { errorHandler } from "../middleware/index.js";
 import { dashboardRoutes } from "../routes/dashboard.js";
 import {
+  buildControlPlaneSnapshotFromRows,
+  type ControlPlaneActivityRow,
+  type ControlPlaneAgentCountRow,
+  type ControlPlaneApprovalRow,
+  type ControlPlaneBudgetIncidentRow,
+  type ControlPlaneDecisionRow,
+  type ControlPlaneOutcomeRow,
+  type ControlPlaneProviderCountRow,
+  type ControlPlaneRunModelRow,
+  type ControlPlaneWorkerRunRow,
+  type ControlPlaneWorktreeProposalRow,
+} from "../services/dashboard-dgate.js";
+import {
   buildDashboardTelemetryFromRows,
-  clearDgateSnapshotCache,
-  dashboardTelemetryService,
   parseTelemetryWindow,
   type TelemetryCostEventRow,
   type TelemetryRunCostAggRow,
@@ -330,133 +341,346 @@ describe("dashboard telemetry aggregation", () => {
   });
 });
 
-describe("dgate bridge service", () => {
-  beforeEach(() => {
-    clearDgateSnapshotCache();
+function createControlPlaneFakeDb(responses: unknown[][]) {
+  let callIndex = 0;
+  const select = vi.fn(() => {
+    const rows = responses[callIndex] ?? [];
+    callIndex += 1;
+
+    const thenable: Record<string, any> = {
+      from: vi.fn(() => thenable),
+      leftJoin: vi.fn(() => thenable),
+      where: vi.fn(() => thenable),
+      orderBy: vi.fn(() => thenable),
+      limit: vi.fn(() => thenable),
+      groupBy: vi.fn(() => thenable),
+      then: (onFulfilled: (value: unknown) => unknown, onRejected?: (reason: unknown) => unknown) =>
+        Promise.resolve(rows).then(onFulfilled, onRejected),
+    };
+    return thenable;
   });
 
-  afterEach(() => {
-    clearDgateSnapshotCache();
-  });
+  return { select } as any;
+}
 
-  it("returns available:false when DGATE_WEB_URL is unset and no snapshot was pushed", async () => {
-    const svc = dashboardTelemetryService(createFakeDb(), {
-      dgateWebUrl: () => undefined,
-    });
-    const res = await svc.getDgateSnapshot("company-1");
-    expect(res).toMatchObject({
-      available: false,
-      source: "none",
-      stale: false,
-      fetchedAt: null,
-      snapshot: null,
-    });
-    expect(res.reason).toBeTruthy();
-  });
-
-  it("handles push -> fresh -> stale (>15s) -> expired (>60s) transitions", async () => {
-    let nowMs = Date.parse("2026-11-26T12:00:00.000Z");
-    const svc = dashboardTelemetryService(createFakeDb(), {
-      now: () => new Date(nowMs),
-      dgateWebUrl: () => undefined,
-    });
-
-    const pushed = svc.pushDgateSnapshot("company-1", { workers: 3, activeForks: 1 });
-    expect(pushed).toEqual({ ok: true, fetchedAt: "2026-11-26T12:00:00.000Z" });
-
-    // 5s later -> fresh
-    nowMs += 5_000;
-    const fresh = await svc.getDgateSnapshot("company-1");
-    expect(fresh).toEqual({
-      available: true,
-      source: "push",
-      stale: false,
-      fetchedAt: "2026-11-26T12:00:00.000Z",
-      snapshot: { workers: 3, activeForks: 1 },
-    });
-
-    // 20s later -> stale
-    nowMs += 15_000;
-    const stale = await svc.getDgateSnapshot("company-1");
-    expect(stale).toEqual({
-      available: true,
-      source: "push",
-      stale: true,
-      fetchedAt: "2026-11-26T12:00:00.000Z",
-      snapshot: { workers: 3, activeForks: 1 },
-    });
-
-    // 65s later -> expired
-    nowMs += 45_000;
-    const expired = await svc.getDgateSnapshot("company-1");
-    expect(expired).toMatchObject({
-      available: false,
-      source: "none",
-      stale: false,
-      fetchedAt: null,
-      snapshot: null,
-    });
-  });
-
-  it("polls DGATE_WEB_URL when configured and falls back to push cache on poll failure", async () => {
+describe("internal control-plane snapshot builder", () => {
+  it("returns clean zeroed connected snapshot when tables are empty", () => {
     const now = new Date("2026-11-26T12:00:00.000Z");
-    const fetchMock = vi.fn().mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({ workers: 5, sourceTag: "live" }),
+    const result = buildControlPlaneSnapshotFromRows({
+      now,
+      agentCounts: [],
+      workerRuns: [],
+      runModels: [],
+      activeRunCounts: { running: 0, queued: 0 },
+      outcomeRows: [],
+      providerRows: [],
+      pendingApprovalsCount: 0,
+      pendingDecisionsCount: 0,
+      openBudgetIncidentsCount: 0,
+      pendingWorktreeProposalsCount: 0,
+      approvalRows: [],
+      decisionRows: [],
+      worktreeProposalRows: [],
+      budgetIncidentRows: [],
+      activityRows: [],
     });
 
-    const svc = dashboardTelemetryService(createFakeDb(), {
-      now: () => now,
-      fetchImpl: fetchMock as unknown as typeof fetch,
-      dgateWebUrl: () => "http://127.0.0.1:4199/",
+    expect(result).toEqual({
+      connected: true,
+      source: "paperwork_internal",
+      timestamp: now.toISOString(),
+      summary: {
+        activeRuns: 0,
+        queuedRuns: 0,
+        activeAgents: 0,
+        totalAgents: 0,
+        pendingApprovals: 0,
+        pendingDecisions: 0,
+        openBudgetIncidents: 0,
+        pendingWorktreeProposals: 0,
+        passRatePct: 0,
+      },
+      workers: [],
+      gates: {
+        approvals: [],
+        operatorDecisions: [],
+        worktreeProposals: [],
+        budgetIncidents: [],
+      },
+      outcomes: {
+        windowHours: 24,
+        total: 0,
+        succeeded: 0,
+        failed: 0,
+        cancelled: 0,
+        timedOut: 0,
+        running: 0,
+        queued: 0,
+        byAdapter: {},
+        byProvider: {},
+      },
+      recentEvents: [],
+    });
+  });
+
+  it("computes summary, workers, gates, 24h outcomes, and recent events without leaking secrets", () => {
+    const now = new Date("2026-11-26T12:00:00.000Z");
+
+    const agentCounts: ControlPlaneAgentCountRow[] = [
+      { status: "running", count: 2 },
+      { status: "idle", count: 3 },
+      { status: "paused", count: 1 },
+      { status: "error", count: 1 },
+    ];
+
+    const workerRuns: ControlPlaneWorkerRunRow[] = [
+      {
+        runId: "run-1",
+        status: "running",
+        agentId: "agent-1",
+        agentName: "Planner",
+        agentRole: "lead",
+        adapterType: "claude_local",
+        adapterConfig: { model: "claude-opus-4", apiKey: "sk-ant-SECRET-VALUE" },
+        usageJson: null,
+        invocationSource: "assignment",
+        triggerDetail: null,
+        issueIdentifier: "PAP-201",
+        issueTitle: "Ship internal control plane",
+        startedAt: new Date("2026-11-26T11:55:00.000Z"),
+        finishedAt: null,
+        createdAt: new Date("2026-11-26T11:55:00.000Z"),
+      },
+      {
+        runId: "run-2",
+        status: "succeeded",
+        agentId: "agent-2",
+        agentName: "Builder",
+        agentRole: "engineer",
+        adapterType: "codex_local",
+        adapterConfig: { env: { OPENAI_API_KEY: "sk-openai-SECRET-VALUE" } },
+        usageJson: { model: "gpt-5" },
+        invocationSource: "timer",
+        triggerDetail: "scheduled_sweep",
+        issueIdentifier: null,
+        issueTitle: null,
+        startedAt: new Date("2026-11-26T11:40:00.000Z"),
+        finishedAt: new Date("2026-11-26T11:50:00.000Z"),
+        createdAt: new Date("2026-11-26T11:40:00.000Z"),
+      },
+    ];
+
+    const runModels: ControlPlaneRunModelRow[] = [
+      { heartbeatRunId: "run-1", model: "claude-sonnet-4" },
+    ];
+
+    const outcomeRows: ControlPlaneOutcomeRow[] = [
+      { status: "succeeded", adapterType: "claude_local", count: 6 },
+      { status: "succeeded", adapterType: "codex_local", count: 2 },
+      { status: "failed", adapterType: "claude_local", count: 1 },
+      { status: "timed_out", adapterType: "codex_local", count: 1 },
+      { status: "cancelled", adapterType: "codex_local", count: 1 },
+      { status: "running", adapterType: "claude_local", count: 1 },
+      { status: "queued", adapterType: "codex_local", count: 2 },
+    ];
+
+    const providerRows: ControlPlaneProviderCountRow[] = [
+      { provider: "anthropic", count: 9 },
+      { provider: "openai", count: 4 },
+    ];
+
+    const approvalRows: ControlPlaneApprovalRow[] = [
+      {
+        id: "app-1",
+        type: "hire_agent",
+        status: "pending",
+        payload: { title: "Approve QA Agent", token: "secret-approval-token" },
+        createdAt: new Date("2026-11-26T11:30:00.000Z"),
+      },
+    ];
+
+    const decisionRows: ControlPlaneDecisionRow[] = [
+      {
+        id: "dec-1",
+        title: "Confirm production rollout",
+        status: "pending",
+        priority: "critical",
+        createdAt: new Date("2026-11-26T11:20:00.000Z"),
+      },
+    ];
+
+    const worktreeProposalRows: ControlPlaneWorktreeProposalRow[] = [
+      {
+        id: "wt-1",
+        rationale: "Restrict branch cleanup to merged worktrees only",
+        status: "proposed",
+        createdAt: new Date("2026-11-26T11:10:00.000Z"),
+      },
+    ];
+
+    const budgetIncidentRows: ControlPlaneBudgetIncidentRow[] = [
+      {
+        id: "bi-1",
+        scopeType: "company",
+        metric: "billed_cents",
+        thresholdType: "hard",
+        amountLimit: 10000,
+        amountObserved: 10500,
+        status: "open",
+        createdAt: new Date("2026-11-26T11:00:00.000Z"),
+      },
+    ];
+
+    const activityRows: ControlPlaneActivityRow[] = [
+      {
+        id: "act-1",
+        action: "approval.created",
+        entityType: "approval",
+        entityId: "app-1",
+        actorType: "agent",
+        details: { title: "Approve QA Agent", secretKey: "super-secret-value" },
+        createdAt: new Date("2026-11-26T11:30:00.000Z"),
+      },
+    ];
+
+    const result = buildControlPlaneSnapshotFromRows({
+      now,
+      agentCounts,
+      workerRuns,
+      runModels,
+      activeRunCounts: { running: 1, queued: 2 },
+      outcomeRows,
+      providerRows,
+      pendingApprovalsCount: 1,
+      pendingDecisionsCount: 1,
+      openBudgetIncidentsCount: 1,
+      pendingWorktreeProposalsCount: 1,
+      approvalRows,
+      decisionRows,
+      worktreeProposalRows,
+      budgetIncidentRows,
+      activityRows,
     });
 
-    const polled = await svc.getDgateSnapshot("company-1");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:4199/api/snapshot",
-      expect.objectContaining({ method: "GET" }),
-    );
-    expect(polled).toEqual({
-      available: true,
-      source: "poll",
-      stale: false,
-      fetchedAt: now.toISOString(),
-      snapshot: { workers: 5, sourceTag: "live" },
+    expect(result.connected).toBe(true);
+    expect(result.source).toBe("paperwork_internal");
+    expect(result.timestamp).toBe(now.toISOString());
+
+    // passRatePct = 8 / (8 + 1 + 1) = 80%
+    expect(result.summary).toEqual({
+      activeRuns: 1,
+      queuedRuns: 2,
+      activeAgents: 5,
+      totalAgents: 7,
+      pendingApprovals: 1,
+      pendingDecisions: 1,
+      openBudgetIncidents: 1,
+      pendingWorktreeProposals: 1,
+      passRatePct: 80,
     });
 
-    // Push a fallback snapshot, then simulate poll failure
-    svc.pushDgateSnapshot("company-1", { workers: 2, fallback: true });
-    fetchMock.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    expect(result.workers).toEqual([
+      {
+        agentId: "agent-1",
+        agentName: "Planner",
+        role: "lead",
+        adapterType: "claude_local",
+        model: "claude-sonnet-4",
+        status: "running",
+        runId: "run-1",
+        startedAt: "2026-11-26T11:55:00.000Z",
+        durationMs: 5 * 60_000,
+        contextLabel: "PAP-201 · Ship internal control plane",
+      },
+      {
+        agentId: "agent-2",
+        agentName: "Builder",
+        role: "engineer",
+        adapterType: "codex_local",
+        model: "gpt-5",
+        status: "succeeded",
+        runId: "run-2",
+        startedAt: "2026-11-26T11:40:00.000Z",
+        durationMs: 10 * 60_000,
+        contextLabel: "scheduled_sweep",
+      },
+    ]);
 
-    const fallback = await svc.getDgateSnapshot("company-1");
-    expect(fallback).toEqual({
-      available: true,
-      source: "push",
-      stale: false,
-      fetchedAt: now.toISOString(),
-      snapshot: { workers: 2, fallback: true },
+    expect(result.gates.approvals).toHaveLength(1);
+    expect(result.gates.approvals[0]).toMatchObject({
+      id: "app-1",
+      kind: "approval",
+      title: "hire_agent: Approve QA Agent",
+      status: "pending",
+      severity: "high",
+      linkPath: "/approvals/app-1",
     });
+
+    expect(result.gates.operatorDecisions[0]).toMatchObject({
+      id: "dec-1",
+      kind: "operator_decision",
+      title: "Confirm production rollout",
+      severity: "critical",
+      linkPath: "/decisions/dec-1",
+    });
+
+    expect(result.gates.worktreeProposals[0]).toMatchObject({
+      id: "wt-1",
+      kind: "worktree_proposal",
+      status: "proposed",
+      severity: "medium",
+      linkPath: "/worktrees",
+    });
+
+    expect(result.gates.budgetIncidents[0]).toMatchObject({
+      id: "bi-1",
+      kind: "budget_incident",
+      status: "open",
+      severity: "critical",
+      linkPath: "/costs",
+    });
+
+    expect(result.outcomes).toEqual({
+      windowHours: 24,
+      total: 14,
+      succeeded: 8,
+      failed: 1,
+      cancelled: 1,
+      timedOut: 1,
+      running: 1,
+      queued: 2,
+      byAdapter: {
+        claude_local: 8,
+        codex_local: 6,
+      },
+      byProvider: {
+        anthropic: 9,
+        openai: 4,
+      },
+    });
+
+    expect(result.recentEvents).toEqual([
+      {
+        id: "act-1",
+        action: "approval.created",
+        entityType: "approval",
+        entityId: "app-1",
+        actorType: "agent",
+        createdAt: "2026-11-26T11:30:00.000Z",
+        summary: "approval.created (approval): Approve QA Agent",
+      },
+    ]);
+
+    // Ensure no secret values ever appear anywhere in serialized response
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain("sk-ant-SECRET-VALUE");
+    expect(serialized).not.toContain("sk-openai-SECRET-VALUE");
+    expect(serialized).not.toContain("secret-approval-token");
+    expect(serialized).not.toContain("super-secret-value");
   });
 });
 
-describe("dashboard telemetry & dgate routes", () => {
-  const originalDgateUrl = process.env.DGATE_WEB_URL;
-
-  beforeEach(() => {
-    delete process.env.DGATE_WEB_URL;
-    clearDgateSnapshotCache();
-  });
-
-  afterEach(() => {
-    if (originalDgateUrl === undefined) {
-      delete process.env.DGATE_WEB_URL;
-    } else {
-      process.env.DGATE_WEB_URL = originalDgateUrl;
-    }
-    clearDgateSnapshotCache();
-  });
-
+describe("dashboard telemetry & internal control-plane routes", () => {
   it("serves GET /api/companies/:companyId/dashboard/telemetry with window parsing", async () => {
     const app = createApp(createFakeDb());
     const res = await request(app).get("/api/companies/company-1/dashboard/telemetry?window=10m");
@@ -472,51 +696,147 @@ describe("dashboard telemetry & dgate routes", () => {
     expect(fallbackRes.body.buckets).toHaveLength(12);
   });
 
-  it("enforces company access on telemetry and dgate endpoints", async () => {
-    const unauthApp = createApp(createFakeDb(), { type: "none" });
+  it("enforces company access on telemetry and internal control-plane endpoints", async () => {
+    const unauthApp = createApp(createControlPlaneFakeDb([]), { type: "none" });
     const res401 = await request(unauthApp).get("/api/companies/company-1/dashboard/telemetry");
     expect(res401.status).toBe(401);
 
-    const wrongCompanyApp = createApp(createFakeDb(), {
+    const dgate401 = await request(unauthApp).get("/api/companies/company-1/dashboard/dgate");
+    expect(dgate401.status).toBe(401);
+
+    const wrongCompanyApp = createApp(createControlPlaneFakeDb([]), {
       type: "board",
       userId: "user-1",
       companyIds: ["company-other"],
       source: "session",
       isInstanceAdmin: false,
     });
-    const res403 = await request(wrongCompanyApp)
-      .post("/api/companies/company-1/dashboard/dgate/snapshot")
-      .send({ ok: true });
-    expect(res403.status).toBe(403);
+    const dgate403 = await request(wrongCompanyApp).get("/api/companies/company-1/dashboard/dgate");
+    expect(dgate403.status).toBe(403);
   });
 
-  it("validates POST /dgate/snapshot payloads and serves them on GET /dgate", async () => {
-    const app = createApp(createFakeDb());
+  it("serves GET /api/companies/:companyId/dashboard/dgate from Paperwork DB and removes POST /dgate/snapshot", async () => {
+    const fakeDb = createControlPlaneFakeDb([
+      [{ status: "running", count: 1 }, { status: "idle", count: 2 }], // agentCounts
+      [{ status: "running", count: 1 }], // activeRunRows
+      [
+        {
+          runId: "run-live-1",
+          status: "running",
+          agentId: "agent-1",
+          agentName: "OpsLead",
+          agentRole: "lead",
+          adapterType: "claude_local",
+          adapterConfig: { model: "claude-opus-4" },
+          usageJson: null,
+          invocationSource: "assignment",
+          triggerDetail: null,
+          issueIdentifier: "PAP-900",
+          issueTitle: "Control plane live check",
+          startedAt: new Date("2026-11-26T11:58:00.000Z"),
+          finishedAt: null,
+          createdAt: new Date("2026-11-26T11:58:00.000Z"),
+        },
+      ], // workerRuns
+      [
+        { status: "succeeded", adapterType: "claude_local", count: 4 },
+        { status: "running", adapterType: "claude_local", count: 1 },
+      ], // outcomeRows
+      [{ provider: "anthropic", count: 5 }], // providerRows
+      [{ count: 1 }], // pendingApprovalsAgg
+      [{ count: 0 }], // pendingDecisionsAgg
+      [{ count: 0 }], // openBudgetIncidentsAgg
+      [{ count: 0 }], // pendingWorktreeProposalsAgg
+      [
+        {
+          id: "app-live-1",
+          type: "budget_override",
+          status: "pending",
+          payload: { title: "Increase cap" },
+          createdAt: new Date("2026-11-26T11:50:00.000Z"),
+        },
+      ], // approvalRows
+      [], // decisionRows
+      [], // worktreeProposalRows
+      [], // budgetIncidentRows
+      [
+        {
+          id: "evt-1",
+          action: "run.started",
+          entityType: "heartbeat_run",
+          entityId: "run-live-1",
+          actorType: "system",
+          details: { status: "running" },
+          createdAt: new Date("2026-11-26T11:58:00.000Z"),
+        },
+      ], // activityRows
+      [{ heartbeatRunId: "run-live-1", model: "claude-opus-4" }], // runModels
+    ]);
 
-    const arrayRes = await request(app)
-      .post("/api/companies/company-1/dashboard/dgate/snapshot")
-      .send([1, 2, 3]);
-    expect(arrayRes.status).toBe(400);
-
-    const oversizedRes = await request(app)
-      .post("/api/companies/company-1/dashboard/dgate/snapshot")
-      .send({ blob: "x".repeat(520 * 1024) });
-    expect(oversizedRes.status).toBe(413);
-
-    const pushRes = await request(app)
-      .post("/api/companies/company-1/dashboard/dgate/snapshot")
-      .send({ activeWorkers: 4, queueDepth: 1 });
-    expect(pushRes.status).toBe(200);
-    expect(pushRes.body.ok).toBe(true);
-    expect(typeof pushRes.body.fetchedAt).toBe("string");
-
+    const app = createApp(fakeDb);
     const getRes = await request(app).get("/api/companies/company-1/dashboard/dgate");
+
     expect(getRes.status).toBe(200);
     expect(getRes.body).toMatchObject({
-      available: true,
-      source: "push",
-      stale: false,
-      snapshot: { activeWorkers: 4, queueDepth: 1 },
+      connected: true,
+      source: "paperwork_internal",
+      summary: {
+        activeRuns: 1,
+        queuedRuns: 0,
+        activeAgents: 3,
+        totalAgents: 3,
+        pendingApprovals: 1,
+        pendingDecisions: 0,
+        openBudgetIncidents: 0,
+        pendingWorktreeProposals: 0,
+        passRatePct: 100,
+      },
+      outcomes: {
+        windowHours: 24,
+        total: 5,
+        succeeded: 4,
+        failed: 0,
+        cancelled: 0,
+        timedOut: 0,
+        running: 1,
+        queued: 0,
+        byAdapter: { claude_local: 5 },
+        byProvider: { anthropic: 5 },
+      },
     });
+    expect(typeof getRes.body.timestamp).toBe("string");
+    expect(getRes.body.workers).toHaveLength(1);
+    expect(getRes.body.workers[0]).toMatchObject({
+      agentId: "agent-1",
+      agentName: "OpsLead",
+      role: "lead",
+      adapterType: "claude_local",
+      model: "claude-opus-4",
+      status: "running",
+      runId: "run-live-1",
+      contextLabel: "PAP-900 · Control plane live check",
+    });
+    expect(getRes.body.gates.approvals).toHaveLength(1);
+    expect(getRes.body.gates.approvals[0]).toMatchObject({
+      id: "app-live-1",
+      kind: "approval",
+      severity: "critical",
+      linkPath: "/approvals/app-live-1",
+    });
+    expect(getRes.body.recentEvents).toHaveLength(1);
+    expect(getRes.body.recentEvents[0]).toMatchObject({
+      id: "evt-1",
+      action: "run.started",
+      entityType: "heartbeat_run",
+      entityId: "run-live-1",
+      actorType: "system",
+      summary: "run.started (heartbeat_run): running",
+    });
+
+    // Legacy Mac push endpoint must no longer exist
+    const postRes = await request(app)
+      .post("/api/companies/company-1/dashboard/dgate/snapshot")
+      .send({ ok: true });
+    expect(postRes.status).toBe(404);
   });
 });
