@@ -24,15 +24,15 @@ const STATUS_TABS: { value: StatusTab; label: string }[] = [
     .map((status) => ({ value: status, label: status.replace("_", " ") })),
 ];
 
-// Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
+// Tactile cockpit palette: white/slate light surfaces, #0e131d/#090c12 obsidian dark surfaces, cobalt focus, lime active pulses.
 const CONTROL =
-  "h-7 rounded-md border border-[#242d3f] bg-[#0b0e14] px-2 text-xs text-[#e6edf7] outline-none focus:border-[#5f8dff] placeholder:text-[#5c6a84]";
-const SEGMENT_ACTIVE = "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_0_0_1px_#242d3f]";
-const SEGMENT_IDLE = "text-[#8b97ad] hover:text-[#e6edf7]";
+  "h-7 rounded-md border border-slate-200/90 bg-white px-2 text-xs text-slate-950 outline-none transition-colors focus:border-[#2563eb] placeholder:text-slate-400 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:border-[#60a5fa] dark:placeholder:text-[#627089]";
+const SEGMENT_ACTIVE = "bg-slate-100 text-slate-950 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.14)] dark:bg-[#151d2e] dark:text-[#eef2f8] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)]";
+const SEGMENT_IDLE = "text-slate-500 hover:text-slate-950 dark:text-[#8f9db3] dark:hover:text-[#eef2f8]";
 /** Explicit column tracks: color + name/description (flexes, truncates) | target | updated | status pill (never wraps). */
 const ROW_TRACKS =
   "grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-x-3 sm:grid-cols-[minmax(0,1fr)_6.5rem_6.5rem_max-content]";
-const LIST_FRAME = "divide-y divide-[#242d3f] border-[#242d3f] bg-[#111622]";
+const LIST_FRAME = "tactile-card divide-y divide-slate-200/80 border-slate-200/90 bg-white dark:divide-white/[0.07] dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
 
 interface StripCellProps {
   label: string;
@@ -53,7 +53,7 @@ function StripCell({ label, value, active, dot, title, onClick }: StripCellProps
       onClick={onClick}
       className={cn(
         "cockpit-cell min-w-0 flex-1 justify-center transition-colors",
-        active ? "bg-[#151b28] text-[#e6edf7] shadow-[inset_0_-1px_0_#5f8dff]" : "hover:bg-[#151b28] hover:text-[#e6edf7]",
+        active ? "bg-slate-100 text-slate-950 shadow-[inset_0_-2px_0_#65a30d] dark:bg-[#151d2e] dark:text-[#eef2f8] dark:shadow-[inset_0_-2px_0_#a3e635]" : "hover:bg-slate-50 hover:text-slate-950 dark:hover:bg-white/[0.05] dark:hover:text-[#eef2f8]",
       )}
     >
       <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />
@@ -122,12 +122,12 @@ export function Projects() {
   return (
     <div className="space-y-2 tabular-nums">
       {/* 1-row 6-cell cockpit strip: counts double as status-filter shortcuts */}
-      <div className="cockpit-strip w-full gap-0" role="group" aria-label="Work contexts by status">
+      <div className="cockpit-strip w-full gap-0 border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]" role="group" aria-label="Work contexts by status">
         <StripCell
           label="Total"
           value={projects.length}
           active={tab === "all" && !pausedOnly}
-          dot="bg-[#5f8dff]"
+          dot="bg-blue-500 dark:bg-[#60a5fa]"
           title="Show all work contexts"
           onClick={() => { setTab("all"); setPausedOnly(false); }}
         />
@@ -137,7 +137,7 @@ export function Projects() {
             label={status.replace("_", " ")}
             value={counts[status]}
             active={tab === status && !pausedOnly}
-            dot={status === "in_progress" ? "bg-[#34d399]" : status === "completed" ? "bg-[#8b97ad]" : "bg-[#fbbf24]"}
+            dot={status === "in_progress" ? "bg-lime-500 dark:bg-[#a3e635]" : status === "completed" ? "bg-slate-400 dark:bg-[#627089]" : "bg-amber-500 dark:bg-[#f59e0b]"}
             title={`Show ${status.replace("_", " ")} work contexts`}
             onClick={() => selectTab(status)}
           />
@@ -146,14 +146,14 @@ export function Projects() {
           label="Paused"
           value={counts.paused}
           active={pausedOnly}
-          dot={counts.paused > 0 ? "bg-[#f87171]" : "bg-[#4a5670]"}
+          dot={counts.paused > 0 ? "bg-rose-500 dark:bg-[#fb7185]" : "bg-slate-300 dark:bg-[#4a5670]"}
           title="Show work contexts paused by budget hard stop"
           onClick={() => setPausedOnly((current) => !current)}
         />
       </div>
 
       {/* Tight single-row 40px toolbar: status tabs · search · count · primary action. */}
-      <div className="cockpit-toolbar h-10 w-full rounded-md border border-[#242d3f] bg-[#111622] pl-1.5 pr-1.5">
+      <div className="cockpit-toolbar h-10 w-full tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] pl-1.5 pr-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto overflow-y-hidden">
           {isMobile ? (
             <select
@@ -168,7 +168,7 @@ export function Projects() {
               <option value="paused">Paused</option>
             </select>
           ) : (
-            <div role="group" aria-label="Filter work contexts by status" className="flex shrink-0 items-center gap-0.5 rounded-md border border-[#242d3f] bg-[#0b0e14] p-0.5">
+            <div role="group" aria-label="Filter work contexts by status" className="flex shrink-0 items-center gap-0.5 rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#090c12] p-0.5">
               {STATUS_TABS.map((item) => (
                 <button
                   key={item.value}
@@ -183,7 +183,7 @@ export function Projects() {
             </div>
           )}
           <label className="flex shrink-0 items-center gap-1.5">
-            <Search className="h-3.5 w-3.5 shrink-0 text-[#8b97ad]" aria-hidden />
+            <Search className="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-[#8f9db3]" aria-hidden />
             <input
               type="search"
               aria-label="Search work contexts"
@@ -193,8 +193,8 @@ export function Projects() {
               className={cn(CONTROL, "w-56")}
             />
           </label>
-          <span className="hidden shrink-0 text-[11px] text-[#8b97ad] sm:block">
-            <span className="font-mono text-[#e6edf7]">{visible.length}</span> of {projects.length}
+          <span className="hidden shrink-0 text-[11px] text-slate-500 dark:text-[#8f9db3] sm:block">
+            <span className="font-mono text-slate-950 dark:text-[#eef2f8]">{visible.length}</span> of {projects.length}
           </span>
         </div>
         <Button size="sm" variant="outline" onClick={openNewProject} className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]">
@@ -215,15 +215,15 @@ export function Projects() {
       )}
 
       {projects.length > 0 && (
-        <div aria-label="Work contexts" className={cn("overflow-hidden rounded-md border", LIST_FRAME)}>
-          <div className={cn(ROW_TRACKS, "h-7 px-3 text-[10.5px] uppercase tracking-[0.08em] text-[#8b97ad]")}>
+        <div aria-label="Work contexts" className={cn("overflow-hidden", LIST_FRAME)}>
+          <div className={cn(ROW_TRACKS, "h-7 px-3 text-[10.5px] uppercase tracking-[0.08em] text-slate-500 dark:text-[#8f9db3]")}>
             <span>Name</span>
             <span className="hidden text-right sm:block">Target</span>
             <span className="hidden text-right sm:block">Updated</span>
             <span className="text-right">Status</span>
           </div>
           {visible.length === 0 && (
-            <div className="px-3 py-6 text-center text-xs text-[#8b97ad]">
+            <div className="px-3 py-6 text-center text-xs text-slate-500 dark:text-[#8f9db3]">
               No work contexts match this filter.
             </div>
           )}
@@ -231,21 +231,21 @@ export function Projects() {
             <Link
               key={project.id}
               to={projectUrl(project)}
-              className={cn(ROW_TRACKS, "h-10 px-3 text-sm no-underline text-inherit transition-colors hover:bg-[#151b28]")}
+              className={cn(ROW_TRACKS, "h-10 px-3 text-sm no-underline text-inherit transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.05]")}
             >
               <span className="flex min-w-0 items-center gap-2.5">
-                <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-sm border border-[#242d3f]" style={{ backgroundColor: project.color ?? "#6366f1" }} />
+                <span aria-hidden className="h-2.5 w-2.5 shrink-0 rounded-sm border border-slate-200/90 dark:border-white/[0.08]" style={{ backgroundColor: project.color ?? "#6366f1" }} />
                 <span className="min-w-0">
-                  <span className="block truncate font-medium text-[#e6edf7]">{project.name}</span>
+                  <span className="block truncate font-medium text-slate-950 dark:text-[#eef2f8]">{project.name}</span>
                   {project.description && (
-                    <span className="block truncate text-[11px] text-[#8b97ad]">{project.description}</span>
+                    <span className="block truncate text-[11px] text-slate-500 dark:text-[#8f9db3]">{project.description}</span>
                   )}
                 </span>
               </span>
-              <span className="hidden text-right text-xs text-[#8b97ad] sm:block">
+              <span className="hidden text-right text-xs text-slate-500 dark:text-[#8f9db3] sm:block">
                 {project.targetDate ? formatDate(project.targetDate) : "—"}
               </span>
-              <span className="hidden text-right text-xs text-[#8b97ad] sm:block">{formatDate(project.updatedAt)}</span>
+              <span className="hidden text-right text-xs text-slate-500 dark:text-[#8f9db3] sm:block">{formatDate(project.updatedAt)}</span>
               <span className="flex justify-end">
                 <StatusBadge status={project.status} />
               </span>
