@@ -2,8 +2,19 @@ import type { Router } from "express";
 import type { Db } from "@paperclipai/db";
 import { assertCompanyAccess } from "./authz.js";
 import { proposeReplacement, approveReplacement, resolveReplacement, resubmitReplacement } from "../services/workflow/replacement-approval.js";
+import { supersedeFalseCompletedWorkflowRun } from "../services/workflow/operator-correction.js";
 
 export function mountWorkflowReplacementRoutes(router: Router, db: Db) {
+  router.post("/companies/:companyId/workflow-runs/:runId/operator-correction", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    res.status(201).json(await supersedeFalseCompletedWorkflowRun(db, {
+      companyId,
+      runId: req.params.runId as string,
+      reason: req.body?.reason,
+      actor: req.actor,
+    }));
+  });
   router.post("/companies/:companyId/workflow-replacements", async (req, res) => {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
