@@ -27,11 +27,16 @@ const ENABLED_INVITE_ADAPTERS = new Set([
   "pi_local",
 ]);
 
-const cardClass = "rounded-md border border-border/80 bg-card/80 p-6";
-const eyebrowClass = "mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground";
-const insetPanelClass = "rounded-md border border-border/80 bg-background/60 p-3 text-xs text-muted-foreground";
+const cardClass =
+  "tactile-card rounded-xl border border-slate-200/90 bg-white p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.05)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_14px_36px_-18px_rgba(0,0,0,0.8)]";
+const eyebrowClass = "mb-1 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]";
+const insetPanelClass =
+  "rounded-lg border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs text-slate-700 dark:border-white/[0.07] dark:bg-[#07090d]/85 dark:text-[#c9d3e4]";
 const fieldLabelClass = `block ${eyebrowClass}`;
-const inputClass = "w-full rounded-md border border-border/80 bg-background/70 px-3 py-2 text-sm";
+const inputClass =
+  "w-full rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-sm text-slate-950 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.1] dark:bg-[#07090d] dark:text-[#edf2fb] dark:placeholder:text-[#8b97ad]/60 dark:focus:border-[#60a5fa]/60 dark:focus:ring-[#60a5fa]/25";
+const pillBase =
+  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.14em]";
 
 function dateTime(value: string) {
   return new Date(value).toLocaleString();
@@ -123,20 +128,38 @@ export function InviteLandingPage() {
   });
 
   if (!token) {
-    return <div className="mx-auto max-w-xl py-10 text-sm text-destructive">Invalid invite token.</div>;
+    return (
+      <div className="mx-auto max-w-xl px-4 py-10 tabular-nums">
+        <div className={cardClass}>
+          <span className={`${pillBase} border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300`}>
+            Invite access
+          </span>
+          <p className="mt-3 text-sm text-rose-700 dark:text-rose-300">Invalid invite token.</p>
+        </div>
+      </div>
+    );
   }
 
   if (inviteQuery.isLoading || healthQuery.isLoading || sessionQuery.isLoading) {
-    return <div className="mx-auto max-w-xl py-10 text-sm text-muted-foreground">Loading invite...</div>;
+    return (
+      <div className="mx-auto max-w-xl px-4 py-10 tabular-nums">
+        <div className={`${cardClass} flex items-center gap-2.5 text-sm text-slate-600 dark:text-[#8b97ad]`}>
+          <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-blue-500 dark:bg-[#60a5fa]" />
+          Loading invite...
+        </div>
+      </div>
+    );
   }
 
   if (inviteQuery.error || !invite) {
     return (
-      <div className="mx-auto max-w-xl py-10">
+      <div className="mx-auto max-w-xl px-4 py-10 tabular-nums">
         <div className={cardClass}>
-          <div className={eyebrowClass}>Invite access</div>
-          <h1 className="text-lg font-semibold">Invite not available</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <span className={`${pillBase} border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300`}>
+            Invite access
+          </span>
+          <h1 className="mt-3 text-lg font-semibold tracking-tight text-slate-950 dark:text-[#edf2fb]">Invite not available</h1>
+          <p className="mt-2 text-sm text-slate-600 dark:text-[#8b97ad]">
             This invite may be expired, revoked, or already used.
           </p>
         </div>
@@ -146,14 +169,20 @@ export function InviteLandingPage() {
 
   if (result?.kind === "bootstrap") {
     return (
-      <div className="mx-auto max-w-xl py-10">
+      <div className="mx-auto max-w-xl px-4 py-10 tabular-nums">
         <div className={cardClass}>
-          <div className={eyebrowClass}>Bootstrap access</div>
-          <h1 className="text-lg font-semibold">Bootstrap complete</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <span className={`${pillBase} border-lime-500/30 bg-lime-500/10 text-lime-700 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/12 dark:text-[#a3e635]`}>
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-lime-500 shadow-[0_0_6px_rgba(163,230,53,0.75)] dark:bg-[#a3e635]" />
+            Bootstrap access
+          </span>
+          <h1 className="mt-3 text-lg font-semibold tracking-tight text-slate-950 dark:text-[#edf2fb]">Bootstrap complete</h1>
+          <p className="mt-2 text-sm text-slate-600 dark:text-[#8b97ad]">
             The first instance admin is now configured. You can continue to the board.
           </p>
-          <Button asChild className="mt-4">
+          <Button
+            asChild
+            className="mt-5 rounded-lg bg-blue-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:bg-blue-700 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]"
+          >
             <Link to="/">Open board</Link>
           </Button>
         </div>
@@ -182,48 +211,53 @@ export function InviteLandingPage() {
     const onboardingTextPath = readNestedString(payload.onboarding, ["textInstructions", "path"]);
     const diagnostics = Array.isArray(payload.diagnostics) ? payload.diagnostics : [];
     return (
-      <div className="mx-auto max-w-xl py-10">
+      <div className="mx-auto max-w-xl px-4 py-10 tabular-nums">
         <div className={cardClass}>
-          <div className={eyebrowClass}>Join approval</div>
-          <h1 className="text-lg font-semibold">Join request submitted</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <span className={`${pillBase} border-amber-500/30 bg-amber-500/10 text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#f59e0b]`}>
+            <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-amber-500 dark:bg-[#f59e0b]" />
+            Join approval
+          </span>
+          <h1 className="mt-3 text-lg font-semibold tracking-tight text-slate-950 dark:text-[#edf2fb]">Join request submitted</h1>
+          <p className="mt-2 text-sm text-slate-600 dark:text-[#8b97ad]">
             Your request is pending admin approval. You will not have access until approved.
           </p>
           <div className={`mt-4 ${insetPanelClass}`}>
             <div className={eyebrowClass}>Request ID</div>
-            <div className="font-mono">{payload.id}</div>
+            <div className="font-mono text-slate-900 dark:text-[#edf2fb]">{payload.id}</div>
           </div>
           {claimSecret && claimApiKeyPath && (
-            <div className={`mt-3 space-y-1 ${insetPanelClass}`}>
-              <p className={eyebrowClass}>One-time claim secret (save now)</p>
-              <p className="font-mono break-all">{claimSecret}</p>
-              <p className="font-mono break-all">POST {claimApiKeyPath}</p>
+            <div className="mt-3 space-y-1 rounded-lg border border-amber-500/30 bg-amber-500/8 p-3.5 text-xs text-slate-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#edf2fb]">
+              <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-amber-800 dark:text-[#f59e0b]">
+                One-time claim secret (save now)
+              </p>
+              <p className="break-all font-mono">{claimSecret}</p>
+              <p className="break-all font-mono text-slate-600 dark:text-[#c9d3e4]">POST {claimApiKeyPath}</p>
             </div>
           )}
           {(onboardingSkillUrl || onboardingSkillPath || onboardingInstallPath) && (
             <div className={`mt-3 space-y-1 ${insetPanelClass}`}>
               <p className={eyebrowClass}>Paperwork skill bootstrap</p>
-              {onboardingSkillUrl && <p className="font-mono break-all">GET {onboardingSkillUrl}</p>}
-              {!onboardingSkillUrl && onboardingSkillPath && <p className="font-mono break-all">GET {onboardingSkillPath}</p>}
-              {onboardingInstallPath && <p className="font-mono break-all">Install to {onboardingInstallPath}</p>}
+              {onboardingSkillUrl && <p className="break-all font-mono text-slate-900 dark:text-[#edf2fb]">GET {onboardingSkillUrl}</p>}
+              {!onboardingSkillUrl && onboardingSkillPath && <p className="break-all font-mono text-slate-900 dark:text-[#edf2fb]">GET {onboardingSkillPath}</p>}
+              {onboardingInstallPath && <p className="break-all font-mono text-slate-600 dark:text-[#8b97ad]">Install to {onboardingInstallPath}</p>}
             </div>
           )}
           {(onboardingTextUrl || onboardingTextPath) && (
             <div className={`mt-3 space-y-1 ${insetPanelClass}`}>
               <p className={eyebrowClass}>Agent-readable onboarding text</p>
-              {onboardingTextUrl && <p className="font-mono break-all">GET {onboardingTextUrl}</p>}
-              {!onboardingTextUrl && onboardingTextPath && <p className="font-mono break-all">GET {onboardingTextPath}</p>}
+              {onboardingTextUrl && <p className="break-all font-mono text-slate-900 dark:text-[#edf2fb]">GET {onboardingTextUrl}</p>}
+              {!onboardingTextUrl && onboardingTextPath && <p className="break-all font-mono text-slate-900 dark:text-[#edf2fb]">GET {onboardingTextPath}</p>}
             </div>
           )}
           {diagnostics.length > 0 && (
-            <div className={`mt-3 space-y-1 ${insetPanelClass}`}>
+            <div className={`mt-3 space-y-2 ${insetPanelClass}`}>
               <p className={eyebrowClass}>Connectivity diagnostics</p>
               {diagnostics.map((diag) => (
                 <div key={`${diag.code}:${diag.message}`} className="space-y-0.5">
-                  <p className={diag.level === "warn" ? "text-amber-600 dark:text-amber-400" : undefined}>
+                  <p className={diag.level === "warn" ? "font-medium text-amber-700 dark:text-[#f59e0b]" : "text-blue-700 dark:text-[#60a5fa]"}>
                     [{diag.level}] {diag.message}
                   </p>
-                  {diag.hint && <p className="font-mono break-all">{diag.hint}</p>}
+                  {diag.hint && <p className="break-all font-mono text-slate-600 dark:text-[#8b97ad]">{diag.hint}</p>}
                 </div>
               ))}
             </div>
@@ -234,25 +268,28 @@ export function InviteLandingPage() {
   }
 
   return (
-    <div className="mx-auto max-w-xl py-10">
+    <div className="mx-auto max-w-xl px-4 py-10 tabular-nums">
       <div className={cardClass}>
-        <div className={eyebrowClass}>{invite.inviteType === "bootstrap_ceo" ? "Bootstrap access" : "Invite intake"}</div>
-        <h1 className="text-xl font-semibold">
+        <span className={`${pillBase} border-blue-500/25 bg-blue-500/10 text-blue-700 dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]`}>
+          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(96,165,250,0.65)] dark:bg-[#60a5fa]" />
+          {invite.inviteType === "bootstrap_ceo" ? "Bootstrap access" : "Invite intake"}
+        </span>
+        <h1 className="mt-3 text-xl font-semibold tracking-tight text-slate-950 dark:text-[#edf2fb]">
           {invite.inviteType === "bootstrap_ceo" ? "Bootstrap your Paperwork instance" : "Join this Paperwork company"}
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">Invite expires {dateTime(invite.expiresAt)}.</p>
+        <p className="mt-2 text-sm text-slate-600 dark:text-[#8b97ad]">Invite expires {dateTime(invite.expiresAt)}.</p>
 
         {invite.inviteType !== "bootstrap_ceo" && (
-          <div className="mt-5 flex gap-2">
+          <div className="mt-5 inline-flex gap-1.5 rounded-lg border border-slate-200/90 bg-slate-100/80 p-1 dark:border-white/[0.08] dark:bg-[#07090d]">
             {availableJoinTypes.map((type) => (
               <button
                 key={type}
                 type="button"
                 onClick={() => setJoinType(type)}
-                className={`rounded-md border px-3 py-1.5 text-sm ${
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
                   joinType === type
-                    ? "border-foreground bg-foreground text-background"
-                    : "border-border bg-background text-foreground"
+                    ? "bg-blue-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] dark:bg-[#2563eb]"
+                    : "text-slate-600 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:text-[#edf2fb]"
                 }`}
               >
                 Join as {type}
@@ -262,7 +299,7 @@ export function InviteLandingPage() {
         )}
 
         {joinType === "agent" && invite.inviteType !== "bootstrap_ceo" && (
-          <div className="mt-4 space-y-3">
+          <div className={`mt-4 space-y-3 ${insetPanelClass}`}>
             <label className="block text-sm">
               <span className={fieldLabelClass}>Agent name</span>
               <input
@@ -298,20 +335,29 @@ export function InviteLandingPage() {
         )}
 
         {requiresAuthForHuman && (
-          <div className="mt-4 rounded-md border border-border/80 bg-background/60 p-3 text-sm">
+          <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/8 p-3.5 text-sm text-amber-900 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#fde68a]">
             Sign in or create an account before submitting a human join request.
-            <div className="mt-2">
-              <Button asChild size="sm" variant="outline">
+            <div className="mt-2.5">
+              <Button
+                asChild
+                size="sm"
+                variant="outline"
+                className="rounded-lg border-amber-500/40 bg-white text-amber-900 hover:bg-amber-50 dark:border-[#f59e0b]/40 dark:bg-[#07090d] dark:text-[#fde68a] dark:hover:bg-[#f59e0b]/15"
+              >
                 <Link to={`/auth?next=${encodeURIComponent(`/invite/${token}`)}`}>Sign in / Create account</Link>
               </Button>
             </div>
           </div>
         )}
 
-        {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+        {error && (
+          <p className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300">
+            {error}
+          </p>
+        )}
 
         <Button
-          className="mt-5"
+          className="mt-5 rounded-lg bg-blue-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:bg-blue-700 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]"
           disabled={
             acceptMutation.isPending ||
             (joinType === "agent" && invite.inviteType !== "bootstrap_ceo" && agentName.trim().length === 0) ||
