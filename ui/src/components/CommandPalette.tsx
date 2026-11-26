@@ -110,14 +110,15 @@ export function CommandPalette() {
       }}
       title="Paperwork command palette"
       description="Search Paperwork work, agents, and work contexts"
-      className="border-border/80 bg-card/95 backdrop-blur-md [&>div:first-child]:bg-transparent"
+      className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white/95 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_50px_rgba(15,23,42,0.18)] backdrop-blur-md dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_50px_rgba(0,0,0,0.48)] [&>div:first-child]:bg-transparent [&_[data-slot=command-input-wrapper]]:h-12 [&_[data-slot=command-input-wrapper]]:border-[var(--pw-hairline)] [&_[data-slot=command-input-wrapper]]:bg-slate-50/75 dark:[&_[data-slot=command-input-wrapper]]:bg-[#07090d] [&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.18em] [&_[cmdk-group-heading]]:text-slate-500 dark:[&_[cmdk-group-heading]]:text-slate-400 [&_[data-slot=command-item]]:rounded-[10px] [&_[data-slot=command-item]]:tabular-nums [&_[data-slot=command-item][data-selected=true]]:bg-[var(--pw-cobalt-soft)] [&_[data-slot=command-item][data-selected=true]]:text-slate-950 dark:[&_[data-slot=command-item][data-selected=true]]:text-slate-50"
     >
       <CommandInput
         placeholder="Search Paperwork work, agents, work contexts..."
         value={query}
         onValueChange={setQuery}
+        className="tabular-nums text-slate-900 placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
       />
-      <CommandList>
+      <CommandList className="scrollbar-auto-hide max-h-[360px] pb-1">
         <CommandEmpty>No results found.</CommandEmpty>
 
         <CommandGroup heading="Actions">
@@ -127,9 +128,9 @@ export function CommandPalette() {
               openNewIssue();
             }}
           >
-            <SquarePen className="mr-2 h-4 w-4" />
+            <SquarePen className="mr-2 h-4 w-4 text-[#4d7c0f] dark:text-[#a3e635]" />
             Create new work item
-            <kbd className="ml-auto rounded-sm border border-border/80 bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] leading-none text-muted-foreground tabular-nums">
+            <kbd className="ml-auto rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[11px] leading-none text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] tabular-nums dark:border-white/10 dark:bg-[#07090d] dark:text-[#60a5fa] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
               C
             </kbd>
           </CommandItem>
@@ -139,11 +140,11 @@ export function CommandPalette() {
               openNewAgent();
             }}
           >
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-2 h-4 w-4 text-[#2563eb] dark:text-[#60a5fa]" />
             Create new agent
           </CommandItem>
           <CommandItem onSelect={() => go("/projects")}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="mr-2 h-4 w-4 text-[#2563eb] dark:text-[#60a5fa]" />
             Create new work context
           </CommandItem>
         </CommandGroup>
@@ -180,7 +181,7 @@ export function CommandPalette() {
             Instructions
           </CommandItem>
           <CommandItem onSelect={() => go("/costs")}>
-            <DollarSign className="mr-2 h-4 w-4" />
+            <DollarSign className="mr-2 h-4 w-4 text-[#b45309] dark:text-[#f59e0b]" />
             Costs
           </CommandItem>
           <CommandItem onSelect={() => go("/activity")}>
@@ -204,7 +205,7 @@ export function CommandPalette() {
                   onSelect={() => go(`/issues/${issue.identifier ?? issue.id}`)}
                 >
                   <CircleDot className="mr-2 h-4 w-4" />
-                  <span className="text-muted-foreground mr-2 font-mono text-xs">
+                  <span className="mr-2 font-mono text-xs text-slate-500 tabular-nums dark:text-slate-400">
                     {issue.identifier ?? issue.id.slice(0, 8)}
                   </span>
                   <span className="flex-1 truncate">{issue.title}</span>
@@ -226,7 +227,7 @@ export function CommandPalette() {
                 <CommandItem key={agent.id} onSelect={() => go(agentUrl(agent))}>
                   <Bot className="mr-2 h-4 w-4" />
                   {agent.name}
-                  <span className="text-xs text-muted-foreground ml-2">{agent.role}</span>
+                  <span className="ml-2 text-xs text-slate-500 tabular-nums dark:text-slate-400">{agent.role}</span>
                 </CommandItem>
               ))}
             </CommandGroup>
