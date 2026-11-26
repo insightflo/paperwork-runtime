@@ -118,15 +118,15 @@ afterEach(async () => {
 });
 
 describe("CompanyRail", () => {
-  it("renders companies in the slim 52px workspace rail and marks only the active company with a cobalt indicator", async () => {
+  it("renders companies in the slim 52px workspace rail with Combo 1 obsidian chrome and active indicator", async () => {
     await renderRail();
 
     const rail = host.firstElementChild as HTMLElement;
     expect(rail.className).toContain("w-[52px]");
     expect(rail.className).not.toContain("w-[72px]");
-    expect(rail.className).toContain("bg-[#0b0e14]");
+    expect(rail.className).toContain("dark:bg-[#090c12]");
     expect(rail.className).toContain("border-r");
-    expect(rail.className).toContain("border-[#242d3f]");
+    expect(rail.className).toContain("dark:border-white/[0.065]");
     // Legacy semantic rail tokens must not leak back into the cockpit shell.
     expect(rail.className).not.toContain("bg-sidebar");
     expect(rail.className).not.toContain("border-sidebar-border");
@@ -138,18 +138,18 @@ describe("CompanyRail", () => {
     expect(activeItem.dataset.active).toBe("true");
     expect(inactiveItem.dataset.active).toBeUndefined();
 
-    // The rail owns the 2px cobalt bar through arbitrary-variant overrides on the item link.
+    // The rail owns the active indicator bar through arbitrary-variant overrides on the item link.
     expect(activeItem.className).toContain("[&_a>div:first-child]:left-0");
-    expect(activeItem.className).toContain("[&_a>div:first-child]:w-0.5");
+    expect(activeItem.className).toContain("[&_a>div:first-child]:w-[3px]");
     expect(activeItem.className).toContain("[&_a>div:first-child]:h-5");
-    expect(activeItem.className).toContain("[&_a>div:first-child]:bg-[#5f8dff]");
+    expect(activeItem.className).toContain("dark:[&_a>div:first-child]:bg-[#a3e635]");
     expect(activeItem.className).not.toContain("bg-primary");
 
     expect(inactiveItem.className).toContain("[&_a>div:first-child]:left-0");
-    expect(inactiveItem.className).toContain("[&_a>div:first-child]:w-0.5");
+    expect(inactiveItem.className).toContain("[&_a>div:first-child]:w-[3px]");
     expect(inactiveItem.className).toContain("[&_a>div:first-child]:h-0");
     expect(inactiveItem.className).toContain("[&:hover_a>div:first-child]:h-2");
-    expect(inactiveItem.className).toContain("[&:hover_a>div:first-child]:bg-[#5f8dff]/60");
+    expect(inactiveItem.className).toContain("dark:[&:hover_a>div:first-child]:bg-[#60a5fa]/65");
     expect(inactiveItem.className).not.toContain("bg-primary");
 
     const activeLink = activeItem.querySelector("a");
@@ -160,19 +160,19 @@ describe("CompanyRail", () => {
     expect(inactiveIndicator?.className).toContain("h-0");
   });
 
-  it("aligns the logo slot with the 48px header and keeps the hairline divider cobalt-accented add control", async () => {
+  it("aligns the logo slot with the 48px header and keeps the hairline divider and accented add control", async () => {
     await renderRail();
 
     const rail = host.firstElementChild as HTMLElement;
     const logoSlot = rail.firstElementChild as HTMLElement;
     expect(logoSlot.className).toContain("h-12");
 
-    const divider = host.querySelector<HTMLElement>(".bg-\\[\\#242d3f\\].h-px");
-    expect(divider?.className).toContain("w-6");
+    const divider = host.querySelector<HTMLElement>(".h-px.w-6");
+    expect(divider).not.toBeNull();
 
     const addButton = host.querySelector<HTMLButtonElement>('button[aria-label="Add company"]');
-    expect(addButton?.className).toContain("hover:text-[#5f8dff]");
-    expect(addButton?.className).toContain("hover:border-[#5f8dff]/70");
+    expect(addButton?.className).toContain("dark:hover:text-[#a3e635]");
+    expect(addButton?.className).toContain("dark:hover:border-[#a3e635]/60");
   });
 
   it("keeps high-density spacing and the add-company control intact", async () => {

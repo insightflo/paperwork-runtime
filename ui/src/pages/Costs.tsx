@@ -70,6 +70,9 @@ function BillerTabLabel({ biller, rows }: { biller: string; rows: CostByBiller[]
   );
 }
 
+const TACTILE_CARD_CLASS =
+  "rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
+
 function MetricTile({
   label,
   value,
@@ -82,15 +85,15 @@ function MetricTile({
   icon: ComponentType<{ className?: string }>;
 }) {
   return (
-    <div className="rounded-md border border-border/80 bg-card/60 p-4">
+    <div className="rounded-xl border border-slate-200/80 bg-slate-50/75 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.07] dark:bg-[#090d14] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground">{label}</div>
-          <div className="mt-2 text-2xl font-semibold tabular-nums">{value}</div>
-          <div className="mt-1 text-xs leading-5 text-muted-foreground">{subtitle}</div>
+          <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]">{label}</div>
+          <div className="mt-2 text-2xl font-semibold tabular-nums text-slate-950 dark:text-[#edf2fb]">{value}</div>
+          <div className="mt-1 text-xs leading-5 text-slate-500 dark:text-[#8b97ad]">{subtitle}</div>
         </div>
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-border/80 bg-background/60">
-          <Icon className="h-4 w-4 text-muted-foreground" />
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-[#0e131d]">
+          <Icon className="h-4 w-4 text-slate-500 dark:text-[#8b97ad]" />
         </div>
       </div>
     </div>
@@ -100,40 +103,40 @@ function MetricTile({
 /** One cell of the 1-row cost telemetry strip. Any mini bar/sparkline sits in the header row (shrink-0, right) so it never overlaps value/subtext. */
 function TelemetryCell({ label, value, sub, dot, visual }: { label: string; value: string; sub: string; dot: string; visual?: ReactNode }) {
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 px-3 py-2">
+    <div className="flex min-w-0 flex-col gap-1 px-4 py-3">
       <div className="flex items-center justify-between gap-3">
-        <span className="flex min-w-0 items-center gap-1.5 text-[11px] uppercase tracking-wide text-[#8b97ad]">
-          <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+        <span className="flex min-w-0 items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-[#8b97ad]">
+          <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
           <span className="truncate">{label}</span>
         </span>
         {visual && <span className="shrink-0">{visual}</span>}
       </div>
-      <span className="truncate text-xl font-bold leading-tight tabular-nums text-[#e6edf7]">{value}</span>
-      <span className="truncate text-[11px] tabular-nums text-[#8b97ad]">{sub}</span>
+      <span className="truncate text-xl font-bold leading-tight tabular-nums text-slate-950 dark:text-[#edf2fb]">{value}</span>
+      <span className="truncate text-[11px] tabular-nums text-slate-500 dark:text-[#8b97ad]">{sub}</span>
     </div>
   );
 }
 
-function MiniBar({ percent, tone = "bg-[#5f8dff]" }: { percent: number; tone?: string }) {
+function MiniBar({ percent, tone = "bg-blue-500 dark:bg-[#60a5fa]" }: { percent: number; tone?: string }) {
   return (
-    <span className="block h-1.5 w-16 overflow-hidden rounded-sm border border-[#242d3f] bg-[#0b0e14]">
-      <span className={cn("block h-full transition-[width] duration-150", tone)} style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+    <span className="block h-1.5 w-16 overflow-hidden rounded-full border border-slate-200/90 bg-slate-100 dark:border-white/[0.08] dark:bg-[#07090d]">
+      <span className={cn("block h-full rounded-full transition-[width] duration-150", tone)} style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
     </span>
   );
 }
 
-/** Cockpit breakdown card: #151b28 surface, 1px #242d3f hairlines between header and rows. */
+/** Combo 1 tactile cockpit breakdown card with 1px specular top highlight in dark mode and crisp light legibility. */
 function CockpitCard({ title, description, action, children }: { title: string; description: string; action?: ReactNode; children: ReactNode }) {
   return (
-    <section className="flex min-w-0 flex-col overflow-hidden rounded-md border border-[#242d3f] bg-[#151b28]">
-      <header className="flex items-center justify-between gap-3 border-b border-[#242d3f] px-4 py-2">
+    <section className={cn(TACTILE_CARD_CLASS, "flex min-w-0 flex-col overflow-hidden")}>
+      <header className="flex items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/80 px-4 py-2.5 dark:border-white/[0.06] dark:bg-[#090d14]/80">
         <div className="min-w-0">
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-[#8b97ad]">{title}</h2>
-          <p className="truncate text-[11px] text-[#8b97ad]">{description}</p>
+          <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-[#8b97ad]">{title}</h2>
+          <p className="truncate text-[11px] text-slate-500 dark:text-[#8b97ad]">{description}</p>
         </div>
         {action}
       </header>
-      <div className="divide-y divide-[#242d3f]">{children}</div>
+      <div className="divide-y divide-slate-200/75 dark:divide-white/[0.06]">{children}</div>
     </section>
   );
 }
@@ -152,9 +155,9 @@ function FinanceSummaryCard({
   eventCount: number;
 }) {
   return (
-    <Card className="rounded-md border border-border/80 bg-card/60">
+    <Card className={TACTILE_CARD_CLASS}>
       <CardHeader className="px-5 pt-5 pb-2">
-        <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Finance ledger</CardTitle>
+        <CardTitle className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]">Finance ledger</CardTitle>
         <CardDescription>
           Account-level charges that do not map to a single inference request.
         </CardDescription>
@@ -664,13 +667,19 @@ export function Costs() {
             </div>
           ) : null}
 
-          {/* 1-row 4-column cost telemetry strip; mini bars live in each cell's header-right, never over subtext */}
-          <section aria-label="Cost telemetry" className="grid grid-cols-2 divide-x divide-[#242d3f] rounded-md border border-[#242d3f] bg-[#111622] lg:grid-cols-4">
+          {/* 1-row 4-column Combo 1 cost telemetry strip; mini bars live in each cell's header-right, never over subtext */}
+          <section
+            aria-label="Cost telemetry"
+            className={cn(
+              TACTILE_CARD_CLASS,
+              "grid grid-cols-2 divide-x divide-slate-200/80 overflow-hidden dark:divide-white/[0.06] lg:grid-cols-4",
+            )}
+          >
             <TelemetryCell
               label={preset === "mtd" ? "MTD spend" : `${PRESET_LABELS[preset]} spend`}
               value={formatCents(spendCents)}
               sub={`${formatTokens(inferenceTokenTotal)} tokens · ${rangeDays ? `${rangeDays}d elapsed` : "all time"}`}
-              dot="bg-[#5f8dff]"
+              dot="bg-blue-500 shadow-[0_0_6px_rgba(96,165,250,0.5)] dark:bg-[#60a5fa]"
             />
             <TelemetryCell
               label="Budget utilization"
@@ -678,22 +687,58 @@ export function Costs() {
               sub={activeBudgetIncidents.length > 0
                 ? `${activeBudgetIncidents.length} budget incident${activeBudgetIncidents.length === 1 ? "" : "s"} · ${budgetData?.pausedAgentCount ?? 0} agents paused`
                 : budgetCents > 0 ? `${formatCents(spendCents)} of ${formatCents(budgetCents)} monthly cap` : "No monthly cap configured"}
-              dot={activeBudgetIncidents.length > 0 ? "bg-[#f87171] animate-pulse" : budgetCents <= 0 ? "bg-[#4a5670]" : utilization > 90 ? "bg-[#f87171]" : utilization > 70 ? "bg-[#fbbf24]" : "bg-[#34d399]"}
-              visual={budgetCents > 0 ? <MiniBar percent={utilization} tone={utilization > 90 ? "bg-[#f87171]" : utilization > 70 ? "bg-[#fbbf24]" : "bg-[#34d399]"} /> : undefined}
+              dot={
+                activeBudgetIncidents.length > 0
+                  ? "bg-rose-500 shadow-[0_0_8px_rgba(248,113,113,0.75)] animate-pulse dark:bg-[#f87171]"
+                  : budgetCents <= 0
+                    ? "bg-slate-400 dark:bg-[#64748b]"
+                    : utilization > 90
+                      ? "bg-rose-500 shadow-[0_0_8px_rgba(248,113,113,0.65)] dark:bg-[#f87171]"
+                      : utilization > 70
+                        ? "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.6)] dark:bg-[#f59e0b]"
+                        : "bg-lime-500 shadow-[0_0_8px_rgba(163,230,53,0.65)] dark:bg-[#a3e635]"
+              }
+              visual={
+                budgetCents > 0 ? (
+                  <MiniBar
+                    percent={utilization}
+                    tone={
+                      utilization > 90
+                        ? "bg-rose-500 dark:bg-[#f87171]"
+                        : utilization > 70
+                          ? "bg-amber-500 dark:bg-[#f59e0b]"
+                          : "bg-lime-500 dark:bg-[#a3e635]"
+                    }
+                  />
+                ) : undefined
+              }
             />
             <TelemetryCell
               label="Active spend rate"
               value={rangeDays ? `${formatCents(dailyCents)} / day` : "—"}
               sub={budgetCents > 0 && preset === "mtd" ? `~${formatCents(projectedMonthCents)} by month end` : `${formatCents(spendCents)} over ${rangeDays ? `${rangeDays}d` : "all time"}`}
-              dot="bg-[#fbbf24]"
-              visual={budgetCents > 0 ? <MiniBar percent={(projectedMonthCents / budgetCents) * 100} tone={projectedMonthCents > budgetCents ? "bg-[#f87171]" : projectedMonthCents > budgetCents * 0.8 ? "bg-[#fbbf24]" : "bg-[#34d399]"} /> : undefined}
+              dot="bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.5)] dark:bg-[#f59e0b]"
+              visual={
+                budgetCents > 0 ? (
+                  <MiniBar
+                    percent={(projectedMonthCents / budgetCents) * 100}
+                    tone={
+                      projectedMonthCents > budgetCents
+                        ? "bg-rose-500 dark:bg-[#f87171]"
+                        : projectedMonthCents > budgetCents * 0.8
+                          ? "bg-amber-500 dark:bg-[#f59e0b]"
+                          : "bg-lime-500 dark:bg-[#a3e635]"
+                    }
+                  />
+                ) : undefined
+              }
             />
             <TelemetryCell
               label="Top cost driver"
               value={topAgent ? topAgent.agentName ?? topAgent.agentId : "—"}
               sub={topAgent ? `${formatCents(topAgent.costCents)} · ${spendCents > 0 ? Math.round((topAgent.costCents / spendCents) * 100) : 0}% of spend` : "No cost events yet"}
-              dot="bg-[#a784fd]"
-              visual={topAgent ? <MiniBar percent={spendCents > 0 ? (topAgent.costCents / spendCents) * 100 : 0} tone="bg-[#a784fd]" /> : undefined}
+              dot="bg-blue-500 dark:bg-[#60a5fa]"
+              visual={topAgent ? <MiniBar percent={spendCents > 0 ? (topAgent.costCents / spendCents) * 100 : 0} tone="bg-blue-500 dark:bg-[#60a5fa]" /> : undefined}
             />
           </section>
       </div>
@@ -735,12 +780,12 @@ export function Costs() {
                 </div>
               ) : null}
 
-              {/* 2-column cockpit breakdown grid: #151b28 cards, 1px #242d3f hairlines */}
-              <div className="grid gap-3 xl:grid-cols-2">
+              {/* 2-column Combo 1 cockpit breakdown grid */}
+              <div className="grid gap-3.5 xl:grid-cols-2">
                 <CockpitCard
                   title="Spend by agent"
                   description="What each agent consumed in the selected period."
-                  action={<span className="text-[11px] tabular-nums text-[#8b97ad]">{spendData?.byAgent.length ?? 0} agents</span>}
+                  action={<span className="font-mono text-[11px] tabular-nums text-slate-500 dark:text-[#8b97ad]">{spendData?.byAgent.length ?? 0} agents</span>}
                 >
                   {(spendData?.byAgent.length ?? 0) === 0 ? (
                     <p className="px-4 py-3 text-sm text-muted-foreground">No cost events yet.</p>
@@ -756,13 +801,13 @@ export function Costs() {
                             type="button"
                             disabled={!hasBreakdown}
                             onClick={() => hasBreakdown && toggleAgent(row.agentId)}
-                            className="grid w-full grid-cols-[minmax(0,1fr)_max-content] items-center gap-x-3 px-4 py-2 text-left disabled:cursor-default"
+                            className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_max-content] items-center gap-x-3 px-4 py-2.5 text-left transition-colors hover:bg-slate-50/90 disabled:cursor-default disabled:hover:bg-transparent dark:hover:bg-[#141b29]"
                           >
                             <div className="flex min-w-0 items-center gap-2">
                               {hasBreakdown ? (
                                 isExpanded
-                                  ? <ChevronDown className="h-3 w-3 shrink-0 text-[#8b97ad]" />
-                                  : <ChevronRight className="h-3 w-3 shrink-0 text-[#8b97ad]" />
+                                  ? <ChevronDown className="h-3 w-3 shrink-0 text-slate-400 dark:text-[#8b97ad]" />
+                                  : <ChevronRight className="h-3 w-3 shrink-0 text-slate-400 dark:text-[#8b97ad]" />
                               ) : (
                                 <span className="h-3 w-3 shrink-0" />
                               )}
@@ -770,11 +815,11 @@ export function Costs() {
                               {row.agentStatus === "terminated" ? <StatusBadge status="terminated" /> : null}
                             </div>
                             <div className="text-right text-xs tabular-nums">
-                              <div className="text-sm font-semibold text-[#e6edf7]">
+                              <div className="text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">
                                 {formatCents(row.costCents)}
-                                <span className="ml-1 font-normal text-[#8b97ad]">{sharePct}%</span>
+                                <span className="ml-1 font-mono text-xs font-normal text-slate-500 dark:text-[#8b97ad]">{sharePct}%</span>
                               </div>
-                              <div className="text-[#8b97ad]">
+                              <div className="text-slate-500 dark:text-[#8b97ad]">
                                 in {formatTokens(row.inputTokens + row.cachedInputTokens)} · out {formatTokens(row.outputTokens)}
                                 {(row.apiRunCount > 0 || row.subscriptionRunCount > 0)
                                   ? ` · ${row.apiRunCount} api · ${row.subscriptionRunCount} sub`
@@ -782,12 +827,12 @@ export function Costs() {
                               </div>
                             </div>
                           </button>
-                          <div className="h-0.5 bg-[#0b0e14]">
-                            <div className="h-full bg-[#5f8dff]" style={{ width: `${sharePct}%` }} />
+                          <div className="h-0.5 bg-slate-100 dark:bg-[#07090d]">
+                            <div className="h-full bg-blue-500 dark:bg-[#60a5fa]" style={{ width: `${sharePct}%` }} />
                           </div>
 
                           {isExpanded && modelRows.length > 0 ? (
-                            <div className="space-y-1.5 border-t border-[#242d3f] bg-[#111622] px-4 py-2">
+                            <div className="space-y-1.5 border-t border-slate-200/75 bg-slate-50/80 px-4 py-2.5 dark:border-white/[0.06] dark:bg-[#090d14]">
                               {modelRows.map((modelRow) => {
                                 const modelSharePct = row.costCents > 0 ? Math.round((modelRow.costCents / row.costCents) * 100) : 0;
                                 return (
@@ -796,21 +841,21 @@ export function Costs() {
                                     className="grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-x-3 text-xs"
                                   >
                                     <div className="min-w-0">
-                                      <div className="truncate font-medium text-[#e6edf7]">
+                                      <div className="truncate font-medium text-slate-900 dark:text-[#edf2fb]">
                                         {providerDisplayName(modelRow.provider)}
-                                        <span className="mx-1 text-[#4a5670]">/</span>
+                                        <span className="mx-1 text-slate-400 dark:text-[#4a5670]">/</span>
                                         <span className="font-mono">{modelRow.model}</span>
                                       </div>
-                                      <div className="truncate text-[#8b97ad]">
+                                      <div className="truncate text-slate-500 dark:text-[#8b97ad]">
                                         {providerDisplayName(modelRow.biller)} · {billingTypeDisplayName(modelRow.billingType)}
                                       </div>
                                     </div>
                                     <div className="text-right tabular-nums">
-                                      <div className="font-medium text-[#e6edf7]">
+                                      <div className="font-medium text-slate-950 dark:text-[#edf2fb]">
                                         {formatCents(modelRow.costCents)}
-                                        <span className="ml-1 font-normal text-[#8b97ad]">({modelSharePct}%)</span>
+                                        <span className="ml-1 font-mono font-normal text-slate-500 dark:text-[#8b97ad]">({modelSharePct}%)</span>
                                       </div>
-                                      <div className="text-[#8b97ad]">
+                                      <div className="text-slate-500 dark:text-[#8b97ad]">
                                         {formatTokens(modelRow.inputTokens + modelRow.cachedInputTokens + modelRow.outputTokens)} tok
                                       </div>
                                     </div>
@@ -828,7 +873,7 @@ export function Costs() {
                 <CockpitCard
                   title="Spend by model"
                   description="Provider / model totals across all agents in the selected period."
-                  action={<span className="text-[11px] tabular-nums text-[#8b97ad]">{modelTotals.length} models</span>}
+                  action={<span className="font-mono text-[11px] tabular-nums text-slate-500 dark:text-[#8b97ad]">{modelTotals.length} models</span>}
                 >
                   {modelTotals.length === 0 ? (
                     <p className="px-4 py-3 text-sm text-muted-foreground">No cost events yet.</p>
@@ -838,24 +883,24 @@ export function Costs() {
                       return (
                         <div
                           key={`${row.provider}:${row.model}`}
-                          className="grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-x-3 px-4 py-2 text-xs"
+                          className="grid grid-cols-[minmax(0,1fr)_max-content] items-center gap-x-3 px-4 py-2.5 text-xs"
                         >
                           <div className="min-w-0">
-                            <div className="truncate font-medium text-[#e6edf7]">
+                            <div className="truncate font-medium text-slate-900 dark:text-[#edf2fb]">
                               {providerDisplayName(row.provider)}
-                              <span className="mx-1 text-[#4a5670]">/</span>
+                              <span className="mx-1 text-slate-400 dark:text-[#4a5670]">/</span>
                               <span className="font-mono">{row.model}</span>
                             </div>
-                            <div className="mt-1 h-1 w-full overflow-hidden rounded-sm border border-[#242d3f] bg-[#0b0e14]">
-                              <div className="h-full bg-[#5f8dff]" style={{ width: `${sharePct}%` }} />
+                            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full border border-slate-200/80 bg-slate-100 dark:border-white/[0.06] dark:bg-[#07090d]">
+                              <div className="h-full rounded-full bg-blue-500 dark:bg-[#60a5fa]" style={{ width: `${sharePct}%` }} />
                             </div>
                           </div>
                           <div className="text-right tabular-nums">
-                            <div className="font-semibold text-[#e6edf7]">
+                            <div className="font-semibold text-slate-950 dark:text-[#edf2fb]">
                               {formatCents(row.costCents)}
-                              <span className="ml-1 font-normal text-[#8b97ad]">{sharePct}%</span>
+                              <span className="ml-1 font-mono font-normal text-slate-500 dark:text-[#8b97ad]">{sharePct}%</span>
                             </div>
-                            <div className="text-[#8b97ad]">{formatTokens(row.tokens)} tok</div>
+                            <div className="text-slate-500 dark:text-[#8b97ad]">{formatTokens(row.tokens)} tok</div>
                           </div>
                         </div>
                       );
@@ -864,12 +909,12 @@ export function Costs() {
                 </CockpitCard>
               </div>
 
-              <div className="grid gap-3 xl:grid-cols-2">
-                <div className="space-y-3">
+              <div className="grid gap-3.5 xl:grid-cols-2">
+                <div className="space-y-3.5">
                   <CockpitCard
                     title="By work context"
                     description="Run costs attributed through work-context-linked items."
-                    action={<span className="text-[11px] tabular-nums text-[#8b97ad]">{spendData?.byProject.length ?? 0} contexts</span>}
+                    action={<span className="font-mono text-[11px] tabular-nums text-slate-500 dark:text-[#8b97ad]">{spendData?.byProject.length ?? 0} contexts</span>}
                   >
                     {(spendData?.byProject.length ?? 0) === 0 ? (
                       <p className="px-4 py-3 text-sm text-muted-foreground">No work-context-attributed run costs yet.</p>
@@ -877,10 +922,10 @@ export function Costs() {
                       spendData?.byProject.map((row, index) => (
                         <div
                           key={row.projectId ?? `unattributed-${index}`}
-                          className="flex items-center justify-between gap-3 px-4 py-2 text-xs"
+                          className="flex items-center justify-between gap-3 px-4 py-2.5 text-xs"
                         >
-                          <span className="truncate">{row.projectName ?? row.projectId ?? "Unattributed"}</span>
-                          <span className="font-medium tabular-nums text-[#e6edf7]">{formatCents(row.costCents)}</span>
+                          <span className="truncate text-slate-800 dark:text-[#cbd5e1]">{row.projectName ?? row.projectId ?? "Unattributed"}</span>
+                          <span className="font-mono font-semibold tabular-nums text-slate-950 dark:text-[#edf2fb]">{formatCents(row.costCents)}</span>
                         </div>
                       ))
                     )}
@@ -908,9 +953,9 @@ export function Costs() {
             <p className="text-sm text-destructive">{(budgetError as Error).message}</p>
           ) : (
             <>
-              <Card className="rounded-md border border-border/80 bg-card/60">
+              <Card className={TACTILE_CARD_CLASS}>
                 <CardHeader className="px-5 pt-5 pb-3">
-                  <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Budget control plane</CardTitle>
+                  <CardTitle className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]">Budget control plane</CardTitle>
                   <CardDescription>
                     Hard-stop spend limits for agents and work contexts. Provider subscription quota stays separate and appears under Providers.
                   </CardDescription>
@@ -1007,7 +1052,7 @@ export function Costs() {
                 })}
 
                 {budgetPolicies.length === 0 ? (
-                  <Card className="rounded-md border border-border/80 bg-card/60">
+                  <Card className={TACTILE_CARD_CLASS}>
                     <CardContent className="px-5 py-8 text-sm text-muted-foreground">
                       No budget policies yet. Set agent and work-context budgets from their detail pages, or use the existing company monthly budget control.
                     </CardContent>
@@ -1144,11 +1189,11 @@ export function Costs() {
                 eventCount={financeData?.summary.eventCount ?? 0}
               />
 
-              <div className="grid gap-4 xl:grid-cols-[1.2fr,0.95fr]">
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,55%)_minmax(0,45%)]">
                 <div className="space-y-4">
-                  <Card className="rounded-md border border-border/80 bg-card/60">
+                  <Card className={TACTILE_CARD_CLASS}>
                     <CardHeader className="px-5 pt-5 pb-2">
-                      <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">By biller</CardTitle>
+                      <CardTitle className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]">By biller</CardTitle>
                       <CardDescription>Account-level financial events grouped by who charged or credited them.</CardDescription>
                     </CardHeader>
                     <CardContent className="grid gap-4 px-5 pb-5 pt-2 md:grid-cols-2">

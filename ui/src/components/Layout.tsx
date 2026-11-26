@@ -189,10 +189,11 @@ export function Layout() {
     </SidebarDensityContext.Provider>
   );
 
+  const isFullBleedRoute = /\/(workflows|org)(\/|$)/.test(location.pathname);
+
   return (
     <div
-      className={cn("bg-background text-foreground pt-[env(safe-area-inset-top)]", isMobile ? "min-h-dvh" : "flex h-dvh flex-col overflow-hidden")}
-      style={isMobile ? undefined : { backgroundColor: "var(--openbot-shell-frame-bg)" }}
+      className={cn("cockpit-shell bg-background text-foreground pt-[env(safe-area-inset-top)]", isMobile ? "min-h-dvh" : "flex h-dvh flex-col overflow-hidden")}
     >
       <a
         href="#main-content"
@@ -257,7 +258,7 @@ export function Layout() {
           <BoundaryDragHandle width={slide.effectiveNavWidth} onPreview={slide.previewNavWidth} onCommit={slide.commitNavWidth} onToggle={slide.toggleNav} />
         )}
         <div className={cn("flex min-w-0 flex-col", isMobile ? "w-full" : "h-full flex-1")}>
-          <div className={cn(isMobile && "sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85")}>
+          <div className={cn("cockpit-header-slot", isMobile && "sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85")}>
             <BreadcrumbBar />
           </div>
           <div className={cn(isMobile ? "block" : "flex flex-1 min-h-0")}>
@@ -265,22 +266,27 @@ export function Layout() {
               id="main-content"
               tabIndex={-1}
               data-density-tier={slide.metrics.canvasDensityTier}
-              className={cn("flex-1 p-4 md:p-6", isMobile ? "overflow-visible pb-[calc(5rem+env(safe-area-inset-bottom))]" : "overflow-auto openbot-canvas-sheet")}
+              className={cn(
+                "flex-1 p-4 md:px-6 md:py-5",
+                isMobile ? "overflow-visible pb-[calc(5rem+env(safe-area-inset-bottom))]" : "overflow-auto openbot-canvas-sheet cockpit-canvas-sheet",
+              )}
               style={
                 isMobile
                   ? undefined
                   : {
                       ["--openbot-kpi-cols" as string]: slide.metrics.visibleKpiColumns,
                       boxShadow: `0 26px 60px -30px rgb(var(--openbot-sheet-shadow-rgb) / ${slide.metrics.sheetShadowAlpha})`,
-                      borderTopLeftRadius: 14,
+                      borderTopLeftRadius: 12,
                     }
               }
             >
-              {hasUnknownCompanyPrefix ? (
-                <NotFoundPage scope="invalid_company_prefix" requestedPrefix={companyPrefix ?? selectedCompany?.issuePrefix} />
-              ) : (
-                <Outlet />
-              )}
+              <div className={cn(isFullBleedRoute ? "h-full w-full" : "mx-auto w-full max-w-[1480px]")}>
+                {hasUnknownCompanyPrefix ? (
+                  <NotFoundPage scope="invalid_company_prefix" requestedPrefix={companyPrefix ?? selectedCompany?.issuePrefix} />
+                ) : (
+                  <Outlet />
+                )}
+              </div>
             </main>
             <PropertiesPanel controller={inspector} />
             {!isMobile && (

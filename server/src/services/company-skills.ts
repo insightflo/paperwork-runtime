@@ -711,7 +711,57 @@ function deriveImportedSkillSource(
   };
 }
 
-function readInlineSkillImports(companyId: string, files: Record<string, string>): ImportedSkill[] {
+function normalizeSkillDirPrefix(skillDir: string): string {
+  const normalized = normalizePortablePath(skillDir).replace(/^\/+|\/+$/g, "");
+  return normalized === "." ? "" : normalized;
+}
+
+function isFileInsideSkillDir(entry: string, skillDir: string): boolean {
+  const normalizedEntry = normalizePortablePath(entry);
+  const normalizedDir = normalizeSkillDirPrefix(skillDir);
+  if (!normalizedDir) {
+    return normalizedEntry.length > 0;
+  }
+  return normalizedEntry.startsWith(`${normalizedDir}/`);
+}
+
+function buildSkillFileInventory(
+  allFiles: string[],
+  skillPath: string,
+  allSkillPaths: string[] = [skillPath],
+): CompanySkillFileInventoryEntry[] {
+  const normalizedSkillPath = normalizePortablePath(skillPath);
+  const skillDir = normalizeSkillDirPrefix(path.posix.dirname(normalizedSkillPath));
+  const nestedSkillDirs = allSkillPaths
+    .map((candidate) => normalizeSkillDirPrefix(path.posix.dirname(normalizePortablePath(candidate))))
+    .filter((candidateDir) =>
+      candidateDir.length > 0
+      && candidateDir !== skillDir
+      && (!skillDir || candidateDir.startsWith(`${skillDir}/`)),
+    );
+
+  return allFiles
+    .map((entry) => normalizePortablePath(entry))
+    .filter((entry) => {
+      if (entry === normalizedSkillPath) return true;
+      if (!isFileInsideSkillDir(entry, skillDir)) return false;
+      return !nestedSkillDirs.some((nestedDir) => entry.startsWith(`${nestedDir}/`));
+    })
+    .map((entry) => {
+      const relative = entry === normalizedSkillPath
+        ? "SKILL.md"
+        : skillDir
+          ? entry.slice(skillDir.length + 1)
+          : entry;
+      return {
+        path: normalizePortablePath(relative),
+        kind: classifyInventoryKind(relative),
+      };
+    })
+    .sort((left, right) => left.path.localeCompare(right.path));
+}
+
+export function readInlineSkillImports(companyId: string, files: Record<string, string>): ImportedSkill[] {
   const normalizedFiles = normalizePackageFileMap(files);
   const skillPaths = Object.keys(normalizedFiles).filter(
     (entry) => path.posix.basename(entry).toLowerCase() === "skill.md",
@@ -726,16 +776,7 @@ function readInlineSkillImports(companyId: string, files: Record<string, string>
     const parsed = parseFrontmatterMarkdown(markdown);
     const slug = deriveImportedSkillSlug(parsed.frontmatter, slugFallback);
     const source = deriveImportedSkillSource(parsed.frontmatter, slug);
-    const inventory = Object.keys(normalizedFiles)
-      .filter((entry) => entry === skillPath || (skillDir ? entry.startsWith(`${skillDir}/`) : false))
-      .map((entry) => {
-        const relative = entry === skillPath ? "SKILL.md" : entry.slice(skillDir.length + 1);
-        return {
-          path: normalizePortablePath(relative),
-          kind: classifyInventoryKind(relative),
-        };
-      })
-      .sort((left, right) => left.path.localeCompare(right.path));
+    const inventory = buildSkillFileInventory(Object.keys(normalizedFiles), skillPath, skillPaths);
 
     imports.push({
       key: "",
@@ -888,7 +929,7 @@ export async function discoverProjectWorkspaceSkillDirectories(target: ProjectSk
     .sort((left, right) => left.skillDir.localeCompare(right.skillDir));
 }
 
-async function readLocalSkillImports(companyId: string, sourcePath: string): Promise<ImportedSkill[]> {
+export async function readLocalSkillImports(companyId: string, sourcePath: string): Promise<ImportedSkill[]> {
   const resolvedPath = path.resolve(sourcePath);
   const stat = await fs.stat(resolvedPath).catch(() => null);
   if (!stat) {
@@ -942,16 +983,7 @@ async function readLocalSkillImports(companyId: string, sourcePath: string): Pro
   const imports: ImportedSkill[] = [];
   for (const skillPath of skillPaths) {
     const skillDir = path.posix.dirname(skillPath);
-    const inventory = allFiles
-      .filter((entry) => entry === skillPath || entry.startsWith(`${skillDir}/`))
-      .map((entry) => {
-        const relative = entry === skillPath ? "SKILL.md" : entry.slice(skillDir.length + 1);
-        return {
-          path: normalizePortablePath(relative),
-          kind: classifyInventoryKind(relative),
-        };
-      })
-      .sort((left, right) => left.path.localeCompare(right.path));
+    const inventory = buildSkillFileInventory(allFiles, skillPath, skillPaths);
     const imported = await readLocalSkillImportFromDirectory(companyId, path.join(root, skillDir));
     imported.fileInventory = inventory;
     imported.trustLevel = deriveTrustLevel(inventory);
@@ -961,7 +993,7 @@ async function readLocalSkillImports(companyId: string, sourcePath: string): Pro
   return imports;
 }
 
-async function readUrlSkillImports(
+export async function readUrlSkillImports(
   companyId: string,
   sourceUrl: string,
   requestedSkillSlug: string | null = null,
@@ -1020,13 +1052,7 @@ async function readUrlSkillImports(
         trackingRef,
         repoSkillDir: basePrefix ? `${basePrefix}${skillDir}` : skillDir,
       };
-      const inventory = filteredPaths
-        .filter((entry) => entry === relativeSkillPath || entry.startsWith(`${skillDir}/`))
-        .map((entry) => ({
-          path: entry === relativeSkillPath ? "SKILL.md" : entry.slice(skillDir.length + 1),
-          kind: classifyInventoryKind(entry === relativeSkillPath ? "SKILL.md" : entry.slice(skillDir.length + 1)),
-        }))
-        .sort((left, right) => left.path.localeCompare(right.path));
+      const inventory = buildSkillFileInventory(filteredPaths, relativeSkillPath, skillPaths);
       skills.push({
         key: deriveCanonicalSkillKey(companyId, {
           slug,

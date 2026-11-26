@@ -114,10 +114,23 @@ export function CompanyRail() {
     [orderedCompanies],
   );
 
+  const anyLiveAgents = useMemo(
+    () => Array.from(hasLiveAgentsByCompanyId.values()).some(Boolean),
+    [hasLiveAgentsByCompanyId],
+  );
+
   return (
-    <div className="flex flex-col items-center w-[52px] shrink-0 h-full bg-[#0b0e14] border-r border-[#242d3f]">
-      <div className="flex items-center justify-center h-12 w-full shrink-0">
-        <PapercompanyLogoIcon className="h-7 w-7" />
+    <div className="flex flex-col items-center w-[52px] shrink-0 h-full bg-[#f1f5f9] dark:bg-[#090c12] border-r border-slate-200 dark:border-white/[0.065]">
+      <div className="flex items-center justify-center h-12 w-full shrink-0 border-b border-slate-200/80 dark:border-white/[0.065]">
+        <div className="relative flex h-8 w-8 items-center justify-center rounded-[9px] border border-slate-300/80 bg-white shadow-xs dark:border-white/[0.12] dark:bg-gradient-to-b dark:from-[#172030] dark:to-[#0d131f] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.45)]">
+          <PapercompanyLogoIcon className="h-5 w-5" />
+          {anyLiveAgents && (
+            <span
+              aria-hidden="true"
+              className="pw-live-dot absolute -right-0.5 -bottom-0.5 h-2 w-2 ring-2 ring-[#f1f5f9] dark:ring-[#090c12]"
+            />
+          )}
+        </div>
       </div>
 
       <div className="flex-1 flex flex-col items-center gap-1.5 py-2 w-full overflow-y-auto overflow-x-hidden scrollbar-none">
@@ -131,10 +144,10 @@ export function CompanyRail() {
                   data-company-rail-item={company.id}
                   data-active={isSelected ? "true" : undefined}
                   className={cn(
-                    "relative flex w-full justify-center [&_a>div:first-child]:left-0 [&_a>div:first-child]:w-0.5 [&_a>div:first-child]:rounded-none [&_a>div:first-child]:transition-[height,background-color,box-shadow] [&_a>div:nth-child(2)]:transition-[transform,translate,scale,box-shadow] [&:hover_a>div:nth-child(2)]:-translate-y-0.5 [&:hover_a>div:nth-child(2)]:shadow-[0_8px_16px_-8px_rgba(0,0,0,0.85)]",
+                    "relative flex w-full justify-center [&_a>div:first-child]:left-0 [&_a>div:first-child]:w-[3px] [&_a>div:first-child]:rounded-r-full [&_a>div:first-child]:transition-[height,background-color,box-shadow] [&_a>div:nth-child(2)]:transition-[transform,translate,scale,box-shadow] [&:hover_a>div:nth-child(2)]:-translate-y-0.5 [&:hover_a>div:nth-child(2)]:shadow-[0_8px_16px_-8px_rgba(0,0,0,0.65)]",
                     isSelected
-                      ? "[&_a>div:first-child]:h-5 [&_a>div:first-child]:bg-[#5f8dff] [&_a>div:first-child]:shadow-[0_0_10px_0_rgba(95,141,255,0.55)]"
-                      : "[&_a>div:first-child]:h-0 [&:hover_a>div:first-child]:h-2 [&:hover_a>div:first-child]:bg-[#5f8dff]/60",
+                      ? "[&_a>div:first-child]:h-5 [&_a>div:first-child]:bg-[#2563eb] dark:[&_a>div:first-child]:bg-[#a3e635] dark:[&_a>div:first-child]:shadow-[0_0_10px_0_rgba(163,230,53,0.45)]"
+                      : "[&_a>div:first-child]:h-0 [&:hover_a>div:first-child]:h-2 [&:hover_a>div:first-child]:bg-[#2563eb]/60 dark:[&:hover_a>div:first-child]:bg-[#60a5fa]/65",
                   )}
                 >
                   <SortableCompanyItem
@@ -156,7 +169,7 @@ export function CompanyRail() {
 
       <ProviderUsageRings companyId={selectedCompanyId} />
 
-      <div className="w-6 h-px bg-[#242d3f] mx-auto shrink-0" />
+      <div className="w-6 h-px bg-slate-300/80 dark:bg-white/[0.08] mx-auto shrink-0" />
 
       <div className="flex items-center justify-center py-2 shrink-0">
         <Tooltip delayDuration={300}>
@@ -164,10 +177,10 @@ export function CompanyRail() {
             <button
               type="button"
               onClick={() => openOnboarding()}
-              className="flex items-center justify-center w-10 h-10 rounded-[20px] hover:rounded-[12px] border border-dashed border-[#242d3f] text-muted-foreground hover:border-[#5f8dff]/70 hover:text-[#5f8dff] transition-[border-color,color,border-radius] duration-150"
+              className="flex items-center justify-center w-9 h-9 rounded-[10px] border border-dashed border-slate-300 dark:border-white/[0.12] text-muted-foreground hover:border-[#2563eb]/70 hover:text-[#2563eb] dark:hover:border-[#a3e635]/60 dark:hover:text-[#a3e635] dark:hover:bg-[#a3e635]/[0.06] transition-[border-color,color,background-color] duration-150"
               aria-label="Add company"
             >
-              <Plus className="h-5 w-5" />
+              <Plus className="h-4 w-4" />
             </button>
           </TooltipTrigger>
           <TooltipContent side="right" sideOffset={8}>
