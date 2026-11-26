@@ -1,12 +1,32 @@
-import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { activityLog, heartbeatRuns, issues } from "@paperclipai/db";
+import { activityLog, agentWakeupRequests, heartbeatRuns, issues } from "@paperclipai/db";
 
 export interface ActivityFilters {
   companyId: string;
   agentId?: string;
   entityType?: string;
   entityId?: string;
+}
+
+export interface RunsForIssueOptions {
+  limit?: number;
+  offset?: number;
+}
+
+const DEFAULT_RUNS_FOR_ISSUE_LIMIT = 20;
+const MAX_RUNS_FOR_ISSUE_LIMIT = 100;
+
+function runsForIssueLimit(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    return DEFAULT_RUNS_FOR_ISSUE_LIMIT;
+  }
+  return Math.min(value, MAX_RUNS_FOR_ISSUE_LIMIT);
+}
+
+function runsForIssueOffset(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) return 0;
+  return value;
 }
 
 export function activityService(db: Db) {
@@ -65,8 +85,30 @@ export function activityService(db: Db) {
         )
         .orderBy(desc(activityLog.createdAt)),
 
-    runsForIssue: (companyId: string, issueId: string) =>
-      db
+    runsForIssue: (companyId: string, issueId: string, options: RunsForIssueOptions = {}) => {
+      const activityRunIds = db
+        .select({ id: activityLog.runId })
+        .from(activityLog)
+        .where(
+          and(
+            eq(activityLog.companyId, companyId),
+            eq(activityLog.entityType, "issue"),
+            eq(activityLog.entityId, issueId),
+            sql`${activityLog.runId} is not null`,
+          ),
+        );
+      const wakeupRunIds = db
+        .select({ id: agentWakeupRequests.runId })
+        .from(agentWakeupRequests)
+        .where(
+          and(
+            eq(agentWakeupRequests.companyId, companyId),
+            eq(agentWakeupRequests.issueId, issueId),
+            sql`${agentWakeupRequests.runId} is not null`,
+          ),
+        );
+
+      return db
         .select({
           runId: heartbeatRuns.id,
           status: heartbeatRuns.status,
@@ -84,19 +126,15 @@ export function activityService(db: Db) {
             eq(heartbeatRuns.companyId, companyId),
             or(
               eq(heartbeatRuns.issueId, issueId),
-              sql`${heartbeatRuns.contextSnapshot} ->> 'issueId' = ${issueId}`,
-              sql`exists (
-                select 1
-                from ${activityLog}
-                where ${activityLog.companyId} = ${companyId}
-                  and ${activityLog.entityType} = 'issue'
-                  and ${activityLog.entityId} = ${issueId}
-                  and ${activityLog.runId} = ${heartbeatRuns.id}
-              )`,
+              inArray(heartbeatRuns.id, activityRunIds),
+              inArray(heartbeatRuns.id, wakeupRunIds),
             ),
           ),
         )
-        .orderBy(desc(heartbeatRuns.createdAt)),
+        .orderBy(desc(heartbeatRuns.createdAt))
+        .limit(runsForIssueLimit(options.limit))
+        .offset(runsForIssueOffset(options.offset));
+    },
 
     issuesForRun: async (runId: string) => {
       const run = await db
