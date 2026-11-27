@@ -46,6 +46,7 @@ import { knowledgePatternsRoutes } from "./routes/knowledge-patterns.js";
 import { knowledgeBasesRoutes } from "./routes/knowledge-bases.js";
 import { selfImprovementAdoptionsRoutes } from "./routes/self-improvement-adoptions.js";
 import { channelConfigRoutes } from "./routes/channel-config.js";
+import { collabChannelsRoutes } from "./routes/collab-channels.js";
 import { strategyPlaybookRoutes } from "./routes/strategy-playbook.js";
 import { authAccountRoutes } from "./routes/auth-account.js";
 import { activityRoutes } from "./routes/activity.js";
@@ -685,6 +686,7 @@ export async function createApp(
   api.use(dataGraphRoutes(db));
   api.use(selfImprovementAdoptionsRoutes(db));
   api.use(channelConfigRoutes(db));
+  api.use(collabChannelsRoutes(db));
   api.use(strategyPlaybookRoutes(db));
   api.use(activityRoutes(db));
   api.use(dashboardRoutes(db));

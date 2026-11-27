@@ -36,6 +36,7 @@ const MissionDetail = lazy(async () => ({ default: (await import("./pages/Missio
 const Workflows = lazy(async () => ({ default: (await import("./pages/Workflows")).Workflows }));
 const SchedulerConfig = lazy(async () => ({ default: (await import("./pages/SchedulerConfig")).SchedulerConfig }));
 const ChannelConfig = lazy(async () => ({ default: (await import("./pages/ChannelConfig")).ChannelConfig }));
+const CollabChannels = lazy(async () => ({ default: (await import("./pages/CollabChannels")).CollabChannels }));
 const EnterpriseBots = lazy(async () => ({ default: (await import("./pages/EnterpriseBots")).EnterpriseBots }));
 const WorktreeRules = lazy(async () => ({ default: (await import("./pages/WorktreeRules")).WorktreeRules }));
 const WorktreeProposals = lazy(async () => ({ default: (await import("./pages/WorktreeProposals")).WorktreeProposals }));
@@ -71,7 +72,8 @@ const ROUTE_CHUNK_LOADERS: Record<string, () => Promise<unknown>> = {
   "/company/settings": () => import("./pages/CompanySettings"),
   "/skills": () => import("./pages/CompanySkills"),
   "/scheduler": () => import("./pages/SchedulerConfig"),
-  "/channels": () => import("./pages/ChannelConfig"),
+  "/channel-config": () => import("./pages/ChannelConfig"),
+  "/channels": () => import("./pages/CollabChannels"),
   "/bots": () => import("./pages/EnterpriseBots"),
 };
 /** Top sidebar routes warmed once the first paint is done, in likely-visit order. */
@@ -258,7 +260,8 @@ function boardRoutes() {
       <Route path="missions" element={lazyRoute(<Missions />)} />
       <Route path="missions/:missionId" element={lazyRoute(<MissionDetail />)} />
       <Route path="scheduler" element={lazyRoute(<SchedulerConfig />)} />
-      <Route path="channels" element={lazyRoute(<ChannelConfig />)} />
+      {/* Legacy prefixed channel-config URL → 전역(프리픽스 없는) /channel-config 로 유도한다. */}
+      <Route path="channels" element={<Navigate to="/channel-config" replace />} />
       <Route path="bots" element={lazyRoute(<EnterpriseBots />)} />
       <Route path="worktree/rules" element={lazyRoute(<WorktreeRules />)} />
       <Route path="worktree/proposals" element={lazyRoute(<WorktreeProposals />)} />
@@ -425,8 +428,12 @@ export function App() {
             <Route path="heartbeats" element={lazyRoute(<InstanceSettings />)} />
             <Route path="experimental" element={lazyRoute(<InstanceExperimentalSettings />)} />
           </Route>
-          <Route path="channels" element={<Layout />}>
+          <Route path="channel-config" element={<Layout />}>
             <Route index element={lazyRoute(<ChannelConfig />)} />
+          </Route>
+          <Route path="channels" element={<Layout />}>
+            <Route index element={lazyRoute(<CollabChannels />)} />
+            <Route path=":channelId" element={lazyRoute(<CollabChannels />)} />
           </Route>
           <Route path="scheduler" element={<Layout />}>
             <Route index element={lazyRoute(<SchedulerConfig />)} />

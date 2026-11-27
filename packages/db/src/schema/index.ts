@@ -139,6 +139,7 @@ export { srbIssuePairs } from "./srb_issue_pairs.js";
 export { srbDeliveryLog } from "./srb_delivery_log.js";
 export { srbNonces } from "./srb_nonces.js";
 export { channelConfigs } from "./channel_configs.js";
+export { collabChannels, collabThreads, collabMessages } from "./collab_channels.js";
 export { teams, bots, botCapabilities, clientTerminals, channels, channelMembers } from "./enterprise_bots.js";
 export { missionPlanDecisionSubmissions } from "./mission_plan_decision_submissions.js";
 export { missionPlanQaVerdicts } from "./mission_plan_qa_verdicts.js";

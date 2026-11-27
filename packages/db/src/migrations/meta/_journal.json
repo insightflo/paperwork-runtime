@@ -974,6 +974,13 @@
       "when": 1795392000000,
       "tag": "0139_enterprise_bots_telemetry",
       "breakpoints": true
+    },
+    {
+      "idx": 140,
+      "version": "7",
+      "when": 1795399200000,
+      "tag": "0140_collab_channels",
+      "breakpoints": true
     }
   ]
 }
