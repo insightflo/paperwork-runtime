@@ -70,6 +70,8 @@ type InboxCategoryFilter =
   | "approvals"
   | "failed_runs"
   | "alerts";
+/** Telemetry-strip filter keys; "none" shows everything. */
+type TelemetryFilter = "none" | "approvals" | "failed" | "joins" | "alerts" | "live";
 type SectionKey =
   | "work_items"
   | "join_requests"
@@ -212,13 +214,20 @@ function summarizeItem(item: TriageItem, lang: ReturnType<typeof useCompanyLangu
 }
 
 /** Compact scannable master-list row with Combo 1 status pulses. */
-function TriageListRow({ item, summary, selected, live, onSelect }: {
+function TriageListRow({ item, summary, selected, live, onSelect, onRetry, retryDisabled, retrying, retryTitle, retryLabel }: {
   item: TriageItem;
   summary: TriageSummary;
   selected: boolean;
   live: boolean;
   onSelect: () => void;
+  /** Present only on failed_run rows; renders the inline retry chip. */
+  onRetry?: () => void;
+  retryDisabled?: boolean;
+  retrying?: boolean;
+  retryTitle?: string;
+  retryLabel?: string;
 }) {
+  const retryable = item.kind === "failed_run" && !!onRetry;
   const category = CATEGORY[item.kind];
   const indicatorClass = live
     ? "bg-emerald-700 animate-pulse dark:bg-emerald-300"
@@ -230,7 +239,7 @@ function TriageListRow({ item, summary, selected, live, onSelect }: {
           ? "bg-blue-500 shadow-[0_0_6px_rgba(96,165,250,0.65)] dark:bg-[var(--pw-cobalt)]"
           : "bg-transparent";
   return (
-    <li>
+    <li className="relative">
       <button
         type="button"
         onClick={onSelect}
@@ -238,6 +247,7 @@ function TriageListRow({ item, summary, selected, live, onSelect }: {
         aria-current={selected ? "true" : undefined}
         className={cn(
           "grid w-full cursor-pointer grid-cols-[0.625rem_minmax(0,1fr)] items-start gap-x-2.5 border-b border-slate-200/75 px-3.5 py-2.5 text-left transition-colors last:border-b-0 dark:border-white/[0.06]",
+          retryable && "pr-[4.75rem]",
           selected
             ? "bg-blue-50/80 shadow-[inset_2px_0_0_var(--pw-cobalt)] dark:bg-[var(--pw-cobalt)]/12 dark:shadow-[inset_2px_0_0_var(--pw-cobalt)]"
             : "hover:bg-slate-50/90 dark:hover:bg-[#141b29]",
@@ -264,6 +274,22 @@ function TriageListRow({ item, summary, selected, live, onSelect }: {
           </span>
         </span>
       </button>
+      {retryable && (
+        <button
+          type="button"
+          data-testid="inbox-row-retry"
+          onClick={(event) => {
+            event.stopPropagation();
+            if (!retryDisabled && !retrying) onRetry!();
+          }}
+          disabled={retryDisabled}
+          title={retryTitle}
+          className="absolute right-2 top-2 z-[1] inline-flex items-center gap-1 rounded-md border border-destructive/40 bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-destructive hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-card/90"
+        >
+          <RotateCcw className="size-3" aria-hidden="true" />
+          {retrying ? "Retrying…" : retryLabel ?? "Retry"}
+        </button>
+      )}
     </li>
   );
 }
@@ -373,6 +399,7 @@ export function Inbox() {
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
   const [allCategoryFilter, setAllCategoryFilter] = useState<InboxCategoryFilter>("everything");
+  const [telemetryFilter, setTelemetryFilter] = useState<TelemetryFilter>("none");
   const [allApprovalFilter, setAllApprovalFilter] = useState<InboxApprovalFilter>("all");
   const { dismissed, dismiss } = useDismissedInboxItems();
 
@@ -538,6 +565,15 @@ export function Inbox() {
     [approvalsToRender, issuesToRender, showApprovalsCategory, showTouchedCategory, tab, failedRunsForTab],
   );
 
+  // Telemetry-strip filter: narrows the triage list on any tab. Strip counts
+  // keep using the unfiltered tab totals so operators can jump between filters.
+  const filteredTriageItems = useMemo(() => {
+    if (telemetryFilter === "approvals") return workItemsToRender.filter((item) => item.kind === "approval");
+    if (telemetryFilter === "failed") return workItemsToRender.filter((item) => item.kind === "failed_run");
+    if (telemetryFilter === "live") return workItemsToRender.filter((item) => item.kind === "issue" && liveIssueIds.has(item.issue.id));
+    return workItemsToRender;
+  }, [workItemsToRender, telemetryFilter, liveIssueIds]);
+
   const agentName = (id: string | null) => {
     if (!id) return null;
     return agentById.get(id) ?? null;
@@ -698,7 +734,7 @@ export function Inbox() {
   const listRef = useRef<HTMLDivElement>(null);
   const previousSelectedKeyRef = useRef<string | null>(null);
 
-  const triageItems = workItemsToRender;
+  const triageItems = filteredTriageItems;
   const triageKeys = useMemo(() => triageItems.map(triageKey), [triageItems]);
   const pickedIndex = pickedKey ? triageKeys.indexOf(pickedKey) : -1;
   const selectedIndex = triageItems.length > 0 ? (pickedIndex >= 0 ? pickedIndex : 0) : -1;
@@ -785,16 +821,23 @@ export function Inbox() {
     !dismissed.has("alert:budget");
   const hasAlerts = showAggregateAgentError || showBudgetAlert;
   const hasJoinRequests = joinRequests.length > 0;
-  const showWorkItemsSection = shouldShowHeartbeatLoadMoreSection(workItemsToRender.length, attentionHasMore, tab, showFailedRunsCategory);
-  const showJoinRequestsSection =
-    tab === "all" ? showJoinRequestsCategory && hasJoinRequests : tab === "unread" && hasJoinRequests;
-  const showAlertsSection = shouldShowInboxSection({
-    tab,
-    hasItems: hasAlerts,
-    showOnRecent: hasAlerts,
-    showOnUnread: hasAlerts,
-    showOnAll: showAlertsCategory && hasAlerts,
-  });
+  const joinsOnlyView = telemetryFilter === "joins";
+  const alertsOnlyView = telemetryFilter === "alerts";
+  const showWorkItemsSection =
+    !joinsOnlyView && !alertsOnlyView &&
+    shouldShowHeartbeatLoadMoreSection(workItemsToRender.length, attentionHasMore, tab, showFailedRunsCategory);
+  const showJoinRequestsSection = joinsOnlyView
+    ? hasJoinRequests
+    : !alertsOnlyView && (tab === "all" ? showJoinRequestsCategory && hasJoinRequests : tab === "unread" && hasJoinRequests);
+  const showAlertsSection = alertsOnlyView
+    ? hasAlerts
+    : !joinsOnlyView && shouldShowInboxSection({
+      tab,
+      hasItems: hasAlerts,
+      showOnRecent: hasAlerts,
+      showOnUnread: hasAlerts,
+      showOnAll: showAlertsCategory && hasAlerts,
+    });
 
   const visibleSections = [
     showAlertsSection ? "alerts" : null,
@@ -1000,10 +1043,45 @@ export function Inbox() {
 
   const tabLabel = tab === "recent" ? "Recent" : tab === "unread" ? "Unread" : "All";
   const alertCount = (showAggregateAgentError ? 1 : 0) + (showBudgetAlert ? 1 : 0);
-  const inboxTelemetry = [
-    { label: "Items", value: triageItems.length, dot: "bg-blue-500 dark:bg-[var(--pw-cobalt)]", title: "Visible work items" }, { label: "Unread", value: unreadIssueIds.length, dot: "bg-blue-500 dark:bg-[var(--pw-cobalt)]", title: "Unread issues" },
-    { label: "Approvals", value: approvalsToRender.length, dot: "bg-amber-500 dark:bg-[#f59e0b]", title: "Visible approvals" }, { label: "Failed", value: failedRunsForTab.length, dot: "bg-rose-500 dark:bg-[#f43f5e]", title: "Visible failed runs" },
-    { label: "Joins", value: joinRequests.length, dot: "bg-emerald-700 dark:bg-emerald-300", title: "Pending join requests" }, { label: "Alerts", value: alertCount, dot: "bg-amber-500 dark:bg-[#f59e0b]", title: "Active inbox alerts" }, { label: "Live", value: liveIssueIds.size, dot: "bg-emerald-700 dark:bg-emerald-300", title: "Issues with live runs" },
+  const toggleTelemetryFilter = (key: TelemetryFilter) => {
+    setTelemetryFilter((current) => (current === key ? "none" : key));
+  };
+  const inboxTelemetry: {
+    label: string;
+    value: number;
+    dot: string;
+    title: string;
+    active: boolean;
+    onToggle: () => void;
+  }[] = [
+    {
+      label: "Items", value: workItemsToRender.length, dot: "bg-blue-500 dark:bg-[var(--pw-cobalt)]", title: "All work items (reset filters)",
+      active: telemetryFilter === "none", onToggle: () => { setTelemetryFilter("none"); setAllCategoryFilter("everything"); },
+    },
+    {
+      label: "Unread", value: unreadIssueIds.length, dot: "bg-blue-500 dark:bg-[var(--pw-cobalt)]", title: "Unread issues",
+      active: tab === "unread", onToggle: () => navigate(tab === "unread" ? "/inbox/recent" : "/inbox/unread"),
+    },
+    {
+      label: "Approvals", value: approvalsToRender.length, dot: "bg-amber-500 dark:bg-[#f59e0b]", title: "Approvals only",
+      active: telemetryFilter === "approvals", onToggle: () => toggleTelemetryFilter("approvals"),
+    },
+    {
+      label: "Failed", value: failedRunsForTab.length, dot: "bg-rose-500 dark:bg-[#f43f5e]", title: "Failed runs only",
+      active: telemetryFilter === "failed", onToggle: () => toggleTelemetryFilter("failed"),
+    },
+    {
+      label: "Joins", value: joinRequests.length, dot: "bg-emerald-700 dark:bg-emerald-300", title: "Join requests only",
+      active: telemetryFilter === "joins", onToggle: () => toggleTelemetryFilter("joins"),
+    },
+    {
+      label: "Alerts", value: alertCount, dot: "bg-amber-500 dark:bg-[#f59e0b]", title: "Alerts only",
+      active: telemetryFilter === "alerts", onToggle: () => toggleTelemetryFilter("alerts"),
+    },
+    {
+      label: "Live", value: liveIssueIds.size, dot: "bg-emerald-700 dark:bg-emerald-300", title: "Issues with live runs",
+      active: telemetryFilter === "live", onToggle: () => toggleTelemetryFilter("live"),
+    },
   ];
 
   return (
@@ -1011,9 +1089,20 @@ export function Inbox() {
       <div className={STRIP_CLASS} role="group" aria-label="Inbox telemetry">
         <span className="cockpit-cell shrink-0"><InboxIcon className="h-3.5 w-3.5" aria-hidden /><span className="uppercase tracking-wide">Inbox</span></span>
         {inboxTelemetry.map((cell) => (
-          <span key={cell.label} className="cockpit-cell min-w-[5.5rem] flex-1 justify-center" title={cell.title}>
+          <button
+            key={cell.label}
+            type="button"
+            data-testid={`inbox-telemetry-${cell.label.toLowerCase()}`}
+            aria-pressed={cell.active}
+            title={cell.title}
+            onClick={cell.onToggle}
+            className={cn(
+              "cockpit-cell min-w-[5.5rem] flex-1 cursor-pointer justify-center rounded-md transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
+              cell.active && "border-primary/60 bg-primary/10 text-foreground ring-1 ring-inset ring-primary/40",
+            )}
+          >
             <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", cell.dot)} /><span className="truncate uppercase tracking-wide">{cell.label}</span><b className="ml-1 font-mono">{cell.value}</b>
-          </span>
+          </button>
         ))}
       </div>
 
@@ -1117,6 +1206,7 @@ export function Inbox() {
                   <ul>
                     {triageItems.map((item) => {
                       const key = triageKey(item);
+                      const retryRun = item.kind === "failed_run" ? item.run : null;
                       return (
                         <TriageListRow
                           key={key}
@@ -1125,6 +1215,11 @@ export function Inbox() {
                           selected={key === selectedKey}
                           live={item.kind === "issue" && liveIssueIds.has(item.issue.id)}
                           onSelect={() => setPickedKey(key)}
+                          onRetry={retryRun ? () => retryRunMutation.mutate(retryRun) : undefined}
+                          retryDisabled={!canWrite || (retryRun !== null && retryingRunIds.has(retryRun.id))}
+                          retrying={retryRun !== null && retryingRunIds.has(retryRun.id)}
+                          retryTitle={!canWrite ? writeRequiredTitle : undefined}
+                          retryLabel={L(lang, { en: "Retry", ko: "재시도" })}
                         />
                       );
                     })}
