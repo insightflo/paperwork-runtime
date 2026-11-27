@@ -284,11 +284,11 @@ export function createJudgmentService(db: Db, deps: JudgmentServiceDeps = {}): J
       }
 
       // 4) 전송: provider 는 검사본(redacted)을 그대로 받는다(전송=검사본 일치).
-      //    주입 provider(테스트 목)는 인스턴스 설정을 읽지 않는다. 기본 provider 는
-      //    호출마다 설정의 endpoint/model 오버라이드를 1회 읽어 반영한다.
+      //    주입 provider(테스트 목)는 인스턴스 설정을 읽지 않는다. 기본 provider 는 호출마다
+      //    설정의 endpoint/model/API 키 오버라이드를 1회 읽고, 미설정 시 env 키 폴백을 유지한다.
       const config = deps.provider ? null : await resolveJudgmentProviderConfig(db);
-      const provider =
-        deps.provider ?? createTypesafeProvider(config?.baseUrl ? { baseUrl: config.baseUrl } : {});
+      const provider = deps.provider
+        ?? createTypesafeProvider({ baseUrl: config?.baseUrl, apiKey: config?.apiKey });
       const result = await provider.ask({
         state: egressScan.redacted as JudgmentAskState,
         model: config ? resolveJudgmentModel(config, definition.modelId) : definition.modelId,

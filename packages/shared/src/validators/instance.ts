@@ -58,6 +58,7 @@ export const instanceGeneralSettingsSchema = z.object({
   censorUsernameInLogs: z.boolean().default(false),
   judgmentBaseUrl: judgmentBaseUrlSchema.optional(),
   judgmentModelId: judgmentModelIdSchema.optional(),
+  judgmentApiKeyConfigured: z.boolean().optional(),
   llmStructuredBaseUrl: judgmentBaseUrlSchema.optional(),
   llmStructuredModel: judgmentModelIdSchema.optional(),
   llmStructuredApiKeyConfigured: z.boolean().optional(),
@@ -69,9 +70,16 @@ export const instanceGeneralSettingsSchema = z.object({
 }).strict();
 
 export const patchInstanceGeneralSettingsSchema = instanceGeneralSettingsSchema
-  .omit({ llmStructuredApiKeyConfigured: true, llmStructuredProviders: true })
+  .omit({
+    llmStructuredApiKeyConfigured: true,
+    judgmentApiKeyConfigured: true,
+    llmStructuredProviders: true,
+  })
   .partial()
   .extend({
+    // 판단(Jev) API 키 — 문자열은 저장 시 암호화, null 은 해제, undefined 는 기존값 보존.
+    // 원문 키는 저장·응답·활동 로그 어디에도 평문으로 남지 않는다.
+    judgmentApiKey: llmStructuredApiKeySchema.optional(),
     llmStructuredApiKey: llmStructuredApiKeySchema.optional(),
     llmStructuredProviders: z.array(llmStructuredProviderPatchItemSchema).max(20)
       .refine((items) => new Set(items.map(({ id }) => id)).size === items.length, "Provider IDs must be unique").optional(),

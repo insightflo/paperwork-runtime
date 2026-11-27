@@ -20,6 +20,8 @@ export interface InstanceGeneralSettings {
   judgmentBaseUrl?: string;
   /** 판단(Jev) 모델 오버라이드. 미설정(undefined)이면 정의별 모델 사용. */
   judgmentModelId?: string;
+  /** 판단(Jev) API 키 저장 여부(마스킹 플래그 — 원문 키는 어떤 응답에도 포함되지 않는다). */
+  readonly judgmentApiKeyConfigured?: boolean;
   llmStructuredBaseUrl?: string;
   llmStructuredModel?: string;
   readonly llmStructuredApiKeyConfigured?: boolean;
