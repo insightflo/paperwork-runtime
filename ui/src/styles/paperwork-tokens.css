@@ -84,8 +84,7 @@
   --pw-token-ring-fill: #d9705f;
 }
 
-:root:not(.dark),
-:root[data-openbot-color-scheme="light"] {
+:root:not(.dark) {
   --pw-token-bg-surface: #fbf8f1;
   --pw-token-bg-surface-raised: #fdfbf6;
   --pw-token-bg-glass: rgba(251, 248, 241, 0.82);
@@ -155,8 +154,7 @@
 
 /* Backward-compatible aliases: same declaration surfaces as the legacy file. */
 :root,
-.dark,
-[data-openbot-color-scheme="light"] {
+.dark {
   --openbot-bg-surface: var(--pw-token-bg-surface);
   --openbot-bg-surface-raised: var(--pw-token-bg-surface-raised);
   --openbot-bg-glass: var(--pw-token-bg-glass);
@@ -273,21 +271,11 @@
   --openbot-provider-current: var(--pw-token-provider-cursor);
 }
 
-/* ---- 2.5D floating workspace sheet & compact icon mini-sidebar ---- */
-.openbot-canvas-sheet {
-  background-color: var(--pw-token-canvas-sheet-bg);
-  border-top: 1px solid var(--pw-token-canvas-sheet-border);
-  border-left: 1px solid var(--pw-token-canvas-sheet-border);
-  border-top-left-radius: 16px;
-}
+/* ---- 2.5D floating workspace command header ---- */
 
 [aria-label="명령 헤더"] {
   border-radius: 14px;
 }
 [aria-label="명령 헤더"] .openbot-kpi-grid > a {
   border-radius: 10px;
-}
-
-[data-compact-nav="true"] .openbot-compact-section > div > div:first-child {
-  display: none;
 }

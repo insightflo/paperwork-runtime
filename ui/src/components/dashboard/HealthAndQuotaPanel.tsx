@@ -152,7 +152,7 @@ export function HealthAndQuotaPanel({
           </h3>
           {dgate?.available && (
             <span className="rounded border border-[#60a5fa]/35 bg-[#60a5fa]/10 px-1.5 py-0.5 font-mono text-[10px] text-[#2563eb] dark:text-[#60a5fa]">
-              dgate live
+              CONTROL PLANE LIVE
             </span>
           )}
         </div>
