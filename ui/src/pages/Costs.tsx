@@ -70,7 +70,7 @@ function BillerTabLabel({ biller, rows }: { biller: string; rows: CostByBiller[]
 }
 
 const TACTILE_CARD_CLASS =
-  "tactile-card rounded-xl border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+  "tactile-card rounded-xl border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-card";
 
 function MetricTile({
   label,
@@ -84,14 +84,14 @@ function MetricTile({
   icon: ComponentType<{ className?: string }>;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200/80 bg-slate-50/75 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.07] dark:bg-[#090d14] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+    <div className="rounded-xl border border-slate-200/80 bg-slate-50/75 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.07] dark:bg-muted/40 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]">{label}</div>
           <div className="mt-2 text-2xl font-semibold tabular-nums text-slate-950 dark:text-[#edf2fb]">{value}</div>
           <div className="mt-1 text-xs leading-5 text-slate-500 dark:text-[#8b97ad]">{subtitle}</div>
         </div>
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-[#0e131d]">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-card">
           <Icon className="h-4 w-4 text-slate-500 dark:text-[#8b97ad]" />
         </div>
       </div>
@@ -116,9 +116,9 @@ function TelemetryCell({ label, value, sub, dot, visual }: { label: string; valu
   );
 }
 
-function MiniBar({ percent, tone = "bg-blue-500 dark:bg-[#60a5fa]" }: { percent: number; tone?: string }) {
+function MiniBar({ percent, tone = "bg-blue-500 dark:bg-primary" }: { percent: number; tone?: string }) {
   return (
-    <span className="block h-1.5 w-16 overflow-hidden rounded-full border border-slate-200/90 bg-slate-100 dark:border-white/[0.08] dark:bg-[#07090d]">
+    <span className="block h-1.5 w-16 overflow-hidden rounded-full border border-slate-200/90 bg-slate-100 dark:border-white/[0.08] dark:bg-background">
       <span className={cn("block h-full rounded-full transition-[width] duration-150", tone)} style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
     </span>
   );
@@ -128,7 +128,7 @@ function MiniBar({ percent, tone = "bg-blue-500 dark:bg-[#60a5fa]" }: { percent:
 function CockpitCard({ title, description, action, children }: { title: string; description: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className={cn(TACTILE_CARD_CLASS, "flex min-w-0 flex-col overflow-hidden")}>
-      <header className="flex items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/80 px-4 py-2.5 dark:border-white/[0.06] dark:bg-[#090d14]/80">
+      <header className="flex items-center justify-between gap-3 border-b border-slate-200/80 bg-slate-50/80 px-4 py-2.5 dark:border-white/[0.06] dark:bg-muted/40">
         <div className="min-w-0">
           <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:text-[#8b97ad]">{title}</h2>
           <p className="truncate text-[11px] text-slate-500 dark:text-[#8b97ad]">{description}</p>
@@ -625,7 +625,7 @@ export function Costs() {
   return (
     <div className="space-y-3 tabular-nums">
       <div className="space-y-2">
-          <div className="cockpit-toolbar tactile-card h-10 w-full rounded-xl border-slate-200/90 bg-white pl-2 pr-1.5 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]">
+          <div className="cockpit-toolbar tactile-card h-10 w-full rounded-xl border-slate-200/90 bg-white pl-2 pr-1.5 dark:border-white/[0.08] dark:bg-none dark:bg-card">
             <div className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden">
               <h1 className="truncate text-sm font-semibold tracking-tight text-slate-950 dark:text-[#eef2f8]">Costs</h1>
               <p className="hidden truncate text-xs text-slate-500 dark:text-[#8b97ad] sm:block">
@@ -639,7 +639,7 @@ export function Costs() {
                   type="button"
                   aria-pressed={preset === key}
                   className={cn(
-                    "h-6 cursor-pointer whitespace-nowrap rounded-md px-2 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/35 dark:focus-visible:ring-[#60a5fa]/35",
+                    "h-6 cursor-pointer whitespace-nowrap rounded-md px-2 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/35 dark:focus-visible:ring-primary/35",
                     preset === key
                       ? "bg-white font-semibold text-slate-950 shadow-sm dark:bg-[#151d2b] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
                       : "text-slate-600 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:text-[#eef2f8]",
@@ -653,14 +653,14 @@ export function Costs() {
           </div>
 
           {preset === "custom" ? (
-            <div className="tactile-card flex min-h-10 flex-wrap items-center gap-2 rounded-xl py-1 border-slate-200/90 bg-white px-2 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]">
+            <div className="tactile-card flex min-h-10 flex-wrap items-center gap-2 rounded-xl py-1 border-slate-200/90 bg-white px-2 dark:border-white/[0.08] dark:bg-none dark:bg-card">
               <span className="text-[10.5px] font-semibold uppercase tracking-[0.1em] text-slate-500 dark:text-[#8b97ad]">Custom range</span>
               <input
                 type="date"
                 aria-label="Custom start date"
                 value={customFrom}
                 onChange={(event) => setCustomFrom(event.target.value)}
-                className="h-7 rounded-md border border-slate-200/90 bg-white px-2 text-xs text-slate-950 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25"
+                className="h-7 rounded-md border border-slate-200/90 bg-white px-2 text-xs text-slate-950 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:border-primary dark:focus:ring-primary/25"
               />
               <span className="text-xs text-slate-500 dark:text-[#8b97ad]">to</span>
               <input
@@ -668,7 +668,7 @@ export function Costs() {
                 aria-label="Custom end date"
                 value={customTo}
                 onChange={(event) => setCustomTo(event.target.value)}
-                className="h-7 rounded-md border border-slate-200/90 bg-white px-2 text-xs text-slate-950 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25"
+                className="h-7 rounded-md border border-slate-200/90 bg-white px-2 text-xs text-slate-950 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:border-primary dark:focus:ring-primary/25"
               />
             </div>
           ) : null}
@@ -685,7 +685,7 @@ export function Costs() {
               label={preset === "mtd" ? "MTD spend" : `${PRESET_LABELS[preset]} spend`}
               value={formatCents(spendCents)}
               sub={`${formatTokens(inferenceTokenTotal)} tokens · ${rangeDays ? `${rangeDays}d elapsed` : "all time"}`}
-              dot="bg-blue-500 shadow-[0_0_6px_rgba(96,165,250,0.5)] dark:bg-[#60a5fa]"
+              dot="bg-blue-500 shadow-[0_0_6px_rgba(96,165,250,0.5)] dark:bg-primary"
             />
             <TelemetryCell
               label="Budget utilization"
@@ -702,7 +702,7 @@ export function Costs() {
                       ? "bg-rose-500 shadow-[0_0_8px_rgba(248,113,113,0.65)] dark:bg-[#f87171]"
                       : utilization > 70
                         ? "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.6)] dark:bg-[#f59e0b]"
-                        : "bg-lime-500 shadow-[0_0_8px_rgba(163,230,53,0.65)] dark:bg-[#a3e635]"
+                        : "bg-emerald-700 dark:bg-emerald-300"
               }
               visual={
                 budgetCents > 0 ? (
@@ -713,7 +713,7 @@ export function Costs() {
                         ? "bg-rose-500 dark:bg-[#f87171]"
                         : utilization > 70
                           ? "bg-amber-500 dark:bg-[#f59e0b]"
-                          : "bg-lime-500 dark:bg-[#a3e635]"
+                          : "bg-emerald-700 dark:bg-emerald-300"
                     }
                   />
                 ) : undefined
@@ -733,7 +733,7 @@ export function Costs() {
                         ? "bg-rose-500 dark:bg-[#f87171]"
                         : projectedMonthCents > budgetCents * 0.8
                           ? "bg-amber-500 dark:bg-[#f59e0b]"
-                          : "bg-lime-500 dark:bg-[#a3e635]"
+                          : "bg-emerald-700 dark:bg-emerald-300"
                     }
                   />
                 ) : undefined
@@ -743,8 +743,8 @@ export function Costs() {
               label="Top cost driver"
               value={topAgent ? topAgent.agentName ?? topAgent.agentId : "—"}
               sub={topAgent ? `${formatCents(topAgent.costCents)} · ${spendCents > 0 ? Math.round((topAgent.costCents / spendCents) * 100) : 0}% of spend` : "No cost events yet"}
-              dot="bg-blue-500 dark:bg-[#60a5fa]"
-              visual={topAgent ? <MiniBar percent={spendCents > 0 ? (topAgent.costCents / spendCents) * 100 : 0} tone="bg-blue-500 dark:bg-[#60a5fa]" /> : undefined}
+              dot="bg-blue-500 dark:bg-primary"
+              visual={topAgent ? <MiniBar percent={spendCents > 0 ? (topAgent.costCents / spendCents) * 100 : 0} tone="bg-blue-500 dark:bg-primary" /> : undefined}
             />
           </section>
       </div>
@@ -843,12 +843,12 @@ export function Costs() {
                               </div>
                             </div>
                           </button>
-                          <div className="h-0.5 bg-slate-100 dark:bg-[#07090d]">
-                            <div className="h-full bg-blue-500 dark:bg-[#60a5fa]" style={{ width: `${sharePct}%` }} />
+                          <div className="h-0.5 bg-slate-100 dark:bg-background">
+                            <div className="h-full bg-blue-500 dark:bg-primary" style={{ width: `${sharePct}%` }} />
                           </div>
 
                           {isExpanded && modelRows.length > 0 ? (
-                            <div className="space-y-1.5 border-t border-slate-200/75 bg-slate-50/80 px-4 py-2.5 dark:border-white/[0.06] dark:bg-[#090d14]">
+                            <div className="space-y-1.5 border-t border-slate-200/75 bg-slate-50/80 px-4 py-2.5 dark:border-white/[0.06] dark:bg-muted/40">
                               {modelRows.map((modelRow) => {
                                 const modelSharePct = row.costCents > 0 ? Math.round((modelRow.costCents / row.costCents) * 100) : 0;
                                 return (
@@ -907,8 +907,8 @@ export function Costs() {
                               <span className="mx-1 text-slate-400 dark:text-[#4a5670]">/</span>
                               <span className="font-mono">{row.model}</span>
                             </div>
-                            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full border border-slate-200/80 bg-slate-100 dark:border-white/[0.06] dark:bg-[#07090d]">
-                              <div className="h-full rounded-full bg-blue-500 dark:bg-[#60a5fa]" style={{ width: `${sharePct}%` }} />
+                            <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full border border-slate-200/80 bg-slate-100 dark:border-white/[0.06] dark:bg-background">
+                              <div className="h-full rounded-full bg-blue-500 dark:bg-primary" style={{ width: `${sharePct}%` }} />
                             </div>
                           </div>
                           <div className="text-right tabular-nums">
