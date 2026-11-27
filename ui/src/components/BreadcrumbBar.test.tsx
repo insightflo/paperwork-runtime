@@ -151,7 +151,7 @@ describe("BreadcrumbBar", () => {
   it("renders a multi-breadcrumb trail with links for ancestors and a page label for the current item", async () => {
     hoisted.crumbs = [
       { label: "Work", href: "/issues" },
-      { label: "Paperclip Runtime" },
+      { label: "Paperwork Runtime" },
     ];
 
     await renderBar();
@@ -163,7 +163,7 @@ describe("BreadcrumbBar", () => {
 
     const page = host.querySelector('[data-slot="breadcrumb-page"]');
     expect(page).not.toBeNull();
-    expect(page!.textContent).toBe("Paperclip Runtime");
+    expect(page!.textContent).toBe("Paperwork Runtime");
     expect(page!.getAttribute("aria-current")).toBe("page");
 
     expect(host.querySelector('[data-slot="breadcrumb-separator"]')).not.toBeNull();

@@ -47,6 +47,8 @@ const AgentWiki = lazy(async () => ({ default: (await import("./pages/AgentWiki"
 const Activity = lazy(async () => ({ default: (await import("./pages/Activity")).Activity }));
 const CompanySkills = lazy(async () => ({ default: (await import("./pages/CompanySkills")).CompanySkills }));
 const MemoryAndSkillsReview = lazy(async () => ({ default: (await import("./pages/MemoryAndSkillsReview")).MemoryAndSkillsReview }));
+const PersonalEndpoints = lazy(async () => ({ default: (await import("./pages/PersonalEndpoints")).PersonalEndpoints }));
+const WorkspacePrimitives = lazy(async () => ({ default: (await import("./pages/WorkspacePrimitives")).WorkspacePrimitives }));
 const CompanyInstructions = lazy(async () => ({ default: (await import("./pages/CompanyInstructions")).CompanyInstructions }));
 const HumanOperator = lazy(async () => ({ default: (await import("./pages/HumanOperator")).HumanOperator }));
 const InstanceGeneralSettings = lazy(async () => ({ default: (await import("./pages/InstanceGeneralSettings")).InstanceGeneralSettings }));
@@ -73,6 +75,8 @@ const ROUTE_CHUNK_LOADERS: Record<string, () => Promise<unknown>> = {
   "/company/settings": () => import("./pages/CompanySettings"),
   "/skills": () => import("./pages/CompanySkills"),
   "/learning-review": () => import("./pages/MemoryAndSkillsReview"),
+  "/personal-endpoints": () => import("./pages/PersonalEndpoints"),
+  "/workspace-primitives": () => import("./pages/WorkspacePrimitives"),
   "/scheduler": () => import("./pages/SchedulerConfig"),
   "/channel-config": () => import("./pages/ChannelConfig"),
   "/channels": () => import("./pages/CollabChannels"),
@@ -163,7 +167,7 @@ function BootstrapPendingPage({ hasActiveInvite = false }: { hasActiveInvite?: b
             : "No instance admin exists yet. Run this command in your Paperwork environment to generate the first admin invite URL:"}
         </p>
         <pre className="mt-4 overflow-x-auto rounded-md border border-border bg-muted/30 p-3 text-xs">
-{`pnpm paperclipai auth bootstrap-ceo`}
+{`paperwork auth bootstrap-ceo`}
         </pre>
       </div>
     </div>
@@ -230,6 +234,8 @@ function boardRoutes() {
       <Route path="company/settings" element={lazyRoute(<CompanySettings />)} />
       <Route path="skills/*" element={lazyRoute(<CompanySkills />)} />
       <Route path="learning-review" element={lazyRoute(<MemoryAndSkillsReview />)} />
+      <Route path="personal-endpoints" element={lazyRoute(<PersonalEndpoints />)} />
+      <Route path="workspace-primitives" element={lazyRoute(<WorkspacePrimitives />)} />
       <Route path="instructions" element={lazyRoute(<CompanyInstructions />)} />
       <Route path="human-operator" element={lazyRoute(<HumanOperator />)} />
       <Route path="settings" element={<LegacySettingsRedirect />} />

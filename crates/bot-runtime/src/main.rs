@@ -18,6 +18,23 @@
 //! - `doctor [--server <url>] [--terminal-id <id>] [--socket-dir <path>]`:
 //!   Runs local diagnostics (token env presence/prefix without printing it, UDS dir `0700` check,
 //!   `/compatibility` reachability, and process-supervisor self-test) and outputs a JSON summary.
+//! - `init --server <url> --name <endpoint> [--folder <path>...] [--config <path>]`:
+//!   Validates the server URL, writes the `0600` endpoint config JSON, and prints a JSON summary.
+//! - `detect-clis`: Prints a JSON array of detected local AI-coding CLIs on the process `PATH`.
+//! - `endpoint-doctor [--config <path>] [--json]`: Checks local endpoint readiness;
+//!   defaults to `~/.paperwork/endpoint.json`, prints a human summary unless `--json`,
+//!   and exits 0 when ready or 1 otherwise. The outbox is next to the config, in `outbox/`.
+//! - `endpoint-scan --folder <path> [--max-files <n>] [--max-depth <n>]`:
+//!   Prints a sorted workspace snapshot as JSON, using the default watch limits unless overridden.
+//! - `endpoint-audit --log <path> [--limit <n>]`:
+//!   Prints the latest redacted audit entries as a JSON array (default 20, oldest first).
+//! - `endpoint-pair --server <url> --code <6char> [--cred <path>] [--folder <path[:ro|rw]>]`:
+//!   Exchanges a pairing code for a device credential via `POST /api/endpoints/pair`, stores
+//!   the hashed credential atomically with `0600`, and prints a JSON summary. The raw device
+//!   token is never printed or persisted.
+//! - `render-service --os <macos|linux|windows> --server <url> --name <endpoint> [--binary <path>] [--config <path>]`:
+//!   Renders the OS service unit (LaunchAgent plist / systemd user unit / Windows scheduled-task
+//!   script) as raw text on stdout for direct redirection into the service file.
 
 use paperwork_bot_runtime::client::{
     check_compatibility, run_heartbeat_daemon, send_bot_inbound, send_terminal_heartbeat,
@@ -29,11 +46,29 @@ use paperwork_bot_runtime::control_sock::{
     default_control_socket_dir, default_control_socket_path, ensure_and_validate_socket_dir,
     send_control_command, ControlCommand,
 };
+use paperwork_bot_runtime::endpoint_audit::{redact_sensitive, AuditLogger};
+use paperwork_bot_runtime::endpoint_doctor::{run_endpoint_doctor, DoctorInput, DoctorReport};
+use paperwork_bot_runtime::endpoint_http::{parse_json_response, post_json, HttpTransportConfig};
+use paperwork_bot_runtime::endpoint_pairing::{
+    normalize_pairing_code, write_credentials_atomic, DeviceCredential,
+};
+use paperwork_bot_runtime::endpoint_protocol::{
+    DetectedCli as WireDetectedCli, EndpointUrls, PairRequest, PairResponse,
+};
+use paperwork_bot_runtime::endpoint_watch::{scan_workspace, WatchLimits};
 #[cfg(unix)]
 use paperwork_bot_runtime::executor::supervisor_self_test;
 use paperwork_bot_runtime::governance::{evaluate_policy, PolicyEvalRequest};
-use paperwork_bot_runtime::token::{redact_secrets, validate_token_prefix, verify_token_sha256};
+use paperwork_bot_runtime::local_tools::detect_local_clis;
+use paperwork_bot_runtime::service_install::{
+    render_linux_systemd_user_unit, render_macos_launch_agent_plist, render_windows_task_script,
+    validate_server_url, write_endpoint_config, EndpointInitConfig,
+};
+use paperwork_bot_runtime::token::{
+    redact_secrets, sha256_hex, validate_token_prefix, verify_token_sha256,
+};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::env;
 use std::io::{self, Read};
 use std::path::PathBuf;
@@ -54,6 +89,24 @@ fn find_flag(args: &[String], name: &str) -> Option<String> {
 
 fn require_flag(args: &[String], name: &str) -> Result<String, String> {
     find_flag(args, name).ok_or_else(|| format!("missing required flag {name}"))
+}
+
+/// Collects every value of a repeatable flag (`--folder a --folder b` -> `["a", "b"]`).
+fn collect_flags(args: &[String], name: &str) -> Vec<String> {
+    args.windows(2)
+        .filter(|w| w[0] == name)
+        .map(|w| w[1].clone())
+        .collect()
+}
+
+/// Default endpoint config location under the user home (`$HOME` / `$USERPROFILE`).
+fn default_endpoint_config_path() -> Result<PathBuf, String> {
+    let home = env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .ok_or_else(|| "cannot determine home directory; pass --config <path>".to_string())?;
+    Ok(PathBuf::from(home)
+        .join(".paperwork")
+        .join("endpoint.json"))
 }
 
 fn cmd_eval_policy() -> Result<Value, String> {
@@ -359,8 +412,266 @@ fn cmd_doctor(args: &[String]) -> Result<Value, String> {
     }))
 }
 
+fn cmd_detect_clis() -> Result<Value, String> {
+    let detected = detect_local_clis()
+        .into_iter()
+        .map(|cli| {
+            json!({
+                "id": cli.id,
+                "binary": cli.binary,
+                "available": cli.available,
+                "path": cli.path.map(|p| p.to_string_lossy().into_owned()),
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(Value::Array(detected))
+}
+
+/// Strict value-taking options for the local inspection commands only.
+fn parse_endpoint_flags<'a>(
+    args: &'a [String],
+    allowed: &[&str],
+) -> Result<HashMap<&'a str, &'a str>, String> {
+    let mut flags = HashMap::new();
+    let mut args = args.iter();
+    while let Some(flag) = args.next() {
+        if !allowed.contains(&flag.as_str()) || flags.contains_key(flag.as_str()) {
+            return Err(format!("unknown or repeated flag {flag:?}"));
+        }
+        let value = args.next()
+            .filter(|v| !v.is_empty() && !v.starts_with("--"))
+            .ok_or_else(|| format!("{flag} requires a value"))?;
+        flags.insert(flag.as_str(), value.as_str());
+    }
+    Ok(flags)
+}
+
+fn endpoint_limit(flags: &HashMap<&str, &str>, name: &str, default: usize) -> Result<usize, String> {
+    flags.get(name).map_or(Ok(default), |value| {
+        value.parse().map_err(|_| format!("invalid {name}; expected a non-negative integer"))
+    })
+}
+
+fn cmd_endpoint_scan(args: &[String]) -> Result<Value, String> {
+    let flags = parse_endpoint_flags(args, &["--folder", "--max-files", "--max-depth"])?;
+    let folder = flags.get("--folder").ok_or("missing required flag --folder")?;
+    let defaults = WatchLimits::default();
+    let limits = WatchLimits {
+        max_files: endpoint_limit(&flags, "--max-files", defaults.max_files)?,
+        max_depth: endpoint_limit(&flags, "--max-depth", defaults.max_depth)?,
+        ..defaults
+    };
+    let snapshot = scan_workspace(std::path::Path::new(folder), &limits)?;
+    serde_json::to_value(snapshot).map_err(|e| format!("failed to serialize snapshot: {e}"))
+}
+
+fn cmd_endpoint_audit(args: &[String]) -> Result<Value, String> {
+    let flags = parse_endpoint_flags(args, &["--log", "--limit"])?;
+    let log = flags.get("--log").ok_or("missing required flag --log")?;
+    let limit = endpoint_limit(&flags, "--limit", 20)?;
+    let mut entries = AuditLogger::new(PathBuf::from(log), u64::MAX).read_recent(limit)?;
+    // Also mask summaries from logs populated outside AuditLogger::append.
+    for entry in &mut entries {
+        entry.summary = redact_sensitive(&entry.summary);
+    }
+    serde_json::to_value(entries).map_err(|e| format!("failed to serialize audit entries: {e}"))
+}
+
+/// Client-side re-pairing horizon: the issued device token is long-lived, so this default
+/// only drives `DeviceCredential::is_expired` refresh checks, not server-side revocation.
+const DEFAULT_CREDENTIAL_TTL_MS: u64 = 90 * 24 * 60 * 60 * 1000;
+
+/// Default pairing credential location under the user home (`$HOME` / `$USERPROFILE`).
+fn default_pairing_credentials_path() -> Result<PathBuf, String> {
+    let home = env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .ok_or_else(|| "cannot determine home directory; pass --cred <path>".to_string())?;
+    Ok(PathBuf::from(home).join(".paperwork").join("credentials.json"))
+}
+
+/// Validates one `--folder path[:ro|rw]` value. The verbatim string is stored in the
+/// credential's `allowedFolders`; a lone `X:` prefix (Windows drive) is a plain path.
+fn parse_folder_grant(raw: &str) -> Result<String, String> {
+    match raw.rsplit_once(':') {
+        Some((path, mode)) if (mode == "ro" || mode == "rw") && !path.is_empty() => {
+            Ok(raw.to_string())
+        }
+        Some((drive, _)) if drive.len() == 1 && raw.as_bytes().get(1) == Some(&b':') => {
+            Ok(raw.to_string())
+        }
+        Some(_) => Err(format!("invalid --folder {raw:?}; expected path[:ro|rw]")),
+        None => Ok(raw.to_string()),
+    }
+}
+
+fn cmd_endpoint_pair(args: &[String]) -> Result<Value, String> {
+    let server = require_flag(args, "--server")?;
+    // Validate the human-entered code first: invalid codes fail closed before any URL
+    // construction, CLI probing, or network I/O.
+    let code = normalize_pairing_code(&require_flag(args, "--code")?)?;
+    let cred_path = match find_flag(args, "--cred") {
+        Some(path) if !path.trim().is_empty() => PathBuf::from(path),
+        Some(_) => return Err("--cred requires a path".to_string()),
+        None => default_pairing_credentials_path()?,
+    };
+    let allowed_folders = collect_flags(args, "--folder")
+        .into_iter()
+        .map(|raw| parse_folder_grant(&raw))
+        .collect::<Result<Vec<_>, _>>()?;
+    let pair_url = EndpointUrls::new(&server)?.pair_url();
+    let detected_clis = detect_local_clis()
+        .into_iter()
+        .map(|cli| WireDetectedCli::Details {
+            id: cli.id.to_string(),
+            binary: cli.binary.to_string(),
+            path: cli.path.map(|p| p.to_string_lossy().into_owned()),
+            available: cli.available,
+        })
+        .collect();
+    let request = PairRequest {
+        code,
+        os: env::consts::OS.to_string(),
+        arch: env::consts::ARCH.to_string(),
+        detected_clis,
+    };
+    let body = serde_json::to_string(&request)
+        .map_err(|e| format!("failed to serialize pair request: {e}"))?;
+    let transport = HttpTransportConfig {
+        server_url: server,
+        timeout_secs: 15,
+        company_id: None,
+        device_token: None,
+    };
+    let response = post_json(&transport, &pair_url, &body)?;
+    // PairResponse carries the raw device token: consume it only into the stored hash and
+    // the summary preview; it must never reach stdout, stderr, or error messages.
+    let pair: PairResponse = parse_json_response(&response)?;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let credential = DeviceCredential {
+        device_id: pair.device_id.clone(),
+        bot_name: pair.bot_name.clone(),
+        server_url: transport.server_url.clone(),
+        token_hash: sha256_hex(&pair.device_token),
+        issued_at_ms: now_ms,
+        expires_at_ms: now_ms + DEFAULT_CREDENTIAL_TTL_MS,
+        allowed_folders,
+    };
+    write_credentials_atomic(&cred_path, &credential).map_err(|e| e.to_string())?;
+    Ok(json!({
+        "ok": true,
+        "deviceId": pair.device_id,
+        "botName": pair.bot_name,
+        "companyId": pair.company_id,
+        "tokenPreview": pair.token_preview,
+        "credPath": cred_path.to_string_lossy().into_owned(),
+    }))
+}
+
+fn cmd_endpoint_doctor(args: &[String]) -> Result<DoctorReport, String> {
+    #[derive(serde::Deserialize)]
+    struct Config {
+        server_url: String,
+        endpoint_name: String,
+        allowed_folders: Vec<String>,
+    }
+    let mut config_path = None;
+    let mut flags = args.iter();
+    while let Some(flag) = flags.next() {
+        match flag.as_str() {
+            "--json" => {}
+            "--config" if config_path.is_none() => {
+                let path = flags.next()
+                    .filter(|p| !p.is_empty() && !p.starts_with("--"))
+                    .ok_or("--config requires a path")?;
+                config_path = Some(PathBuf::from(path));
+            }
+            _ => return Err(format!("invalid endpoint-doctor flag {flag:?}")),
+        }
+    }
+    let config_path = config_path.map(Ok).unwrap_or_else(default_endpoint_config_path)?;
+    let bytes = std::fs::read(&config_path).map_err(|e| format!("read endpoint config: {e}"))?;
+    let config: Config = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("invalid endpoint config: {e}"))?;
+    if config.endpoint_name.trim().is_empty() {
+        return Err("endpoint name must not be empty".into());
+    }
+    let outbox_dir = config_path.parent()
+        .unwrap_or(std::path::Path::new(".")).join("outbox");
+    let detected_clis = detect_local_clis().into_iter()
+        .filter(|cli| cli.available).map(|cli| cli.id.to_string()).collect();
+    Ok(run_endpoint_doctor(&DoctorInput {
+        server_url: config.server_url,
+        config_path,
+        // The installer stores plain paths without grant modes; check directory access only.
+        allowed_folders: config.allowed_folders.into_iter()
+            .map(|p| (p.into(), "ro".into())).collect(),
+        outbox_dir,
+        detected_clis,
+    }))
+}
+
+fn cmd_init(args: &[String]) -> Result<Value, String> {
+    let server = validate_server_url(&require_flag(args, "--server")?)?;
+    let name = require_flag(args, "--name")?;
+    if name.trim().is_empty() {
+        return Err("endpoint name must not be empty".to_string());
+    }
+    let config_path = match find_flag(args, "--config") {
+        Some(p) => PathBuf::from(p),
+        None => default_endpoint_config_path()?,
+    };
+    let folders = collect_flags(args, "--folder");
+    write_endpoint_config(&config_path, &server, &name, &folders)?;
+    Ok(json!({
+        "ok": true,
+        "configPath": config_path.to_string_lossy().into_owned(),
+        "serverUrl": server,
+        "endpointName": name,
+        "allowedFolders": folders,
+    }))
+}
+
+/// Renders the requested OS service unit as raw text (streamed to stdout, not JSON).
+fn cmd_render_service(args: &[String]) -> Result<String, String> {
+    let os = require_flag(args, "--os")?;
+    let server = validate_server_url(&require_flag(args, "--server")?)?;
+    let name = require_flag(args, "--name")?;
+    if name.trim().is_empty() {
+        return Err("endpoint name must not be empty".to_string());
+    }
+    let binary_path = match find_flag(args, "--binary") {
+        Some(p) => PathBuf::from(p),
+        None => env::current_exe()
+            .map_err(|e| format!("cannot determine binary path; pass --binary: {e}"))?,
+    };
+    let config_path = match find_flag(args, "--config") {
+        Some(p) => PathBuf::from(p),
+        None => default_endpoint_config_path()?,
+    };
+    let cfg = EndpointInitConfig {
+        server_url: server,
+        endpoint_name: name,
+        binary_path,
+        config_path,
+        allowed_folders: Vec::new(),
+    };
+    Ok(match os.as_str() {
+        "macos" => render_macos_launch_agent_plist(&cfg),
+        "linux" => render_linux_systemd_user_unit(&cfg),
+        "windows" => render_windows_task_script(&cfg),
+        other => {
+            return Err(format!(
+                "invalid --os {other:?}; expected macos|linux|windows"
+            ))
+        }
+    })
+}
+
 fn usage() -> &'static str {
-    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound|ctl|doctor> [flags]"
+    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound|ctl|doctor|init|detect-clis|render-service|endpoint-doctor|endpoint-scan|endpoint-audit|endpoint-pair> [flags]"
 }
 
 fn run(args: &[String]) -> Result<Value, String> {
@@ -376,6 +687,11 @@ fn run(args: &[String]) -> Result<Value, String> {
         "inbound" => cmd_inbound(rest),
         "ctl" => cmd_ctl(rest),
         "doctor" => cmd_doctor(rest),
+        "init" => cmd_init(rest),
+        "detect-clis" => cmd_detect_clis(),
+        "endpoint-scan" => cmd_endpoint_scan(rest),
+        "endpoint-audit" => cmd_endpoint_audit(rest),
+        "endpoint-pair" => cmd_endpoint_pair(rest),
         "-h" | "--help" | "help" => Ok(json!({ "usage": usage() })),
         other => Err(format!("unknown subcommand {other:?}; {}", usage())),
     }
@@ -383,6 +699,34 @@ fn run(args: &[String]) -> Result<Value, String> {
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("endpoint-doctor") {
+        match cmd_endpoint_doctor(&args[1..]) {
+            Ok(report) => {
+                if args[1..].iter().any(|a| a == "--json") {
+                    println!("{}", serde_json::to_string(&report).expect("serialize doctor report"));
+                } else {
+                    print!("{}", report.format_human());
+                }
+                process::exit(if report.ready { 0 } else { 1 });
+            }
+            Err(e) => {
+                eprintln!("{}", json!({ "error": redact_secrets(&e) }));
+                process::exit(1);
+            }
+        }
+    }
+    // `render-service` streams the raw OS unit text to stdout (for shell redirection into the
+    // service file); remaining subcommands print a single JSON value.
+    if args.first().map(String::as_str) == Some("render-service") {
+        match cmd_render_service(&args[1..]) {
+            Ok(text) => print!("{text}"),
+            Err(e) => {
+                eprintln!("{}", json!({ "error": redact_secrets(&e) }));
+                process::exit(1);
+            }
+        }
+        return;
+    }
     match run(&args) {
         Ok(v) => println!("{v}"),
         Err(e) => {

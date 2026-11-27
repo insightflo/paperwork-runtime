@@ -7,6 +7,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import {
+  readMigratedStorageItem,
+  writeMigratedStorageItem,
+} from "../lib/storage-keys";
 
 type Theme = "light" | "dark";
 
@@ -16,19 +20,15 @@ interface ThemeContextValue {
   toggleTheme: () => void;
 }
 
-const THEME_STORAGE_KEY = "paperclip.theme";
+const THEME_STORAGE_KEY = "paperwork.theme";
+const LEGACY_THEME_STORAGE_KEY = "paperclip.theme";
 const DARK_THEME_COLOR = "#0b0e14";
 const LIGHT_THEME_COLOR = "#ffffff";
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 function resolveStoredTheme(): Theme | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return stored === "light" || stored === "dark" ? stored : null;
-  } catch {
-    return null;
-  }
+  const stored = readMigratedStorageItem(THEME_STORAGE_KEY, LEGACY_THEME_STORAGE_KEY);
+  return stored === "light" || stored === "dark" ? stored : null;
 }
 
 function resolveInitialTheme(): Theme {
@@ -60,11 +60,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     applyTheme(theme);
-    try {
-      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-    } catch {
-      // Ignore local storage write failures in restricted environments.
-    }
+    writeMigratedStorageItem(THEME_STORAGE_KEY, LEGACY_THEME_STORAGE_KEY, theme);
   }, [theme]);
 
   const value = useMemo(

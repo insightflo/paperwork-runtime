@@ -438,4 +438,6 @@ export interface CreateConfigValues {
   maxTurns?: number;
   heartbeatEnabled: boolean;
   intervalSec: number;
+  /** Optional OpenBot botPolicy (folder grants, access level, behavior) carried through create flows. */
+  botPolicy?: Record<string, unknown>;
 }

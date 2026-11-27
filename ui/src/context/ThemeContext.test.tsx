@@ -4,7 +4,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ThemeProvider, useTheme } from "./ThemeContext";
 
-const THEME_STORAGE_KEY = "paperclip.theme";
+const THEME_STORAGE_KEY = "paperwork.theme";
+const LEGACY_THEME_STORAGE_KEY = "paperclip.theme";
 const storage = new Map<string, string>();
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -73,6 +74,7 @@ describe("ThemeContext", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(true);
     expect(document.documentElement.style.colorScheme).toBe("dark");
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
+    expect(window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY)).toBeNull();
   });
 
   it("restores an explicit light preference", async () => {
@@ -84,6 +86,7 @@ describe("ThemeContext", () => {
     expect(document.documentElement.classList.contains("dark")).toBe(false);
     expect(document.documentElement.style.colorScheme).toBe("light");
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
+    expect(window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY)).toBeNull();
   });
 
   it("persists toggled theme preferences", async () => {
@@ -93,11 +96,39 @@ describe("ThemeContext", () => {
     await act(async () => toggleTheme?.());
     expect(observedTheme).toBe("dark");
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
+    expect(window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY)).toBeNull();
     expect(document.documentElement.classList.contains("dark")).toBe(true);
 
     await act(async () => toggleTheme?.());
     expect(observedTheme).toBe("light");
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
+    expect(window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY)).toBeNull();
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+  });
+
+  it("hydrates a legacy paperclip.theme preference and migrates it", async () => {
+    window.localStorage.setItem(LEGACY_THEME_STORAGE_KEY, "light");
+
+    await renderProvider();
+
+    expect(observedTheme).toBe("light");
+    expect(document.documentElement.classList.contains("dark")).toBe(false);
+    expect(document.documentElement.style.colorScheme).toBe("light");
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
+    expect(window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY)).toBeNull();
+  });
+
+  it("keeps the legacy key cleared while persisting toggles from a migrated preference", async () => {
+    window.localStorage.setItem(LEGACY_THEME_STORAGE_KEY, "dark");
+    await renderProvider();
+    expect(observedTheme).toBe("dark");
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
+    expect(window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY)).toBeNull();
+
+    await act(async () => toggleTheme?.());
+    expect(observedTheme).toBe("light");
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
+    expect(window.localStorage.getItem(LEGACY_THEME_STORAGE_KEY)).toBeNull();
     expect(document.documentElement.classList.contains("dark")).toBe(false);
   });
 });
