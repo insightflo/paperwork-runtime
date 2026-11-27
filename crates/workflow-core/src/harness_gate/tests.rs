@@ -1,5 +1,5 @@
-//! harness_gate 단위 테스트 — 라우팅·자문 관문·역귀속·CLI 핸들러. 기대값은 dgate engine.rs
-//!   상수(γ=0.92, M0=6, N_MIN=5, θ=0.70, w=2.0)에서 손계산한 값이다.
+//! harness_gate 단위 테스트 — 라우팅·자문 관문·역귀속·CLI 핸들러. 기대값은 harness_gate 공개 상수
+//!   (GAMMA=0.92, M0=6, N_MIN=5, θ=0.70, VERDICT_FAIL_PENALTY=2.0)에서 손계산한 값이다.
 
 use super::attribution::{apply_step_attribution, SuccessRatePrior};
 use super::cli::{
@@ -52,7 +52,7 @@ fn route_sharp_only_when_low_risk_and_p_at_or_above_threshold() {
     assert_eq!(d.route, DispatchRoute::Sharp);
     assert_eq!(d.sharp_threshold, 0.70);
     assert_eq!(d.forced_reason, None);
-    // 경계: p == θ 는 sharp(dgate `p >= θ`), 바로 아래는 split.
+    // 경계: p == θ 는 sharp(비교는 `p >= θ` — 경계 포함), 바로 아래는 split.
     assert_eq!(route(0.70, RiskLevel::Low, 0).route, DispatchRoute::Sharp);
     assert_eq!(route(0.6999, RiskLevel::Low, 0).route, DispatchRoute::Split);
 }

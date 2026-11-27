@@ -56,7 +56,7 @@ fn attribution_rework_and_stall_count_as_single_failures() {
         (u.kind, u.weight, u.prior.consecutive_errors),
         (AttributionKind::Rework, 1.0, 2)
     );
-    // stall 은 outcome 보다 우선 — ok 를 내도 실패 표본(dgate ttl_orphan w=1.0).
+    // stall 은 outcome 보다 우선 — ok 를 내도 실패 표본(가중 w=1.0, 연속 오류 +1).
     let mut stalled = attr("ok", Some(true));
     stalled.stall_detected = true;
     let s = apply_step_attribution(&prior(1.0, 0.0, 1, 0), &stalled);

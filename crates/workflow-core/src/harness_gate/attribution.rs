@@ -1,7 +1,14 @@
 //! [파일 목적] 검증 결과 역귀속(backprop attribution) — StepVerdictAttribution 을 EWMA Beta
 //!   사전(success-rate prior)에 결정론으로 반영한다. 300줄 상한 때문에 harness_gate 에서 분리.
-//! [dgate 대응] engine.rs 표본 기록: γ 감쇠, verifier fail w=2.0, rework/stall w=1.0,
-//!   config_error/interrupted/rerouted 는 EWMA·카운터 격리(감시 로그만 해당).
+//! [상수·규칙] 표본 기록 규칙(상수는 harness_gate.rs 참조):
+//!   - 감쇠: 기록 시 `ewma_success = ewma_success·γ (+ w)`, `ewma_fail = ewma_fail·γ (+ w)` (γ = 0.92, 유효 윈도우 ≈12.5건).
+//!   - 가중: verifier 반려로 실패 판정 w=2.0, 그 외 성공·실패·rework·stall w=1.0.
+//!   - 분류 우선순위: stall > verifier 반려 > outcome 문자열. stall 은 outcome 이 ok 여도 실패 표본이다.
+//!   - 격리: config_error/interrupted/rerouted/skipped 은 EWMA·카운터·연속 오류에 반영하지 않는다(`recorded=false`)
+//!     — 실행기 환경 결함은 실행 성공률 사전이 아니라 감시 로그의 몫이다. run/step 귀속이 비어도 같은 길로 간다.
+//!   - 연속 오류: 성공 → 0, 그 외 기록 표본 → +1 (라우팅의 `>= 2` 강제 승격 입력).
+//!   - 미인식 outcome 은 `Unrecognized` + `recorded=false` — 호출자는 bounded retry/재배차 경로로(fail-closed).
+//!
 //! [외부 연결] consumer: harness_gate/cli.rs(apply-step-attribution), tests.rs.
 
 use super::{GAMMA, M0, N_MIN, VERDICT_FAIL_PENALTY};
@@ -49,7 +56,8 @@ pub struct Posterior {
 }
 
 impl SuccessRatePrior {
-    /// dgate `get_posterior` 의 국소 성분 — `(M0·p0 + s) / (M0 + s + f)`.
+    /// Beta 사후평균 — `(M0·p0 + s) / (M0 + s + f)`. 사전 가상표본 M0=6 이 베이스라인 p0 을 지키고,
+    /// `raw_samples >= N_MIN(5)` 일 때만 `measured = true`.
     pub fn posterior(&self, p0: f64) -> Posterior {
         let alpha = M0 * p0;
         let p = (alpha + self.ewma_success) / (M0 + self.ewma_success + self.ewma_fail);
@@ -73,7 +81,7 @@ pub struct AttributionUpdate {
     pub prior: SuccessRatePrior,
 }
 
-/// dgate 표본 기록 포트 — stall > verifier 반려(w=2) > outcome 문자열. 환경류 원인은 격리.
+/// 검증 결과 → 사전 갱신 — 분류는 stall > verifier 반려(w=2.0) > outcome 문자열, 환경류 원인은 격리. 상세는 모듈 머리말.
 pub fn apply_step_attribution(
     prior: &SuccessRatePrior,
     attr: &StepVerdictAttribution,
