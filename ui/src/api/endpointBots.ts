@@ -70,9 +70,41 @@ export interface LocalTaskRecord {
   error?: string;
 }
 
+/** Audit event returned by `GET /companies/:companyId/endpoints/audit`. */
+export interface EndpointAuditEventRecord {
+  id: string;
+  companyId: string;
+  deviceId: string;
+  botName: string;
+  taskId: string;
+  kind: string;
+  targetPath: string;
+  outcome: "enqueued" | "completed" | "failed" | "denied";
+  actorId?: string;
+  summary: string;
+  createdAtMs: number;
+}
+
+export interface EndpointAuditResponse {
+  items: EndpointAuditEventRecord[];
+  stats: { total: number; enqueued: number; completed: number; failed: number; denied: number };
+}
+
 export const endpointBotsApi = {
   list: (companyId: string) =>
     api.get<EndpointBotRecord[]>(`/companies/${encodeURIComponent(companyId)}/endpoints`),
+  listAudit: (
+    companyId: string,
+    opts?: { deviceId?: string; limit?: number },
+  ): Promise<EndpointAuditResponse> => {
+    const params = new URLSearchParams();
+    if (opts?.deviceId !== undefined) params.set("deviceId", opts.deviceId);
+    if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
+    const query = params.toString();
+    return api.get<EndpointAuditResponse>(
+      `/companies/${encodeURIComponent(companyId)}/endpoints/audit${query ? `?${query}` : ""}`,
+    );
+  },
   issuePairingCode: (companyId: string, body: IssuePairingCodeInput) =>
     api.post<PairingCodeResponse>(
       `/companies/${encodeURIComponent(companyId)}/endpoints/pairing-codes`,

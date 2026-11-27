@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { endpointBotsApi } from "./endpointBots";
 import type {
+  EndpointAuditResponse,
   EndpointBotRecord,
   EnqueueLocalTaskInput,
   IssuePairingCodeInput,
@@ -106,5 +107,30 @@ describe("endpointBotsApi", () => {
       method: "POST",
       body: JSON.stringify({ kind: "list_dir", targetPath: "/tmp" }),
     }));
+  });
+
+  it.each([
+    ["without options", "company-1", undefined, "/companies/company-1/endpoints/audit"],
+    ["with device and limit", "company-1", { deviceId: "device-1", limit: 25 },
+      "/companies/company-1/endpoints/audit?deviceId=device-1&limit=25"],
+    ["with encoded identifiers", "co/main 1", { deviceId: "device/1?x&name=한 #+%", limit: 10 },
+      "/companies/co%2Fmain%201/endpoints/audit?deviceId=device%2F1%3Fx%26name%3D%ED%95%9C+%23%2B%25&limit=10"],
+    ["with empty options", "company-1", {}, "/companies/company-1/endpoints/audit"],
+    ["with only a zero limit", "company-1", { limit: 0 }, "/companies/company-1/endpoints/audit?limit=0"],
+  ] as const)("lists audit events %s", async (_label, companyId, opts, path) => {
+    const audit: EndpointAuditResponse = {
+      items: [{
+        id: "audit-1", companyId: "company-1", deviceId: "device-1", botName: "warehouse-bot",
+        taskId: "task-1", kind: "read_file", targetPath: "/tmp/notes.md", outcome: "completed",
+        summary: "Read notes", createdAtMs: 1_730_000_000_000,
+      }],
+      stats: { total: 1, enqueued: 0, completed: 1, failed: 0, denied: 0 },
+    };
+    const fetchMock: FetchMock = vi.fn(async () => mockResponse(200, audit));
+    setFetchMock(fetchMock);
+
+    await expect(endpointBotsApi.listAudit(companyId, opts)).resolves.toEqual(audit);
+    expect(fetchMock).toHaveBeenCalledWith(`/api${path}`, expect.objectContaining({ credentials: "include" }));
+    expect(fetchMock.mock.calls[0][1]).not.toHaveProperty("method");
   });
 });
