@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Agent, EnvBinding } from "@paperclipai/shared";
+import { AGENT_ADAPTER_TYPES } from "@paperclipai/shared";
 import type { AdapterModel } from "../api/agents";
 import { agentsApi } from "../api/agents";
 import { secretsApi } from "../api/secrets";
@@ -22,7 +23,10 @@ import {
   DraftInput,
   DraftNumberInput,
   help,
+  adapterLabels,
 } from "./agent-config-primitives";
+import { isAdapterTypeEnabled } from "./agent-config-adapter-types";
+import { AgentFallbackChainEditor, normalizeFallbackOrder } from "./AgentFallbackChainEditor";
 import { defaultCreateValues, getStaticThinkingEffortOptions } from "./agent-config-defaults";
 import { getUIAdapter } from "../adapters";
 import { ClaudeLocalAdvancedFields } from "../adapters/claude-local/config-fields";
@@ -411,6 +415,21 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     mark("adapterConfig", "fallback", Object.keys(next).length > 0 ? next : undefined);
   }
 
+  // Automatic failover defaults to on; absent/true both mean enabled.
+  const currentFallbackAutomatic = isCreate
+    ? val!.fallbackAutomatic !== false
+    : currentFallbackConfig.automatic !== false;
+  const currentFallbackOrder = isCreate
+    ? (val!.fallbackOrder ?? [])
+    : normalizeFallbackOrder(currentFallbackConfig.order);
+  const fallbackAvailableAdapters = useMemo(
+    () =>
+      AGENT_ADAPTER_TYPES
+        .filter((type) => isAdapterTypeEnabled(type))
+        .map((type) => ({ type, label: adapterLabels[type] ?? type })),
+    [],
+  );
+
   const { data: commandCodeEfforts, isSuccess: commandCodeEffortsLoaded } = useAdapterModelEfforts(
     selectedCompanyId,
     adapterType,
@@ -737,21 +756,33 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
               </Field>
 
               {supportsAdapterFallback && (
-                <Field label="Fallback command" hint={help.fallbackCommand}>
-                  <DraftInput
-                    value={currentFallbackCommand}
-                    onCommit={(v) =>
-                      isCreate
-                        ? set!({ fallbackCommand: v })
-                        : config.fallbackCommand !== undefined
-                          ? mark("adapterConfig", "fallbackCommand", v || undefined)
-                          : markFallbackConfigField("command", v || undefined)
-                    }
-                    immediate
-                    className={tactileInputClass}
-                    placeholder="e.g. codex, claude"
-                  />
-                </Field>
+                <AgentFallbackChainEditor
+                  primaryAdapterType={adapterType}
+                  primaryModel={currentModelId}
+                  automatic={currentFallbackAutomatic}
+                  order={currentFallbackOrder}
+                  legacyFallbackCommand={currentFallbackCommand}
+                  availableAdapters={fallbackAvailableAdapters}
+                  primaryModels={models}
+                  getModelsForAdapter={(type) => (type === adapterType ? models : [])}
+                  onChangeAutomatic={(automatic) =>
+                    isCreate
+                      ? set!({ fallbackAutomatic: automatic === true ? undefined : false })
+                      : markFallbackConfigField("automatic", automatic === true ? undefined : false)
+                  }
+                  onChangeOrder={(nextOrder) =>
+                    isCreate
+                      ? set!({ fallbackOrder: nextOrder.length > 0 ? nextOrder : undefined })
+                      : markFallbackConfigField("order", nextOrder.length > 0 ? nextOrder : undefined)
+                  }
+                  onChangeLegacyCommand={(command) =>
+                    isCreate
+                      ? set!({ fallbackCommand: command })
+                      : config.fallbackCommand !== undefined
+                        ? mark("adapterConfig", "fallbackCommand", command || undefined)
+                        : markFallbackConfigField("command", command || undefined)
+                  }
+                />
               )}
 
               <ModelDropdown

@@ -193,10 +193,14 @@ export async function enqueueAdapterFallbackRun(
   agent: AgentRow,
   now: Date,
   input: {
-    fallbackCommand: string;
+    // 폴백 실행 명령. 빈 값/생략 시 컨텍스트에 아예 넣지 않는다(동일 어댑터 provider/model 폴백 지원).
+    fallbackCommand?: string;
     fallbackProvider?: string;
     fallbackModel?: string;
     fallbackThinking?: string;
+    // 순차 폴백 체인에서 선택된 후보의 어댑터 타입과 체인 색인(기본 어댑터와 같으면 생략 가능).
+    fallbackAdapterType?: string;
+    fallbackCandidateIndex?: number;
     fallbackReason: string;
   },
 ) {
@@ -216,10 +220,12 @@ export async function enqueueAdapterFallbackRun(
     fallbackOfRunId: run.id,
     fallbackReason: input.fallbackReason,
     fallbackAttempt,
-    fallbackCommand: input.fallbackCommand,
+    ...(input.fallbackCommand ? { fallbackCommand: input.fallbackCommand } : {}),
     ...(input.fallbackProvider ? { fallbackProvider: input.fallbackProvider } : {}),
     ...(input.fallbackModel ? { fallbackModel: input.fallbackModel } : {}),
     ...(input.fallbackThinking ? { fallbackThinking: input.fallbackThinking } : {}),
+    ...(input.fallbackAdapterType ? { fallbackAdapterType: input.fallbackAdapterType } : {}),
+    ...(typeof input.fallbackCandidateIndex === "number" ? { fallbackCandidateIndex: input.fallbackCandidateIndex } : {}),
     wakeReason: "adapter_fallback",
   };
   const taskKey = deriveTaskKey(fallbackContextSnapshot, null);
@@ -326,6 +332,8 @@ export async function enqueueAdapterFallbackRun(
       fallbackOfRunId: run.id,
       fallbackReason: input.fallbackReason,
       fallbackAttempt,
+      ...(input.fallbackAdapterType ? { fallbackAdapterType: input.fallbackAdapterType } : {}),
+      ...(typeof input.fallbackCandidateIndex === "number" ? { fallbackCandidateIndex: input.fallbackCandidateIndex } : {}),
     },
   });
 

@@ -52,7 +52,8 @@ import { createLocalAgentJwt } from "../agent-auth-jwt.js";
 import { assertHeartbeatAdapterMayStart, createHeartbeatAdapterScope, isHeartbeatUnstartedDeferral, runWithinHeartbeatAdapterScope } from "./heartbeat-adapter-scope.js";
 import { runtimeExecutionLifecycle, type RuntimeExecutionScope } from "./runtime-execution-lifecycle.js";
 import { parseObject } from "../adapters/utils.js";
-import { resolveAdapterFallbackThinking, resolveAdapterFallbackConfig, applyAdapterFallbackRuntimeConfig, type AdapterFallbackConfig } from "./heartbeat-adapter-fallback.js";
+import { resolveAdapterFallbackThinking, resolveAdapterFallbackConfig, resolveAdapterFallbackAdapterType, selectNextAdapterFallbackEntry, applyAdapterFallbackRuntimeConfig, type AdapterFallbackConfig } from "./heartbeat-adapter-fallback.js";
+import { globalUsageLimitGate } from "./usage-limit-gate.js";
 import { withAgentStartLock } from "./heartbeat-start-lock.js";
 import { isProcessAlive, terminateRecordedProcess } from "./heartbeat-process-liveness.js";
 import { hasSatisfiedWorkProductRegistration } from "./heartbeat-artifact-registration.js";
@@ -3970,7 +3971,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         });
       };
 
-      const adapter = getServerAdapter(agent.adapterType);
+      // [s27-w2 폴백 어댑터 해석] 폴백 런은 컨텍스트의 fallbackAdapterType 으로 어댑터를 고른다.
+      //   비폴백 런(또는 fallbackAdapterType 미설정)은 defaultAdapterType 과 동일해 기존 동작과 100% 같다.
+      const effectiveAdapterType = resolveAdapterFallbackAdapterType({ run, context, defaultAdapterType: agent.adapterType });
+      const adapter = getServerAdapter(effectiveAdapterType);
       const authToken = adapter.supportsLocalAgentJwt
         ? createLocalAgentJwt(agent.id, agent.companyId, agent.adapterType, run.id)
         : null;
@@ -4479,6 +4483,31 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       } else {
         outcome = "failed";
       }
+      // [s27-w2 usage-limit gate 기록] 완료 런의 실효 (adapterType, provider, model) 로 게이트를 갱신한다.
+      //   성공은 해당 키 홀드를 즉시 해제하고, 실패 코드가 쿼터/레이트리밇(limit)이면 쿼터 홀드,
+      //   과부하/어댑터 실패(failed)면 프로바이더 실패 홀드를 건다. 종료 인터럽트 런은 기존 계약대로
+      //   실패 후처리 대상이 아니므로 기록하지 않는다. provider/model 은 폴백 오버레이가 반영된
+      //   runtimeConfig 우선, 없으면 폴백 컨텍스트, 모델은 마지막으로 어댑터 결과의 실측 모델을 본다.
+      {
+        const gateKey = {
+          adapterType: effectiveAdapterType,
+          provider: readNonEmptyString(runtimeConfig.provider) ?? readNonEmptyString(context.fallbackProvider),
+          model:
+            readNonEmptyString(adapterResult.model) ??
+            readNonEmptyString(runtimeConfig.model) ??
+            readNonEmptyString(context.fallbackModel),
+        };
+        if (outcome === "succeeded") {
+          globalUsageLimitGate.recordSuccess(gateKey);
+        } else if (outcome === "failed" && !shutdownInterruptedExit) {
+          const gateErrorCode = adapterResult.errorCode ?? null;
+          if (gateErrorCode === "provider_quota_exhausted" || gateErrorCode === "rate_limit") {
+            globalUsageLimitGate.recordQuotaLimit(gateKey, { reason: gateErrorCode });
+          } else if (gateErrorCode === "provider_overloaded" || gateErrorCode === "adapter_failed") {
+            globalUsageLimitGate.recordProviderFailure(gateKey, { reason: gateErrorCode });
+          }
+        }
+      }
       const codexAuthAutoBlock =
         outcome === "failed" && !shutdownInterruptedExit
           ? detectCodexAuthFailureForAutoBlock({
@@ -4785,15 +4814,41 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
               : false;
           if (!transientRetryQueued) {
           const fb = resolveAdapterFallbackConfig(agent.adapterConfig);
-          if (fb && shouldQueueRunFailureAdapterFallback({ run: finalizedRun, fallback: fb })) {
+          const currentFallbackAttempt = resolveAdapterFallbackAttempt(finalizedRun.contextSnapshot);
+          // [s27-w2 순차 폴백 체인] 게이트로 차단된 후보를 건너뛰고 다음 유효 후보를 고른다.
+          //   order 체인이 없으면 기존 레거시 단일 폴백 선택과 동일한 결과를 반환한다.
+          const selectedFallback = fb
+            ? selectNextAdapterFallbackEntry({
+                fallback: fb,
+                currentAttempt: currentFallbackAttempt,
+                defaultAdapterType: agent.adapterType,
+                defaultCommand: readNonEmptyString(parseObject(agent.adapterConfig).command) ?? undefined,
+                isCandidateBlocked: (candidate) => globalUsageLimitGate.isBlocked(candidate).blocked,
+              })
+            : null;
+          if (fb && fb.order.length > 0 && !fb.automatic) {
+            await appendRunEvent(finalizedRun, seq++, {
+              eventType: "lifecycle",
+              stream: "system",
+              level: "warn",
+              message: "Run failed - adapter fallback automatic disabled",
+              payload: {
+                exitCode: adapterResult.exitCode ?? null,
+                errorMessage: adapterResult.errorMessage ?? null,
+                fallbackAttempt: currentFallbackAttempt,
+                reason: "fallback_automatic_disabled",
+              },
+            });
+          } else if (fb && shouldQueueRunFailureAdapterFallback({ run: finalizedRun, fallback: fb }) && selectedFallback) {
             const fallbackRun = await enqueueAdapterFallbackRun(retryEnqueueDeps, finalizedRun, agent, new Date(), {
-              fallbackCommand: fb.command,
-              fallbackProvider: fb.provider,
-              fallbackModel: fb.model,
-              fallbackThinking: resolveAdapterFallbackThinking(
-                fb,
-                resolveAdapterFallbackAttempt(finalizedRun.contextSnapshot) + 1,
-              ),
+              fallbackCommand: selectedFallback.resolvedCommand,
+              fallbackProvider: selectedFallback.entry.provider,
+              fallbackModel: selectedFallback.entry.model,
+              fallbackThinking: selectedFallback.entry.thinking ?? resolveAdapterFallbackThinking(fb, currentFallbackAttempt + 1),
+              ...(selectedFallback.resolvedAdapterType !== agent.adapterType
+                ? { fallbackAdapterType: selectedFallback.resolvedAdapterType }
+                : {}),
+              fallbackCandidateIndex: selectedFallback.candidateIndex,
               fallbackReason: "run_failed",
             });
             queuedAdapterFallbackRun = fallbackRun;

@@ -24,6 +24,7 @@ import {
   ProviderRuntimeEngineError,
 } from "../services/provider-runtime-engine-client.js";
 import { routeQuotaWithEngine } from "../services/quota-router-engine-client.js";
+import { globalUsageLimitGate } from "../services/usage-limit-gate.js";
 import { getActorInfo } from "./authz.js";
 
 function assertCanManageInstanceSettings(req: Request) {
@@ -246,6 +247,13 @@ export function instanceSettingsRoutes(db: Db) {
       return;
     }
     res.status(503).json({ error: "Quota router unavailable" });
+  });
+
+  // [s27-w2] 어댑터/프로바이더/모델 단위 사용량 제한·실패 홀드의 현재 스냅샷(읽기 전용).
+  router.get("/instance/settings/usage-limit-gate", async (req, res) => {
+    assertCanManageInstanceSettings(req);
+    res.setHeader("Cache-Control", "no-store");
+    res.json(globalUsageLimitGate.getSnapshot());
   });
 
   router.get("/instance/settings/experimental", async (req, res) => {
