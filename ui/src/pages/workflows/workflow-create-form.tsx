@@ -3,6 +3,7 @@ import { AlertTriangle, Save, X } from "lucide-react";
 import type { LabelOption, ProjectOption, StepEditorMode, WorkflowToolGrant, WorkflowToolOption } from "./workflow-page-types.js";
 import type { CreateParentIssuePolicy } from "./workflow-parent-policy.js";
 import { workflowStepsToJsonForSave, type StepDraft } from "./step-draft.js";
+import { ProblemFirstRoutingBanner, type WorkflowRoutingGuardInput } from "./ProblemFirstRoutingBanner.js";
 import { buildWorkflowInterfaceMetadata, normalizeMaxDailyRunsInput } from "./workflow-form-utils.js";
 import { summarizeWorkflowGraphTriggers } from "./workflow-graph.js";
 import { createCompanyLabel, usePluginAction } from "./workflow-page-api.js";
@@ -39,6 +40,23 @@ const PRIMARY_BUTTON_CLASS =
 
 const SECONDARY_BUTTON_CLASS =
   "inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-3 py-2 text-[13px] font-medium text-slate-700 shadow-xs transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-slate-200 dark:hover:border-white/[0.16] dark:hover:bg-white/[0.06] dark:focus-visible:ring-[#60a5fa]/40";
+
+// [s26-two-graph-architecture §3] 생성 초안 스텝에서 라우팅 가드 입력을 유도하는 순수 함수(표시 전용).
+// dependsOn 파싱은 workflow-control-nodes.ts의 CSV 컨벤션(split→trim→filter)을 따른다. human_wait은
+// step-draft-types의 열린 공유 계약 기준으로 문자열 비교하고, decisionTemplate 빈 문자열은 부재로 본다.
+export function deriveRoutingGuardInput(steps: StepDraft[], needsMultiHopDataContext: boolean): WorkflowRoutingGuardInput {
+  const dependencyIds = (raw: string): string[] => raw.split(",").map((entry) => entry.trim()).filter(Boolean);
+  const hasHumanWaitOrApproval = steps.some((step) => {
+    const hasDecisionTemplate = [step.decisionTemplateTitle, step.decisionTemplatePrompt, step.decisionTemplateRequiredRole]
+      .some((value) => typeof value === "string" && value.trim() !== "");
+    return step.graphApprovalRequired === true || (step.type as string) === "human_wait" || hasDecisionTemplate;
+  });
+  const hasBranchingOrParallel =
+    steps.some((step) => step.type === "if" || step.graphContainerRunInParallel === true) ||
+    steps.some((step) => dependencyIds(step.dependsOn).length > 1) ||
+    steps.filter((step) => dependencyIds(step.dependsOn).length === 0).length > 1;
+  return { stepCount: steps.length, hasHumanWaitOrApproval, hasBranchingOrParallel, needsMultiHopDataContext };
+}
 
 export function WorkflowCreateForm({
   companyId,
@@ -83,6 +101,10 @@ export function WorkflowCreateForm({
   const [newCreateParentIssuePolicy, setNewCreateParentIssuePolicy] = useState<CreateParentIssuePolicy>("when_multiple_steps");
   const [createError, setCreateError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  // [s26 라우팅 배너] 숨김은 스텝 수에 묶인다 — 스텝 구성이 바뀌면 가드 재평가 결과를 다시 보여준다.
+  const [routingBannerDismissed, setRoutingBannerDismissed] = useState<{ stepCount: number } | null>(null);
+  const routingGuardInput = deriveRoutingGuardInput(newWorkflowSteps, false);
+  const routingBannerVisible = routingBannerDismissed?.stepCount !== newWorkflowSteps.length;
 
   function resetCreateForm(): void {
     setNewWorkflowName("");
@@ -310,6 +332,14 @@ export function WorkflowCreateForm({
             placeholder="daily-tech-research"
           />
         </div>
+        {routingBannerVisible ? (
+          <div key="routing-banner-row" className="col-span-full min-w-0">
+            <ProblemFirstRoutingBanner
+              {...routingGuardInput}
+              onDismiss={() => setRoutingBannerDismissed({ stepCount: newWorkflowSteps.length })}
+            />
+          </div>
+        ) : null}
       </div>
 
       {!toolSystem.available ? (

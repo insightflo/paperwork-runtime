@@ -3,7 +3,7 @@ import { act, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DgateDashboardBridgeResponse } from "@/api/dashboard";
+import type { ControlPlaneSnapshot, DgateDashboardBridgeResponse } from "@/api/dashboard";
 import { DgateMonitorPanel, type DgateMonitorResponse } from "../DgateMonitorPanel";
 
 vi.mock("@/lib/router", () => ({
@@ -114,6 +114,32 @@ function liveResponse(): DgateMonitorResponse {
   };
 }
 
+function snapshotWith(overrides: Partial<ControlPlaneSnapshot> = {}): ControlPlaneSnapshot {
+  return {
+    timestamp: "2026-11-26T07:20:00Z",
+    scope: "paperwork-internal",
+    db_live: true,
+    total_forks: 0,
+    open_forks: 0,
+    outcomes: {},
+    effort_level: null,
+    host_process_count: 0,
+    mapped_count: 0,
+    providers: [],
+    repos: [],
+    routes: [],
+    active_gates: [],
+    lead: null,
+    verifiers: [],
+    advisors: [],
+    workers: [],
+    local_repo: null,
+    system: null,
+    recent_events: [],
+    ...overrides,
+  };
+}
+
 describe("DgateMonitorPanel (paperwork_internal)", () => {
   it("renders live workers, gates, outcomes and recent events without any disconnected banner", () => {
     render(<DgateMonitorPanel dgate={liveResponse()} />);
@@ -210,5 +236,45 @@ describe("DgateMonitorPanel (paperwork_internal)", () => {
       expect(text('[data-testid="harness-state"]')).not.toContain("loading");
       expectIdleFrame();
     });
+  });
+
+  it("renders the aria-busy loading skeleton instead of the live panel while loading", () => {
+    render(<DgateMonitorPanel dgate={null} loading />);
+
+    const skeleton = container.querySelector('[aria-busy="true"]');
+    expect(skeleton).not.toBeNull();
+    expect(skeleton?.getAttribute("aria-label")).toBe("내부 통제 · 실행 관제 로딩 중");
+    expect(container.querySelector('[data-testid="dgate-live-panel"]')).toBeNull();
+    expect(container.querySelectorAll('[data-testid^="control-plane-worker-"]')).toHaveLength(0);
+    expect(container.textContent).not.toContain("CONTROL PLANE LIVE");
+    expect(container.textContent).not.toContain(EMPTY_WORKERS_TEXT);
+  });
+
+  it("shows the STALE badge instead of CONTROL PLANE LIVE when the payload is stale", () => {
+    render(<DgateMonitorPanel dgate={{ ...liveResponse(), stale: true }} />);
+
+    expectText(["STALE", "DB LIVE"]);
+    expect(container.textContent).not.toContain("CONTROL PLANE LIVE");
+    // live content still renders alongside the stale badge
+    expectText(["Alpha Coder", "Recent Control Events"]);
+    expectNoDisconnectedBanner();
+  });
+
+  it("shows DB SYNCING instead of DB LIVE when the snapshot reports a non-live database", () => {
+    const syncing: DgateMonitorResponse = {
+      connected: false,
+      source: "paperwork_internal",
+      timestamp: "2026-11-26T07:20:00Z",
+      workers: [],
+      recentEvents: [],
+      outcomes: { total: 0, succeeded: 0, failed: 0, running: 0, queued: 0 },
+      snapshot: snapshotWith({ db_live: false }),
+    };
+    render(<DgateMonitorPanel dgate={syncing} />);
+
+    expectText(["DB SYNCING"]);
+    expect(container.textContent).not.toContain("DB LIVE");
+    expect(container.textContent).not.toContain("STALE");
+    expectIdleFrame();
   });
 });

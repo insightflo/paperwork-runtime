@@ -749,10 +749,10 @@ function EnterpriseBotsCockpit({
   const meta = TABS.find((t) => t.key === tab)!;
 
   const strip = [
-    { label: "Active Bots", value: data.bots.filter((b) => b.status === "active").length, dot: STATUS_DOT.active, tab: "bots" as Tab, openApprovals: false },
-    { label: "Online Terminals", value: data.terminals.filter((t) => t.status === "online").length, dot: STATUS_DOT.online, tab: "terminals" as Tab, openApprovals: false },
-    { label: "Shared Channels", value: data.channels.length, dot: "bg-primary", tab: "channels" as Tab, openApprovals: false },
-    { label: "Pending Owner Approvals", value: data.pendingApprovals.length, dot: data.pendingApprovals.length ? STATUS_DOT.paused : STATUS_DOT.offline, tab: null, openApprovals: true },
+    { label: "활성 봇", value: data.bots.filter((b) => b.status === "active").length, dot: STATUS_DOT.active, tab: "bots" as Tab, openApprovals: false },
+    { label: "온라인 노드", value: data.terminals.filter((t) => t.status === "online").length, dot: STATUS_DOT.online, tab: "terminals" as Tab, openApprovals: false },
+    { label: "공유 채널", value: data.channels.length, dot: "bg-primary", tab: "channels" as Tab, openApprovals: false },
+    { label: "승인 대기", value: data.pendingApprovals.length, dot: data.pendingApprovals.length ? STATUS_DOT.paused : STATUS_DOT.offline, tab: null, openApprovals: true },
   ] as const;
 
   const runAction = async (key: string, errorTitle: string, fn: () => Promise<unknown> | unknown) => {
@@ -848,7 +848,7 @@ function EnterpriseBotsCockpit({
           className="inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs font-medium text-slate-800 transition-colors hover:border-primary/40 hover:bg-slate-50 dark:border-white/[0.1] dark:bg-[#090d14] dark:text-[#edf2fb] dark:hover:border-primary/40 dark:hover:bg-[#141b29]"
         >
           <Monitor className="h-3.5 w-3.5" aria-hidden />
-          Register Terminal
+          터미널 등록
         </button>
       </div>
 
@@ -887,11 +887,11 @@ function EnterpriseBotsCockpit({
           <div className="flex shrink-0 items-center gap-1.5">
             <button type="button" onClick={() => void handleCopyToken()} className={ACTION}>
               {tokenCopied ? <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
-              {tokenCopied ? "Copied" : "Copy token"}
+              {tokenCopied ? "복사됨" : "토큰 복사"}
             </button>
             <button
               type="button"
-              aria-label="Dismiss token banner"
+              aria-label="토큰 배너 닫기"
               onClick={() => {
                 setIssuedToken(null);
                 setTokenCopied(false);
@@ -899,7 +899,7 @@ function EnterpriseBotsCockpit({
               className={ACTION}
             >
               <X className="h-3.5 w-3.5" aria-hidden />
-              Dismiss
+              닫기
             </button>
           </div>
         </div>
@@ -908,11 +908,11 @@ function EnterpriseBotsCockpit({
       {/* Load error state */}
       {loadError && (
         <div className={`${PANEL} flex items-center justify-between gap-3 px-4 py-3 text-xs text-rose-700 dark:text-rose-300`}>
-          <span>Failed to load enterprise bots: {loadError}</span>
+          <span>엔터프라이즈 봇 로드 실패: {loadError}</span>
           {onRetry && (
             <button type="button" onClick={onRetry} className={ACTION}>
               <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-              Retry
+              다시 시도
             </button>
           )}
         </div>
@@ -923,10 +923,10 @@ function EnterpriseBotsCockpit({
         <div className={`${PANEL} min-w-0 p-3`}>
           {isLoading ? (
             <div className="flex items-center justify-center py-12 text-xs text-slate-500 dark:text-[#8b97ad]">
-              Loading enterprise bots...
+              엔터프라이즈 봇 로드 중...
             </div>
           ) : list.length === 0 ? (
-            <EmptyState icon={meta.icon} message={q ? "No matches for the current search." : meta.empty} />
+            <EmptyState icon={meta.icon} message={q ? "검색 결과가 없습니다." : meta.empty} />
           ) : (
             <div className="grid gap-2.5 sm:grid-cols-2 2xl:grid-cols-3">
               {list.map((item) => {
@@ -1521,30 +1521,30 @@ function AttachConnectorModal({
 
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-3 text-xs">
           <label className="block space-y-1">
-            <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">Bot Name</span>
+            <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">봇 이름</span>
             <input
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Research Copilot"
-              aria-label="Bot Name"
+              placeholder="예: Research Copilot"
+              aria-label="봇 이름"
               className={INPUT_CLASS}
             />
           </label>
 
           <div className="grid grid-cols-3 gap-2.5">
             <label className="block space-y-1">
-              <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">Kind</span>
-              <select aria-label="Bot Kind" value={kind} onChange={(e) => setKind(e.target.value as BotKind)} className={INPUT_CLASS}>
+              <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">종류</span>
+              <select aria-label="봇 종류" value={kind} onChange={(e) => setKind(e.target.value as BotKind)} className={INPUT_CLASS}>
                 <option value="personal">personal</option>
                 <option value="team">team</option>
                 <option value="company">company</option>
               </select>
             </label>
             <label className="block space-y-1">
-              <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">Callable By</span>
+              <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">호출 권한</span>
               <select
-                aria-label="Callable By"
+                aria-label="호출 권한"
                 value={callableBy}
                 onChange={(e) => setCallableBy(e.target.value as EnterpriseBotCallableBy)}
                 className={INPUT_CLASS}
@@ -1555,9 +1555,9 @@ function AttachConnectorModal({
               </select>
             </label>
             <label className="block space-y-1">
-              <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">Data Scope</span>
+              <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">데이터 범위</span>
               <select
-                aria-label="Data Scope"
+                aria-label="데이터 범위"
                 value={dataScope}
                 onChange={(e) => setDataScope(e.target.value as DataScope)}
                 className={INPUT_CLASS}
@@ -1570,39 +1570,39 @@ function AttachConnectorModal({
           </div>
 
           <label className="block space-y-1">
-            <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">Webhook URL (optional)</span>
+            <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">웹훅 URL (선택)</span>
             <input
               type="url"
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
               placeholder="https://bot.example.com/webhook"
-              aria-label="Webhook URL"
+              aria-label="웹훅 URL"
               className={INPUT_CLASS}
             />
           </label>
 
           <div className="space-y-2 rounded-lg border border-slate-200/80 bg-slate-50/70 p-2.5 dark:border-white/[0.06] dark:bg-[#090d14]">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">API Secret (optional)</span>
+              <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">API 시크릿 (선택)</span>
               <select
-                aria-label="API Secret Mode"
+                aria-label="API 시크릿 모드"
                 value={secretMode}
                 onChange={(e) => setSecretMode(e.target.value as "none" | "existing" | "new")}
                 className="h-7 rounded-md border border-slate-200/90 bg-white px-2 text-[11px] text-slate-800 dark:border-white/[0.09] dark:bg-[#0e131d] dark:text-[#edf2fb]"
               >
-                <option value="none">None</option>
-                <option value="existing">Use existing secret</option>
-                <option value="new">Create new secret</option>
+                <option value="none">없음</option>
+                <option value="existing">기존 시크릿 사용</option>
+                <option value="new">새 시크릿 생성</option>
               </select>
             </div>
             {secretMode === "existing" && (
               <select
-                aria-label="Existing Secret"
+                aria-label="기존 시크릿"
                 value={apiSecretId}
                 onChange={(e) => setApiSecretId(e.target.value)}
                 className={INPUT_CLASS}
               >
-                <option value="">Select a company secret...</option>
+                <option value="">회사 시크릿 선택...</option>
                 {secrets.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
@@ -1616,15 +1616,15 @@ function AttachConnectorModal({
                   value={newSecretName}
                   onChange={(e) => setNewSecretName(e.target.value)}
                   placeholder="시크릿 이름 (예: PAPERWORK_CONNECTOR_KEY)"
-                  aria-label="New Secret Name"
+                  aria-label="새 시크릿 이름"
                   className={INPUT_CLASS}
                 />
                 <input
                   type="password"
                   value={newSecretValue}
                   onChange={(e) => setNewSecretValue(e.target.value)}
-                  placeholder="Secret value"
-                  aria-label="New Secret Value"
+                  placeholder="시크릿 값"
+                  aria-label="새 시크릿 값"
                   className={INPUT_CLASS}
                 />
               </div>
@@ -1632,19 +1632,19 @@ function AttachConnectorModal({
           </div>
 
           <label className="block space-y-1">
-            <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">Capabilities (comma-separated)</span>
+            <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">역량 (쉼표 구분)</span>
             <input
               value={capabilitiesText}
               onChange={(e) => setCapabilitiesText(e.target.value)}
               placeholder="web.search, doc.summarize"
-              aria-label="Capabilities"
+              aria-label="역량"
               className={INPUT_CLASS}
             />
           </label>
 
           <div className="flex justify-end gap-2 border-t border-slate-200/80 pt-3 dark:border-white/[0.06]">
             <button type="button" onClick={onClose} className={ACTION}>
-              Cancel
+              취소
             </button>
             <button
               type="submit"

@@ -416,6 +416,11 @@ export interface CreateConfigValues {
   worktreeParentDir?: string;
   runtimeServicesJson?: string;
   maxTurnsPerRun: number;
+  /**
+   * Optional Command Code per-run turn cap (adapterConfig.maxTurns), distinct
+   * from maxTurnsPerRun. 0/absent keeps the CLI default (no --max-turns flag).
+   */
+  maxTurns?: number;
   heartbeatEnabled: boolean;
   intervalSec: number;
 }

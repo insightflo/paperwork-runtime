@@ -57,6 +57,7 @@ function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
     censorUsernameInLogs: source.censorUsernameInLogs === true,
     ...(baseUrl.success && baseUrl.data !== null ? { judgmentBaseUrl: baseUrl.data } : {}),
     ...(modelId.success && modelId.data !== null ? { judgmentModelId: modelId.data } : {}),
+    judgmentApiKeyConfigured: hasEncryptedMaterial(source.judgmentApiKeyEncrypted),
     ...(llmBaseUrl.success && llmBaseUrl.data !== null ? { llmStructuredBaseUrl: llmBaseUrl.data } : {}),
     ...(llmModel.success && llmModel.data !== null ? { llmStructuredModel: llmModel.data } : {}),
     llmStructuredApiKeyConfigured: hasEncryptedMaterial(source.llmStructuredApiKeyEncrypted),
@@ -164,6 +165,9 @@ export function instanceSettingsService(db: Db) {
       const row = await getOrCreateRow();
       return normalizeGeneralSettings(row.general);
     },
+    /** 저장된 판단(Jev) API 키 복호화. 미설정·실패면 undefined(server env 키 폴백 유지). */
+    getJudgmentApiKey: async (): Promise<string | undefined> =>
+      resolveKey((await getOrCreateRow()).general.judgmentApiKeyEncrypted),
 
     getLlmStructuredRuntimeConfig: async (providerId?: string): Promise<{ baseUrl?: string; model?: string; apiKey?: string }> => {
       const { general } = await getOrCreateRow();
@@ -233,12 +237,18 @@ export function instanceSettingsService(db: Db) {
         ...normalizeGeneralSettings(current.general),
         ...patch,
       }) };
-      delete nextGeneral.llmStructuredApiKeyConfigured;
+      for (const maskedFlag of ["llmStructuredApiKeyConfigured", "judgmentApiKeyConfigured"] as const) delete nextGeneral[maskedFlag];
       if (typeof patch.llmStructuredApiKey === "string") {
         const { material } = await localEncryptedProvider.createVersion({ value: patch.llmStructuredApiKey, externalRef: null });
         nextGeneral.llmStructuredApiKeyEncrypted = { material };
       } else if (patch.llmStructuredApiKey === undefined && Object.hasOwn(current.general, "llmStructuredApiKeyEncrypted")) {
         nextGeneral.llmStructuredApiKeyEncrypted = current.general.llmStructuredApiKeyEncrypted;
+      }
+      if (typeof patch.judgmentApiKey === "string") {
+        const { material } = await localEncryptedProvider.createVersion({ value: patch.judgmentApiKey, externalRef: null });
+        nextGeneral.judgmentApiKeyEncrypted = { material };
+      } else if (patch.judgmentApiKey === undefined && Object.hasOwn(current.general, "judgmentApiKeyEncrypted")) {
+        nextGeneral.judgmentApiKeyEncrypted = current.general.judgmentApiKeyEncrypted;
       }
       const existing = readProviders(current.general.llmStructuredProviders);
       if (patch.llmStructuredProviders !== undefined) {

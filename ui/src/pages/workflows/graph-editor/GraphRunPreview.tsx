@@ -10,6 +10,7 @@ import { graphCanvasStyle, graphCanvasToolButtonStyle, graphCanvasToolGroupStyle
 import { containerColor, graphEdgeColor, graphEdgeDashArray, graphEdgeDisplayLabel, type GraphCanvasPanState } from "./graphUiUtils.js";
 import { clampGraphCanvasScale } from "./WorkflowGraphEditorHelpers.js";
 import { GraphRunRetryStatus } from "./GraphRunRetryStatus.js";
+import { GraphRunTimeline } from "../GraphRunTimeline.js";
 export function WorkflowRunGraphPreview({
   steps,
   pendingStepRunId,
@@ -20,6 +21,7 @@ export function WorkflowRunGraphPreview({
   onRerunStep?: (input: { stepId: string; stepRunId: string; issueId: string }) => void;
 }): JSX.Element | null {
   const graph = useMemo(() => buildWorkflowGraphModel(steps), [steps]);
+  const [view, setView] = useState<"graph" | "timeline">("graph");
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [canvasScale, setCanvasScale] = useState(1);
   const [isCanvasPanning, setIsCanvasPanning] = useState(false);
@@ -171,13 +173,45 @@ export function WorkflowRunGraphPreview({
   return (
     <div style={{ display: "grid", gap: "8px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" }}>
-        <span style={{ ...mutedTextStyle, fontWeight: 600 }}>Run graph</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+          <span style={{ ...mutedTextStyle, fontWeight: 600 }}>Run graph</span>
+          <div role="group" aria-label="Run preview view" data-run-preview-view-toggle="true" style={{ display: "inline-flex", gap: "2px", border: "var(--pw-hairline-width, 1px) solid var(--pw-hairline)", borderRadius: "8px", padding: "2px", background: "var(--pw-card)" }}>
+            {(["graph", "timeline"] as const).map((option) => {
+              const active = view === option;
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={active}
+                  data-view-option={option}
+                  onClick={() => setView(option)}
+                  style={{
+                    border: "none",
+                    borderRadius: "6px",
+                    padding: "3px 10px",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    lineHeight: 1.2,
+                    cursor: "pointer",
+                    background: active ? "var(--pw-cobalt-soft)" : "transparent",
+                    color: active ? "var(--pw-ink)" : "var(--pw-muted)",
+                  }}
+                >
+                  {option === "graph" ? "Graph" : "Timeline"}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
           {(["planned", "running", "succeeded", "failed", "skipped", "paused"] as const).map((status) => (
             <span key={status} style={{ ...statusBadgeStyle(status), fontSize: "10px" }}>{status}</span>
           ))}
         </div>
       </div>
+      {view === "timeline" ? (
+        <GraphRunTimeline steps={steps} />
+      ) : (
       <div style={{ display: "grid", gridTemplateColumns: "minmax(420px, 1fr) 260px", gap: "10px", alignItems: "stretch" }}>
         <div
           ref={canvasRef}
@@ -701,6 +735,7 @@ export function WorkflowRunGraphPreview({
           ) : null}
         </div>
       </div>
+      )}
     </div>
   );
 }

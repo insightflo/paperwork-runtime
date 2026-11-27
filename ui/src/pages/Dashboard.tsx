@@ -305,7 +305,7 @@ export function Dashboard() {
             {missions && missions.length > 0 && (
               <div className="min-w-0">
                 <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#9aa7bd] mb-3">
-                  Recent Missions
+                  최근 미션
                 </h3>
                 <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white text-slate-950 divide-y divide-slate-200/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:bg-none dark:text-[#eef2f8] dark:divide-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
                   {[...missions]
@@ -330,11 +330,11 @@ export function Dashboard() {
 
             <div className="min-w-0">
               <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#9aa7bd] mb-3">
-                  Recent Work
+                  최근 작업
               </h3>
               {recentIssues.length === 0 ? (
                 <div className="tactile-card rounded-[12px] border border-slate-200/90 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
-                  <p className="text-sm text-slate-500 dark:text-[#9aa7bd]">No work yet.</p>
+                  <p className="text-sm text-slate-500 dark:text-[#9aa7bd]">아직 작업이 없습니다.</p>
                 </div>
               ) : (
                 <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white text-slate-950 divide-y divide-slate-200/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:bg-none dark:text-[#eef2f8] dark:divide-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]">

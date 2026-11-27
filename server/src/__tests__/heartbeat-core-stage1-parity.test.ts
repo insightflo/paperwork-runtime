@@ -62,6 +62,8 @@ describe("classify-run-failure: TS vs paperclip-heartbeat-core", () => {
     ["503 mid-string errorCode", { status: "failed", errorCode: "wrap:claude_api_error_503" }],
     ["502 is not overload", { status: "failed", errorCode: "claude_api_error_502" }],
     ["overloaded message", { status: "failed", errorMessage: "Service is currently overloaded" }],
+    ["max-turns cap classified distinctly", { status: "failed", adapterType: "commandcode_local", errorCode: "commandcode_max_turns", errorMessage: "Command Code reached the --max-turns cap before completing; partial response returned." }],
+    ["max-turns errorCode needs exact match", { status: "failed", adapterType: "commandcode_local", errorCode: "commandcode_max_turns_extra" }],
     ["array errorCode coerced via ToString", { status: "failed", errorCode: ["claude_api_error_503"] }],
     ["guardrail: step input manifest", { status: "failed", stderrExcerpt: "step input manifest violated" }],
     ["guardrail: runtime broad scan", { status: "failed", errorMessage: "runtime broad scan attempt" }],

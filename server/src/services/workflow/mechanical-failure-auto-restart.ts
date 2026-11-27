@@ -7,6 +7,7 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { activityLog, missions, workflowRuns, workflowStepRuns, type Db } from "@paperclipai/db";
 import { workflowService } from "./engine.js";
+import { logger } from "../../middleware/logger.js";
 
 export const MECHANICAL_AUTO_RESTART_ERRORS: ReadonlySet<string> = new Set([
   "workproduct_selector_stale_producer",
@@ -252,7 +253,17 @@ export async function maybeAutoRestartMechanicalFailure(
       if (!existingId) {
         await tx.delete(activityLog).where(eq(activityLog.id, claimLogId));
       }
-    }).catch(() => {});
+    }).catch((releaseErr: unknown) => {
+      // [s25-error-obs] 보상 실패가 무음이면 stale claim이 TTL(5분)까지 남아 자동 재시작이 지연된다.
+      //   실패를 관측하고, 원 오류 재던짐과 TTL 자체 회복 동작은 기존 그대로 유지한다.
+      logger.warn({
+        err: releaseErr,
+        companyId: input.companyId,
+        sourceWorkflowRunId: source.id,
+        claimLogId,
+        originalError: err instanceof Error ? err.message : String(err),
+      }, "Mechanical auto-restart claim release failed; stale claim will expire via TTL");
+    });
     throw err;
   }
 }

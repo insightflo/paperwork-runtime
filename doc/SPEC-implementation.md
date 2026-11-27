@@ -1216,3 +1216,112 @@ Export/import behavior in V1:
 - import supports collision strategies: `rename`, `skip`, `replace`
 - import supports preview (dry-run) before apply
 - GitHub imports warn on unpinned refs instead of blocking
+
+## 22. Two-Graph Architecture (Workflow Graph + Logical Data Graph) & Problem-First Routing
+
+The V1 control plane organizes execution around two graphs joined by a thin query layer:
+
+- **Workflow Graph (control)** expresses how work is structurally ordered: deterministic
+  steps, agent judgment steps, and structural human pauses, combined through parallel,
+  routing, tree, and loop patterns.
+- **Logical Data Graph (context)** expresses what is related: a zero-copy relation view
+  over the existing PostgreSQL tables (edge catalog in `DATABASE.md`, "Logical Data
+  Graph Edge Catalog") used for bounded multi-hop context traversal.
+
+Routing starts from the problem, not from the mechanism: simple tasks stay single-agent
+function/tool calls, and a graph is introduced only when structural control (Q1) or
+multi-hop relations (Q2) are actually required (§22.3).
+
+### 22.1 Workflow Graph (Control): Three Logical Node Classes
+
+Workflow steps carry one of three logical capability classes on top of the existing
+step draft types:
+
+| Logical class | Meaning | Step draft mapping |
+|---|---|---|
+| `function` | deterministic code and rules; guarantees live here | `tool`; `if` and `complete` are control pseudo-nodes, not capabilities |
+| `ai_agent` | model judgment and drafting; language work lives here | `agent`, `workflow` (child delegation) |
+| `human_wait` | structural pause-and-resume awaiting a person | first-class `human_wait` step; legacy `graphApprovalRequired` approval flags are logically promoted to this class on read |
+
+`human_wait` execution semantics:
+
+- When the DAG engine reaches a `human_wait` step it creates one `operator_decisions`
+  row (`sourceType = workflow_human_wait`, `requestKey = workflowRunId:stepRunId`,
+  unique per company) and leaves the step run pending. `paused` is a display label;
+  the step is not queued for dispatch while the decision is pending.
+- Resume reuses the existing infrastructure: resolving the decision creates an
+  `operator_decision_continuations` row that drives the standard wakeup/idempotency
+  path. Resume authority comes only from the structured `operator_decisions.result`
+  jsonb; comments, stdout/stderr, and prose are never parsed for control flow, and
+  agent-authored natural language is never execution authority.
+- Timeout handling follows the operator-decision lifecycle: expiry cancels, fails, or
+  escalates the decision according to the step's configured timeout action.
+
+Structural patterns remain owned by the existing engine semantics:
+
+- **Parallel**: shared `dependsOn` groups with per-key concurrency; joins are steps
+  with two or more inbound dependencies.
+- **Routing**: `if` control nodes with bounded condition groups and labeled
+  `condition_true`/`condition_false` edges (§6.4.0.1).
+- **Tree**: parent/child workflow runs bound through `parent_run_id`/
+  `parent_step_run_id`/`root_run_id` with child-start leases and receipts (§6.4.0.1).
+- **Loop**: bounded rework via `iteration_index` and generic step retry via
+  `retry_count` (§6.4.0).
+
+Backward compatibility: existing workflow definitions keep their stored serialization.
+`human_wait` is added as an additional step draft type; workflows that model human
+approval with the legacy `graphApprovalRequired` flag family continue to run unchanged
+and are rendered/read as logical `human_wait` steps without migration.
+
+### 22.2 Logical Data Graph / GraphRAG (Context): Zero-Copy Over Existing Tables
+
+The logical data graph is a read-only relation view derived from existing FK columns,
+self-FKs, and jsonb reference columns (see `DATABASE.md`, "Logical Data Graph Edge
+Catalog"):
+
+- **Zero new DB tables, zero data copying.** No physical edge table, no materialized
+  graph, no ETL, and no separate graph database; node and edge sets are computed at
+  query time from the rows the control plane already writes.
+- **Bounded 2-hop traversal.** Queries expand from a seed node through at most two
+  hops with per-branch limits and a global node/edge cap; capped results report an
+  explicit `truncated` flag. Deeper traversal is not exposed, so query cost is
+  structurally finite.
+- **Company scoping is absolute.** Every traversal branch filters on `company_id`;
+  an agent API key can never receive nodes belonging to another company.
+- **Provenance-carrying Context Pack.** `server/src/services/data-graph/logical-graph.ts`
+  owns the edge catalog and logical view; `server/src/services/data-graph/graphrag-context-pack.ts`
+  serializes retrieved nodes and edges into a deterministic context pack in which
+  every fact cites its source (the seed, or the source column of the incoming edge,
+  e.g. `issues.mission_id`), dangling edges are never cited, and budget overflow
+  drops whole facts while setting `truncated`. Token budgets respect
+  `knowledge_bases.max_token_budget`.
+
+GraphRAG here is retrieval plus relationship-following, not a replacement for
+retrieval and not a vector store: seeds come from the existing knowledge FTS index
+(`idx_knowledge_nodes_fts`) and no vector index is introduced. The thin query bridge
+is a workflow or agent step that queries the data graph for connected context: the
+agent drafts with that context, deterministic rules decide, and the workflow pauses
+for a person where the structure requires it.
+
+### 22.3 Problem-First Routing Guard
+
+Execution shape is chosen from two questions about the problem, asked before any
+graph is created:
+
+- **Q1 (structure).** Must stopping (human approval), branching, or ordering
+  guarantees be enforced as structure inside the app?
+- **Q2 (relations).** Is the context needed to answer the task scattered across
+  records two or more relations away (for example issue → work product → producing
+  run → knowledge node)?
+
+| Q1 | Q2 | Route |
+|---|---|---|
+| no | no | `single_agent` (plain agent or function/tool call; no graph) |
+| yes | no | `workflow_graph` (structural control and `human_wait` gates) |
+| no | yes | `data_graph_rag` (bounded data-graph query) |
+| yes | yes | `two_graph` (workflow nodes query the data graph) |
+
+The guard is advisory: it routes problem shape to mechanism, never the reverse, and
+it is never an execution authority. Workflows without a `human_wait` candidate should
+fall back to the single-agent path, and multi-hop context questions are answered with
+bounded data-graph queries rather than by growing workflow structure.

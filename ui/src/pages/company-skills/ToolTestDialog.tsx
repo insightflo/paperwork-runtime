@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "../../lib/utils";
+import { useCompany } from "../../context/CompanyContext";
 import { formatTestResult, parseTestInput } from "./toolTestModel";
 
 type ToolTestDialogProps = {
@@ -38,6 +39,7 @@ const STATUS_META: Record<RunState["status"], { label: string; icon: typeof Chec
  * page. Only saved tools can be tested.
  */
 export function ToolTestDialog({ companyId, tool, open, onOpenChange }: ToolTestDialogProps) {
+  const { canAdmin } = useCompany();
   const [inputJson, setInputJson] = useState("{}");
   const [parseError, setParseError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<ToolTestOutcome | null>(null);
@@ -64,6 +66,7 @@ export function ToolTestDialog({ companyId, tool, open, onOpenChange }: ToolTest
   });
 
   function handleRun() {
+    if (!canAdmin) return;
     const parsed = parseTestInput(inputJson);
     if (!parsed.ok) {
       setParseError(parsed.error);
@@ -147,7 +150,11 @@ export function ToolTestDialog({ companyId, tool, open, onOpenChange }: ToolTest
           <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={running}>
             Close
           </Button>
-          <Button onClick={handleRun} disabled={running || !inputValid}>
+          <Button
+            onClick={handleRun}
+            disabled={running || !inputValid || !canAdmin}
+            title={!canAdmin ? "Admin or owner role required to run tool tests" : undefined}
+          >
             {running ? (
               <>
                 <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />

@@ -28,6 +28,7 @@ import { executeMissionOwnerAction, OwnerActionRefusalError, withCurrentOwnerToo
 import { missionOwnerExecuteSchema } from "@paperclipai/shared/validators/mission-owner-authority";
 import { executeLlmStructuredWorkflowStep } from "./llm-structured-executor.js";
 import { instanceSettingsService } from "../instance-settings.js";
+import { logger } from "../../middleware/logger.js";
 import { executeStepCloseoutTool } from "./step-closeout-tool.js";
 import { executeHtmlPreflightTool } from "../judgment/html-preflight-executor.js";
 import { secretService } from "../secrets.js";
@@ -132,7 +133,13 @@ export async function executeCoreWorkflowTool(input: {
     );
     const providerId = typeof adapterConfig.providerId === "string" && adapterConfig.providerId.trim() ? adapterConfig.providerId.trim() : undefined;
     const instanceConfig = missing.length
-      ? await instanceSettingsService(input.db).getLlmStructuredRuntimeConfig(providerId).catch(() => undefined)
+      ? await instanceSettingsService(input.db).getLlmStructuredRuntimeConfig(providerId).catch((err: unknown) => {
+        // [s25-error-obs] provider 설정 조회 실패가 undefined로 흡수되며 env 미주입 → 이후 불투명한 오류로
+        //   변질되는 것을 조회 시점에 관측한다. 설정값(baseUrl/model/apiKey)은 절대 로그에 남기지 않는다.
+        logger.warn({ err, providerId, toolName: input.toolName },
+          "LLM structured runtime config lookup failed; executing tool without instance defaults");
+        return undefined;
+      })
       : undefined;
     for (const [field, suffix] of missing) {
       const value = instanceConfig?.[field];

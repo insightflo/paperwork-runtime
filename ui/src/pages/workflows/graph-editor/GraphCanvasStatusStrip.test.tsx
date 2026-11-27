@@ -131,6 +131,75 @@ describe("GraphCanvasStatusStrip connector legend", () => {
   });
 });
 
+describe("GraphCanvasStatusStrip logical class counts", () => {
+  const counts = { function: 2, ai_agent: 3, human_wait: 1 };
+
+  it("renders no logical class pills without the optional prop (100% backward compatible)", () => {
+    const container = renderStatic(<GraphCanvasStatusStrip workbenchSummary={workbenchSummary} canvasScale={1.25} />);
+    expect(container.querySelector('[data-logical-class-legend="true"]')).toBeNull();
+    expect(container.textContent).toContain("Selected path");
+    expect(container.textContent).toContain("alpha → beta");
+    expect(container.textContent).toContain("0 errors");
+    expect(container.textContent).toContain("2 nodes");
+    expect(container.textContent).toContain("125%");
+    expect(container.querySelectorAll("li[data-connector-state]")).toHaveLength(legendStates.length);
+  });
+
+  it("renders compact pills for all three logical classes with accessible count labels", () => {
+    const container = renderStatic(<GraphCanvasStatusStrip workbenchSummary={workbenchSummary} canvasScale={1} logicalClassCounts={counts} />);
+    const legend = container.querySelector('ul[data-logical-class-legend="true"]');
+    expect(legend).not.toBeNull();
+    expect(legend!.getAttribute("role")).toBe("list");
+    expect(legend!.getAttribute("aria-label")).toBe("Logical node class counts");
+
+    const items = Array.from(legend!.querySelectorAll("li[data-logical-class]"));
+    expect(items.map((item) => item.getAttribute("data-logical-class"))).toEqual(["function", "ai_agent", "human_wait"]);
+    const byClass = new Map(items.map((item) => [item.getAttribute("data-logical-class"), item]));
+    expect(byClass.get("function")!.getAttribute("aria-label")).toBe("2 Function");
+    expect(byClass.get("ai_agent")!.getAttribute("aria-label")).toBe("3 AI Agent");
+    expect(byClass.get("human_wait")!.getAttribute("aria-label")).toBe("1 Human Wait — structural pause gate");
+    expect(byClass.get("human_wait")!.getAttribute("data-pause-gate")).toBe("true");
+    expect(byClass.get("human_wait")!.textContent).toContain("1");
+    expect(byClass.get("function")!.textContent).toContain("Function");
+    expect(byClass.get("function")!.getAttribute("data-pause-gate")).toBeNull();
+  });
+
+  it("marks no structural pause gate when human_wait count is zero", () => {
+    const container = renderStatic(<GraphCanvasStatusStrip workbenchSummary={workbenchSummary} canvasScale={1} logicalClassCounts={{ function: 1, ai_agent: 2, human_wait: 0 }} />);
+    const humanWait = container.querySelector('li[data-logical-class="human_wait"]');
+    expect(humanWait).not.toBeNull();
+    expect(humanWait!.getAttribute("data-pause-gate")).toBeNull();
+    expect(humanWait!.getAttribute("aria-label")).toBe("0 Human Wait");
+  });
+});
+
+describe("GraphCanvas logical class count wiring", () => {
+  const mixedSteps = jsonToSteps([
+    { id: "prep", title: "Prep", type: "tool" },
+    { id: "gate", title: "Gate", type: "if", dependsOn: ["prep"] },
+    { id: "worker", title: "Worker", type: "agent", dependsOn: ["gate"] },
+    { id: "child", title: "Child Flow", type: "workflow", dependsOn: ["worker"], targetWorkflowId: "wf-child" },
+    { id: "approve", title: "Approve", type: "agent", dependsOn: ["child"], graphApprovalRequired: true },
+  ]);
+  const mixedGraph = buildWorkflowGraphModel(mixedSteps);
+
+  it("counts graph node logical classes and passes them into the status strip legend", () => {
+    const container = renderStatic(<GraphCanvas {...canvasProps(mixedGraph, mixedSteps)} />);
+    const legend = container.querySelector('ul[data-logical-class-legend="true"]');
+    expect(legend, "status strip should render logical class legend from computed counts").not.toBeNull();
+    const byClass = new Map(
+      Array.from(legend!.querySelectorAll("li[data-logical-class]")).map((item) => [
+        item.getAttribute("data-logical-class"),
+        item,
+      ]),
+    );
+    expect(byClass.get("function")!.getAttribute("aria-label")).toBe("2 Function");
+    expect(byClass.get("ai_agent")!.getAttribute("aria-label")).toBe("2 AI Agent");
+    expect(byClass.get("human_wait")!.getAttribute("aria-label")).toBe("1 Human Wait — structural pause gate");
+    expect(byClass.get("human_wait")!.getAttribute("data-pause-gate")).toBe("true");
+  });
+});
+
 describe("GraphCanvas rendered connectors", () => {
   it("matches every legend swatch to the stroke and dash of the corresponding rendered edge", () => {
     const container = renderStatic(<GraphCanvas {...canvasProps(stateGraph, stateSteps)} />);

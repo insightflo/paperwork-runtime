@@ -727,8 +727,8 @@ export function Missions() {
         <button
           type="button"
           aria-pressed={inspectorOpen}
-          aria-label="Toggle mission preview pane"
-          title="Mission live inspector (↑/↓ or j/k to browse)"
+          aria-label="미션 미리보기 창 전환"
+          title="미션 라이브 인스펙터 (↑/↓ 또는 j/k 탐색)"
           onClick={() => {
             if (inspectorOpen) {
               setInspectorOpen(false);
@@ -750,11 +750,11 @@ export function Missions() {
           onClick={refreshCurrentTab}
           disabled={isMissionsFetching}
           className="h-7 w-7 px-0 text-xs"
-          title={isMissionsFetching ? "Refreshing" : "Refresh current tab"}
-          aria-label="Refresh current missions tab"
+          title={isMissionsFetching ? "새로고침 중" : "현재 탭 새로고침"}
+          aria-label="현재 미션 탭 새로고침"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${isMissionsFetching ? "animate-spin" : ""}`} />
-          <span className="sr-only">{isMissionsFetching ? "Refreshing" : "Refresh"}</span>
+          <span className="sr-only">{isMissionsFetching ? "새로고침 중" : "새로고침"}</span>
         </Button>
         <Button
           size="sm"
@@ -767,7 +767,7 @@ export function Missions() {
           className="h-7 bg-primary px-2.5 text-xs text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="h-3.5 w-3.5" />
-          New Mission
+          새 미션
         </Button>
       </div>
 
@@ -817,7 +817,7 @@ export function Missions() {
               >
                 <span aria-hidden />
                 <span className="flex min-w-0 items-center gap-2">
-                  <span>Mission</span>
+                  <span>미션</span>
                   <span className="font-mono text-[10px] font-semibold normal-case tracking-normal text-muted-foreground tabular-nums">
                     {hasClientRadarFilter ? `${filteredClientMissions.length}건 필터됨` : `${visibleMissions.length}건`}
                   </span>
@@ -836,9 +836,9 @@ export function Missions() {
                     </button>
                   )}
                 </span>
-                <span className="hidden sm:block">Steps</span>
-                <span className="hidden sm:block">Main executor</span>
-                <span className="hidden justify-self-end sm:block">Updated</span>
+                <span className="hidden sm:block">단계</span>
+                <span className="hidden sm:block">메인 실행자</span>
+                <span className="hidden justify-self-end sm:block">업데이트</span>
               </div>
 
               <div role="listbox" aria-label="Mission list">
@@ -1002,7 +1002,7 @@ export function Missions() {
                       </span>
                       <button
                         type="button"
-                        aria-label="Close mission preview"
+                        aria-label="미션 미리보기 닫기"
                         onClick={() => setInspectorOpen(false)}
                         className="ml-auto flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent/50 hover:text-foreground"
                       >

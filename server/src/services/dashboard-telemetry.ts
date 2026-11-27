@@ -14,6 +14,12 @@ export const TELEMETRY_WINDOWS: readonly DashboardTelemetryWindow[] = ["10m", "1
 export const DEFAULT_TELEMETRY_WINDOW: DashboardTelemetryWindow = "6h";
 const TOP_MODEL_LIMIT = 5;
 const RECENT_RUNS_LIMIT = 40;
+/**
+ * cost_events 단일 스캔 상한. 이 쿼리는 UI 가 10 초 폴링하므로 24h 창의 행 수가
+ * 무제한으로 늘어나는 것을 막는 안전 가드다. LIMIT 초과 시 최근(occurredAt 내림차순)
+ * 이벤트만 유지하고 나머지는 응답에서 생략하며, 잘렸을 때는 경고를 남긴다.
+ */
+const COST_EVENTS_SCAN_LIMIT = 50_000;
 
 interface WindowSpec {
   window: DashboardTelemetryWindow;
@@ -398,7 +404,9 @@ export function dashboardTelemetryService(db: Db, options: DashboardTelemetrySer
               gte(costEvents.occurredAt, windowStart),
               lte(costEvents.occurredAt, now),
             ),
-          ),
+          )
+          .orderBy(desc(costEvents.occurredAt))
+          .limit(COST_EVENTS_SCAN_LIMIT),
         db
           .select({
             runId: heartbeatRuns.id,
@@ -427,6 +435,12 @@ export function dashboardTelemetryService(db: Db, options: DashboardTelemetrySer
           )
           .limit(RECENT_RUNS_LIMIT),
       ]);
+
+      if (costRows.length >= COST_EVENTS_SCAN_LIMIT) {
+        console.warn(
+          `[dashboard-telemetry] cost_events scan hit the ${COST_EVENTS_SCAN_LIMIT}-row limit (company=${companyId}, window=${window}); older events are omitted`,
+        );
+      }
 
       const runIds = runRows.map((r) => r.runId);
       const runCostRows: TelemetryRunCostAggRow[] =

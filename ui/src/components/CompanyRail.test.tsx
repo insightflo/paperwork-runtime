@@ -175,7 +175,7 @@ describe("CompanyRail", () => {
     const divider = host.querySelector<HTMLElement>(".h-px.w-6");
     expect(divider).not.toBeNull();
 
-    const addButton = host.querySelector<HTMLButtonElement>('button[aria-label="Add company"]');
+    const addButton = host.querySelector<HTMLButtonElement>('button[aria-label="회사 추가"]');
     expect(addButton?.className).toContain("hover:text-primary");
     expect(addButton?.className).toContain("hover:border-primary/70");
     expect(addButton?.className).not.toContain("#a3e635");
@@ -188,6 +188,6 @@ describe("CompanyRail", () => {
     const scrollRail = host.querySelector<HTMLElement>(".scrollbar-none");
     expect(scrollRail?.className).toContain("gap-1.5");
     expect(scrollRail?.className).toContain("py-2");
-    expect(host.querySelector('button[aria-label="Add company"]')).not.toBeNull();
+    expect(host.querySelector('button[aria-label="회사 추가"]')).not.toBeNull();
   });
 });

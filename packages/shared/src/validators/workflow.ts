@@ -82,6 +82,26 @@ export const workflowStepContractSchema = z
 
 export type WorkflowStepContract = z.infer<typeof workflowStepContractSchema>;
 
+/**
+ * [purpose] Stage 26 human_wait 구조 대기 스텝의 operator decision 카드 프리셋.
+ * 사람 승인 대기(human_wait 논리 클래스 또는 레거시 graphApprovalRequired)가
+ * operator_decisions 로 materialize 될 때 카드 제목·본문·승인/거절 라벨·역할·타임아웃을
+ * 정의 시점에 선언한다. timeoutMinutes 는 분 단위 양수(초→분 환산을 위해 소수 허용).
+ * [care] 규칙 8 — 프리셋 메타데이터일 뿐 실행 권위가 아니다. 실제 결정 권위는
+ * operator_decisions.result 구조화 값에만 있다.
+ */
+export const workflowHumanWaitDecisionTemplateSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  prompt: z.string().trim().min(1).max(2000).optional(),
+  requiredRole: z.string().trim().min(1).max(100).optional(),
+  timeoutMinutes: z.number().positive().optional(),
+  allowReject: z.boolean().optional(),
+  approvalLabel: z.string().trim().min(1).max(100).optional(),
+  rejectLabel: z.string().trim().min(1).max(100).optional(),
+}).strict();
+
+export type WorkflowHumanWaitDecisionTemplate = z.infer<typeof workflowHumanWaitDecisionTemplateSchema>;
+
 const nullableUuidSchema = z.string().uuid().nullable();
 const nullableDateTimeStringSchema = z.string().datetime().nullable();
 const metadataSchema = z.record(z.unknown()).default({});
@@ -128,7 +148,7 @@ export const workflowStepDefinitionSchema = z.object({
         });
       }
     }),
-  type: z.enum(["agent", "tool", "if", "complete"]).or(z.string()).optional(),
+  type: z.enum(["agent", "tool", "if", "complete", "human_wait"]).or(z.string()).optional(),
   conditionGroup: workflowConditionGroupSchema.optional(),
   completionReason: z.string().trim().min(1).max(500).optional(),
   qaType: z.string().trim().min(1).max(64).regex(/^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$/iu).optional(), deliveryVerification: z.literal('required').optional(), capAcceptance: z.literal('blocked').optional(),
@@ -159,6 +179,7 @@ export const workflowStepDefinitionSchema = z.object({
   graphRetryDelaySeconds: z.number().int().nonnegative().optional(),
   graphRetryBackoff: z.enum(["fixed", "linear", "exponential"]).optional(),
   graphRetryJitter: z.boolean().optional(),
+  decisionTemplate: workflowHumanWaitDecisionTemplateSchema.optional(),
   contract: workflowStepContractSchema.optional(),
 })
   .passthrough()

@@ -1314,6 +1314,33 @@ export async function recordLatestAuthorizedMissionOwnerPlanDecision({
     ? sourceValidationDiagnostics
     : placementDiagnostics;
   if (executionValidationDiagnostics.length > 0) {
+    // [s25-planqa-fix Fix A] 진단이 전부 일시적 error 면 원장을 영구 rejected 로 오염시키지 않는다 —
+    //   직전 'submitted' upsert 를 유지하고 noop 반환으로 소비자·스윕이 다음 주기 재시도한다.
+    //   hard 진단이 하나라도 섞이면 기존 거절 경로 그대로.
+    if (executionValidationDiagnostics.every((diagnostic) => diagnostic.code === "agent_status_transiently_unavailable")) {
+      await logActivity(db, {
+        companyId,
+        actorType: "system",
+        actorId: "mission-owner-plan-decisions",
+        action: "mission.owner_plan.deferred_transient",
+        entityType: "mission",
+        entityId: missionId,
+        details: {
+          planningIssueId: collected.planningIssueId,
+          commentId: collected.commentId,
+          decisionHash,
+          diagnostics: executionValidationDiagnostics,
+        },
+      });
+      return {
+        status: "noop",
+        reason: "plan_decision_transiently_blocked",
+        planningIssueId: collected.planningIssueId,
+        commentId: collected.commentId,
+        decisionHash,
+        diagnostics: executionValidationDiagnostics,
+      };
+    }
     const rejectionReason = sourceValidationDiagnostics.length > 0
       ? "invalid_selected_execution_unit_source_ref"
       : "invalid_execution_placement";
@@ -1914,7 +1941,14 @@ async function validateSelectedExecutionUnitSourceRefs({
         });
         continue;
       }
-      if (!RUNNABLE_PLAN_ASSIGNEE_STATUSES.has(targetOwner.status)) {
+      // [s25-planqa-fix Fix A] 일시적 error 는 운영자 종단이 아니므로 transient 진단으로 분류해
+      //   원장이 영구 rejected 로 오염되지 않게 한다(paused/terminated 등은 기존 hard 유지).
+      if (targetOwner.status === "error") {
+        diagnostics.push({
+          code: "agent_status_transiently_unavailable",
+          message: `selectedExecutionUnits[${target.index}] targetOwnerAgentId ${target.targetOwnerAgentId} is transiently unavailable (status=error); retry once the target company agent recovers`,
+        });
+      } else if (!RUNNABLE_PLAN_ASSIGNEE_STATUSES.has(targetOwner.status)) {
         diagnostics.push({
           code: "target_owner_agent_not_runnable",
           message: `selectedExecutionUnits[${target.index}] targetOwnerAgentId ${target.targetOwnerAgentId} is not runnable (status=${targetOwner.status || "unknown"}); choose an active or idle target company agent`,
@@ -1947,6 +1981,15 @@ async function validateSelectedExecutionUnitSourceRefs({
         continue;
       }
       const status = rowById.get(id)?.status ?? "";
+      // [s25-planqa-fix Fix A] 일시적 error 는 transient 진단으로 분류(영구 rejected 오염 원인 차단).
+      //   error 를 runnable 집합에 넣지 않는 기존 불변식(오류 에이전트 실행 배정 금지)은 유지.
+      if (status === "error") {
+        diagnostics.push({
+          code: "agent_status_transiently_unavailable",
+          message: `selectedExecutionUnits assigneeAgentId ${id} is transiently unavailable (status=error); retry once the agent recovers`,
+        });
+        continue;
+      }
       if (!RUNNABLE_PLAN_ASSIGNEE_STATUSES.has(status)) {
         diagnostics.push({
           code: "assignee_agent_not_runnable",
@@ -2493,6 +2536,10 @@ export type SweepStalledPlanQaPassRecordsResult = {
   stalled: number;
   /** 이번 스윕에서 branch (b) 재완수로 'recorded' 전환에 성공한 미션 수. */
   recovered: number;
+  /** [s25-planqa-fix Fix B] no_authorized_decision 스톨에서 멱등 rework wake 을 발행한 미션 수. */
+  woken: number;
+  /** [s25-planqa-fix Fix B] planning issue assignee 가 error 여서 이번 주기 wake 을 보류한 미션 수. */
+  blocked: number;
   /** 미션별 격리된 실패(전체 감독 루프는 계속된다). */
   failures: Array<{ missionId: string; error: string }>;
 };
@@ -2503,12 +2550,19 @@ export type SweepStalledPlanQaPassRecordsResult = {
  * recordLatestAuthorizedMissionOwnerPlanDecision 의 멱등 branch (b) 경로로 재완수한다.
  * 실행 차단 상태(completed/cancelled/paused) 미션은 스킵하고, 한 미션의 실패가 다른
  * 미션의 회복을 막지 않도록 미션별로 격리한다.
+ * [s25-planqa-fix Fix B] 재완수가 no_authorized_decision 으로 멈추면(예: 유일 제출이 영구
+ * rejected 로 오염된 구 데이터) 멱등 rework wake 으로 소유자 재계획을 연다 — 무음 스톨 제거.
+ * opts.enqueuePlanningIssueWakeup 부재 시 이슈를 변경하지 않는다(하위호환).
  */
-export async function sweepStalledPlanQaPassRecords(db: Db): Promise<SweepStalledPlanQaPassRecordsResult> {
+export async function sweepStalledPlanQaPassRecords(
+  db: Db,
+  opts: { enqueuePlanningIssueWakeup?: PlanningIssueWakeupHandler } = {},
+): Promise<SweepStalledPlanQaPassRecordsResult> {
   const stalledRows = await db
     .select({
       companyId: missionPlanArtifacts.companyId,
       missionId: missionPlanArtifacts.missionId,
+      refs: missionPlanArtifacts.refs,
     })
     .from(missionPlanArtifacts)
     .innerJoin(
@@ -2538,24 +2592,117 @@ export async function sweepStalledPlanQaPassRecords(db: Db): Promise<SweepStalle
     .orderBy(asc(missionPlanArtifacts.createdAt), asc(missionPlanArtifacts.id));
 
   // 미션당 1회만 재완수한다(활성 artifact 조회가 여러 row 로 이어져도 동일 미션이다).
-  const stalledByMission = new Map<string, string>();
+  const stalledByMission = new Map<string, { companyId: string; refs: unknown }>();
   for (const row of stalledRows) {
     if (!stalledByMission.has(row.missionId)) {
-      stalledByMission.set(row.missionId, row.companyId);
+      stalledByMission.set(row.missionId, { companyId: row.companyId, refs: row.refs });
     }
   }
 
   let recovered = 0;
+  let woken = 0;
+  let blocked = 0;
   const failures: Array<{ missionId: string; error: string }> = [];
-  for (const [missionId, companyId] of stalledByMission) {
+  for (const [missionId, stalled] of stalledByMission) {
     try {
-      const result = await recordLatestAuthorizedMissionOwnerPlanDecision({ db, companyId, missionId });
-      if (result.status === "recorded") recovered += 1;
+      const result = await recordLatestAuthorizedMissionOwnerPlanDecision({ db, companyId: stalled.companyId, missionId });
+      if (result.status === "recorded") {
+        recovered += 1;
+        continue;
+      }
+      if (result.status === "noop" && result.reason === "no_authorized_decision") {
+        const outcome = await wakeStalledPlanQaNoAuthorizedDecision(db, {
+          companyId: stalled.companyId,
+          missionId,
+          refs: stalled.refs,
+          ...(opts.enqueuePlanningIssueWakeup ? { enqueuePlanningIssueWakeup: opts.enqueuePlanningIssueWakeup } : {}),
+        });
+        if (outcome === "woken") woken += 1;
+        else if (outcome === "blocked") blocked += 1;
+      }
     } catch (error) {
       failures.push({ missionId, error: error instanceof Error ? error.message : String(error) });
     }
   }
-  return { stalled: stalledByMission.size, recovered, failures };
+  return { stalled: stalledByMission.size, recovered, woken, blocked, failures };
+}
+
+type StalledPlanQaWakeOutcome = "woken" | "blocked" | "skipped";
+
+/**
+ * [s25-planqa-fix Fix B] PASS+pending+no_authorized_decision 무음 스톨 시그니처에서 소유자 재계획
+ * wake 을 연다. assignee 가 일시 error 면 보류(blocked — idempotency key 오염 방지), handler 부재
+ * 시 skip — 어느 쪽도 이슈를 변경하지 않는다. reopen 은 기존 rework 경로(baseline strip+재부착 멱등)를
+ * 재사용하고 최근 rejected 구조화 제출의 decision/diagnostics 를 baseline 으로 부착(없으면 생략).
+ * wake 중복은 production idempotencyKey(mission-owner-plan-rework:{issueId}:{decisionHash}) 가 흡수한다.
+ */
+async function wakeStalledPlanQaNoAuthorizedDecision(
+  db: Db,
+  input: {
+    companyId: string;
+    missionId: string;
+    refs: unknown;
+    enqueuePlanningIssueWakeup?: PlanningIssueWakeupHandler;
+  },
+): Promise<StalledPlanQaWakeOutcome> {
+  const pinnedPlanQa = readPlanQaRef(input.refs);
+  if (!pinnedPlanQa) return "skipped";
+  const [planningIssue] = await db
+    .select({ id: issues.id, assigneeAgentId: issues.assigneeAgentId })
+    .from(issues)
+    .where(and(
+      eq(issues.companyId, input.companyId),
+      eq(issues.missionId, input.missionId),
+      eq(issues.originKind, "mission_main_executor_plan"),
+    ))
+    .orderBy(desc(issues.createdAt), desc(issues.id))
+    .limit(1);
+  if (!planningIssue) return "skipped";
+  if (planningIssue.assigneeAgentId) {
+    const [assignee] = await db
+      .select({ status: agents.status })
+      .from(agents)
+      .where(and(eq(agents.companyId, input.companyId), eq(agents.id, planningIssue.assigneeAgentId)))
+      .limit(1);
+    if (assignee?.status === "error") return "blocked";
+  }
+  if (!input.enqueuePlanningIssueWakeup) return "skipped";
+  const [rejectedSubmission] = await db
+    .select({ decision: missionPlanDecisionSubmissions.decision, diagnostics: missionPlanDecisionSubmissions.diagnostics })
+    .from(missionPlanDecisionSubmissions)
+    .where(and(
+      eq(missionPlanDecisionSubmissions.companyId, input.companyId),
+      eq(missionPlanDecisionSubmissions.missionId, input.missionId),
+      eq(missionPlanDecisionSubmissions.status, "rejected"),
+      isNull(missionPlanDecisionSubmissions.sourceCommentId),
+    ))
+    .orderBy(desc(missionPlanDecisionSubmissions.createdAt), desc(missionPlanDecisionSubmissions.id))
+    .limit(1);
+  const rejectedDecision = rejectedSubmission?.decision && Object.keys(rejectedSubmission.decision).length > 0
+    ? rejectedSubmission.decision as Record<string, unknown>
+    : undefined;
+  const rejectedDiagnostics = rejectedSubmission && Array.isArray(rejectedSubmission.diagnostics) && rejectedSubmission.diagnostics.length > 0
+    ? rejectedSubmission.diagnostics as readonly Record<string, unknown>[]
+    : undefined;
+  const reopened = await reopenPlanningIssueForPlanChanges({
+    db,
+    companyId: input.companyId,
+    missionId: input.missionId,
+    planningIssueId: planningIssue.id,
+    ...(rejectedDecision ? { priorDecision: rejectedDecision } : {}),
+    ...(rejectedDiagnostics ? { diagnostics: rejectedDiagnostics } : {}),
+  });
+  if (!reopened?.assigneeAgentId) return "skipped";
+  await input.enqueuePlanningIssueWakeup({
+    companyId: input.companyId,
+    agentId: reopened.assigneeAgentId,
+    issueId: reopened.id,
+    issueStatus: reopened.status,
+    missionId: input.missionId,
+    planQaIssueId: pinnedPlanQa.issueId,
+    decisionHash: pinnedPlanQa.decisionHash,
+  });
+  return "woken";
 }
 
 function stableStringify(value: unknown): string {

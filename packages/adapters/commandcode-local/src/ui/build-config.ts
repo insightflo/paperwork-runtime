@@ -58,6 +58,11 @@ export function buildCommandCodeLocalConfig(v: CreateConfigValues): Record<strin
   if (v.model) ac.model = v.model;
   if (v.thinkingEffort) ac.effort = v.thinkingEffort;
 
+  // Optional per-run turn cap read by execute.ts (config.maxTurns). 0/absent
+  // keeps the CLI default (no --max-turns flag), matching the adapter's default of 0.
+  const maxTurns = Number(v.maxTurns ?? 0);
+  if (Number.isFinite(maxTurns) && maxTurns > 0) ac.maxTurns = Math.floor(maxTurns);
+
   // Command Code runs until the CLI exits naturally; keep the hard timeout off.
   ac.timeoutSec = 0;
   ac.graceSec = 20;

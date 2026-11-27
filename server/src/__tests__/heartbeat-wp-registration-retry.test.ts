@@ -71,6 +71,45 @@ describe("heartbeat-wp-registration-retry", () => {
     ]);
     expect(enqueueWakeup).not.toHaveBeenCalled();
   });
+
+  it("isolates per-entry failure: a rejected first wakeup still flushes the second entry", async () => {
+    // [항목별 실패 격리] 첫 항목의 enqueueWakeup reject 는 warn 후 무시되고, closeout 플러시는
+    // throw 없이 resolve 해야 한다. 두 번째 항목은 자체 멱등키로 정상 큐잉된다.
+    vi.mocked(hasLiveWakeCoverage).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+    const enqueueWakeup = vi.fn()
+      .mockRejectedValueOnce(new Error("wakeup queue unavailable"))
+      .mockResolvedValueOnce(undefined);
+    await expect(
+      flushWorkProductRegistrationRetries({} as never, enqueueWakeup, [
+        {
+          companyId: "co-1",
+          issueId: "iss-fail",
+          agentId: "ag-1",
+          missionId: null,
+          attempt: 1,
+          requiredAction: WORK_PRODUCT_REGISTRATION_RETRY_REQUIRED_ACTION,
+        },
+        {
+          companyId: "co-1",
+          issueId: "iss-ok",
+          agentId: "ag-2",
+          missionId: "mis-2",
+          attempt: 1,
+          requiredAction: WORK_PRODUCT_REGISTRATION_RETRY_REQUIRED_ACTION,
+        },
+      ]),
+    ).resolves.toBeUndefined();
+    expect(enqueueWakeup).toHaveBeenCalledTimes(2);
+    expect(enqueueWakeup).toHaveBeenNthCalledWith(
+      2,
+      "ag-2",
+      expect.objectContaining({
+        reason: "work_product_registration_retry",
+        idempotencyKey: "wp-registration-retry:iss-ok:1",
+        contextSnapshot: expect.objectContaining({ issueId: "iss-ok", missionId: "mis-2", attempt: 1 }),
+      }),
+    );
+  });
 });
 
 describe("settleDispatchBoundTerminalFailure shutdown/process_lost guards", () => {

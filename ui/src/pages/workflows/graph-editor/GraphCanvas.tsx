@@ -32,7 +32,8 @@ import {
 } from "./graphUiUtils.js";
 import { GraphCanvasEditTools, GraphCanvasViewTools } from "./GraphCanvasControls.js";
 import { GraphCanvasContextMenu } from "./GraphCanvasContextMenu.js";
-import { GRAPH_CANVAS_CONNECTOR_STATES, GraphCanvasStatusStrip } from "./GraphCanvasStatusStrip.js";
+import { resolveNodeLogicalClass } from "./node-logical-class.js";
+import { GRAPH_CANVAS_CONNECTOR_STATES, GraphCanvasStatusStrip, type WorkflowLogicalClassCounts } from "./GraphCanvasStatusStrip.js";
 import { GraphNodeHandles } from "./GraphNodeHandles.js";
 import { GraphConnectionEffects } from "./GraphConnectionEffects.js";
 import {
@@ -266,6 +267,13 @@ export function GraphCanvas({
   const activeHoveredNodeId = hoveredNodeId && graph.nodes.some((node) => node.id === hoveredNodeId) ? hoveredNodeId : null;
   const selectedEdgeFocusId = selectedEdgeId && graph.edges.some((edge) => edge.id === selectedEdgeId) ? selectedEdgeId : null;
   const selectedNodeFocusId = graph.nodes.find((node) => node.step.id === selectedStep?.id)?.id ?? null;
+  // [목적] 노드 스텝을 논리 클래스(함수/AI 에이전트/사람 대기)로 집계해 상태 스트립 범례에 전달한다.
+  // [주의] 읽기 전용 파생값 — 저장된 스텝 형태는 바꾸지 않는다(graphApprovalRequired → human_wait 읽기 승격).
+  const logicalClassCounts = React.useMemo<WorkflowLogicalClassCounts>(() => {
+    const counts: WorkflowLogicalClassCounts = { function: 0, ai_agent: 0, human_wait: 0 };
+    for (const node of graph.nodes) counts[resolveNodeLogicalClass(node.step)] += 1;
+    return counts;
+  }, [graph]);
   const edgeEmphasisFocus: GraphEdgeFocus = activeHoveredEdgeId
     ? { type: "edge", id: activeHoveredEdgeId }
     : activeHoveredNodeId
@@ -491,7 +499,7 @@ export function GraphCanvas({
         <GraphCanvasViewTools canvasScale={canvasScale} selectedStep={selectedStep}
           setCanvasScaleFromPoint={setCanvasScaleFromPoint} runWorkbenchAction={runWorkbenchAction} />
       </div>
-      <GraphCanvasStatusStrip workbenchSummary={workbenchSummary} canvasScale={canvasScale} />
+      <GraphCanvasStatusStrip workbenchSummary={workbenchSummary} canvasScale={canvasScale} logicalClassCounts={logicalClassCounts} />
     </div>
   );
 }

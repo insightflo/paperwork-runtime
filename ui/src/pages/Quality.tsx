@@ -45,7 +45,7 @@ function Pill({ tone, children, title }: { tone: Tone; children: string; title?:
 }
 
 export function Quality() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canWrite = true, canAdmin = true, currentRole } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const lang = useCompanyLanguage();
   const queryClient = useQueryClient();
@@ -163,8 +163,9 @@ export function Quality() {
         </div>
         <button
           type="button"
-          disabled={syncMut.isPending}
-          onClick={() => syncMut.mutate()}
+          disabled={syncMut.isPending || !canWrite}
+          onClick={() => { if (!canWrite) return; syncMut.mutate(); }}
+          title={!canWrite ? L(lang, { en: "Member, admin, or owner role required to sync RSI", ko: "RSI 동기화에는 member·admin·owner 역할이 필요합니다" }) : undefined}
           className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-blue-500/40 dark:border-[#60a5fa]/50 bg-blue-600 dark:bg-[#2563eb] px-2.5 text-xs font-semibold text-[#f8fafc] hover:bg-blue-500 dark:hover:bg-[#3b82f6] disabled:opacity-50"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", syncMut.isPending && "animate-spin")} />
@@ -172,6 +173,14 @@ export function Quality() {
             ? L(lang, { en: "Syncing...", ko: "동기화 중..." })
             : L(lang, { en: "Sync RSI Now", ko: "지금 RSI 동기화" })}
         </button>
+        {!canWrite && (
+          <span
+            className="inline-flex shrink-0 items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-amber-500/35 dark:bg-amber-500/10 dark:text-amber-300"
+            title={L(lang, { en: "Member, admin, or owner role required to sync RSI", ko: "RSI 동기화에는 member·admin·owner 역할이 필요합니다" })}
+          >
+            Read-only{currentRole ? ` (${currentRole})` : ""}
+          </span>
+        )}
       </div>
 
       {(error || errorMsg) && (
@@ -193,11 +202,11 @@ export function Quality() {
       )}
 
       {tab === "rsi" && (
-        <div className={RSI_PANEL_CLASS}>
+        <div className={RSI_PANEL_CLASS} title={!canAdmin ? L(lang, { en: "Pinning ★ Standard Rules requires owner or admin role", ko: "★ 표준 규약 고정은 owner·admin 역할만 가능합니다" }) : undefined}>
           <QualityRsiPanel
             overview={overview}
             promotingSig={promotingSig}
-            onPromoteCanon={(sig) => promoteMut.mutate(sig)}
+            onPromoteCanon={canAdmin ? (sig) => { if (!canAdmin) return; promoteMut.mutate(sig); } : undefined}
             language={lang}
           />
         </div>

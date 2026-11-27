@@ -129,7 +129,9 @@ export function registerOwnerPlanRecordValidationLedgerCases(deps: {
       companyId,
       name: "Unavailable Agent",
       role: "worker",
-      status: "error",
+      // [s25-planqa-fix Fix A] status:"error" 는 이제 일시적 지연(noop/plan_decision_transiently_blocked)
+      //   로 분류되므로, hard rejection 불변식은 운영자 통제 상태(paused)로 검증한다.
+      status: "paused",
       adapterType: "codex_local",
       adapterConfig: {},
       runtimeConfig: { heartbeat: { wakeOnDemand: false } },
@@ -162,7 +164,7 @@ export function registerOwnerPlanRecordValidationLedgerCases(deps: {
     expect(result.diagnostics).toEqual([
       expect.objectContaining({
         code: "assignee_agent_not_runnable",
-        message: expect.stringContaining("status=error"),
+        message: expect.stringContaining("status=paused"),
       }),
     ]);
 

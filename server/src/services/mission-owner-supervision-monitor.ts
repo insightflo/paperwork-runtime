@@ -1,8 +1,8 @@
 import { missions, type Db } from "@paperclipai/db";
-import { asc, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { logger } from "../middleware/logger.js";
 import { missionService, type MissionOwnerActionCreatedHandler, type MissionOwnerDecisionRetrySourceIssueAppliedHandler, type MissionOwnerDecisionDispatchStalledWakeRequestedHandler, type MissionOwnerPeriodicReviewWakeRequestedHandler, type MissionPlanRevisionRequestedHandler, type MissionPlanSubmissionMissingHandler, type MissionStaleSourceIssueWakeupRequestedHandler, type MissionTerminalRunCloseoutWakeRequestedHandler, type MissionWorkProductReuseWakeRequestedHandler } from "./missions.js";
-import type { PlanQaWakeupHandler, SweepStalledPlanQaPassRecordsResult } from "./mission-owner-plan-decisions.js";
+import type { PlanQaWakeupHandler, PlanningIssueWakeupHandler, SweepStalledPlanQaPassRecordsResult } from "./mission-owner-plan-decisions.js";
 import { sweepStalledPlanQaPassRecords } from "./mission-owner-plan-decisions.js";
 import {
   closeSatisfiedReplanUnblockIssues,
@@ -169,9 +169,31 @@ export function createMissionOwnerSupervisionMonitor(
     }
     // [승인=시작 2026-11-11] PLAN-QA PASS 원장은 기록됐지만 소비 noop 으로 멈춘 미션을 회복한다.
     //   기존 sweep 이후·가드 밖에서 실행하며, 실패가 감독 주기를 막지 않는다.
+    //   [s25-planqa-fix Fix B] no_authorized_decision 무음 스톨은 멱등 rework wake 으로 연다 —
+    //   supervision-post-loop-phases 와 동일한 onPlanRevisionRequested 어댑터를 스윕 opts 로 전달.
+    const stalledSweepPlanningIssueWakeup: PlanningIssueWakeupHandler | undefined = options.onPlanRevisionRequested
+      ? async (input) => {
+        const [missionRow] = await db
+          .select()
+          .from(missions)
+          .where(and(eq(missions.companyId, input.companyId), eq(missions.id, input.missionId)))
+          .limit(1);
+        if (!missionRow) return;
+        await options.onPlanRevisionRequested?.({
+          mission: missionRow,
+          planIssueId: input.issueId,
+          planQaIssueId: input.planQaIssueId,
+          targetAgentId: input.agentId,
+          decisionHash: input.decisionHash,
+          idempotencyKey: `mission-owner-plan-rework:${input.issueId}:${input.decisionHash}`,
+        });
+      }
+      : undefined;
     try {
-      const swept: SweepStalledPlanQaPassRecordsResult = await sweepStalledPlanQaPassRecords(db);
-      if (swept.recovered > 0 || swept.failures.length > 0) {
+      const swept: SweepStalledPlanQaPassRecordsResult = await sweepStalledPlanQaPassRecords(db, {
+        ...(stalledSweepPlanningIssueWakeup ? { enqueuePlanningIssueWakeup: stalledSweepPlanningIssueWakeup } : {}),
+      });
+      if (swept.recovered > 0 || swept.woken > 0 || swept.blocked > 0 || swept.failures.length > 0) {
         logger.warn({ ...swept }, "stalled PLAN-QA pass sweep completed");
       }
     } catch (err) {

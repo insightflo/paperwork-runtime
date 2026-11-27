@@ -8,6 +8,7 @@ import { queryKeys } from "../../lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { readAdapterAuth, writeAdapterAuth } from "./toolAdminModel";
+import { useCompany } from "../../context/CompanyContext";
 import { SecretManageDialog } from "./SecretManageDialog";
 
 type ToolAuthSelectorProps = {
@@ -34,6 +35,7 @@ export function ToolAuthSelector({
 }: ToolAuthSelectorProps) {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
+  const { canAdmin } = useCompany();
   const [showCreate, setShowCreate] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -81,6 +83,7 @@ export function ToolAuthSelector({
   });
 
   function handleCreate() {
+    if (!canAdmin) return;
     const name = newName.trim();
     if (!name || !newValue) return;
     createSecret.mutate({ name, value: newValue });
@@ -158,7 +161,8 @@ export function ToolAuthSelector({
             <Button
               size="sm"
               onClick={handleCreate}
-              disabled={createSecret.isPending || !newName.trim() || !newValue}
+              disabled={createSecret.isPending || !newName.trim() || !newValue || !canAdmin}
+              title={!canAdmin ? "Admin or owner role required to create secrets" : undefined}
             >
               {createSecret.isPending ? "Creating…" : "Create secret"}
             </Button>
@@ -181,7 +185,13 @@ export function ToolAuthSelector({
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={() => setShowCreate(true)} disabled={isDisabled}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setShowCreate(true)}
+            disabled={isDisabled || !canAdmin}
+            title={!canAdmin ? "Admin or owner role required to create secrets" : undefined}
+          >
             <Plus className="mr-1.5 h-3.5 w-3.5" />
             New secret
           </Button>

@@ -10,6 +10,7 @@ import { toolDefinitionsApi } from "../../api/tools";
 import { EmptyState } from "../../components/EmptyState";
 import { PageSkeleton } from "../../components/PageSkeleton";
 import { useToast } from "../../context/ToastContext";
+import { useCompany } from "../../context/CompanyContext";
 import { queryKeys } from "../../lib/queryKeys";
 import {
   buildToolPayload,
@@ -25,6 +26,7 @@ import { ToolDefinitionList } from "./ToolDefinitionList";
 export function ToolAdminPanel({ companyId }: { companyId: string }) {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
+  const { canAdmin } = useCompany();
   const [filter, setFilter] = useState("");
   const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -103,6 +105,7 @@ export function ToolAdminPanel({ companyId }: { companyId: string }) {
   });
 
   function startCreate() {
+    if (!canAdmin) return;
     setSelectedToolId(null);
     setIsCreating(true);
     setForm(emptyToolForm);
@@ -115,6 +118,7 @@ export function ToolAdminPanel({ companyId }: { companyId: string }) {
   }
 
   function saveForm() {
+    if (!canAdmin) return;
     if (selectedTool && isSourceManagedTool(selectedTool.adapterConfig)) return;
     try {
       const payload = buildToolPayload(form);
@@ -130,11 +134,13 @@ export function ToolAdminPanel({ companyId }: { companyId: string }) {
   }
 
   function toggleSelectedTool() {
+    if (!canAdmin) return;
     if (!selectedTool || isSourceManagedTool(selectedTool.adapterConfig)) return;
     updateTool.mutate({ toolId: selectedTool.id, payload: { enabled: !selectedTool.enabled } });
   }
 
   function deleteSelectedTool() {
+    if (!canAdmin) return;
     if (!selectedTool || isSourceManagedTool(selectedTool.adapterConfig)) return;
     if (window.confirm(`Delete ${selectedTool.name}?`)) {
       deleteTool.mutate(selectedTool.id);
@@ -156,6 +162,14 @@ export function ToolAdminPanel({ companyId }: { companyId: string }) {
       />
 
       <div className="min-w-0 pl-6">
+        {!canAdmin ? (
+          <div
+            className="mb-3 inline-flex items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#fde68a]"
+            title="Admin or owner role required to create, edit, enable, test, or delete tool definitions"
+          >
+            Read-only — admin required to manage tools
+          </div>
+        ) : null}
         {toolsQuery.isLoading ? (
           <PageSkeleton variant="detail" />
         ) : tools.length === 0 && !selectedTool && !isCreating ? (

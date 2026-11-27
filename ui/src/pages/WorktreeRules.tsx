@@ -128,9 +128,10 @@ function SeverityBadge({ severity }: { severity: RuleSeverity }) {
 interface PredicateFormBuilderProps {
   clauses: PredicateClause[];
   onChange: (clauses: PredicateClause[]) => void;
+  canAdmin: boolean;
 }
 
-function PredicateFormBuilder({ clauses, onChange }: PredicateFormBuilderProps) {
+function PredicateFormBuilder({ clauses, onChange, canAdmin }: PredicateFormBuilderProps) {
   function update(i: number, partial: Partial<PredicateClause>) {
     onChange(clauses.map((c, idx) => (idx === i ? { ...c, ...partial } : c)));
   }
@@ -152,10 +153,11 @@ function PredicateFormBuilder({ clauses, onChange }: PredicateFormBuilderProps) 
             className="h-7 text-xs w-32 shrink-0"
             placeholder="field"
             value={clause.field}
+            disabled={!canAdmin}
             onChange={(e) => update(i, { field: e.target.value })}
           />
           <Select value={clause.operator} onValueChange={(v) => update(i, { operator: v as PredicateOperator })}>
-            <SelectTrigger className="h-7 text-xs w-32 shrink-0">
+            <SelectTrigger className="h-7 text-xs w-32 shrink-0" disabled={!canAdmin}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -172,6 +174,7 @@ function PredicateFormBuilder({ clauses, onChange }: PredicateFormBuilderProps) 
                 : "value"
             }
             value={clause.value}
+            disabled={!canAdmin}
             onChange={(e) => update(i, { value: e.target.value })}
           />
           <Button
@@ -180,6 +183,7 @@ function PredicateFormBuilder({ clauses, onChange }: PredicateFormBuilderProps) 
             size="icon-sm"
             className="shrink-0 text-muted-foreground hover:text-destructive"
             onClick={() => removeClause(i)}
+            disabled={!canAdmin}
           >
             <Trash2 className="h-3 w-3" />
           </Button>
@@ -191,6 +195,7 @@ function PredicateFormBuilder({ clauses, onChange }: PredicateFormBuilderProps) 
         size="sm"
         className="h-6 text-xs text-muted-foreground"
         onClick={addClause}
+        disabled={!canAdmin}
       >
         <Plus className="h-3 w-3 mr-1" />
         Add condition
@@ -241,9 +246,9 @@ function defaultFormValues(rule?: WorktreeRule): RuleFormValues {
   };
 }
 
-interface RuleFormProps { initial?: WorktreeRule; onSubmit: (input: CreateRuleInput) => void; onCancel: () => void; isPending: boolean; error: string | null }
+interface RuleFormProps { initial?: WorktreeRule; canAdmin: boolean; onSubmit: (input: CreateRuleInput) => void; onCancel: () => void; isPending: boolean; error: string | null }
 
-function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormProps) {
+function RuleForm({ initial, canAdmin, onSubmit, onCancel, isPending, error }: RuleFormProps) {
   const [values, setValues] = useState<RuleFormValues>(() => defaultFormValues(initial));
   const [jsonError, setJsonError] = useState<string | null>(null);
 
@@ -284,6 +289,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!canAdmin) return;
     setJsonError(null);
     const predicate = buildPredicate();
     if (predicate === null) return;
@@ -305,7 +311,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
       <div className="flex items-center justify-between gap-3">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad]">{initial ? "Edit Rule" : "New Rule"}</p>
         <div className="flex shrink-0 gap-2">
-          <Button type="submit" size="sm" variant="outline" className="h-7 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]" disabled={isPending}>
+          <Button type="submit" size="sm" variant="outline" className="h-7 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]" disabled={isPending || !canAdmin} title={!canAdmin ? "Admin role required to save rules" : undefined}>
             {isPending ? "Saving..." : initial ? "Save" : "Create"}
           </Button>
           <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onCancel}>
@@ -319,6 +325,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
         <Input
           className="h-8 text-sm"
           value={values.name}
+          disabled={!canAdmin}
           onChange={(e) => set("name", e.target.value)}
           placeholder="e.g. Block file writes outside workspace"
           required
@@ -329,7 +336,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
         <div className="space-y-1.5 w-32 shrink-0">
           <label className="text-xs text-slate-500 dark:text-[#8b97ad]">Severity</label>
           <Select value={values.severity} onValueChange={(v) => set("severity", v as RuleSeverity)}>
-            <SelectTrigger className="h-8 text-sm">
+            <SelectTrigger className="h-8 text-sm" disabled={!canAdmin}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -342,7 +349,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
         <div className="space-y-1.5 flex-1">
           <label className="text-xs text-slate-500 dark:text-[#8b97ad]">Action</label>
           <Select value={values.action} onValueChange={(v) => set("action", v)}>
-            <SelectTrigger className="h-8 text-sm">
+            <SelectTrigger className="h-8 text-sm" disabled={!canAdmin}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -353,7 +360,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
             </SelectContent>
           </Select>
           {values.action === "__custom__" && (
-            <Input className="h-8 text-sm mt-1" placeholder="custom action name" onChange={(e) => set("action", e.target.value)} />
+            <Input className="h-8 text-sm mt-1" placeholder="custom action name" disabled={!canAdmin} onChange={(e) => set("action", e.target.value)} />
           )}
         </div>
       </div>
@@ -363,6 +370,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
         <Input
           className="h-8 text-sm"
           value={values.message}
+          disabled={!canAdmin}
           onChange={(e) => set("message", e.target.value)}
           placeholder="e.g. File writes outside workspace are not allowed"
         />
@@ -377,6 +385,7 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
             size="sm"
             className="h-6 text-xs gap-1.5"
             onClick={toggleMode}
+            disabled={!canAdmin}
           >
             {values.useRawJson
               ? <><FormInput className="h-3 w-3" /> Form</>
@@ -388,10 +397,11 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
             className={cn("h-32 w-full resize-y rounded-md border bg-white px-3 py-2 font-mono text-xs text-slate-900 whitespace-pre-wrap focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:ring-[#60a5fa]", jsonError ? "border-destructive" : "border-slate-200/90 dark:border-white/[0.1]")}
             value={values.predicateJson}
             onChange={(e) => { set("predicateJson", e.target.value); setJsonError(null); }}
+            disabled={!canAdmin}
             spellCheck={false}
           />
         ) : (
-          <PredicateFormBuilder clauses={values.clauses} onChange={(c) => set("clauses", c)} />
+          <PredicateFormBuilder clauses={values.clauses} canAdmin={canAdmin} onChange={(c) => set("clauses", c)} />
         )}
         {jsonError && <p className="text-xs text-destructive">{jsonError}</p>}
         <p className="text-xs text-slate-500 dark:text-[#8b97ad]">
@@ -405,7 +415,8 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
           variant="ghost"
           size="icon-sm"
           className={cn(values.enabled ? "text-lime-700 dark:text-[#a3e635]" : "text-slate-500 dark:text-[#8b97ad]")}
-          onClick={() => set("enabled", !values.enabled)}
+          onClick={() => { if (!canAdmin) return; set("enabled", !values.enabled); }}
+          disabled={!canAdmin}
           title={values.enabled ? "Enabled — click to disable" : "Disabled — click to enable"}
         >
           {values.enabled
@@ -423,13 +434,13 @@ function RuleForm({ initial, onSubmit, onCancel, isPending, error }: RuleFormPro
 // RuleRow
 // ---------------------------------------------------------------------------
 
-interface RuleRowProps { rule: WorktreeRule; companyId: string }
+interface RuleRowProps { rule: WorktreeRule; companyId: string; canAdmin: boolean }
 
 /** Fixed column tracks: name (flexes, truncates) | severity | action | controls (never wraps). */
 const RULE_ROW_TRACKS =
   "grid grid-cols-[minmax(0,1fr)_max-content_max-content] items-center gap-3 px-3 sm:grid-cols-[minmax(0,1fr)_4rem_10rem_max-content]";
 
-function RuleRow({ rule, companyId }: RuleRowProps) {
+function RuleRow({ rule, companyId, canAdmin }: RuleRowProps) {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -455,7 +466,8 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
       <div className="border-b border-slate-200/90 dark:border-white/[0.08] p-3 last:border-b-0">
         <RuleForm
           initial={rule}
-          onSubmit={(input) => updateMutation.mutate(input)}
+          canAdmin={canAdmin}
+          onSubmit={(input) => { if (!canAdmin) return; updateMutation.mutate(input); }}
           onCancel={() => { setEditing(false); setMutError(null); }}
           isPending={updateMutation.isPending}
           error={mutError}
@@ -489,9 +501,9 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
             variant="ghost"
             size="icon-sm"
             className={cn("shrink-0", rule.enabled ? "text-lime-700 dark:text-[#a3e635]" : "text-slate-500 dark:text-[#8b97ad]")}
-            onClick={() => toggleMutation.mutate(!rule.enabled)}
-            disabled={toggleMutation.isPending}
-            title={rule.enabled ? "Disable" : "Enable"}
+            onClick={() => { if (!canAdmin) return; toggleMutation.mutate(!rule.enabled); }}
+            disabled={toggleMutation.isPending || !canAdmin}
+            title={!canAdmin ? "Admin role required to change rules" : rule.enabled ? "Disable" : "Enable"}
             aria-label={rule.enabled ? "Disable rule" : "Enable rule"}
           >
             {rule.enabled
@@ -502,7 +514,9 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
             variant="ghost"
             size="sm"
             className="h-6 text-xs text-slate-500 dark:text-[#8b97ad] hover:text-slate-900 dark:hover:text-[#eef2f8]"
-            onClick={() => setEditing(true)}
+            onClick={() => { if (!canAdmin) return; setEditing(true); }}
+            disabled={!canAdmin}
+            title={!canAdmin ? "Admin role required to edit rules" : undefined}
           >
             Edit
           </Button>
@@ -510,8 +524,9 @@ function RuleRow({ rule, companyId }: RuleRowProps) {
             variant="ghost"
             size="icon-sm"
             className="shrink-0 text-slate-500 dark:text-[#8b97ad] hover:text-destructive"
-            onClick={() => deleteMutation.mutate()}
-            disabled={deleteMutation.isPending}
+            onClick={() => { if (!canAdmin) return; deleteMutation.mutate(); }}
+            disabled={deleteMutation.isPending || !canAdmin}
+            title={!canAdmin ? "Admin role required to delete rules" : undefined}
             aria-label="Delete rule"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -573,7 +588,7 @@ function Segment({ pressed, onClick, children }: { pressed: boolean; onClick: ()
 }
 
 export function WorktreeRules() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canAdmin = true, currentRole } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
 
@@ -673,12 +688,22 @@ export function WorktreeRules() {
             <span className="ml-auto hidden shrink-0 text-[11px] text-slate-500 dark:text-[#8b97ad] sm:block">
               <span className="font-mono text-slate-950 dark:text-[#eef2f8]">{filtered.length}</span> of {all.length}
             </span>
+            {!canAdmin && (
+              <span
+                className="inline-flex shrink-0 items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-amber-500/35 dark:bg-amber-500/10 dark:text-amber-300"
+                title="Owner or admin role required to create, edit, enable, or delete approval-gate rules"
+              >
+                Read-only{currentRole ? ` (${currentRole})` : ""}
+              </span>
+            )}
             <Button
               size="sm"
               variant="outline"
               aria-pressed={showCreateForm}
               className="h-7 shrink-0 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]"
-              onClick={() => { setShowCreateForm((v) => !v); setCreateError(null); }}
+              onClick={() => { if (!canAdmin) return; setShowCreateForm((v) => !v); setCreateError(null); }}
+              disabled={!canAdmin}
+              title={!canAdmin ? "Admin role required to create rules" : undefined}
             >
               <Plus className="h-3.5 w-3.5" />
               New Rule
@@ -696,7 +721,8 @@ export function WorktreeRules() {
           {/* Create form */}
           {showCreateForm && (
             <RuleForm
-              onSubmit={(input) => createMutation.mutate(input)}
+              canAdmin={canAdmin}
+              onSubmit={(input) => { if (!canAdmin) return; createMutation.mutate(input); }}
               onCancel={() => { setShowCreateForm(false); setCreateError(null); }}
               isPending={createMutation.isPending}
               error={createError}
@@ -708,8 +734,8 @@ export function WorktreeRules() {
             <EmptyState
               icon={ShieldCheck}
               message={severityFilter === "all" ? "No worktree rules yet." : `No ${severityFilter} rules.`}
-              action={severityFilter === "all" ? "New Rule" : undefined}
-              onAction={severityFilter === "all" ? () => setShowCreateForm(true) : undefined}
+              action={severityFilter === "all" && canAdmin ? "New Rule" : undefined}
+              onAction={severityFilter === "all" && canAdmin ? () => setShowCreateForm(true) : undefined}
             />
           )}
 
@@ -717,7 +743,7 @@ export function WorktreeRules() {
           {filtered.length > 0 && (
             <div aria-label="Worktree rules" className="tactile-card overflow-hidden dark:bg-none dark:border-white/[0.08] dark:bg-[#0e131d]">
               {filtered.map((rule) => (
-                <RuleRow key={rule.id} rule={rule} companyId={selectedCompanyId} />
+                <RuleRow key={rule.id} rule={rule} companyId={selectedCompanyId} canAdmin={canAdmin} />
               ))}
             </div>
           )}
