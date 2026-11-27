@@ -17,7 +17,9 @@ import { readQueryEntityList } from "../services/knowledge-pattern-read.js";
 import { retire } from "../services/knowledge-pattern-lifecycle.js";
 import { formatKnowledgePatternBriefs } from "../services/knowledge-pattern-brief.js";
 import { explainRelatedKnowledgePatterns, selectRelatedKnowledgePatterns } from "../services/knowledge-pattern-relevance.js";
-import { assertBoard, assertCompanyAccess } from "./authz.js";
+import { accessService } from "../services/access.js";
+import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess } from "./authz.js";
+import { assertCompanyWriteAccess } from "./authz-write.js";
 import { badRequest, conflict, notFound, unprocessable } from "../errors.js";
 import { validate } from "../middleware/index.js";
 
@@ -69,6 +71,7 @@ const buildQueryContextTexts = (q: string | null, files: readonly string[] | nul
 export function knowledgePatternsRoutes(db: Db) {
   const router = Router();
   const svc = knowledgePatternsService(db);
+  const access = accessService(db);
 
   // GET /api/companies/:companyId/knowledge-patterns?kind=&tags=a,b&q=&includeSuperseded=&includeDrafts=&files=&symbols=
   //   draft 초안은 보드(승인 주체)에만 기본 노출. 에이전트 키는 active 카드만 본다(승인 전 무측).
@@ -125,7 +128,7 @@ export function knowledgePatternsRoutes(db: Db) {
   // POST /api/companies/:companyId/knowledge-patterns
   router.post("/companies/:companyId/knowledge-patterns", validate(createKnowledgePatternSchema, 422), async (req, res, next) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const actor = req.actor;
     const sourceFromActor = actor.type === "agent" ? "mission_owner_compile" : "operator";
     const bodySource = typeof req.body?.source === "string" && req.body.source.trim() ? req.body.source.trim() : sourceFromActor;
@@ -190,9 +193,8 @@ export function knowledgePatternsRoutes(db: Db) {
   //   사람 승인이 유일한 활성화 경로(기계 초안은 스스로 active가 될 수 없다).
   router.post("/companies/:companyId/knowledge-patterns/:patternId/approve", async (req, res, next) => {
     try {
-      assertBoard(req);
       const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
+      await assertCompanyAdminAccess(access, req, companyId);
       const audience = typeof req.body?.audience === "string" && req.body.audience.trim() ? req.body.audience.trim() : null;
       const card = await svc.approve({ companyId, id: req.params.patternId as string, audience });
       res.json({ card });
@@ -211,9 +213,8 @@ export function knowledgePatternsRoutes(db: Db) {
   //   사유 필수 — superseded·retired·타회사 카드는 404로 거부(approve와 동일 매핑 규약).
   router.post("/companies/:companyId/knowledge-patterns/:patternId/retire", async (req, res, next) => {
     try {
-      assertBoard(req);
       const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
+      await assertCompanyAdminAccess(access, req, companyId);
       const rawReason = req.body?.reason;
       if (rawReason === undefined) { next(badRequest("reason is required")); return; }
       const reason = typeof rawReason === "string" ? rawReason.trim() : "";
@@ -277,7 +278,7 @@ export function knowledgePatternsRoutes(db: Db) {
     try {
       assertBoard(req);
       const companyId = req.params.companyId as string;
-      assertCompanyAccess(req, companyId);
+      await assertCompanyWriteAccess(access, req, companyId);
       const audience = typeof req.body?.audience === "string" ? req.body.audience.trim() : "";
       if (audience !== "agent" && audience !== "ops") {
         next(badRequest("audience must be 'agent' or 'ops'"));

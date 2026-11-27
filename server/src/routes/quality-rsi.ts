@@ -3,7 +3,9 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
 import { badRequest } from "../errors.js";
-import { assertBoard, assertCompanyAccess } from "./authz.js";
+import { accessService } from "../services/access.js";
+import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess } from "./authz.js";
+import { assertCompanyWriteAccess } from "./authz-write.js";
 import {
   getQualityRsiOverview,
   promoteQualityPatternToCanon,
@@ -12,6 +14,7 @@ import {
 
 export function qualityRsiRoutes(db: Db) {
   const router = Router();
+  const access = accessService(db);
 
   router.get("/companies/:companyId/quality/rsi-overview", (req, res, next) => {
     try {
@@ -24,29 +27,28 @@ export function qualityRsiRoutes(db: Db) {
     }
   });
 
-  router.post("/companies/:companyId/quality/rsi-sync", (req, res, next) => {
+  router.post("/companies/:companyId/quality/rsi-sync", async (req, res, next) => {
     try {
       assertBoard(req);
       const { companyId } = req.params;
-      assertCompanyAccess(req, companyId);
-      syncQualityRsi(db, companyId).then((result) => res.json(result)).catch(next);
+      await assertCompanyWriteAccess(access, req, companyId);
+      const result = await syncQualityRsi(db, companyId);
+      res.json(result);
     } catch (err) {
       next(err);
     }
   });
 
-  router.post("/companies/:companyId/quality/rsi-promote-canon", (req, res, next) => {
+  router.post("/companies/:companyId/quality/rsi-promote-canon", async (req, res, next) => {
     try {
-      assertBoard(req);
       const { companyId } = req.params;
-      assertCompanyAccess(req, companyId);
+      await assertCompanyAdminAccess(access, req, companyId);
       const signature = typeof req.body?.signature === "string" ? req.body.signature.trim() : "";
       if (!signature || !signature.startsWith("quality-rsi:")) {
         throw badRequest("signature must be a non-empty quality-rsi:* identifier");
       }
-      promoteQualityPatternToCanon(db, companyId, signature)
-        .then((result) => res.status(result.alreadyCanon ? 200 : 201).json(result))
-        .catch(next);
+      const result = await promoteQualityPatternToCanon(db, companyId, signature);
+      res.status(result.alreadyCanon ? 200 : 201).json(result);
     } catch (err) {
       next(err);
     }

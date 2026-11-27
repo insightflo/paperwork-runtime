@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import express from "express";
 import request from "supertest";
 import { eq } from "drizzle-orm";
-import { activityLog, agents, companies, companyKnowledgePatterns, createDb, workflowDefinitions, workflowRuns, workflowTransitionEvents } from "@paperclipai/db";
+import { activityLog, agents, companies, companyKnowledgePatterns, companyMemberships, createDb, workflowDefinitions, workflowRuns, workflowTransitionEvents } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -43,6 +43,9 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
       { id: companyId, name: "Knowledge Co", status: "active", issuePrefix: "KP1" },
       { id: otherCompanyId, name: "Other Co", status: "active", issuePrefix: "KP2" },
     ]);
+    await db.insert(companyMemberships).values({
+      companyId, principalType: "user", principalId: "board-user", status: "active", membershipRole: "admin",
+    });
     await db.insert(agents).values({
       id: ownerAgentId, companyId, name: "Mission Owner", role: "owner",
       status: "active", adapterType: "claude_local", adapterConfig: {},
@@ -80,7 +83,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
   }
 
   const boardActor = () => ({
-    type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
+    type: "board", source: "board_key", userId: "board-user", companyId, companyIds: [companyId], isInstanceAdmin: false,
     actorId: "board-user", agentId: null,
   });
   const agentActor = () => ({ type: "agent", companyId, agentId: ownerAgentId, runId: null });
@@ -246,7 +249,7 @@ describeEP("company knowledge patterns (append-only curated incident cards)", ()
   });
 
   it("routes: nonexistent evidence maps to 422, not 500 [defect-b]", async () => {
-    const app = buildApp({ type: "board", userId: "u1", source: "session", isInstanceAdmin: false, companyIds: [companyId] });
+    const app = buildApp({ type: "board", userId: "u1", source: "session", isInstanceAdmin: true, companyIds: [companyId] });
     const res = await request(app)
       .post(`/api/companies/${companyId}/knowledge-patterns`)
       .send({ kind: "failure_mode", title: "위조 근거 카드", summary: "존재하지 않는 미션 참조", evidence: [{ type: "mission", id: randomUUID() }] });

@@ -3,7 +3,9 @@
 import { Router, type Request } from "express";
 import type { Db } from "@paperclipai/db";
 import { badRequest, forbidden, notFound } from "../errors.js";
+import { accessService } from "../services/access.js";
 import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertCompanyWriteAccess } from "./authz-write.js";
 import {
   buildAgentKbTocContext,
   readKbNode,
@@ -27,6 +29,7 @@ function resolveScopedAgentId(req: Request): string | undefined {
 
 export function knowledgeBasesRoutes(db: Db) {
   const router = Router();
+  const access = accessService(db);
 
   // Static routes MUST precede param routes.
   router.get("/companies/:companyId/knowledge-bases/search", (req, res, next) => {
@@ -74,24 +77,23 @@ export function knowledgeBasesRoutes(db: Db) {
     }
   });
 
-  router.patch("/companies/:companyId/knowledge-bases/nodes/:nodeId/certified", (req, res, next) => {
+  router.patch("/companies/:companyId/knowledge-bases/nodes/:nodeId/certified", async (req, res, next) => {
     try {
       assertBoard(req);
       const { companyId, nodeId } = req.params;
-      assertCompanyAccess(req, companyId);
+      await assertCompanyWriteAccess(access, req, companyId);
       const actor = getActorInfo(req);
       const body = req.body ?? {};
       if (typeof body.certified !== "boolean") {
         throw badRequest("certified boolean is required");
       }
-      setKbNodeCertified(db, {
+      const node = await setKbNodeCertified(db, {
         companyId,
         nodeId,
         certified: body.certified,
         actorId: actor.actorId,
-      })
-        .then((node) => res.json(node))
-        .catch(next);
+      });
+      res.json(node);
     } catch (err) {
       next(err);
     }
@@ -113,61 +115,59 @@ export function knowledgeBasesRoutes(db: Db) {
     }
   });
 
-  router.post("/companies/:companyId/knowledge-bases/lint", (req, res, next) => {
+  router.post("/companies/:companyId/knowledge-bases/lint", async (req, res, next) => {
     try {
       assertBoard(req);
       const { companyId } = req.params;
-      assertCompanyAccess(req, companyId);
+      await assertCompanyWriteAccess(access, req, companyId);
       const actor = getActorInfo(req);
       const body = req.body ?? {};
       const staleDays = typeof body.staleDays === "number" && Number.isFinite(body.staleDays)
         ? Math.min(Math.max(Math.floor(body.staleDays), 1), 3650)
         : undefined;
-      runCompanyKbLint(db, {
+      const result = await runCompanyKbLint(db, {
         companyId,
         staleDays,
         autoRetire: body.autoRetire === true,
         actorId: actor.actorId,
-      })
-        .then((result) => res.json(result))
-        .catch(next);
+      });
+      res.json(result);
     } catch (err) {
       next(err);
     }
   });
 
-  router.post("/companies/:companyId/knowledge-bases/compile-mission/:missionId", (req, res, next) => {
+  router.post("/companies/:companyId/knowledge-bases/compile-mission/:missionId", async (req, res, next) => {
     try {
       assertBoard(req);
       const { companyId, missionId } = req.params;
-      assertCompanyAccess(req, companyId);
+      await assertCompanyWriteAccess(access, req, companyId);
       const actor = getActorInfo(req);
       const body = req.body ?? {};
       const kbId = typeof body.kbId === "string" && body.kbId.trim() ? body.kbId.trim() : undefined;
-      compileCompletedMissionToKb(db, {
+      const result = await compileCompletedMissionToKb(db, {
         companyId,
         missionId,
         kbId,
         actorId: actor.actorId,
-      })
-        .then((result) => res.status(result.created ? 201 : 200).json(result))
-        .catch(next);
+      });
+      res.status(result.created ? 201 : 200).json(result);
     } catch (err) {
       next(err);
     }
   });
 
-  router.post("/companies/:companyId/knowledge-bases/:kbId/nodes", (req, res, next) => {
+  router.post("/companies/:companyId/knowledge-bases/:kbId/nodes", async (req, res, next) => {
     try {
       assertBoard(req);
       const { companyId, kbId } = req.params;
-      assertCompanyAccess(req, companyId);
+      await assertCompanyWriteAccess(access, req, companyId);
       const actor = getActorInfo(req);
       const body = req.body ?? {};
       if (typeof body.slug !== "string" || typeof body.title !== "string") {
         throw badRequest("slug and title strings are required");
       }
-      upsertKbNode(db, {
+      const out = await upsertKbNode(db, {
         companyId,
         kbId,
         slug: body.slug,
@@ -183,9 +183,8 @@ export function knowledgeBasesRoutes(db: Db) {
           : [],
         sourceRefs: Array.isArray(body.sourceRefs) ? body.sourceRefs : [],
         actorId: actor.actorId,
-      })
-        .then((out) => res.status(out.created ? 201 : 200).json(out.node))
-        .catch(next);
+      });
+      res.status(out.created ? 201 : 200).json(out.node);
     } catch (err) {
       next(err);
     }

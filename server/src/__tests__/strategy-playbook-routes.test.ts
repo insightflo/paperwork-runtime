@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { agents, companies, createDb } from "@paperclipai/db";
+import { agents, companies, companyMemberships, createDb } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -62,6 +62,10 @@ describeEP("strategy playbook routes (embedded DB)", () => {
     await db.insert(companies).values([
       { id: companyId, name: "Playbook Co", status: "active", issuePrefix: "PBC1" },
       { id: otherCompanyId, name: "Other Co", status: "active", issuePrefix: "PBC2" },
+    ]);
+    await db.insert(companyMemberships).values([
+      { companyId, principalType: "user", principalId: "board-1", status: "active", membershipRole: "admin" },
+      { companyId: otherCompanyId, principalType: "user", principalId: "board-1", status: "active", membershipRole: "admin" },
     ]);
     await db.insert(agents).values({
       id: agentId,

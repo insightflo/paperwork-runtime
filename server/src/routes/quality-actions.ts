@@ -13,12 +13,18 @@ import type { Db } from "@paperclipai/db";
 import { operatorDecisions, qualityActions } from "@paperclipai/db";
 import { uuidSchema, type QualityHumanActor } from "@paperclipai/shared";
 import { forbidden, notFound } from "../errors.js";
+import { accessService } from "../services/access.js";
 import { assertBoard, assertCompanyAccess } from "./authz.js";
+import { assertCompanyWriteAccess, type CompanyWriteAccessChecker } from "./authz-write.js";
 import { createQualityDecisionCard, resolveQualityDecision, resolveQualityDecisionInputSchema } from "../services/quality/decisions.js";
 import { deliverQualityIntent } from "../services/quality/native-delivery.js";
 
-function humanActor(req: Request, companyId: string): QualityHumanActor {
-  assertCompanyAccess(req, companyId);
+async function humanActor(
+  access: CompanyWriteAccessChecker,
+  req: Request,
+  companyId: string,
+): Promise<QualityHumanActor> {
+  await assertCompanyWriteAccess(access, req, companyId);
   assertBoard(req);
   const { userId, source, keyId } = req.actor;
   if (!userId || !source || !["session", "board_key", "local_implicit"].includes(source)) throw forbidden("quality_human_required");
@@ -30,6 +36,7 @@ const resolveBodySchema = resolveQualityDecisionInputSchema.omit({ actionId: tru
 
 export function qualityActionsRoutes(db: Db): Router {
   const router = Router();
+  const access = accessService(db);
 
   // Quality scoped loader — 다른 회사/없는 조치는 404(표시 투영, 실행 권위 아님).
   router.get("/companies/:companyId/quality-actions/:actionId", async (req, res) => {
@@ -62,7 +69,7 @@ export function qualityActionsRoutes(db: Db): Router {
   // 결정 카드 생성(서버 전용 binding, continuationMode=none 강제).
   router.post("/companies/:companyId/quality-actions/:actionId/decision-card", async (req, res) => {
     const companyId = uuidSchema.parse(req.params.companyId);
-    const actor = humanActor(req, companyId);
+    const actor = await humanActor(access, req, companyId);
     const actionId = uuidSchema.parse(req.params.actionId);
     const body = cardBodySchema.parse(req.body ?? {});
     const card = await createQualityDecisionCard(db, actor, {
@@ -74,7 +81,7 @@ export function qualityActionsRoutes(db: Db): Router {
   // 사람 결정 resolve — 커밋 후 승인 효과만 기존 전달 경로로(현재 대상 재확인).
   router.post("/companies/:companyId/quality-actions/:actionId/resolve", async (req, res) => {
     const companyId = uuidSchema.parse(req.params.companyId);
-    const actor = humanActor(req, companyId);
+    const actor = await humanActor(access, req, companyId);
     const actionId = uuidSchema.parse(req.params.actionId);
     const body = resolveBodySchema.parse(req.body);
     const resolved = await resolveQualityDecision(db, actor, { ...body, actionId });
