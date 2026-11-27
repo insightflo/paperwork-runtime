@@ -1,4 +1,4 @@
-//! OpenBot-style Unix Domain Socket (UDS) local control plane.
+//! Local Unix Domain Socket (UDS) control plane for the Paperwork bot heartbeat daemon.
 //!
 //! Security invariants:
 //! - Control socket directory is preflight-validated with

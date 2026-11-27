@@ -7,7 +7,7 @@
 
 #[cfg(unix)]
 use crate::control_sock::{ControlSocketServer, DaemonTelemetry};
-use crate::state::{now_unix_secs, save_state_atomic, PersistedDaemonState};
+use crate::state::{load_state, now_unix_secs, save_state_atomic, PersistedDaemonState};
 use crate::token::redact_secrets;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -15,7 +15,7 @@ use std::env;
 use std::fmt;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -548,6 +548,7 @@ pub struct DaemonSummary {
 
 /// Runs a terminal heartbeat loop with jittered exponential backoff, enriched telemetry,
 /// optional compatibility handshake, optional UDS control plane, and atomic `state.json` persistence.
+/// Persisted state is restored on startup (fail-open to fresh defaults when missing or unreadable).
 /// Reads the bearer token exclusively from `PAPERWORK_TERMINAL_TOKEN`.
 pub fn run_heartbeat_daemon(
     config: &HeartbeatDaemonConfig,
@@ -588,9 +589,17 @@ fn run_heartbeat_daemon_with_token(
 
     let started = Instant::now();
     let mut backoff = BackoffState::new(config.backoff);
-    let mut consecutive_failures: u32 = 0;
-    let mut last_rtt_ms: Option<u64> = None;
-    let mut last_heartbeat_at: Option<u64> = None;
+    let restored = restore_persisted_state(config.state_path.as_deref());
+    let mut consecutive_failures: u32 = restored.as_ref().map_or(0, |s| s.consecutive_failures);
+    let mut last_rtt_ms: Option<u64> = restored.as_ref().and_then(|s| s.last_rtt_ms);
+    let mut last_heartbeat_at: Option<u64> = restored.as_ref().and_then(|s| s.last_heartbeat_at);
+    #[cfg(unix)]
+    {
+        telemetry.set_consecutive_failures(consecutive_failures);
+        if let Some(rtt_ms) = last_rtt_ms {
+            telemetry.record_rtt_ms(rtt_ms);
+        }
+    }
 
     let mut summary = DaemonSummary {
         iterations: 0,
@@ -685,10 +694,29 @@ fn run_heartbeat_daemon_with_token(
     Ok(summary)
 }
 
+/// Loads the persisted `state.json` for a fail-open startup restore.
+///
+/// Returns `None` (fresh defaults) when no state path is configured, the file does not
+/// exist yet, or it cannot be read/parsed. Errors are logged as a warning and never
+/// abort the daemon.
+fn restore_persisted_state(state_path: Option<&Path>) -> Option<PersistedDaemonState> {
+    let path = state_path?;
+    match load_state(path) {
+        Ok(state) => state,
+        Err(e) => {
+            eprintln!(
+                "[paperwork-bot] warning: ignoring unreadable state file {}: {}",
+                path.display(),
+                redact_secrets(&e.to_string())
+            );
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::load_state;
     use std::net::TcpListener;
 
     fn request_json_body(req: &str) -> Value {
@@ -934,6 +962,76 @@ mod tests {
         assert_eq!(persisted.terminal_id, "t-1");
         assert_eq!(persisted.consecutive_failures, 0);
         assert!(persisted.last_heartbeat_at.is_some());
+        let _ = std::fs::remove_dir_all(&state_dir);
+    }
+
+    #[test]
+    fn daemon_startup_restores_persisted_consecutive_failures_from_state_file() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        // The single heartbeat attempt fails (HTTP 500) so the restored counter is
+        // incremented rather than reset, which distinguishes "restored" from "fresh".
+        let handle = thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let n = sock.read(&mut buf).unwrap();
+            let req = String::from_utf8_lossy(&buf[..n]).into_owned();
+            assert!(
+                req.contains("\"lastRttMs\":77"),
+                "first heartbeat must carry restored lastRttMs"
+            );
+            let resp = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            let _ = sock.write_all(resp.as_bytes());
+        });
+
+        let state_dir = std::env::temp_dir().join(format!(
+            "pwork-daemon-restore-{}-{}",
+            std::process::id(),
+            now_unix_secs()
+        ));
+        let state_path = state_dir.join("state.json");
+        let prior = PersistedDaemonState {
+            terminal_id: "t-restore".into(),
+            server_url: format!("http://{addr}"),
+            protocol_version: PROTOCOL_VERSION.to_string(),
+            last_heartbeat_at: Some(1_760_000_000),
+            last_rtt_ms: Some(77),
+            consecutive_failures: 4,
+        };
+        save_state_atomic(&state_path, &prior).unwrap();
+
+        let cfg = HeartbeatDaemonConfig {
+            base_url: format!("http://{addr}"),
+            terminal_id: "t-restore".into(),
+            payload: json!({"status": "online"}),
+            interval: Duration::from_millis(10),
+            timeout: Duration::from_secs(2),
+            backoff: BackoffConfig {
+                initial_ms: 10,
+                max_ms: 50,
+                multiplier: 2,
+                jitter_percent: 0,
+            },
+            max_iterations: Some(1),
+            state_path: Some(state_path.clone()),
+            control_socket_path: None,
+            check_compatibility_on_start: false,
+        };
+        let path = terminal_heartbeat_path(&cfg.terminal_id).unwrap();
+        let shutdown = ShutdownSignal::new();
+        let summary =
+            run_heartbeat_daemon_with_token(&cfg, &path, "pcp_term_secret", &shutdown).unwrap();
+        handle.join().unwrap();
+
+        assert_eq!(summary.iterations, 1);
+        assert_eq!(summary.failures, 1);
+
+        // Fresh defaults would persist 1 / null metadata; 5 and the prior values prove restore.
+        let persisted = load_state(&state_path).unwrap().expect("state.json saved");
+        assert_eq!(persisted.consecutive_failures, 5);
+        assert_eq!(persisted.last_rtt_ms, Some(77));
+        assert_eq!(persisted.last_heartbeat_at, Some(1_760_000_000));
         let _ = std::fs::remove_dir_all(&state_dir);
     }
 
