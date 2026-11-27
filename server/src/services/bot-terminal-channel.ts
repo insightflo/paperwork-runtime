@@ -1,7 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { activityLog, approvals, botCapabilities, bots, channelMembers, channels, clientTerminals } from "@paperclipai/db";
+import { activityLog, approvals, botCapabilities, bots, channelMembers, channels, clientTerminals, teams } from "@paperclipai/db";
 import { badRequest, forbidden, HttpError, notFound, unauthorized, unprocessable } from "../errors.js";
 import { logActivity } from "./activity-log.js";
 import { heartbeatService } from "./heartbeat.js";
@@ -97,7 +97,8 @@ export function appendHealthSample(
   return next.length > HEALTH_HISTORY_MAX ? next.slice(next.length - HEALTH_HISTORY_MAX) : next;
 }
 
-/** Connectivity state (`status`) is display-only; governance lifecycle = revoked ⇔ `revokedAt !== null`, else active. */
+/** Connectivity state (`status`) is display-only; governance lifecycle = revoked ⇔ `revokedAt !== null`, else active.
+ *  Snapshot reads derive online/offline from `lastSeenAt` (45s window) so stale daemons display offline without a sweep. */
 export interface BotTerminalRecord {
   id: string; companyId: string; kind: TerminalKind; name: string;
   ownerUserId: string | null; teamId: string | null; botId: string | null;
@@ -128,6 +129,12 @@ export interface EnterpriseChannelRecord {
   id: string; companyId: string; kind: "team" | "shared" | "dm"; name?: string;
   teamId: string | null; createdByUserId?: string;
 }
+
+/** Read-only team directory row (`worker_node` registration selector source). */
+export interface EnterpriseBotTeamSummary { id: string; name: string }
+
+/** Freshness window for read-time online/offline derivation: daemon heartbeat interval (15s) × 3. */
+export const HEARTBEAT_ONLINE_WINDOW_MS = 45_000;
 
 export interface BotPendingApprovalRecord {
   id: string; companyId: string; type: string; status: string;
@@ -219,6 +226,8 @@ export interface EnterpriseBotStore {
   listBotCapabilities(botIds: string[]): Promise<BotCapabilityRecord[]>;
   listTerminals(companyId: string): Promise<BotTerminalRecord[]>;
   listChannels(companyId: string): Promise<EnterpriseChannelRecord[]>;
+  /** Company-scoped team directory (id+name only), ordered by name. */
+  listTeams(companyId: string): Promise<EnterpriseBotTeamSummary[]>;
   listPendingApprovals(companyId: string): Promise<BotPendingApprovalRecord[]>;
   listAuditEvents?(companyId: string, limit: number): Promise<BotAuditEventRecord[]>;
   createBot(
@@ -316,6 +325,14 @@ function governanceError(reason: string): HttpError { return reason === "invalid
 
 function lifecycleStatus(terminal: BotTerminalRecord): "active" | "revoked" {
   return terminal.revokedAt !== null || terminal.status === "revoked" ? "revoked" : "active";
+}
+
+/** Read-time status derivation: fresh heartbeat → online, stale/missing → offline, revoked wins. */
+function deriveDisplayStatus(terminal: BotTerminalRecord, at: Date): TerminalStatus {
+  if (terminal.revokedAt !== null || terminal.status === "revoked") return "revoked";
+  const seenAt = terminal.lastSeenAt;
+  if (seenAt !== null && at.getTime() - seenAt.getTime() <= HEARTBEAT_ONLINE_WINDOW_MS) return "online";
+  return "offline";
 }
 
 function requestsCrossTeamSecrets(bot: EnterpriseBotRecord, capability: BotCapabilityRecord, actor: BotActor): boolean {
@@ -607,10 +624,14 @@ export function createBotTerminalChannelService(
     }
     return {
       bots: botRows.map((bot) => ({ ...bot, capabilities: capsByBot.get(bot.id) ?? [] })),
-      terminals,
+      terminals: terminals.map((t) => ({ ...t, status: deriveDisplayStatus(t, now()) })),
       channels: channelRows,
       pendingApprovals,
     };
+  }
+
+  async function listTeams(companyId: string): Promise<EnterpriseBotTeamSummary[]> {
+    return store.listTeams(companyId);
   }
 
   async function createBot(companyId: string, actor: BotActor, input: CreateBotInput) {
@@ -851,6 +872,7 @@ export function createBotTerminalChannelService(
     invokeChannelMention,
     previewChannelInvoke,
     getCompanySnapshot,
+    listTeams,
     createBot,
     updateBot,
     updateBotCapabilities,
@@ -974,6 +996,8 @@ export function createDrizzleEnterpriseBotStore(db: Db): EnterpriseBotStore {
       .where(eq(t.companyId, companyId)).orderBy(desc(t.createdAt)) as Promise<BotTerminalRecord[]>,
     listChannels: (companyId) => db.select(channelColumns).from(channels)
       .where(eq(channels.companyId, companyId)).orderBy(desc(channels.createdAt)) as Promise<EnterpriseChannelRecord[]>,
+    listTeams: (companyId) => db.select({ id: teams.id, name: teams.name }).from(teams)
+      .where(eq(teams.companyId, companyId)).orderBy(teams.name),
     listPendingApprovals: (companyId) => db.select(approvalColumns).from(approvals)
       .where(and(
         eq(approvals.companyId, companyId),

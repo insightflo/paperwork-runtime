@@ -175,6 +175,11 @@ export interface DecideApprovalResponse {
   decision: BotApprovalDecision;
 }
 
+export interface EnterpriseBotTeam {
+  id: string;
+  name: string;
+}
+
 /** Server `PublicBotTerminal`: the stored record minus `tokenHash`. */
 export interface BotTerminal {
   id: string;
@@ -285,6 +290,10 @@ export const enterpriseBotsApi = {
   /** `GET /companies/:companyId/snapshot` → 200 `{ bots, terminals, channels, pendingApprovals, now }`. */
   getSnapshot: (companyId: string) =>
     api.get<EnterpriseBotsSnapshot>(`${BASE}/companies/${encodeURIComponent(companyId)}/snapshot`),
+
+  /** `GET /companies/:companyId/teams` → 200 `[{ id, name }]` (worker_node registration selector source). */
+  listTeams: (companyId: string) =>
+    api.get<EnterpriseBotTeam[]>(`${BASE}/companies/${encodeURIComponent(companyId)}/teams`),
 
   /** `PATCH /companies/:companyId/bots/:botId/capabilities` → 200 `{ bot, capabilities }`. */
   updateBotCapabilities: (

@@ -6,6 +6,7 @@ import { errorHandler } from "../middleware/index.js";
 import { createEnterpriseBotsRouter } from "../routes/enterprise-bots.js";
 import {
   BOT_CHANNEL_OWNER_APPROVAL_TYPE,
+  HEARTBEAT_ONLINE_WINDOW_MS,
   HEALTH_HISTORY_MAX,
   createBotTerminalChannelService, createTerminalToken, hashTerminalToken, sanitizeAuditDetails,
   type BotActor, type BotAuditEventRecord, type BotCapabilityRecord, type BotPendingApprovalRecord, type BotTerminalRecord,
@@ -32,6 +33,10 @@ interface MemoryStoreSeed {
 
 function createMemoryStore(seed: MemoryStoreSeed = {}) {
   const terminals = new Map<string, BotTerminalRecord>();
+  const teamsList = [
+    { id: TEAM_SALES, name: "Sales" },
+    { id: TEAM_HR, name: "HR" },
+  ];
   const bots = new Map<string, EnterpriseBotRecord>([
     [BOT_PERSONAL, {
       id: BOT_PERSONAL, companyId: COMPANY, kind: "personal", name: "Personal Bot",
@@ -80,6 +85,7 @@ function createMemoryStore(seed: MemoryStoreSeed = {}) {
     listBots: async (companyId) => [...bots.values()].filter((b) => b.companyId === companyId).map((b) => ({ ...b })),
     listBotCapabilities: async (botIds) => capabilities.filter((c) => botIds.includes(c.botId)).map((c) => ({ ...c })),
     listTerminals: async (companyId) => [...terminals.values()].filter((t) => t.companyId === companyId).map((t) => ({ ...t })),
+    listTeams: async (companyId) => companyId === COMPANY ? teamsList.map((t) => ({ ...t })) : [],
     listChannels: async (companyId) => companyId === COMPANY ? [{ id: CHANNEL_SHARED, companyId: COMPANY, kind: "shared", name: "Shared", teamId: null }] : [],
     listPendingApprovals: async (companyId) => [...pendingApprovals.values()].filter((a) => a.companyId === companyId && a.status === "pending").map((a) => ({ ...a })),
     listAuditEvents: async (companyId, limit) => (seed.auditEvents ?? [])
@@ -195,6 +201,22 @@ describe("registerTerminal", () => {
       .rejects.toMatchObject({ status: 403, message: "terminal_bot_scope_mismatch" });
     await expect(service.registerTerminal(actor(), { companyId: COMPANY, kind: "personal_terminal", name: "x", botId: randomUUID() }))
       .rejects.toMatchObject({ status: 404, message: "bot_not_found" });
+  });
+});
+
+describe("getCompanySnapshot derived terminal status", () => {
+  it("derives online/offline/revoked from lastSeenAt freshness at read time", async () => {
+    const { service, terminals } = setup();
+    const { terminal, token } = await registerPersonalTerminal(service);
+    await service.heartbeatTerminal(terminal.id, token);
+    const statusNow = () =>
+      service.getCompanySnapshot(COMPANY).then((s) => s.terminals.find((t) => t.id === terminal.id)!.status);
+    expect(await statusNow()).toBe("online");
+    const stored = [...terminals.values()].find((t) => t.id === terminal.id)!;
+    stored.lastSeenAt = new Date(NOW.getTime() - HEARTBEAT_ONLINE_WINDOW_MS - 1_000);
+    expect(await statusNow()).toBe("offline");
+    stored.revokedAt = NOW;
+    expect(await statusNow()).toBe("revoked");
   });
 });
 
@@ -411,6 +433,28 @@ describe("enterprise-bots router", () => {
     const res = await request(app).post("/api/terminals/register").set("x-actor", "u-viewer")
       .send({ companyId: COMPANY, kind: "personal_terminal", name: "viewer-term" }).expect(403);
     expect(res.body.error).toBe("viewer_cannot_register_terminal");
+  });
+
+  it("registers worker_node terminals only with a teamId and enforces the caller's team scope", async () => {
+    const { app } = createApp(resolveFromHeader());
+    const missing = await request(app).post("/api/terminals/register").set("x-actor", SALES)
+      .send({ companyId: COMPANY, kind: "worker_node", name: "gpu-node" }).expect(400);
+    expect(missing.body.error).toBe("team_required");
+    await request(app).post("/api/terminals/register").set("x-actor", SALES)
+      .send({ companyId: COMPANY, kind: "worker_node", name: "gpu-node", teamId: TEAM_HR }).expect(403);
+    const registered = await request(app).post("/api/terminals/register").set("x-actor", SALES)
+      .send({ companyId: COMPANY, kind: "worker_node", name: "gpu-node", teamId: TEAM_SALES }).expect(201);
+    expect(registered.body.terminal).toMatchObject({ kind: "worker_node", teamId: TEAM_SALES, ownerUserId: null });
+    expect(registered.body.token).toMatch(/^pcp_term_/);
+  });
+
+  it("returns the company team directory to scoped callers only", async () => {
+    const { app } = createApp(resolveFromHeader());
+    await request(app).get(`/api/companies/${COMPANY}/teams`).expect(401);
+    const listed = await request(app).get(`/api/companies/${COMPANY}/teams`).set("x-actor", SALES).expect(200);
+    expect(listed.body).toEqual([{ id: TEAM_SALES, name: "Sales" }, { id: TEAM_HR, name: "HR" }]);
+    await request(app).get(`/api/companies/${OTHER_COMPANY}/teams`).set("x-actor", SALES).expect(403);
+    await request(app).get("/api/companies/not-a-uuid/teams").set("x-actor", SALES).expect(400);
   });
 
   it("supports snapshot, OpenBot CRUD, ping (without secret leak), inbound webhook, and approval decisions", async () => {

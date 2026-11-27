@@ -197,6 +197,7 @@ export const queryKeys = {
   enterpriseBots: {
     snapshot: (companyId: string) => ["enterprise-bots", "snapshot", companyId] as const,
     audit: (companyId: string) => ["enterprise-bots", "audit", companyId] as const,
+    teams: (companyId: string) => ["enterprise-bots", "teams", companyId] as const,
   },
   worktree: {
     rules: (companyId: string) => ["worktree-rules", companyId] as const,
