@@ -1,0 +1,118 @@
+/** @vitest-environment jsdom */
+import { act, type ReactElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
+import { PersonalEndpoints } from "./PersonalEndpoints";
+import { endpointBotsApi, type EndpointBotRecord } from "../api/endpointBots";
+
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+vi.mock("../context/CompanyContext", () => ({ useCompany: () => ({ selectedCompanyId: "company-1" }) }));
+
+let listMock: MockInstance<typeof endpointBotsApi.list>;
+let codeMock: MockInstance<typeof endpointBotsApi.issuePairingCode>;
+
+beforeEach(() => {
+  listMock = vi.spyOn(endpointBotsApi, "list");
+  codeMock = vi.spyOn(endpointBotsApi, "issuePairingCode");
+});
+
+const LAST_SEEN_MS = Date.parse("2026-01-01T09:00:00.000Z");
+const EXPIRES_AT_MS = Date.parse("2026-01-01T09:30:00.000Z");
+const RECORDS: EndpointBotRecord[] = [
+  {
+    companyId: "company-1",
+    deviceId: "dev-1",
+    botName: "my-mac",
+    os: "macOS",
+    arch: "arm64",
+    detectedClis: ["claude", { id: "codex", binary: "codex", path: null, available: true }],
+    allowedFolders: [{ path: "~/Projects", mode: "ro" }],
+    tokenPreview: "pcp_…abc",
+    lastSeenMs: LAST_SEEN_MS,
+    pendingOutboxCount: 2,
+    online: true,
+  },
+];
+
+let root: Root | null = null;
+const container = document.createElement("div");
+
+async function renderPage() {
+  if (!root) {
+    document.body.appendChild(container);
+    root = createRoot(container);
+  }
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  await act(async () => {
+    root!.render(<QueryClientProvider client={client}><PersonalEndpoints /></QueryClientProvider>);
+  });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+}
+
+async function click(el: Element | null | undefined) {
+  expect(el, "click target exists").toBeTruthy();
+  await act(async () => { el!.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+}
+
+async function setInput(el: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  await act(async () => {
+    setter.call(el, value);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+const issueButton = () =>
+  [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("6자리 페어링 코드 발급"));
+
+afterEach(async () => {
+  await act(async () => { root?.unmount(); });
+  root = null;
+  container.remove();
+  vi.restoreAllMocks();
+});
+
+describe("PersonalEndpoints", () => {
+  it("renders loaded endpoint bots from endpointBotsApi.list", async () => {
+    listMock.mockResolvedValue(RECORDS);
+    await renderPage();
+    const list = container.querySelector('[aria-label="개인 단말 봇"]')!;
+    expect(list).toBeTruthy();
+    expect(list.textContent).toContain("my-mac");
+    expect(list.textContent).toContain("macOS / arm64");
+    expect(list.textContent).toContain("claude");
+    expect(list.textContent).toContain("codex");
+    expect(list.textContent).toContain("~/Projects");
+    expect(list.textContent).toContain("읽기 전용");
+    expect(list.textContent).toContain("전송 대기 2건");
+    expect(list.querySelector("time")?.getAttribute("datetime")).toBe(new Date(LAST_SEEN_MS).toISOString());
+  });
+
+  it("issues a 6-digit pairing code and displays it with expiry", async () => {
+    listMock.mockResolvedValue([]);
+    codeMock.mockResolvedValue({ code: "482913", expiresAtMs: EXPIRES_AT_MS });
+    await renderPage();
+    const nameInput = container.querySelector<HTMLInputElement>('input[aria-label="페어링 봇 이름"]')!;
+    await setInput(nameInput, "lab-top");
+    await click(issueButton());
+    expect(codeMock).toHaveBeenCalledWith("company-1", {
+      botName: "lab-top",
+      requestedFolders: [{ path: "~/Projects", mode: "ro" }],
+    });
+    const code = container.querySelector("[data-pairing-code]")!;
+    expect(code.textContent).toContain("482913");
+    expect(code.querySelector("time")?.getAttribute("datetime")).toBe(new Date(EXPIRES_AT_MS).toISOString());
+  });
+
+  it("shows an error banner when the bot list fails to load", async () => {
+    listMock.mockRejectedValue(new Error("network down"));
+    await renderPage();
+    const banner = container.querySelector('[role="alert"]');
+    expect(banner).toBeTruthy();
+    expect(banner!.textContent).toContain("단말 봇 목록을 불러오지 못했습니다");
+    expect(banner!.textContent).toContain("network down");
+  });
+});
