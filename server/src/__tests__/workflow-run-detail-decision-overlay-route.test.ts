@@ -90,7 +90,7 @@ describeDb("GET /workflow-runs/:runId/detail step-run human wait decision overla
     expect(stepRun.id).toBe(world.matchedStep.id);
     expect(stepRun.humanWaitDecision).toEqual({
       decisionId: world.decision.id,
-      status: "resolved",
+      status: "approved",
       pausedAt: at(4_000).toISOString(),
       resolvedAt: at(5_000).toISOString(),
     });
