@@ -10,6 +10,7 @@ import {
   agentWakeupRequests,
   agents,
   companies,
+  companySecrets,
   companySkills,
   createDb,
   heartbeatRunEvents,
@@ -23,6 +24,7 @@ import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
 } from "./helpers/embedded-postgres.js";
+import { waitForHeartbeatExecutionsToDrain } from "../services/heartbeat-execution-tracker.js";
 
 const executeSpy = vi.fn();
 
@@ -97,8 +99,8 @@ describeEmbeddedPostgres("heartbeat artifact comment registration gate", () => {
   }, 60_000);
 
   afterEach(async () => {
+    await waitForHeartbeatExecutionsToDrain(db);
     executeSpy.mockReset();
-    await new Promise((resolve) => setTimeout(resolve, 100));
     await db.delete(issueWorkProducts);
     await db.delete(issueComments);
     await db.delete(activityLog);
@@ -111,6 +113,7 @@ describeEmbeddedPostgres("heartbeat artifact comment registration gate", () => {
     await db.delete(agentRuntimeState);
     await db.delete(agents);
     await db.delete(companySkills);
+    await db.delete(companySecrets);
     await db.delete(companies);
   });
 

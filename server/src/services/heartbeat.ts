@@ -5817,11 +5817,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           const priorBlocks = await countPriorWorkProductRegistrationAutoBlocks(tx, issue.companyId, issue.id);
           const attempt = priorBlocks + 1;
           const withinRetryBudget = attempt <= WORK_PRODUCT_REGISTRATION_RETRY_BUDGET;
-          const nextStatus = withinRetryBudget ? "in_progress" : "blocked";
           await tx
             .update(issues)
             .set({
-              status: nextStatus,
+              status: "blocked",
               checkoutRunId: null,
               executionRunId: null,
               executionAgentNameKey: null,
@@ -5851,7 +5850,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
             runId: run.id,
             details: {
               previousStatus: issue.status,
-              nextStatus,
+              nextStatus: "blocked",
               reason: "missing_work_product_registration",
               attempt,
               budget: WORK_PRODUCT_REGISTRATION_RETRY_BUDGET,
@@ -5867,9 +5866,8 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
               attempt,
               requiredAction: WORK_PRODUCT_REGISTRATION_RETRY_REQUIRED_ACTION,
             });
-          } else {
-            queuePostTransactionWorkflowIssueSync(issue.id);
           }
+          queuePostTransactionWorkflowIssueSync(issue.id);
           return null;
         }
       }
