@@ -1,7 +1,8 @@
 // [파일 목적] 그래프 인스펙터의 selected-step EDIT 기본 필드 렌더.
 // GraphInspector에서 showEditInspector edit 블록 기계적 추출.
-// [외부 연결] ../workflow-page-styles.js, ../shared-controls.js, ../workflow-tool-picker.js, ../step-draft.js, ../workflow-page-types.js, react.
-// [주의] 동작 변경 없이 props 기반 렌더만. 루트 Workflows.tsx 역참조 금지.
+// [외부 연결] ../workflow-page-styles.js, ../shared-controls.js, ../workflow-tool-picker.js, ../step-draft.js, ../workflow-page-types.js, ../step-decision-template-card.js, ./node-logical-class.js, react.
+// [주의] props 기반 렌더만. 루트 Workflows.tsx 역참조 금지. stage26 human_wait: 승인/human_wait
+// 스텝에 decisionTemplate 승인 카드 섹션을 추가한다(표시 조건은 resolveNodeLogicalClass).
 import * as React from "react";
 import { Fragment, type JSX } from "react";
 import type { StepDraft } from "../step-draft.js";
@@ -11,6 +12,8 @@ import { FieldLabel, HelpIcon } from "../shared-controls.js";
 import { WorkflowToolPicker, splitCommaList } from "../workflow-tool-picker.js";
 import { GraphInspectorControlNode } from "./GraphInspectorControlNode.js";
 import { cloneWorkflowConditionGroup, defaultIfConditionGroup } from "../workflow-control-nodes.js";
+import { resolveNodeLogicalClass } from "./node-logical-class.js";
+import { StepDecisionTemplateCardFields } from "../step-decision-template-card.js";
 
 type GraphAgent = { id: string; name: string };
 
@@ -144,6 +147,9 @@ export function GraphInspectorEditStep({
                 </div>
                 </Fragment>
               )}
+              {resolveNodeLogicalClass(selectedStep) === "human_wait" ? (
+                <StepDecisionTemplateCardFields key="decision-template-card" selectedStep={selectedStep} updateSelected={updateSelected} />
+              ) : null}
               {selectedStep.type === "agent" ? (
               <div key="edit-step-contract" style={{ display: "grid", gap: "6px", paddingTop: "8px", borderTop: "1px solid var(--border, #334155)" }}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", ...mutedTextStyle, fontSize: "11px", fontWeight: 700 }}>
