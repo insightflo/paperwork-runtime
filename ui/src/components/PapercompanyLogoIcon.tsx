@@ -4,6 +4,7 @@ interface PapercompanyLogoIconProps {
   className?: string;
 }
 
+/** Paperwork mark: folded sheet, ruled lines, and an oxblood seal. Same geometry as `public/favicon.svg`. */
 export function PapercompanyLogoIcon({ className }: PapercompanyLogoIconProps) {
   return (
     <svg
@@ -12,34 +13,29 @@ export function PapercompanyLogoIcon({ className }: PapercompanyLogoIconProps) {
       aria-hidden="true"
       className={cn("block", className)}
     >
-      <path d="M12 4.5h32.5L59 19v40.5H12z" fill="#fafafa" />
-      <path d="M44.5 4.5V19H59" fill="#e4e4e7" />
+      <path d="M11 4.5h33.5L57 17v42.5H11z" fill="#f6f1e7" />
+      <path d="M44.5 4.5V17H57" fill="#e4dccb" />
       <path
-        d="M12 4.5h32.5L59 19v40.5H12z"
-        stroke="#27272a"
-        strokeWidth="3.2"
+        d="M11 4.5h33.5L57 17v42.5H11z"
+        stroke="#1f1b16"
+        strokeWidth="3"
         strokeLinejoin="round"
       />
       <path
-        d="M44.5 4.5V19H59"
-        stroke="#27272a"
-        strokeWidth="3.2"
+        d="M44.5 4.5V17H57"
+        stroke="#1f1b16"
+        strokeWidth="3"
         strokeLinejoin="round"
       />
       <path
-        d="M30 18 10 38 10 48 19 57 29 57 48 38 48 28 42 22 33 22 14 41 14 47 19 52 26 52 45 33"
-        stroke="#71717a"
-        strokeWidth="6.8"
+        d="M19 28h26M19 36h26M19 44h14"
+        stroke="#1f1b16"
+        strokeOpacity=".55"
+        strokeWidth="3"
         strokeLinecap="round"
-        strokeLinejoin="round"
       />
-      <path
-        d="M30 18 10 38 10 48 19 57 29 57 48 38 48 28 42 22 33 22 14 41 14 47 19 52 26 52 45 33"
-        stroke="#d4d4d8"
-        strokeWidth="3.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <circle cx="46" cy="49" r="8" fill="#9a3b2e" />
+      <circle cx="46" cy="49" r="4" stroke="#f6f1e7" strokeWidth="1.6" />
     </svg>
   );
 }
