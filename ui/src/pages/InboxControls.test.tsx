@@ -152,6 +152,21 @@ describe("Inbox failed-run row retry", () => {
   });
 });
 
+describe("Inbox approval null payload guard", () => {
+  it("renders the approval detail panel without throwing when payload is null", async () => {
+    (APPROVAL as { payload: unknown }).payload = null;
+    try {
+      await render();
+      const row = container.querySelector('[data-triage-key="approval:appr-1"]');
+      expect(row?.getAttribute("aria-current"), "approval row is selected by default").toBe("true");
+      expect(container.textContent, "detail panel renders the approval title").toContain("mission_plan");
+      expect(container.textContent).not.toContain("Nothing to preview");
+    } finally {
+      (APPROVAL as { payload: unknown }).payload = {};
+    }
+  });
+});
+
 describe("Inbox telemetry filter buttons", () => {
   it("renders every count cell as a toggle button with aria-pressed", async () => {
     await render();

@@ -924,7 +924,11 @@ export function Inbox() {
 
     if (item.kind === "approval") {
       const approval = item.approval;
-      const snippet = approvalSnippet(approval.payload);
+      // Legacy rows can carry payload: null (or a non-object) despite the
+      // non-null shared type; normalize so the detail preview never throws.
+      const payload: Record<string, unknown> =
+        approval.payload != null && typeof approval.payload === "object" ? approval.payload : {};
+      const snippet = approvalSnippet(payload);
       return (
         <div className="flex min-w-0 flex-col gap-3">
           <DetailTop item={item} />
@@ -944,7 +948,7 @@ export function Inbox() {
             ]}
           />
           <div className="min-w-0 overflow-x-auto">
-            <ApprovalPayloadRenderer type={approval.type} payload={approval.payload} />
+            <ApprovalPayloadRenderer type={approval.type} payload={payload} />
           </div>
           {snippet && (
             <EvidenceSnippet text={snippet.text} label={snippet.isDiff ? "Context · evidence diff" : "Context · evidence"} />
