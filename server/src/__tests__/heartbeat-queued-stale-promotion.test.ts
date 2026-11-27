@@ -6,8 +6,9 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, companies, heartbeatRuns } from "@paperclipai/db";
+import { agents, companies, heartbeatRuns, issues, operatorDecisions } from "@paperclipai/db";
 import { createHeartbeatQueuedStaleRecovery } from "../services/heartbeat-queued-stale-recovery.js";
+import { APPROVAL_WAIT_MINIMAL_DEFINITION } from "./helpers/approval-wait-fixtures.js";
 import { terminalDatabase } from "./helpers/terminal-cleanup-fixture.js";
 
 let db!: Db;
@@ -232,5 +233,42 @@ describe("heartbeat queued-stale recovery promote-first boundary", () => {
     expect(effects.queueEvents[0]?.payload).toMatchObject({
       promoteFirst: { outcome: "promotion_error", promoterError: "promoter boom" },
     });
+  });
+
+  it("does not promote or fail a stale queued run while operator approval is pending", async () => {
+    // [skipped_approval_waiting] 승인 대기 이슈의 stale queued run 은 승격도, 실패 전환도 하지 않는다.
+    // promoter 미호출 + 큐 전이 이벤트 부재 + run 이 queued 로 유지되는 것이 계약이다.
+    const seeded = await seedStaleQueuedRun();
+    const issueId = randomUUID();
+    await db.insert(issues).values({
+      id: issueId,
+      companyId: seeded.companyId,
+      title: "Approval waiting issue",
+      status: "in_progress",
+    });
+    await db.insert(operatorDecisions).values({
+      companyId: seeded.companyId,
+      requestKey: `stale-approval-wait-${randomUUID()}`,
+      requestHash: randomUUID(),
+      status: "pending",
+      priority: "medium",
+      interactionType: "action",
+      title: "Operator decision pending",
+      description: "",
+      sourceType: "issue",
+      sourceId: `issue:${issueId}`,
+      sourceContext: { missionId: null, workflowId: null, workflowRunId: null, artifactRefs: [] },
+      issueId,
+      definition: APPROVAL_WAIT_MINIMAL_DEFINITION,
+    });
+    await db.update(heartbeatRuns).set({ issueId }).where(eq(heartbeatRuns.id, seeded.runId));
+    const { recovery, effects } = makeRecovery();
+    const result = await recovery.recover(1_000);
+    expect(result.reapedRunIds).toEqual([]);
+    expect(effects.promoterCalls).toBe(0);
+    expect(effects.queueEvents).toHaveLength(0);
+    expect(effects.runEventPayloads).toHaveLength(0);
+    expect(effects.releases).toBe(0);
+    expect(await runRow(seeded.runId)).toMatchObject({ status: "queued", errorCode: null });
   });
 });
