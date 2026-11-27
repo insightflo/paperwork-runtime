@@ -215,10 +215,15 @@ describe.skipIf(!hasRustE2EPrereqs)("paperwork-bot daemon E2E over real HTTP", (
     const request = captured.find((r) => r.method === "POST" && r.path === `/api/enterprise-bots/terminals/${TERMINAL_ID}/heartbeat`);
     expect(request).toBeDefined();
     expect(request?.authorization).toBe(`Bearer ${TERMINAL_TOKEN}`);
+    // Wire contract pinned by heartbeatBodySchema/terminalTelemetrySchema (.strict()): telemetry is nested and
+    // protocolVersion is an integer. The legacy flat body ({status, os, ...}) is rejected with 400 by the real router.
     expect(request?.body).toMatchObject({
-      status: "online", os: expect.any(String), arch: expect.any(String), daemonVersion: expect.any(String),
-      protocolVersion: expect.anything(), uptimeSecs: expect.any(Number), activeChildren: 0,
+      telemetry: {
+        os: expect.any(String), arch: expect.any(String), daemonVersion: expect.any(String),
+        protocolVersion: 1, uptimeSecs: expect.any(Number), activeChildren: 0,
+      },
     });
+    expect(Object.keys(request?.body as object)).toEqual(["telemetry"]);
     expect(JSON.stringify(request?.body)).not.toContain(TERMINAL_TOKEN);
   });
 
