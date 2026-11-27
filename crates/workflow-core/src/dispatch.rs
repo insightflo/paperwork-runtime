@@ -12,7 +12,7 @@ use paperclip_workflow_core::{
         classify_step_activation, find_skippable_steps, string_elements, EdgeBearingStep,
     },
     dag::{has_disallowed_cycle, validate_dag},
-    has_malformed_workflow_retry, is_step_run_awaiting_retry, is_workflow_retry_due,
+    harness_gate, has_malformed_workflow_retry, is_step_run_awaiting_retry, is_workflow_retry_due,
     normalize_workflow_retry_policy, parse_iso8601_millis, read_workflow_retry_metadata,
     sanitize_error_summary, WorkflowRetryBackoff, WorkflowRetryPolicySource,
     WorkflowStepRetryClassificationInput,
@@ -199,6 +199,10 @@ pub fn dispatch(subcommand: &str, raw: &[u8]) -> Result<Value, String> {
         "apply-run-input-derivations" => {
             crate::run_input_derivations::apply_run_input_derivations(raw)
         }
+        "evaluate-dispatch-route" => harness_gate::cli::evaluate_dispatch_route_cli(raw),
+        "advisor-required-gate" => harness_gate::cli::advisor_required_gate_cli(raw),
+        "advisor-checkpoint" => harness_gate::cli::advisor_checkpoint_cli(raw),
+        "apply-step-attribution" => harness_gate::cli::apply_step_attribution_cli(raw),
         _ => Err(format!("unknown subcommand: {subcommand}")),
     }
 }
@@ -279,6 +283,14 @@ mod tests {
         eq("validate-definition-steps", r#"{"steps":[{"id":"a"}]}"#, r#"{"ok":true}"#);
         eq("definition-step-warnings", r#"{"steps":[{"id":"a","toolArgs":"{$steps.b.workProductPath}"},{"id":"b"}]}"#, r#"{"warnings":[]}"#);
         eq("summarize-step-warnings", r#"{"warnings":[{"kind":"k","stepId":"s","referencedStepId":"r","message":"m"}]}"#, r#"{"summary":[{"kind":"k","stepId":"s","referencedStepId":"r"}]}"#);
+    }
+
+    #[test]
+    fn s22_harness_gate_subcommands_dispatch() {
+        eq("evaluate-dispatch-route", r#"{"successProbability":0.94,"riskLevel":"low","consecutiveErrors":0}"#, r#"{"route":"sharp","sharpThreshold":0.7,"forcedReason":null}"#);
+        eq("advisor-required-gate", r#"{"planPendingApproval":true,"consecutiveErrors":0,"verifierPassed":true}"#, r#"{"gate":"g1_pre_plan"}"#);
+        eq("advisor-checkpoint", r#"{"schemaVersion":1,"runId":"r","gate":"g2_second_error","decision":"challenge"}"#, r#"{"valid":false,"allowsProgress":false,"error":"invalid_advisor_verdict"}"#);
+        eq("apply-step-attribution", r#"{"prior":{"ewmaSuccess":0,"ewmaFail":0,"rawSamples":0,"consecutiveErrors":0},"attribution":{"runId":"r","stepRunId":"s","outcome":"ok","verdictPass":null,"stallDetected":false,"durationMs":5}}"#, r#"{"runId":"r","stepRunId":"s","kind":"success","recorded":true,"weight":1.0,"prior":{"ewmaSuccess":1.0,"ewmaFail":0.0,"rawSamples":1,"consecutiveErrors":0}}"#);
     }
 
     #[test]

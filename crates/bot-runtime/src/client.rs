@@ -24,6 +24,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 pub const ENV_TERMINAL_TOKEN: &str = "PAPERWORK_TERMINAL_TOKEN";
 pub const ENV_BOT_TOKEN: &str = "PAPERWORK_BOT_TOKEN";
 pub const PROTOCOL_VERSION: &str = "1.0";
+/// Integer sent on the wire: the server's strict telemetry schema requires `protocolVersion`
+/// to be an integer (1..=100), not the dotted string used for local display/state.
+pub const PROTOCOL_VERSION_MAJOR: u64 = 1;
 pub const DAEMON_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const COMPATIBILITY_PATH: &str = "/api/enterprise-bots/compatibility";
 
@@ -446,25 +449,54 @@ pub fn check_compatibility(
     })
 }
 
-/// Enriches a heartbeat payload with runtime telemetry fields.
+/// Telemetry keys accepted by the server's strict `terminalTelemetrySchema`
+/// (`server/src/routes/enterprise-bots.ts`). Both the body and the telemetry object are
+/// `.strict()`, so any other key (e.g. the CLI's `status`/`hostname`) is dropped here instead
+/// of being sent and rejected with HTTP 400.
+const TELEMETRY_KEYS: [&str; 9] = [
+    "os",
+    "arch",
+    "daemonVersion",
+    "protocolVersion",
+    "uptimeSecs",
+    "cpuPct",
+    "memRssMb",
+    "activeChildren",
+    "lastRttMs",
+];
+
+/// Builds the heartbeat body `{"telemetry": {...}}` for
+/// `POST /api/enterprise-bots/terminals/:id/heartbeat`.
+///
+/// Only schema-known keys are forwarded from `base_payload`; runtime-collected fields always
+/// win. `lastRttMs` is omitted (not `null`) until the first successful heartbeat because the
+/// schema declares it as an optional number.
 pub fn build_enriched_heartbeat_payload(
     base_payload: &Value,
     uptime_secs: u64,
     last_rtt_ms: Option<u64>,
     active_children: usize,
 ) -> Value {
-    let mut obj = match base_payload {
-        Value::Object(map) => map.clone(),
+    let mut telemetry: Map<String, Value> = match base_payload {
+        Value::Object(map) => map
+            .iter()
+            .filter(|(k, _)| TELEMETRY_KEYS.contains(&k.as_str()))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
         _ => Map::new(),
     };
-    obj.insert("os".to_string(), json!(std::env::consts::OS));
-    obj.insert("arch".to_string(), json!(std::env::consts::ARCH));
-    obj.insert("daemonVersion".to_string(), json!(DAEMON_VERSION));
-    obj.insert("protocolVersion".to_string(), json!(PROTOCOL_VERSION));
-    obj.insert("uptimeSecs".to_string(), json!(uptime_secs));
-    obj.insert("lastRttMs".to_string(), json!(last_rtt_ms));
-    obj.insert("activeChildren".to_string(), json!(active_children));
-    Value::Object(obj)
+    telemetry.insert("os".to_string(), json!(std::env::consts::OS));
+    telemetry.insert("arch".to_string(), json!(std::env::consts::ARCH));
+    telemetry.insert("daemonVersion".to_string(), json!(DAEMON_VERSION));
+    telemetry.insert("protocolVersion".to_string(), json!(PROTOCOL_VERSION_MAJOR));
+    telemetry.insert("uptimeSecs".to_string(), json!(uptime_secs));
+    telemetry.insert("activeChildren".to_string(), json!(active_children));
+    if let Some(rtt) = last_rtt_ms {
+        telemetry.insert("lastRttMs".to_string(), json!(rtt));
+    } else {
+        telemetry.remove("lastRttMs");
+    }
+    json!({ "telemetry": telemetry })
 }
 
 /// Sends a single terminal heartbeat using ONLY `PAPERWORK_TERMINAL_TOKEN`.
@@ -661,6 +693,35 @@ mod tests {
     use crate::state::load_state;
     use std::net::TcpListener;
 
+    fn request_json_body(req: &str) -> Value {
+        let (_, body) = req.split_once("\r\n\r\n").expect("HTTP header terminator");
+        serde_json::from_str(body).expect("heartbeat body is JSON")
+    }
+
+    /// Mirrors the strict `heartbeatBodySchema`/`terminalTelemetrySchema` in
+    /// `server/src/routes/enterprise-bots.ts`: unknown keys or wrong types are rejected.
+    fn matches_strict_server_schema(body: &Value) -> bool {
+        let Some(top) = body.as_object() else {
+            return false;
+        };
+        if top.keys().map(String::as_str).ne(["telemetry"]) {
+            return false;
+        }
+        let Some(telemetry) = body["telemetry"].as_object() else {
+            return false;
+        };
+        telemetry.iter().all(|(k, v)| match k.as_str() {
+            "os" | "arch" | "daemonVersion" => {
+                v.as_str().is_some_and(|s| !s.is_empty() && s.len() <= 64)
+            }
+            "protocolVersion" => v.as_u64().is_some_and(|n| (1..=100).contains(&n)),
+            "uptimeSecs" | "cpuPct" | "memRssMb" | "activeChildren" | "lastRttMs" => {
+                v.as_f64().is_some_and(|n| n.is_finite() && n >= 0.0)
+            }
+            _ => false,
+        })
+    }
+
     #[test]
     fn path_builders_validate_segments() {
         assert_eq!(
@@ -708,6 +769,59 @@ mod tests {
         assert!((1_500..=2_500).contains(&d2), "d2={d2}");
         let d3 = b.next_delay_with_seed(7).as_millis() as u64;
         assert!((3_000..=4_000).contains(&d3), "d3={d3}");
+    }
+
+    #[test]
+    fn heartbeat_payload_nests_telemetry_and_drops_non_schema_keys() {
+        assert!(
+            PROTOCOL_VERSION.starts_with(&format!("{PROTOCOL_VERSION_MAJOR}.")),
+            "wire protocolVersion must be the integer major of {PROTOCOL_VERSION}"
+        );
+        let base = json!({ "status": "online", "hostname": null, "cpuPct": 3.5 });
+        let first = build_enriched_heartbeat_payload(&base, 0, None, 0);
+        assert!(matches_strict_server_schema(&first), "{first}");
+        let telemetry = first["telemetry"].as_object().unwrap();
+        // `serde_json/preserve_order` unifies across the workspace (IndexMap, insertion
+        // order), so compare the key set rather than map iteration order.
+        let mut keys = telemetry.keys().map(String::as_str).collect::<Vec<_>>();
+        keys.sort();
+        assert_eq!(
+            keys,
+            [
+                "activeChildren",
+                "arch",
+                "cpuPct",
+                "daemonVersion",
+                "os",
+                "protocolVersion",
+                "uptimeSecs"
+            ]
+        );
+        assert_eq!(telemetry["protocolVersion"], json!(PROTOCOL_VERSION_MAJOR));
+        assert!(telemetry["protocolVersion"].is_u64());
+        assert!(
+            telemetry.get("lastRttMs").is_none(),
+            "no RTT before the first success; `null` is rejected by the schema"
+        );
+
+        let second = build_enriched_heartbeat_payload(&Value::Null, 15, Some(12), 1);
+        assert!(matches_strict_server_schema(&second), "{second}");
+        assert_eq!(second["telemetry"]["lastRttMs"], json!(12));
+        assert_eq!(second["telemetry"]["uptimeSecs"], json!(15));
+        assert_eq!(second["telemetry"]["activeChildren"], json!(1));
+        assert!(second["telemetry"].get("cpuPct").is_none());
+
+        // The mirror must stay as strict as the server: the legacy flat shape and the
+        // pre-fix field types are all rejected.
+        assert!(!matches_strict_server_schema(
+            &json!({ "status": "online", "os": "macos", "protocolVersion": 1 })
+        ));
+        assert!(!matches_strict_server_schema(
+            &json!({ "telemetry": { "protocolVersion": "1.0" } })
+        ));
+        assert!(!matches_strict_server_schema(
+            &json!({ "telemetry": { "lastRttMs": null } })
+        ));
     }
 
     #[test]
@@ -760,17 +874,23 @@ mod tests {
                 let resp = "HTTP/1.1 200 OK\r\nContent-Length: 27\r\nConnection: close\r\n\r\n{\"protocolVersion\":\"1.0\"}";
                 let _ = sock.write_all(resp.as_bytes());
             }
-            // 2. Two enriched heartbeat POSTs
-            for _ in 0..2 {
+            // 2. Two enriched heartbeat POSTs, validated like the server's strict Zod schema.
+            //    The mock returns 400 unless the body is exactly `{"telemetry": {...}}` with
+            //    allowlisted keys and an integer protocolVersion; `lastRttMs` must be absent on
+            //    beat 1 (no prior success) and a number on beat 2.
+            for beat in 0..2 {
                 let (mut sock, _) = listener.accept().unwrap();
                 let mut buf = [0u8; 4096];
                 let n = sock.read(&mut buf).unwrap();
                 let req = String::from_utf8_lossy(&buf[..n]).into_owned();
-                assert!(req.contains("\"daemonVersion\""));
-                assert!(req.contains("\"protocolVersion\""));
-                assert!(req.contains("\"uptimeSecs\""));
-                assert!(req.contains("\"activeChildren\""));
-                let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}";
+                let body = request_json_body(&req);
+                let accepted = matches_strict_server_schema(&body)
+                    && body["telemetry"]["lastRttMs"].is_u64() == (beat == 1);
+                let resp = if accepted {
+                    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"
+                } else {
+                    "HTTP/1.1 400 Bad Request\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"
+                };
                 let _ = sock.write_all(resp.as_bytes());
             }
         });

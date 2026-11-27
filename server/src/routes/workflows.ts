@@ -43,6 +43,7 @@ import { WorkflowRunInputValidationError } from "../services/workflow/run-input-
 import { enableQaCapAcceptanceForCompany } from "../services/workflow/qa-cap-acceptance-rollout.js";
 import { parseWorkflowRunListQuery } from "../services/workflow/workflow-run-list-pagination.js";
 import { workflowService } from "../services/workflow/engine.js";
+import { buildWorkflowRunHarnessSummary } from "../services/workflow/harness-summary.js";
 import {
   generateWebhookSecret,
   webhookSecretLast4,
@@ -628,6 +629,17 @@ export function workflowRoutes(db: Db) {
       stepRuns: serializedStepRuns,
       workflow: definition ? workflowDefinitionForUi(definition, agentNameById) : null,
     });
+  });
+
+  // Read-only harness telemetry; same RBAC and run/step loading as /detail. Fails closed on missing run/access.
+  router.get("/workflow-runs/:runId/harness-status", async (req, res) => {
+    const runId = req.params.runId as string;
+    const run = await workflowService.getRun(db, runId);
+    if (!run || !canAccessRecord(req, run.companyId)) {
+      throw notFound("Workflow run not found");
+    }
+    const stepRuns = await workflowService.listStepRuns(db, run.id);
+    res.json(buildWorkflowRunHarnessSummary(run, stepRuns));
   });
 
   router.post("/workflow-step-runs/:stepRunId/rerun", async (req, res) => {

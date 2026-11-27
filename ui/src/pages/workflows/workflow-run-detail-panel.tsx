@@ -5,6 +5,8 @@ import { WorkflowRunGraphPreview } from "./graph-editor/GraphRunPreview.js";
 import { usePluginAction, useWorkflowRunDetail } from "./workflow-page-api.js";
 import { applyStepRunsToGraphSteps } from "./workflow-graph.js";
 import { WorkflowReplacementProposal } from "./workflow-replacement-proposal.js";
+import { deriveHarnessStatus } from "./workflow-harness-status.js";
+import { WorkflowHarnessStatusBar } from "../../components/workflows/WorkflowHarnessStatusBar.js";
 import { cn } from "../../lib/utils";
 
 const PANEL_MESSAGE =
@@ -45,6 +47,8 @@ export function WorkflowRunDetailPanel({
   const rerunStep = usePluginAction("rerun-step");
   const [pendingStepId, setPendingStepId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string>("");
+  // Harness bar values depend on the selected run + its step runs, not on the graph projection.
+  const harnessStatus = useMemo(() => (detail.data ? deriveHarnessStatus(detail.data) : null), [detail.data]);
   const runGraphSteps = useMemo(() => {
     const workflowSteps = detail.data?.workflow?.steps ?? [];
     const stepRuns = detail.data?.stepRuns ?? [];
@@ -87,6 +91,15 @@ export function WorkflowRunDetailPanel({
         <p className="rounded-md border border-rose-300/70 bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-700 dark:border-[#f43f5e]/25 dark:bg-[#f43f5e]/10 dark:text-[#fda4af]">{actionError}</p>
       ) : null}
       {detail.data.run.status === "failed" && <WorkflowReplacementProposal key={`${companyId}:${runId}`} companyId={companyId} runId={runId} />}
+      {harnessStatus ? (
+        <WorkflowHarnessStatusBar
+          route={harnessStatus.route}
+          stallStatus={harnessStatus.stallStatus}
+          idleMs={harnessStatus.idleMs}
+          advisorGate={harnessStatus.advisorGate}
+          successRatePct={harnessStatus.successRatePct}
+        />
+      ) : null}
       <WorkflowRunGraphPreview
         steps={runGraphSteps}
         pendingStepRunId={pendingStepId}
