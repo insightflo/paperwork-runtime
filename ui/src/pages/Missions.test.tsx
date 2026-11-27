@@ -236,7 +236,7 @@ describe("Missions", () => {
   it("renders a refresh action for the current missions tab", () => {
     const html = renderToStaticMarkup(<Missions />);
 
-    expect(html).toContain("Refresh");
+    expect(html).toContain("새로고침");
     expect(html).toContain("RefreshCw");
   });
 
@@ -277,14 +277,14 @@ describe("Missions", () => {
     expect(html).toContain("Recently created");
     expect(html).toContain('aria-label="Created from"');
     expect(html).toContain('aria-label="Created to"');
-    expect(html).toContain('aria-label="Toggle mission preview pane"');
+    expect(html).toContain('aria-label="미션 미리보기 창 전환"');
     expect(html).toContain('value="2026-04-29"');
     // The New Mission CTA keeps its primary fill across the Paperwork token migration:
     // `bg-[#2563eb]` on this branch, `bg-primary` once Wave 4d lands. Scope the check to
     // that button so other primary-tinted dots cannot satisfy it.
-    const newMissionIndex = html.indexOf("New Mission");
+    const newMissionIndex = html.indexOf("새 미션");
     const newMissionButton = html.slice(html.lastIndexOf("<button", newMissionIndex), html.indexOf("</button>", newMissionIndex));
-    expect(newMissionButton).toContain("New Mission");
+    expect(newMissionButton).toContain("새 미션");
     expect(newMissionButton).toMatch(/class="[^"]*\bbg-(?:\[#2563eb\]|primary)/);
   });
 
@@ -334,7 +334,7 @@ describe("Missions", () => {
     await press("Escape", container.querySelector("[data-mission-preview] button")!);
     expect(container.querySelector("[data-mission-preview]")).toBeNull();
 
-    const toggle = container.querySelector('button[aria-label="Toggle mission preview pane"]') as HTMLElement;
+    const toggle = container.querySelector('button[aria-label="미션 미리보기 창 전환"]') as HTMLElement;
     await act(async () => { toggle.click(); });
     expect(container.querySelector("[data-mission-preview]")?.textContent).toContain("Weekly digest");
     await act(async () => { toggle.click(); });
