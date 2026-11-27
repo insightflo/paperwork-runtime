@@ -3,7 +3,7 @@ title: Environment Variables
 summary: Full environment variable reference
 ---
 
-All environment variables that papercompany uses for server configuration.
+All environment variables that Paperwork uses for server configuration.
 
 ## Server Configuration
 
@@ -102,6 +102,7 @@ Truncates the `result_json` stdout/stderr of terminal heartbeat runs older than 
 |----------|---------|-------------|
 | `HEARTBEAT_SCHEDULER_ENABLED` | `true` | Enable the heartbeat scheduler |
 | `HEARTBEAT_SCHEDULER_INTERVAL_MS` | — | Scheduler tick interval |
+| `PAPERCLIP_QUEUED_STALE_THRESHOLD_MS` | `max(recovery × 3, 15m)` | How long a pre-start queued run may wait before heartbeat recovery reclaims it (`stale_queued`). Parsed as a positive integer (ms) and clamped to [1 minute, 24 hours]. Unset/empty, non-numeric, or non-positive values fall back to the default with a warning. Applies to startup and interval recovery ticks alike. Before failing a stale queued run, a bounded promote-first check tries to start the next queued run once per agent per sweep; the outcome is recorded as a structured queue-transition/run event, and only the actual DB transition grants execution. |
 
 ## Attachments
 

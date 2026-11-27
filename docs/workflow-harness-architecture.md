@@ -124,7 +124,34 @@ the governance evaluator.
 각 단계는 명시적 승인 지점에서 멈춘다. 자동 진행은 없다. / Each step stops at an
 explicit approval point; nothing advances automatically.
 
-## 4. Related documents
+## 4. Control-plane monitoring and bot online status
+
+대시보드 모니터와 봇 온라인 판정은 외부 브리지 없이 DB와 읽기 시점 도출로 동작한다.
+/ The dashboard monitor and bot online status run off the database and read-time
+derivation, with no external bridge process.
+
+- **Native DB-backed control-plane monitor** — `GET /api/companies/:companyId/dashboard/dgate`
+  (`server/src/routes/dashboard.ts`) serves the control-plane snapshot from the database;
+  the board UI renders it in `DgateMonitorPanel` (`ui/src/components/dashboard/DgateMonitorPanel.tsx`).
+  The legacy Mac bridge script (`scripts/dgate-snapshot-push.mjs`) has been removed; the
+  server owns the snapshot. / 구 Mac 브리지는 삭제됐고 스냅샷 소유자는 서버다.
+- **Read-time 45s offline derivation** — a worker-node bot is `online` iff its last daemon
+  heartbeat is within `HEARTBEAT_ONLINE_WINDOW_MS = 45_000` (15s daemon heartbeat interval × 3),
+  derived at read time in `bot-terminal-channel.ts`; it is computed, not stored, so no offline
+  cron exists. `GET /companies/:companyId/teams` (`server/src/routes/enterprise-bots.ts`)
+  exposes the team directory used as the `worker_node` registration selector. / 온라인/오프라인은
+  저장값이 아니라 읽기 시점 도출값이며, teams 엔드포인트는 `worker_node` 등록 셀렉터의 팀 디렉터리다.
+- **Queued-stale threshold** — `PAPERCLIP_QUEUED_STALE_THRESHOLD_MS` bounds how long a
+  pre-start queued run may wait before heartbeat recovery reclaims it. Default
+  `max(recovery × 3, 15m)`, clamped to [1m, 24h]; invalid values fall back to the default
+  with a warning (see `docs/deploy/environment-variables.md`). Before failing a stale
+  queued run, a bounded promote-first check tries to start the next queued run once per
+  agent per sweep; the outcome is recorded as a structured queue-transition/run event, and
+  only the actual DB transition grants execution — the outcome string itself is display
+  metadata, never an execution authority. / 승격 결과 문자열은 표시 메타데이터일 뿐이며
+  실행 권한은 실제 DB 전이만 가진다.
+
+## 5. Related documents
 
 - `doc/SPEC-implementation.md` — V1 build contract
 - `doc/operations/runtime-readiness-boundaries.md` — engine cutover readiness

@@ -9,13 +9,13 @@ Source of truth: `crates/bot-runtime/src/{client,token,executor,control_sock,sta
 
 EN
 - `paperwork-bot` uses a zero-dependency `std::net::TcpStream` client (`client.rs::parse_http_url`). It accepts only `http://`; any `https://` base URL is rejected by design with the actionable message `https:// is not supported: paperwork-bot uses a zero-dependency client that speaks plain HTTP to loopback hosts only. Run a local TLS-terminating proxy in front of the HTTPS control plane (or expose it through an http://127.0.0.1:<port> tunnel) and point --server at that loopback http:// URL`.
-- The supported deployment is a loopback target: `http://127.0.0.1:3100` (default) or `http://localhost:3100`, i.e. the daemon and the API server share a host. No TLS is terminated inside the daemon.
+- `--server` is a required flag with no built-in default (`main.rs::require_flag`). The supported deployment is a loopback target — conventionally `http://127.0.0.1:3200` or `http://localhost:3200`, matching the API server's default port (`PORT`/`PAPERCLIP_LISTEN_PORT`, default `3200` in `server/src/config.ts`; a Docker image may pin a different port such as `3100`), i.e. the daemon and the API server share a host. No TLS is terminated inside the daemon. The port is a deployment setting, not a protocol constant.
 - Remote or TLS-required deployments must put a local TLS-terminating proxy (loopback `http://` -> remote `https://`) in front of the daemon. The daemon never speaks TLS itself.
 - Note: the URL parser validates scheme, host, and port but does not assert that `host` is loopback. "Loopback-only" is an operational contract enforced by configuration (`--server`), not by a host allow-list in code. Tokens must therefore never be pointed at an untrusted `http://` host.
 
 KO
 - `paperwork-bot`은 의존성 없는 `std::net::TcpStream` 클라이언트(`client.rs::parse_http_url`)를 쓰며 `http://`만 허용한다. `https://` 기본 URL은 설계상 거부되고, "paperwork-bot은 loopback 대상 plain HTTP 전용"이라고 안내한 뒤 로컬 TLS 종료 프록시나 `http://127.0.0.1:<port>` 터널 사용을 권하는 행동 가능한 오류를 낸다.
-- 지원 배포는 루프백 대상이다: 기본값 `http://127.0.0.1:3100` 또는 `http://localhost:3100`. 데몬과 API 서버가 같은 호스트에 있고, 데몬 내부에서 TLS를 종료하지 않는다.
+- 지원 배포는 루프백 대상이다: `--server`는 필수 플래그이고 기본값이 없다(`main.rs::require_flag`). 관례적 대상은 `http://127.0.0.1:3200` 또는 `http://localhost:3200`로, API 서버 기본 포트(`PORT`/`PAPERCLIP_LISTEN_PORT`, `server/src/config.ts` 기본 `3200`; Docker 이미지는 `3100` 등 다른 포트를 고정할 수 있음)와 맞춘다. 데몬과 API 서버가 같은 호스트에 있고, 데몬 내부에서 TLS를 종료하지 않는다. 포트는 배포 설정값이지 프로토콜 상수가 아니다.
 - 원격 또는 TLS 필수 환경은 데몬 앞에 로컬 TLS 종료 프록시(루프백 `http://` -> 원격 `https://`)를 둔다. 데몬은 스스로 TLS를 사용하지 않는다.
 - 주의: URL 파서는 스킴·호스트·포트만 검증하고 호스트가 루프백인지 코드로 강제하지 않는다. "루프백 전용"은 `--server` 설정으로 지키는 운영 계약이므로, 신뢰할 수 없는 `http://` 호스트를 가리키면 안 된다.
 
@@ -58,3 +58,13 @@ EN
 KO
 - `eval-policy`는 표준입력의 `PolicyEvalRequest` JSON을 결정적 `GovernanceDecision`으로 출력하며, 패리티 테스트(바이너리 없으면 건너뜀)의 테스트 시점 오라클이다.
 - 실제 서버 거버넌스는 TypeScript에 남고, 요청 경로에서 Rust 바이너리를 요청마다 spawn하지 않는다. spawn은 해당 테스트로 한정된다.
+
+## 5. Rate-limited retry diagnostics / 속도 제한된 재시도 진단
+
+EN
+- Heartbeat failures are reported on stderr through `client.rs::RetryDiagnosticRateLimiter`: the first failure of a streak is always emitted, further lines are throttled to at most one per 60s (`RETRY_DIAGNOSTIC_MIN_INTERVAL`), and any successful heartbeat re-arms the limiter so the next failure streak is reported immediately.
+- The single-line diagnostic (`[paperwork-bot] heartbeat to terminal '<id>' failed (consecutive=N): <reason>; next retry in <backoff>s`) never contains secrets: `ClientError` messages are redacted at construction and the reason is re-run through `token.rs::redact_secrets` as defense in depth. Backoff caps at 30s, so the daemon keeps retrying against a wedged server instead of looking hung.
+
+KO
+- 하트비트 실패는 `client.rs::RetryDiagnosticRateLimiter`를 거쳐 stderr로 보고된다. 연속 실패의 첫 번째는 항상 출력되고, 이후 줄은 60초(`RETRY_DIAGNOSTIC_MIN_INTERVAL`)에 최대 1회로 스로틀되며, 성공한 하트비트가 리미터를 재무장해 다음 실패 연속은 즉시 보고된다.
+- 한 줄 진단(`[paperwork-bot] heartbeat to terminal '<id>' failed (consecutive=N): <reason>; next retry in <backoff>s`)에는 비밀값이 없다: `ClientError` 메시지는 생성 시점에 마스킹되고, 이유는 심층 방어로 `token.rs::redact_secrets`를 다시 통과한다. 백오프 상한은 30s라서 서버가 멈춰도 데몬이 멈춘 것처럼 보이지 않고 계속 재시도한다.
