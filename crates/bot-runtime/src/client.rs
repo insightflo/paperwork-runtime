@@ -23,6 +23,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub const ENV_TERMINAL_TOKEN: &str = "PAPERWORK_TERMINAL_TOKEN";
 pub const ENV_BOT_TOKEN: &str = "PAPERWORK_BOT_TOKEN";
+/// Opt-in that lifts the loopback-only restriction for plain `http://` server URLs.
+/// Only the exact value `1` counts; any other value (or unset) keeps the restriction.
+pub const ENV_ALLOW_REMOTE_HTTP: &str = "PAPERWORK_BOT_ALLOW_REMOTE_HTTP";
 pub const PROTOCOL_VERSION: &str = "1.0";
 /// Integer sent on the wire: the server's strict telemetry schema requires `protocolVersion`
 /// to be an integer (1..=100), not the dotted string used for local display/state.
@@ -237,13 +240,42 @@ pub fn bot_inbound_path(bot_id: &str) -> Result<String, ClientError> {
     Ok(format!("/api/enterprise-bots/bots/{bot_id}/inbound"))
 }
 
+#[derive(Debug)]
 struct ParsedHttpUrl {
     host: String,
     port: u16,
     base_path: String,
 }
 
+/// Hosts that plain `http://` may target without the remote-HTTP opt-in.
+const LOOPBACK_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "::1"];
+
+/// True when `host` is a loopback name/literal (`localhost`, `127.0.0.1`, `::1`),
+/// compared case-insensitively. IPv6 hosts must be passed without brackets.
+fn is_loopback_host(host: &str) -> bool {
+    LOOPBACK_HOSTS
+        .iter()
+        .any(|loopback| loopback.eq_ignore_ascii_case(host))
+}
+
+/// Reads the remote plain-HTTP opt-in from the process environment.
+fn remote_plain_http_allowed() -> bool {
+    env::var(ENV_ALLOW_REMOTE_HTTP)
+        .map(|v| v.trim() == "1")
+        .unwrap_or(false)
+}
+
 fn parse_http_url(base_url: &str) -> Result<ParsedHttpUrl, ClientError> {
+    parse_http_url_with_policy(base_url, remote_plain_http_allowed())
+}
+
+/// Parses a plain `http://` server URL. Non-loopback hosts are rejected unless
+/// `allow_remote_http` is true; the policy is a parameter so tests do not race on
+/// the process environment.
+fn parse_http_url_with_policy(
+    base_url: &str,
+    allow_remote_http: bool,
+) -> Result<ParsedHttpUrl, ClientError> {
     let trimmed = base_url.trim().trim_end_matches('/');
     if trimmed.starts_with("https://") {
         return Err(ClientError::new(
@@ -289,6 +321,12 @@ fn parse_http_url(base_url: &str) -> Result<ParsedHttpUrl, ClientError> {
 
     if host.is_empty() {
         return Err(ClientError::new("server URL host is empty"));
+    }
+
+    if !is_loopback_host(&host) && !allow_remote_http {
+        return Err(ClientError::new(format!(
+            "refusing plain http:// to non-loopback host '{host}'; route through a localhost/http proxy or set {ENV_ALLOW_REMOTE_HTTP}=1 to opt in"
+        )));
     }
 
     Ok(ParsedHttpUrl {
@@ -1033,6 +1071,69 @@ mod tests {
         assert_eq!(persisted.last_rtt_ms, Some(77));
         assert_eq!(persisted.last_heartbeat_at, Some(1_760_000_000));
         let _ = std::fs::remove_dir_all(&state_dir);
+    }
+
+    #[test]
+    fn is_loopback_host_matches_only_loopback_names_case_insensitively() {
+        for host in ["localhost", "LocalHost", "LOCALHOST", "127.0.0.1", "::1"] {
+            assert!(is_loopback_host(host), "expected {host:?} to be loopback");
+        }
+        for host in [
+            "example.com",
+            "localhost.example.com",
+            "127.0.0.1.example.com",
+            "0.0.0.0",
+            "[::1]",
+            "",
+        ] {
+            assert!(!is_loopback_host(host), "expected {host:?} to be non-loopback");
+        }
+    }
+
+    #[test]
+    fn parse_http_url_accepts_loopback_plain_http_hosts() {
+        let v4 = parse_http_url("http://127.0.0.1:3100").unwrap();
+        assert_eq!((v4.host.as_str(), v4.port), ("127.0.0.1", 3100));
+        assert_eq!(v4.base_path, "");
+
+        let name = parse_http_url("http://localhost:3100/api").unwrap();
+        assert_eq!((name.host.as_str(), name.port), ("localhost", 3100));
+        assert_eq!(name.base_path, "/api");
+
+        let v6 = parse_http_url("http://[::1]:3100").unwrap();
+        assert_eq!((v6.host.as_str(), v6.port), ("::1", 3100));
+
+        let upper = parse_http_url("http://LOCALHOST:3100").unwrap();
+        assert_eq!(upper.host, "LOCALHOST");
+    }
+
+    #[test]
+    fn parse_http_url_rejects_non_loopback_plain_http_by_default() {
+        let err = parse_http_url("http://example.com:3100").unwrap_err();
+        assert!(
+            err.message.contains("non-loopback host 'example.com'"),
+            "unexpected message: {}",
+            err.message
+        );
+        assert!(err.message.contains(ENV_ALLOW_REMOTE_HTTP));
+
+        let err = parse_http_url_with_policy("http://example.com", false).unwrap_err();
+        assert!(err.message.contains("non-loopback host 'example.com'"));
+
+        // Preceding validations keep their own messages.
+        assert!(parse_http_url("http://").is_err());
+        assert!(parse_http_url("ftp://example.com").is_err());
+    }
+
+    #[test]
+    fn parse_http_url_allows_remote_plain_http_only_with_explicit_opt_in() {
+        let parsed = parse_http_url_with_policy("http://example.com:3100/prefix", true).unwrap();
+        assert_eq!((parsed.host.as_str(), parsed.port), ("example.com", 3100));
+        assert_eq!(parsed.base_path, "/prefix");
+
+        // Loopback hosts never need the opt-in; remote hosts always need it.
+        assert!(parse_http_url_with_policy("http://localhost", false).is_ok());
+        assert!(parse_http_url_with_policy("http://10.0.0.5:3100", false).is_err());
     }
 
     #[test]
