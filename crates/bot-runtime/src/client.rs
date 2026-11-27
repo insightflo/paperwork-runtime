@@ -781,8 +781,12 @@ mod tests {
         let first = build_enriched_heartbeat_payload(&base, 0, None, 0);
         assert!(matches_strict_server_schema(&first), "{first}");
         let telemetry = first["telemetry"].as_object().unwrap();
+        // `serde_json/preserve_order` unifies across the workspace (IndexMap, insertion
+        // order), so compare the key set rather than map iteration order.
+        let mut keys = telemetry.keys().map(String::as_str).collect::<Vec<_>>();
+        keys.sort();
         assert_eq!(
-            telemetry.keys().map(String::as_str).collect::<Vec<_>>(),
+            keys,
             [
                 "activeChildren",
                 "arch",
