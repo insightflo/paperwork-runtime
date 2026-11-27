@@ -58,6 +58,7 @@ import { qualityActionsRoutes } from "./routes/quality-actions.js";
 import { qualityEvaluationRoutes } from "./routes/quality-evaluations.js";
 import { harnessRsiRoutes } from "./routes/harness-rsi.js";
 import { agentGovernanceLearningRoutes } from "./routes/agent-governance-learning.js";
+import { agentWorkspacePrimitivesRoutes } from "./routes/agent-workspace-primitives.js";
 import { sidebarBadgeRoutes } from "./routes/sidebar-badges.js";
 import { instanceSettingsRoutes } from "./routes/instance-settings.js";
 import { llmRoutes } from "./routes/llms.js";
@@ -697,6 +698,7 @@ export async function createApp(
   api.use(qualityEvaluationRoutes(db));
   api.use(harnessRsiRoutes(db));
   api.use(agentGovernanceLearningRoutes());
+  api.use(agentWorkspacePrimitivesRoutes());
   api.use(sidebarBadgeRoutes(db));
   api.use(
     "/enterprise-bots",
