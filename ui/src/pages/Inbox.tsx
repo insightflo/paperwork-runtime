@@ -144,7 +144,7 @@ const PILL = "shrink-0 rounded-md px-1.5 py-0.5 text-[9.5px] font-bold uppercase
 const CATEGORY: Record<TriageKind, { label: string; className: string }> = {
   issue: {
     label: "Issue",
-    className: "border border-blue-500/25 bg-blue-500/10 text-blue-700 dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/12 dark:text-[#93c5fd]",
+    className: "border border-blue-500/25 bg-blue-500/10 text-blue-700 dark:border-[var(--pw-cobalt)]/30 dark:bg-[var(--pw-cobalt)]/12 dark:text-[#93c5fd]",
   },
   approval: {
     label: "Approval",
@@ -157,14 +157,14 @@ const CATEGORY: Record<TriageKind, { label: string; className: string }> = {
 };
 
 const TACTILE_SURFACE =
-  "tactile-card rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+  "tactile-card rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-none dark:bg-card";
 const STRIP_CLASS =
-  "cockpit-strip tactile-card h-8 w-full gap-0 overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+  "cockpit-strip tactile-card h-8 w-full gap-0 overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-none dark:bg-card";
 const TOOLBAR_CLASS =
-  "cockpit-toolbar tactile-card h-10 w-full overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 px-2 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+  "cockpit-toolbar tactile-card h-10 w-full overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 px-2 dark:border-white/[0.08] dark:bg-none dark:bg-card";
 
 const KBD =
-  "rounded-md border border-slate-200/90 bg-white px-1.5 font-mono text-[10px] leading-4 text-slate-600 shadow-[inset_0_-1px_0_rgba(15,23,42,0.06)] dark:border-white/[0.1] dark:bg-[#07090d] dark:text-[#8b97ad]";
+  "rounded-md border border-slate-200/90 bg-white px-1.5 font-mono text-[10px] leading-4 text-slate-600 shadow-[inset_0_-1px_0_rgba(15,23,42,0.06)] dark:border-white/[0.1] dark:bg-background dark:text-[#8b97ad]";
 
 function Kbd({ children }: { children: string }) {
   return <kbd className={KBD}>{children}</kbd>;
@@ -221,13 +221,13 @@ function TriageListRow({ item, summary, selected, live, onSelect }: {
 }) {
   const category = CATEGORY[item.kind];
   const indicatorClass = live
-    ? "bg-lime-500 shadow-[0_0_8px_rgba(163,230,53,0.75)] animate-pulse dark:bg-[#a3e635]"
+    ? "bg-emerald-700 animate-pulse dark:bg-emerald-300"
     : item.kind === "failed_run"
       ? "bg-rose-500 shadow-[0_0_8px_rgba(248,113,113,0.7)] animate-pulse dark:bg-[#f87171]"
       : item.kind === "approval" && summary.unread
         ? "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.65)] animate-pulse dark:bg-[#f59e0b]"
         : summary.unread
-          ? "bg-blue-500 shadow-[0_0_6px_rgba(96,165,250,0.65)] dark:bg-[#60a5fa]"
+          ? "bg-blue-500 shadow-[0_0_6px_rgba(96,165,250,0.65)] dark:bg-[var(--pw-cobalt)]"
           : "bg-transparent";
   return (
     <li>
@@ -239,7 +239,7 @@ function TriageListRow({ item, summary, selected, live, onSelect }: {
         className={cn(
           "grid w-full cursor-pointer grid-cols-[0.625rem_minmax(0,1fr)] items-start gap-x-2.5 border-b border-slate-200/75 px-3.5 py-2.5 text-left transition-colors last:border-b-0 dark:border-white/[0.06]",
           selected
-            ? "bg-blue-50/80 shadow-[inset_2px_0_0_#2563eb] dark:bg-[#60a5fa]/12 dark:shadow-[inset_2px_0_0_#60a5fa]"
+            ? "bg-blue-50/80 shadow-[inset_2px_0_0_var(--pw-cobalt)] dark:bg-[var(--pw-cobalt)]/12 dark:shadow-[inset_2px_0_0_var(--pw-cobalt)]"
             : "hover:bg-slate-50/90 dark:hover:bg-[#141b29]",
         )}
       >
@@ -253,8 +253,8 @@ function TriageListRow({ item, summary, selected, live, onSelect }: {
           </span>
           <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-slate-500 tabular-nums dark:text-[#8b97ad]">
             {live && (
-              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-lime-500/35 bg-lime-500/10 px-1.5 py-px text-[10px] font-semibold text-lime-700 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/12 dark:text-[#a3e635]">
-                <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-lime-500 animate-pulse dark:bg-[#a3e635]" />
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-700/35 bg-emerald-700/10 px-1.5 py-px text-[10px] font-semibold text-emerald-700 dark:border-emerald-300/35 dark:bg-emerald-300/12 dark:text-emerald-300">
+                <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-700 animate-pulse dark:bg-emerald-300" />
                 Live
               </span>
             )}
@@ -997,9 +997,9 @@ export function Inbox() {
   const tabLabel = tab === "recent" ? "Recent" : tab === "unread" ? "Unread" : "All";
   const alertCount = (showAggregateAgentError ? 1 : 0) + (showBudgetAlert ? 1 : 0);
   const inboxTelemetry = [
-    { label: "Items", value: triageItems.length, dot: "bg-blue-500 dark:bg-[#60a5fa]", title: "Visible work items" }, { label: "Unread", value: unreadIssueIds.length, dot: "bg-blue-500 dark:bg-[#60a5fa]", title: "Unread issues" },
+    { label: "Items", value: triageItems.length, dot: "bg-blue-500 dark:bg-[var(--pw-cobalt)]", title: "Visible work items" }, { label: "Unread", value: unreadIssueIds.length, dot: "bg-blue-500 dark:bg-[var(--pw-cobalt)]", title: "Unread issues" },
     { label: "Approvals", value: approvalsToRender.length, dot: "bg-amber-500 dark:bg-[#f59e0b]", title: "Visible approvals" }, { label: "Failed", value: failedRunsForTab.length, dot: "bg-rose-500 dark:bg-[#f43f5e]", title: "Visible failed runs" },
-    { label: "Joins", value: joinRequests.length, dot: "bg-lime-500 dark:bg-[#a3e635]", title: "Pending join requests" }, { label: "Alerts", value: alertCount, dot: "bg-amber-500 dark:bg-[#f59e0b]", title: "Active inbox alerts" }, { label: "Live", value: liveIssueIds.size, dot: "bg-lime-500 dark:bg-[#a3e635]", title: "Issues with live runs" },
+    { label: "Joins", value: joinRequests.length, dot: "bg-emerald-700 dark:bg-emerald-300", title: "Pending join requests" }, { label: "Alerts", value: alertCount, dot: "bg-amber-500 dark:bg-[#f59e0b]", title: "Active inbox alerts" }, { label: "Live", value: liveIssueIds.size, dot: "bg-emerald-700 dark:bg-emerald-300", title: "Issues with live runs" },
   ];
 
   return (
