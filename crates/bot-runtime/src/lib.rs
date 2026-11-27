@@ -7,6 +7,8 @@
 //! - [`control_sock`]: Local UDS control plane for the Paperwork bot heartbeat daemon (`status`, `drain`, `shutdown`).
 //! - [`state`]: Atomic `0600` `state.json` persistence (never stores raw tokens).
 //! - [`executor`]: Confined `-pgid` command execution with isolated env scrubbing and streaming redaction.
+//! - [`service_install`]: Personal endpoint config validation/writing and OS service-unit renderers.
+//! - [`local_tools`]: Fail-closed local file/shell/CLI primitives and local CLI auto-discovery.
 
 pub mod client;
 #[cfg(unix)]
@@ -15,6 +17,7 @@ pub mod control_sock;
 pub mod executor;
 pub mod governance;
 pub mod local_tools;
+pub mod service_install;
 pub mod state;
 pub mod token;
 

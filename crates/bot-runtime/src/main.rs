@@ -18,6 +18,12 @@
 //! - `doctor [--server <url>] [--terminal-id <id>] [--socket-dir <path>]`:
 //!   Runs local diagnostics (token env presence/prefix without printing it, UDS dir `0700` check,
 //!   `/compatibility` reachability, and process-supervisor self-test) and outputs a JSON summary.
+//! - `init --server <url> --name <endpoint> [--folder <path>...] [--config <path>]`:
+//!   Validates the server URL, writes the `0600` endpoint config JSON, and prints a JSON summary.
+//! - `detect-clis`: Prints a JSON array of detected local AI-coding CLIs on the process `PATH`.
+//! - `render-service --os <macos|linux|windows> --server <url> --name <endpoint> [--binary <path>] [--config <path>]`:
+//!   Renders the OS service unit (LaunchAgent plist / systemd user unit / Windows scheduled-task
+//!   script) as raw text on stdout for direct redirection into the service file.
 
 use paperwork_bot_runtime::client::{
     check_compatibility, run_heartbeat_daemon, send_bot_inbound, send_terminal_heartbeat,
@@ -32,6 +38,11 @@ use paperwork_bot_runtime::control_sock::{
 #[cfg(unix)]
 use paperwork_bot_runtime::executor::supervisor_self_test;
 use paperwork_bot_runtime::governance::{evaluate_policy, PolicyEvalRequest};
+use paperwork_bot_runtime::local_tools::detect_local_clis;
+use paperwork_bot_runtime::service_install::{
+    render_linux_systemd_user_unit, render_macos_launch_agent_plist, render_windows_task_script,
+    validate_server_url, write_endpoint_config, EndpointInitConfig,
+};
 use paperwork_bot_runtime::token::{redact_secrets, validate_token_prefix, verify_token_sha256};
 use serde_json::{json, Value};
 use std::env;
@@ -54,6 +65,24 @@ fn find_flag(args: &[String], name: &str) -> Option<String> {
 
 fn require_flag(args: &[String], name: &str) -> Result<String, String> {
     find_flag(args, name).ok_or_else(|| format!("missing required flag {name}"))
+}
+
+/// Collects every value of a repeatable flag (`--folder a --folder b` -> `["a", "b"]`).
+fn collect_flags(args: &[String], name: &str) -> Vec<String> {
+    args.windows(2)
+        .filter(|w| w[0] == name)
+        .map(|w| w[1].clone())
+        .collect()
+}
+
+/// Default endpoint config location under the user home (`$HOME` / `$USERPROFILE`).
+fn default_endpoint_config_path() -> Result<PathBuf, String> {
+    let home = env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .ok_or_else(|| "cannot determine home directory; pass --config <path>".to_string())?;
+    Ok(PathBuf::from(home)
+        .join(".paperwork")
+        .join("endpoint.json"))
 }
 
 fn cmd_eval_policy() -> Result<Value, String> {
@@ -359,8 +388,80 @@ fn cmd_doctor(args: &[String]) -> Result<Value, String> {
     }))
 }
 
+fn cmd_detect_clis() -> Result<Value, String> {
+    let detected = detect_local_clis()
+        .into_iter()
+        .map(|cli| {
+            json!({
+                "id": cli.id,
+                "binary": cli.binary,
+                "available": cli.available,
+                "path": cli.path.map(|p| p.to_string_lossy().into_owned()),
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(Value::Array(detected))
+}
+
+fn cmd_init(args: &[String]) -> Result<Value, String> {
+    let server = validate_server_url(&require_flag(args, "--server")?)?;
+    let name = require_flag(args, "--name")?;
+    if name.trim().is_empty() {
+        return Err("endpoint name must not be empty".to_string());
+    }
+    let config_path = match find_flag(args, "--config") {
+        Some(p) => PathBuf::from(p),
+        None => default_endpoint_config_path()?,
+    };
+    let folders = collect_flags(args, "--folder");
+    write_endpoint_config(&config_path, &server, &name, &folders)?;
+    Ok(json!({
+        "ok": true,
+        "configPath": config_path.to_string_lossy().into_owned(),
+        "serverUrl": server,
+        "endpointName": name,
+        "allowedFolders": folders,
+    }))
+}
+
+/// Renders the requested OS service unit as raw text (streamed to stdout, not JSON).
+fn cmd_render_service(args: &[String]) -> Result<String, String> {
+    let os = require_flag(args, "--os")?;
+    let server = validate_server_url(&require_flag(args, "--server")?)?;
+    let name = require_flag(args, "--name")?;
+    if name.trim().is_empty() {
+        return Err("endpoint name must not be empty".to_string());
+    }
+    let binary_path = match find_flag(args, "--binary") {
+        Some(p) => PathBuf::from(p),
+        None => env::current_exe()
+            .map_err(|e| format!("cannot determine binary path; pass --binary: {e}"))?,
+    };
+    let config_path = match find_flag(args, "--config") {
+        Some(p) => PathBuf::from(p),
+        None => default_endpoint_config_path()?,
+    };
+    let cfg = EndpointInitConfig {
+        server_url: server,
+        endpoint_name: name,
+        binary_path,
+        config_path,
+        allowed_folders: Vec::new(),
+    };
+    Ok(match os.as_str() {
+        "macos" => render_macos_launch_agent_plist(&cfg),
+        "linux" => render_linux_systemd_user_unit(&cfg),
+        "windows" => render_windows_task_script(&cfg),
+        other => {
+            return Err(format!(
+                "invalid --os {other:?}; expected macos|linux|windows"
+            ))
+        }
+    })
+}
+
 fn usage() -> &'static str {
-    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound|ctl|doctor> [flags]"
+    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound|ctl|doctor|init|detect-clis|render-service> [flags]"
 }
 
 fn run(args: &[String]) -> Result<Value, String> {
@@ -376,6 +477,8 @@ fn run(args: &[String]) -> Result<Value, String> {
         "inbound" => cmd_inbound(rest),
         "ctl" => cmd_ctl(rest),
         "doctor" => cmd_doctor(rest),
+        "init" => cmd_init(rest),
+        "detect-clis" => cmd_detect_clis(),
         "-h" | "--help" | "help" => Ok(json!({ "usage": usage() })),
         other => Err(format!("unknown subcommand {other:?}; {}", usage())),
     }
@@ -383,6 +486,18 @@ fn run(args: &[String]) -> Result<Value, String> {
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
+    // `render-service` streams the raw OS unit text to stdout (for shell redirection into the
+    // service file); every other subcommand prints a single JSON value.
+    if args.first().map(String::as_str) == Some("render-service") {
+        match cmd_render_service(&args[1..]) {
+            Ok(text) => print!("{text}"),
+            Err(e) => {
+                eprintln!("{}", json!({ "error": redact_secrets(&e) }));
+                process::exit(1);
+            }
+        }
+        return;
+    }
     match run(&args) {
         Ok(v) => println!("{v}"),
         Err(e) => {
