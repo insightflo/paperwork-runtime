@@ -68,6 +68,24 @@ export function classifyHeartbeatRunFailure(input: {
   if (input.status === "cancelled") {
     return { category: "cancelled", reasonCode: "RUN_CANCELLED", summary: "Heartbeat run was cancelled.", fallbackCandidates };
   }
+  // commandcode_local --max-turns cap: the adapter reports the outcome as
+  // non-failure (partial response, session preserved for --resume) with the
+  // machine errorCode commandcode_max_turns, but the raw exit-8 run still
+  // settles as failed here. Classify it explicitly with actionable guidance
+  // instead of the generic adapter fallback. Display/classification only —
+  // never execution authority (AGENTS.md rule 9). Category stays inside the
+  // shared TS/Rust set; the opt-in Rust arm (crates/heartbeat-core, out of
+  // scope for this change) still returns the generic classification for this
+  // errorCode until its mirror is updated.
+  if (input.errorCode?.trim() === "commandcode_max_turns") {
+    return {
+      category: "adapter",
+      reasonCode: "COMMANDCODE_MAX_TURNS",
+      summary:
+        "Command Code stopped at the --max-turns cap and returned a partial response; the session is preserved so the next wake can resume. Not an adapter/auth/quota failure — raise this agent's Max turns per run (adapterConfig.maxTurns) or narrow the task scope.",
+      fallbackCandidates,
+    };
+  }
   // API overload(500/503/529): errorCode 를 우선 매칭한다. stderr 의 무해한
   // "ENOENT: no such"(참조 instructions 파일 누락 워닝) 가 haystack 에 섞여 아래 command
   // 분기로 오판되는 것(gazua 코난 529 run 사례) 을 막기 위해 errorCode 기반으로 먼저 잡는다.

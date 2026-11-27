@@ -1,6 +1,12 @@
-import type { AdapterConfigFieldsProps } from "../types";
-import { Field, ToggleField, DraftInput } from "../../components/agent-config-primitives";
+import type { AdapterConfigFieldsProps, CreateConfigValues } from "../types";
+import { Field, ToggleField, DraftInput, DraftNumberInput } from "../../components/agent-config-primitives";
 import { ChoosePathButton } from "../../components/PathInstructionsModal";
+
+/**
+ * Create-form carrier for the Command Code per-run turn cap (adapterConfig.maxTurns).
+ * Kept as a local extension until CreateConfigValues grows a shared optional key.
+ */
+type CommandCodeCreateValues = CreateConfigValues & { maxTurns?: number };
 
 const inputClass =
   "w-full rounded-md border border-border px-2.5 py-1.5 bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/40";
@@ -54,23 +60,54 @@ export function CommandCodeLocalAdvancedFields({
   mark,
 }: AdapterConfigFieldsProps) {
   return (
-    <ToggleField
-      label="Skip permissions"
-      hint="Run Command Code with --yolo (skip all permission prompts) instead of the safe --permission-mode auto-accept default. Required for unattended runs that need unrestricted tool actions."
-      checked={
-        isCreate
-          ? values!.dangerouslySkipPermissions
-          : eff(
-              "adapterConfig",
-              "dangerouslySkipPermissions",
-              config.dangerouslySkipPermissions === true,
-            )
-      }
-      onChange={(v) =>
-        isCreate
-          ? set!({ dangerouslySkipPermissions: v })
-          : mark("adapterConfig", "dangerouslySkipPermissions", v)
-      }
-    />
+    <>
+      <ToggleField
+        label="Skip permissions"
+        hint="Run Command Code with --yolo (skip all permission prompts) instead of the safe --permission-mode auto-accept default. Required for unattended runs that need unrestricted tool actions."
+        checked={
+          isCreate
+            ? values!.dangerouslySkipPermissions
+            : eff(
+                "adapterConfig",
+                "dangerouslySkipPermissions",
+                config.dangerouslySkipPermissions === true,
+              )
+        }
+        onChange={(v) =>
+          isCreate
+            ? set!({ dangerouslySkipPermissions: v })
+            : mark("adapterConfig", "dangerouslySkipPermissions", v)
+        }
+      />
+      <Field
+        label="Max turns per run"
+        hint="Maximum agentic turns (tool calls) per run before Command Code stops with a partial response. 0 or blank = CLI default (no cap). The partial session is preserved, so the next wake resumes from it."
+      >
+        {isCreate ? (
+          <input
+            type="number"
+            min={0}
+            className={inputClass}
+            value={
+              (values as CommandCodeCreateValues)!.maxTurns
+                ? (values as CommandCodeCreateValues)!.maxTurns!
+                : ""
+            }
+            onChange={(e) =>
+              set!({ maxTurns: Number(e.target.value) } as Partial<CreateConfigValues>)
+            }
+            placeholder="CLI default (no cap)"
+          />
+        ) : (
+          <DraftNumberInput
+            value={eff("adapterConfig", "maxTurns", Number(config.maxTurns ?? 0))}
+            onCommit={(v) => mark("adapterConfig", "maxTurns", v > 0 ? v : undefined)}
+            onEmpty={() => mark("adapterConfig", "maxTurns", undefined)}
+            immediate
+            className={inputClass}
+          />
+        )}
+      </Field>
+    </>
   );
 }
