@@ -21,6 +21,19 @@ vi.mock("../api/knowledgeBases", () => ({
   },
 }));
 
+async function waitFor(assertion: () => void, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      if (Date.now() > deadline) throw error;
+      await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    }
+  }
+}
+
 describe("KbTreePanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -62,25 +75,25 @@ describe("KbTreePanel", () => {
         </QueryClientProvider>,
       );
     });
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
-
-    expect(container.textContent).toContain("Researched Services");
-    expect(container.textContent).toContain("GoodGood Onboarding");
+    await waitFor(() => {
+      expect(container.textContent).toContain("Researched Services");
+      expect(container.textContent).toContain("GoodGood Onboarding");
+    });
 
     // Click node to inspect
     const nodeBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("GoodGood Onboarding"))!;
-    await act(async () => { nodeBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
-    expect(container.textContent).toContain("# GoodGood");
+    await act(async () => { nodeBtn.click(); });
+    await waitFor(() => expect(container.textContent).toContain("# GoodGood"));
 
     // Click certify button
     const certBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("공인 지정"))!;
-    await act(async () => { certBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
-    expect(knowledgeBasesApi.setCertified).toHaveBeenCalledWith("c1", "n1", true);
+    await act(async () => { certBtn.click(); });
+    await waitFor(() => expect(knowledgeBasesApi.setCertified).toHaveBeenCalledWith("c1", "n1", true));
 
     // Click lint button
     const lintBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("KB Lint 점검"))!;
-    await act(async () => { lintBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
-    expect(container.textContent).toContain("점검 1개 노드");
+    await act(async () => { lintBtn.click(); });
+    await waitFor(() => expect(container.textContent).toContain("점검 1개 노드"));
 
     await act(async () => { root.unmount(); });
     container.remove();

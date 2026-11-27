@@ -21,13 +21,16 @@ import {
   strategyPlaybookUpdateSchema,
 } from "@paperclipai/shared";
 import { strategyPlaybookStore } from "../services/strategy-playbook.js";
-import { assertBoard, assertCompanyAccess, getActorInfo } from "./authz.js";
+import { accessService } from "../services/access.js";
+import { assertCompanyAccess, assertCompanyAdminAccess, getActorInfo } from "./authz.js";
+import { assertCompanyWriteAccess } from "./authz-write.js";
 import { unprocessable } from "../errors.js";
 import { logActivity } from "../services/activity-log.js";
 
 export function strategyPlaybookRoutes(db: Db) {
   const router = Router();
   const store = strategyPlaybookStore(db);
+  const access = accessService(db);
 
   /**
    * GET /companies/:companyId/strategy-playbook
@@ -57,7 +60,7 @@ export function strategyPlaybookRoutes(db: Db) {
    */
   router.post("/companies/:companyId/strategy-playbook", async (req, res) => {
     const { companyId } = req.params;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
 
     const parsed = strategyPlaybookCreateProposalSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
@@ -110,8 +113,8 @@ export function strategyPlaybookRoutes(db: Db) {
     }
     const { status } = parsed.data;
 
-    // 유효한 전이는 모두 active/retired 로 끝나므로 PATCH 전체가 board 전용이다.
-    assertBoard(req);
+    // 유효한 전이는 모두 active/retired 로 끝나므로 PATCH 전체가 회사 admin/owner 이상 보드 전용이다.
+    await assertCompanyAdminAccess(access, req, existing.companyId);
 
     const updated = await store.transition(req.params.id, status);
 

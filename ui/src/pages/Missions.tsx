@@ -229,7 +229,7 @@ function RowStepDots({
 }
 
 export function Missions() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canWrite = true } = useCompany();
   const { openNewMission } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
   const toast = useOptionalToast();
@@ -477,7 +477,7 @@ export function Missions() {
 
   const handleToggleMissionStatus = useCallback(
     async (mission: MissionListItem) => {
-      if (!selectedCompanyId || mutatingMissionId) return;
+      if (!canWrite || !selectedCompanyId || mutatingMissionId) return;
       const nextStatus: MissionStatus = mission.status === "active" ? "paused" : "active";
       setActionError(null);
       setMutatingMissionId(mission.id);
@@ -497,7 +497,7 @@ export function Missions() {
         setMutatingMissionId(null);
       }
     },
-    [selectedCompanyId, mutatingMissionId, queryClient, refetchMissions, toast],
+    [canWrite, selectedCompanyId, mutatingMissionId, queryClient, refetchMissions, toast],
   );
 
   const moveSelection = useCallback(
@@ -758,8 +758,13 @@ export function Missions() {
         </Button>
         <Button
           size="sm"
-          onClick={() => openNewMission()}
-          className="h-7 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]"
+          disabled={!canWrite}
+          title={!canWrite ? "Member, admin, or owner role required to create missions" : undefined}
+          onClick={() => {
+            if (!canWrite) return;
+            openNewMission();
+          }}
+          className="h-7 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="h-3.5 w-3.5" />
           New Mission
@@ -775,7 +780,7 @@ export function Missions() {
                 ? "No missions match the current radar filter or search query."
                 : "No missions match the current filters."
             }
-            action={hasClientRadarFilter ? "Reset Radar Filters" : "Create Mission"}
+            action={hasClientRadarFilter ? "Reset Radar Filters" : canWrite ? "Create Mission" : undefined}
             onAction={
               hasClientRadarFilter
                 ? () => {
@@ -784,7 +789,9 @@ export function Missions() {
                     setWorkflowFilter("all");
                     setLocalPage(1);
                   }
-                : openNewMission
+                : canWrite
+                  ? openNewMission
+                  : undefined
             }
           />
         </div>
@@ -1080,9 +1087,13 @@ export function Missions() {
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={mutatingMissionId === selectedMission.id}
-                        onClick={() => void handleToggleMissionStatus(selectedMission)}
-                        className="h-8 gap-1.5 px-2.5 text-xs font-semibold"
+                        disabled={!canWrite || mutatingMissionId === selectedMission.id}
+                        title={!canWrite ? "Member, admin, or owner role required to pause or resume missions" : undefined}
+                        onClick={() => {
+                          if (!canWrite) return;
+                          void handleToggleMissionStatus(selectedMission);
+                        }}
+                        className="h-8 gap-1.5 px-2.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {selectedMission.status === "active" ? (
                           <>

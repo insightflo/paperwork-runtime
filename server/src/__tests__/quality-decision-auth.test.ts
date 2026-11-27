@@ -80,6 +80,8 @@ describeQualityDb("quality decision routes: scoped loader and human authority", 
     await owned.db.update(agents).set({
       adapterType: "codex_local", adapterConfig: { promptTemplate: "Test." }, runtimeConfig: {}, permissions: {},
     }).where(eq(agents.companyId, f.companyId));
+    await owned.db.update(companyMemberships).set({ membershipRole: "member" })
+      .where(eq(companyMemberships.principalId, "quality-reviewer-1"));
     actionId = await seedAction(owned.db);
     loaderActionId = await seedAction(owned.db);
   }, 120_000);

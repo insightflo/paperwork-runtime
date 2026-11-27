@@ -26,7 +26,9 @@ import {
   type RecordProposalDecisionInput,
 } from "../services/harness-rsi/ledger-store.js";
 import { badRequest } from "../errors.js";
-import { assertCompanyAccess } from "./authz.js";
+import { accessService } from "../services/access.js";
+import { assertCompanyAccess, assertCompanyAdminAccess } from "./authz.js";
+import { assertCompanyWriteAccess } from "./authz-write.js";
 
 function parseClampedInt(raw: unknown, fallback: number, min: number, max: number): number {
   if (typeof raw !== "string" || raw.trim() === "") return fallback;
@@ -82,6 +84,7 @@ interface ScreenBody {
 
 export function harnessRsiRoutes(db: Db) {
   const router = Router();
+  const access = accessService(db);
 
   // GET telemetry diagnosis report (read-only; ?windowHours=24 default, 1..168 clamp).
   router.get("/companies/:companyId/harness-rsi/diagnose", (req, res, next) => {
@@ -127,10 +130,10 @@ export function harnessRsiRoutes(db: Db) {
   });
 
   // POST stateless critic screen — ZERO DB/activity writes ({ diffText, baseline?, candidate?, policy? }).
-  router.post("/companies/:companyId/harness-rsi/screen", (req, res, next) => {
+  router.post("/companies/:companyId/harness-rsi/screen", async (req, res, next) => {
     try {
       const { companyId } = req.params;
-      assertCompanyAccess(req, companyId);
+      await assertCompanyWriteAccess(access, req, companyId);
       const { diffText, baseline, candidate, policy } = (req.body ?? {}) as ScreenBody;
       if (typeof diffText !== "string") throw badRequest("diffText must be a string");
       const critic = screenCandidateDiff({ diff: diffText, edits: [] });
@@ -158,27 +161,25 @@ export function harnessRsiRoutes(db: Db) {
 
   // POST a proposal decision into the ledger (201). Writes harness_rsi_ledger only.
   // baselineJson defaults to the current 24h diagnosis summary when omitted.
-  router.post("/companies/:companyId/harness-rsi/proposals/decision", (req, res, next) => {
+  router.post("/companies/:companyId/harness-rsi/proposals/decision", async (req, res, next) => {
     try {
       const { companyId } = req.params;
       assertCompanyAccess(req, companyId);
+      await assertCompanyAdminAccess(access, req, companyId);
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const baselineJson = body.baselineJson == null
-        ? loadCompanyHarnessDiagnosis(db, companyId, DIAGNOSIS_DEFAULT_WINDOW_HOURS)
+      const baseline = body.baselineJson == null
+        ? await loadCompanyHarnessDiagnosis(db, companyId, DIAGNOSIS_DEFAULT_WINDOW_HOURS)
             .then((r) => ({
               score: r.summary.successRate,
               cost: r.summary.avgDurationMs / 60_000,
             }))
-        : Promise.resolve(body.baselineJson);
-      baselineJson
-        .then((baseline) =>
-          recordProposalDecision(db, {
-            ...body,
-            companyId,
-            baselineJson: baseline,
-          } as RecordProposalDecisionInput))
-        .then((entry) => res.status(201).json({ companyId, entry }))
-        .catch(next);
+        : body.baselineJson;
+      const entry = await recordProposalDecision(db, {
+        ...body,
+        companyId,
+        baselineJson: baseline,
+      } as RecordProposalDecisionInput);
+      res.status(201).json({ companyId, entry });
     } catch (err) {
       next(err);
     }
@@ -186,19 +187,17 @@ export function harnessRsiRoutes(db: Db) {
 
   // POST evaluate a decided ledger row against the live 24h diagnosis summary.
   // Updates only the evaluation columns on the scoped row.
-  router.post("/companies/:companyId/harness-rsi/ledger/:entryId/evaluate", (req, res, next) => {
+  router.post("/companies/:companyId/harness-rsi/ledger/:entryId/evaluate", async (req, res, next) => {
     try {
       const { companyId, entryId } = req.params;
-      assertCompanyAccess(req, companyId);
-      loadCompanyHarnessDiagnosis(db, companyId, DIAGNOSIS_DEFAULT_WINDOW_HOURS)
-        .then((report) =>
-          evaluateLedgerEntry(db, {
-            companyId,
-            entryId,
-            currentSummary: report.summary,
-          }))
-        .then(({ entry, selection }) => res.json({ companyId, entry, selection }))
-        .catch(next);
+      await assertCompanyWriteAccess(access, req, companyId);
+      const report = await loadCompanyHarnessDiagnosis(db, companyId, DIAGNOSIS_DEFAULT_WINDOW_HOURS);
+      const { entry, selection } = await evaluateLedgerEntry(db, {
+        companyId,
+        entryId,
+        currentSummary: report.summary,
+      });
+      res.json({ companyId, entry, selection });
     } catch (err) {
       next(err);
     }

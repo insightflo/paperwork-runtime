@@ -18,6 +18,8 @@ function memberRole(value: string | null): CompanyMemberRole {
 type AccessUsersViewProps = {
   members: CompanyAccessMember[];
   groupById: Map<string, { id: string; name: string }>;
+  inheritedPermissionKeysByMemberId?: ReadonlyMap<string, ReadonlySet<string>>;
+  inheritedPermissionKeys?: ReadonlySet<string>;
   disabled: boolean;
   onToggleGrant: (member: CompanyAccessMember, permissionKey: PermissionKey, checked: boolean) => void;
   memberSearchQuery: string;
@@ -38,6 +40,8 @@ type AccessUsersViewProps = {
 export function AccessUsersView({
   members,
   groupById,
+  inheritedPermissionKeysByMemberId,
+  inheritedPermissionKeys,
   disabled,
   onToggleGrant,
   memberSearchQuery,
@@ -157,7 +161,12 @@ export function AccessUsersView({
                     </div>
                   )}
                 </div>
-                <PermissionChecklist grants={member.grants} disabled={disabled} onToggle={(permissionKey, checked) => onToggleGrant(member, permissionKey, checked)} />
+                <PermissionChecklist
+                  grants={member.grants}
+                  inheritedKeys={inheritedPermissionKeysByMemberId?.get(member.id) ?? inheritedPermissionKeys}
+                  disabled={disabled}
+                  onToggle={(permissionKey, checked) => onToggleGrant(member, permissionKey, checked)}
+                />
               </div>
             );
           })}

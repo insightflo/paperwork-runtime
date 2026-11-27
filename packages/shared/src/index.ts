@@ -438,6 +438,15 @@ export type {
   DgateBridgeSource,
   DgateDashboardBridgeResponse,
   DgateSnapshotPushResponse,
+  ControlPlaneGateKind,
+  ControlPlaneSeverity,
+  ControlPlaneSummary,
+  ControlPlaneWorker,
+  ControlPlaneGateItem,
+  ControlPlaneGates,
+  ControlPlaneOutcomes,
+  ControlPlaneEvent,
+  ControlPlaneSnapshotResponse,
 } from "./types/dashboard.js";
 
 export {

@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties, type JSX } from "react";
+import { Fragment, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type JSX, type MouseEvent } from "react";
+import { CompanyContext } from "../context/CompanyContext.js";
 import { jsonToSteps, stepsToJson, type StepDraft } from "./workflows/step-draft.js";
 import type { LabelOption, PluginPageProps, StatusFilter, WorkflowScopeFilter } from "./workflows/workflow-page-types.js";
 import { fetchCompanyLabels, useAvailableWorkflowTools, useHostContext, usePluginAction, useWorkflowOverview } from "./workflows/workflow-page-api.js";
@@ -67,10 +68,11 @@ const COCKPIT_CSS = `
 const PAGE_CLASS = "-m-4 md:-m-6 flex min-h-[calc(100dvh-3rem)] flex-col bg-slate-50 text-slate-900 tabular-nums dark:bg-[#07090d] dark:text-[#edf2fb]";
 const ACTION_CLASS = "inline-flex h-7.5 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-3 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-[#60a5fa]/40";
 
-function WorkflowControlBar({ runningCount, workflowCount, runCount, showHelp, onToggleHelp, showNewWorkflowForm, onNewWorkflow, isRefreshing, refreshButtonLabel, onRefresh }: {
+function WorkflowControlBar({ runningCount, workflowCount, runCount, showHelp, onToggleHelp, showNewWorkflowForm, onNewWorkflow, isRefreshing, refreshButtonLabel, onRefresh, canWrite, currentRole }: {
   runningCount: number; workflowCount: number; runCount: number;
   showHelp: boolean; onToggleHelp: () => void; showNewWorkflowForm: boolean; onNewWorkflow: () => void;
   isRefreshing: boolean; refreshButtonLabel: string; onRefresh: () => void;
+  canWrite: boolean; currentRole?: string;
 }): JSX.Element {
   const hasRunning = runningCount > 0;
   return (
@@ -114,11 +116,23 @@ function WorkflowControlBar({ runningCount, workflowCount, runCount, showHelp, o
         </span>
       </span>
       <div className="ml-auto flex shrink-0 items-center gap-2">
+        {!canWrite && (
+          <span
+            className="inline-flex items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#fde68a]"
+            title="Member, admin, or owner role required to create, edit, delete, or run workflows"
+          >
+            Read-only{currentRole ? ` (${currentRole})` : ""}
+          </span>
+        )}
         <button
           type="button"
           className={`${ACTION_CLASS} bg-blue-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:bg-blue-500 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]`}
-          disabled={showNewWorkflowForm}
-          onClick={onNewWorkflow}
+          disabled={!canWrite || showNewWorkflowForm}
+          title={!canWrite ? "Member, admin, or owner role required to create workflows" : undefined}
+          onClick={() => {
+            if (!canWrite) return;
+            onNewWorkflow();
+          }}
         >
           + New Workflow
         </button>
@@ -136,6 +150,10 @@ function WorkflowControlBar({ runningCount, workflowCount, runCount, showHelp, o
 }
 
 export function WorkflowPage(props: PluginPageProps): JSX.Element {
+  const companyCtx = useContext(CompanyContext);
+  const canWrite = companyCtx?.canWrite ?? true;
+  const canAdmin = companyCtx?.canAdmin ?? true;
+  const currentRole = companyCtx?.currentRole;
   const hostContext = useHostContext();
   const companyId = hostContext.companyId ?? props.context?.companyId ?? "";
   const overview = useWorkflowOverview(companyId);
@@ -192,12 +210,26 @@ export function WorkflowPage(props: PluginPageProps): JSX.Element {
   }
 
   function handleAbortRun(runId: string): void {
+    if (!canWrite) return;
     void (async () => {
       try {
         await abortRun({ runId });
         await refreshOverview();
       } catch { /* ignore */ }
     })();
+  }
+
+  function guardWorkflowMutationClick(event: MouseEvent<HTMLElement>): void {
+    if (canWrite && canAdmin) return;
+    const button = (event.target as HTMLElement | null)?.closest("button");
+    if (!button) return;
+    const text = (button.textContent ?? "").trim().toLowerCase();
+    const isAdminControl = /\b(webhook|tool grant|grant)\b/.test(text);
+    const isWriteControl = /\b(run|save|delete|archive|restore|abort|pause|resume|enable|disable|create|add step|remove|duplicate|retry)\b|실행|저장|삭제|보관|복원|중단|일시정지|재개|추가/.test(text);
+    if ((!canAdmin && isAdminControl) || (!canWrite && isWriteControl)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
   }
 
   const refreshButtonLabel = isRefreshing ? "갱신 중..." : "↻ Refresh";
@@ -262,13 +294,26 @@ export function WorkflowPage(props: PluginPageProps): JSX.Element {
   };
 
   return (
-    <div data-plugin-id={PLUGIN_ID} id="wf-page" className={PAGE_CLASS}>
+    <div
+      data-plugin-id={PLUGIN_ID}
+      data-wf-readonly={!canWrite ? "true" : undefined}
+      data-wf-no-admin={!canAdmin ? "true" : undefined}
+      id="wf-page"
+      className={PAGE_CLASS}
+    >
       <style data-wf-cockpit-style="true">{COCKPIT_CSS}</style>
       <WorkflowControlBar runningCount={scopedActiveRuns.length} workflowCount={filteredWorkflows.length} runCount={scopedRecentRuns.length}
-        showHelp={showHelp} onToggleHelp={() => setShowHelp(!showHelp)} showNewWorkflowForm={showNewWorkflowForm} onNewWorkflow={() => { setShowNewWorkflowForm(true); }}
-        isRefreshing={isRefreshing} refreshButtonLabel={refreshButtonLabel} onRefresh={refreshOverview} />
+        showHelp={showHelp} onToggleHelp={() => setShowHelp(!showHelp)} showNewWorkflowForm={showNewWorkflowForm} onNewWorkflow={() => { if (!canWrite) return; setShowNewWorkflowForm(true); }}
+        isRefreshing={isRefreshing} refreshButtonLabel={refreshButtonLabel} onRefresh={refreshOverview}
+        canWrite={canWrite} currentRole={currentRole} />
 
-      <section id="wf-definitions" key="definitions-section" style={definitionsSectionStyle} className="pt-2">
+      <section
+        id="wf-definitions"
+        key="definitions-section"
+        style={definitionsSectionStyle}
+        className="pt-2"
+        onClickCapture={guardWorkflowMutationClick}
+      >
         <div
           key="definitions-toolbar-row"
           className="mb-2 flex min-h-10 items-center rounded-xl border border-slate-200/90 bg-white/95 px-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
@@ -290,7 +335,7 @@ export function WorkflowPage(props: PluginPageProps): JSX.Element {
         </div>
         {!definitionsCollapsed && (
           <Fragment key="definitions-body">
-            {showNewWorkflowForm ? (
+            {showNewWorkflowForm && canWrite ? (
               <WorkflowCreateForm companyId={companyId} projects={data.projects ?? []} toolSystem={toolSystem} availableTools={availableTools} availableToolGrants={availableToolGrants} renderGraphEditor={renderWorkflowGraphEditor} onCreated={refreshOverview} onCancel={() => setShowNewWorkflowForm(false)} onLabelsRefresh={refreshLabels} />
             ) : (
               <DefinitionsTable
@@ -324,7 +369,7 @@ export function WorkflowPage(props: PluginPageProps): JSX.Element {
         onHeightChange={setDefinitionsHeight}
       />
 
-      <div key="run-panels" className="grid min-w-0 gap-3.5 px-3.5 py-3.5 xl:grid-cols-2">
+      <div key="run-panels" className="grid min-w-0 gap-3.5 px-3.5 py-3.5 xl:grid-cols-2" onClickCapture={guardWorkflowMutationClick}>
         <WorkflowRunSections
           activeRunsScope={activeRunsScope}
           runHistoryScope={runHistoryScope}

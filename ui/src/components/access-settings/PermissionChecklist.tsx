@@ -8,14 +8,18 @@ import {
 
 export function PermissionChecklist({
   grants,
+  inheritedKeys,
   disabled,
   onToggle,
 }: {
   grants: readonly GrantLike[] | undefined;
+  inheritedKeys?: ReadonlySet<string>;
   disabled: boolean;
   onToggle: (permissionKey: PermissionKey, checked: boolean) => void;
 }) {
-  const grantedCount = PERMISSION_KEYS.filter((key) => hasGrant(grants, key)).length;
+  const grantedCount = PERMISSION_KEYS.filter(
+    (key) => hasGrant(grants, key) || Boolean(inheritedKeys?.has(key)),
+  ).length;
   const totalCount = PERMISSION_KEYS.length;
 
   return (
@@ -37,13 +41,15 @@ export function PermissionChecklist({
       <div className="grid gap-2 xl:grid-cols-2">
         {PERMISSION_KEYS.map((permissionKey) => {
           const checked = hasGrant(grants, permissionKey);
+          const inherited = Boolean(inheritedKeys?.has(permissionKey));
+          const highlighted = checked || inherited;
           return (
             <label
               key={permissionKey}
               className={`flex min-h-10 items-start gap-2.5 rounded-lg border px-2.5 py-2 text-sm transition-colors ${
                 disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
               } ${
-                checked
+                highlighted
                   ? "border-blue-500/40 bg-blue-500/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-[#60a5fa]/40 dark:bg-[#2563eb]/12 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
                   : "border-slate-200/85 bg-slate-50/50 hover:border-slate-300 hover:bg-white dark:border-white/[0.07] dark:bg-[#090c12]/80 dark:hover:border-white/[0.14] dark:hover:bg-[#111724]"
               }`}
@@ -56,8 +62,16 @@ export function PermissionChecklist({
                 onChange={(event) => onToggle(permissionKey, event.target.checked)}
               />
               <span className="min-w-0 flex-1">
-                <span className="block font-medium text-slate-900 dark:text-[#edf2fb]">
-                  {PERMISSION_LABELS[permissionKey]}
+                <span className="flex flex-wrap items-center gap-1.5 font-medium text-slate-900 dark:text-[#edf2fb]">
+                  <span>{PERMISSION_LABELS[permissionKey]}</span>
+                  {inherited && (
+                    <span
+                      data-testid={`inherited-badge-${permissionKey}`}
+                      className="inline-flex items-center rounded-full border border-blue-500/35 bg-blue-500/12 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-blue-700 dark:border-[#60a5fa]/40 dark:bg-[#2563eb]/20 dark:text-[#60a5fa]"
+                    >
+                      그룹 상속
+                    </span>
+                  )}
                 </span>
                 <span className="block text-xs text-slate-500 dark:text-[#8b97ad]">
                   {PERMISSION_DESCRIPTIONS[permissionKey]}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PermissionKey } from "@paperclipai/shared";
 import { useToast } from "../../context/ToastContext";
 import { accessApi, type AccessGrantInput, type CompanyAccessMember } from "../../api/access";
@@ -9,6 +9,13 @@ import { getErrorMessage, memberDisplayName, toggleGrant } from "./utils";
 import { useMemberPicker } from "./useMemberPicker";
 
 export type CompanyMemberRole = "owner" | "admin" | "member" | "viewer";
+export type HumanInviteRole = "member" | "viewer" | "admin";
+export type CreatedHumanInvite = {
+  id: string;
+  url: string;
+  membershipRole: HumanInviteRole;
+  expiresAt: string | null;
+};
 export type CompanyInvite = {
   id: string; companyId: string | null; inviteType: string; allowedJoinTypes: string;
   expiresAt: string | null; createdAt: string | null; revokedAt: string | null;
@@ -56,6 +63,7 @@ export function useAccessSettingsController(selectedCompanyId: string | null) {
   const [newGroupDescription, setNewGroupDescription] = useState("");
   const [editingGroupName, setEditingGroupName] = useState("");
   const [editingGroupDescription, setEditingGroupDescription] = useState("");
+  const [createdHumanInvite, setCreatedHumanInvite] = useState<CreatedHumanInvite | null>(null);
   const notifyError = (title: string, fallback: string) => (err: unknown) =>
     pushToast({ title, body: getErrorMessage(err, fallback), tone: "error" });
 
@@ -86,6 +94,59 @@ export function useAccessSettingsController(selectedCompanyId: string | null) {
   });
   const selectedGroupDetail = selectedGroupDetailQuery.data ?? null;
 
+  const assignedActiveGroupIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const member of userMembers) {
+      for (const membership of member.groupMemberships) {
+        if (membership.status !== "active") continue;
+        const group = groupById.get(membership.groupId);
+        if (group && group.status === "active") ids.add(membership.groupId);
+      }
+    }
+    return Array.from(ids);
+  }, [userMembers, groupById]);
+
+  const assignedGroupDetailQueries = useQueries({
+    queries: assignedActiveGroupIds.map((groupId) => ({
+      queryKey: selectedCompanyId
+        ? queryKeys.access.permissionGroup(selectedCompanyId, groupId)
+        : ["access", "permission-groups", "__no-company__", groupId],
+      queryFn: () => accessApi.getPermissionGroup(selectedCompanyId!, groupId),
+      enabled: !!selectedCompanyId,
+    })),
+  });
+
+  const groupGrantsById = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    assignedActiveGroupIds.forEach((groupId, index) => {
+      const detail = assignedGroupDetailQueries[index]?.data;
+      if (!detail) return;
+      const keys = new Set<string>();
+      for (const grant of detail.grants) {
+        if (grant.permissionKey) keys.add(grant.permissionKey);
+      }
+      map.set(groupId, keys);
+    });
+    return map;
+  }, [assignedActiveGroupIds, assignedGroupDetailQueries]);
+
+  const inheritedPermissionKeysByMemberId = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    for (const member of userMembers) {
+      const keys = new Set<string>();
+      for (const membership of member.groupMemberships) {
+        if (membership.status !== "active") continue;
+        const group = groupById.get(membership.groupId);
+        if (!group || group.status !== "active") continue;
+        const groupKeys = groupGrantsById.get(membership.groupId);
+        if (!groupKeys) continue;
+        for (const key of groupKeys) keys.add(key);
+      }
+      map.set(member.id, keys);
+    }
+    return map;
+  }, [userMembers, groupById, groupGrantsById]);
+
   useEffect(() => {
     if (!selectedCompanyId) {
       setSelectedGroupId(null);
@@ -101,7 +162,11 @@ export function useAccessSettingsController(selectedCompanyId: string | null) {
     setEditingGroupName(selectedGroup?.name ?? "");
     setEditingGroupDescription(selectedGroup?.description ?? "");
   }, [selectedGroup?.id, selectedGroup?.name, selectedGroup?.description]);
-  useEffect(() => { setNewGroupName(""); setNewGroupDescription(""); }, [selectedCompanyId]);
+  useEffect(() => {
+    setNewGroupName("");
+    setNewGroupDescription("");
+    setCreatedHumanInvite(null);
+  }, [selectedCompanyId]);
 
   function invalidateAccessQueries(groupId?: string | null) {
     if (!selectedCompanyId) return;
@@ -135,9 +200,32 @@ export function useAccessSettingsController(selectedCompanyId: string | null) {
     },
     onError: notifyError("Member removal failed", "Unable to remove this member."),
   });
+  const createHumanInviteMutation = useMutation({
+    mutationFn: (membershipRole: HumanInviteRole) =>
+      accessApi.createCompanyInvite(selectedCompanyId!, {
+        allowedJoinTypes: "human",
+        defaultsPayload: { membershipRole },
+      }),
+    onSuccess: (created, membershipRole) => {
+      const url =
+        typeof window !== "undefined" && created.inviteUrl.startsWith("/")
+          ? `${window.location.origin}${created.inviteUrl}`
+          : created.inviteUrl;
+      setCreatedHumanInvite({
+        id: created.id,
+        url,
+        membershipRole,
+        expiresAt: textOrNull(created.expiresAt),
+      });
+      invalidateAccessQueries();
+      pushToast({ title: "초대 링크가 생성되었습니다", body: `역할: ${membershipRole}`, tone: "success" });
+    },
+    onError: notifyError("초대 링크 생성 실패", "Unable to create a human invite link."),
+  });
   const revokeInviteMutation = useMutation({
     mutationFn: (inviteId: string) => api.post<unknown>(`/invites/${inviteId}/revoke`, {}),
-    onSuccess: () => {
+    onSuccess: (_data, inviteId) => {
+      setCreatedHumanInvite((current) => (current?.id === inviteId ? null : current));
       invalidateAccessQueries();
       pushToast({ title: "Invite revoked", tone: "success" });
     },
@@ -201,12 +289,25 @@ export function useAccessSettingsController(selectedCompanyId: string | null) {
     void permissionGroupsQuery.refetch();
   };
 
+  const inheritedPermissionKeys = useMemo(() => {
+    if (!memberPicker.selectedUserId) return new Set<string>();
+    const selectedMember = userMembers.find(
+      (member) => member.id === memberPicker.selectedUserId || member.principalId === memberPicker.selectedUserId,
+    );
+    return selectedMember
+      ? new Set(inheritedPermissionKeysByMemberId.get(selectedMember.id) ?? [])
+      : new Set<string>();
+  }, [memberPicker.selectedUserId, userMembers, inheritedPermissionKeysByMemberId]);
+
   return {
     accessError,
     accessLoading,
     companyInvites,
+    createdHumanInvite,
     groupById,
     groupMutationPending,
+    inheritedPermissionKeys,
+    inheritedPermissionKeysByMemberId,
     permissionGroups,
     selectedGroup,
     selectedGroupDetail,
@@ -224,6 +325,7 @@ export function useAccessSettingsController(selectedCompanyId: string | null) {
     selectedGroupId,
     addMemberPending: memberPicker.addMemberPending,
     createGroupPending: createGroupMutation.isPending,
+    createHumanInvitePending: createHumanInviteMutation.isPending,
     invitesLoading: companyInvitesQuery.isLoading,
     invitesError: companyInvitesQuery.error,
     memberLifecyclePending: updateMemberLifecycleMutation.isPending || removeMemberMutation.isPending,
@@ -239,6 +341,8 @@ export function useAccessSettingsController(selectedCompanyId: string | null) {
     retryAccess,
     retryInvites: () => void companyInvitesQuery.refetch(),
     createGroup: () => createGroupMutation.mutate(),
+    createHumanInvite: (membershipRole: HumanInviteRole) => createHumanInviteMutation.mutate(membershipRole),
+    dismissCreatedHumanInvite: () => setCreatedHumanInvite(null),
     addSelectedMember: memberPicker.addSelectedMember,
     revokeInvite: (inviteId: string) => revokeInviteMutation.mutate(inviteId),
     setMemberRole: (member: CompanyAccessMember, role: CompanyMemberRole) => {

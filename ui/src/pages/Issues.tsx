@@ -22,7 +22,7 @@ import {
   prefetchIssuePage,
   useIssuePaging,
 } from "../components/IssuesListChrome";
-import { CircleDot } from "lucide-react";
+import { CircleDot, Lock } from "lucide-react";
 
 /* ── Cockpit telemetry strip ──
  * One row, four columns. Each cell is both a count and a status-group filter
@@ -87,7 +87,7 @@ function stepSelection(paths: string[], current: string | null, delta: 1 | -1): 
 }
 
 export function Issues() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canWrite = true, currentRole } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const location = useLocation();
   const navigate = useNavigate();
@@ -359,9 +359,33 @@ export function Issues() {
         })}
       </div>
 
+      {!canWrite && (
+        <div
+          role="status"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#fde68a]"
+        >
+          <Lock className="h-3.5 w-3.5 shrink-0" />
+          <span>
+            Read-only{currentRole ? ` (${currentRole})` : ""} · Member, admin, or owner role required to create or update work items
+          </span>
+        </div>
+      )}
+
       <div
         ref={listRef}
-        className={`${ISSUES_TOOLBAR_CLASS} overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-opacity dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] ${listBusy ? "opacity-60" : ""}`}
+        data-readonly-work={!canWrite ? "true" : undefined}
+        onClickCapture={(event) => {
+          if (canWrite) return;
+          const button = (event.target as HTMLElement | null)?.closest("button");
+          if (!button) return;
+          const text = (button.textContent ?? "").trim();
+          const isNewWorkBtn = text.includes("New Work") || (text === "" && button.querySelector("svg.lucide-plus"));
+          if (isNewWorkBtn) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
+        className={`${ISSUES_TOOLBAR_CLASS} overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-opacity dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] ${listBusy ? "opacity-60" : ""} ${!canWrite ? "[&>div>div:first-child>div:first-child>button:first-child]:cursor-not-allowed [&>div>div:first-child>div:first-child>button:first-child]:opacity-50" : ""}`}
         aria-busy={listBusy}
       >
         <IssuesList
@@ -377,7 +401,10 @@ export function Issues() {
           initialSearch={initialSearch}
           onSearchChange={handleSearchChange}
           onFiltersChange={setClientFilterCount}
-          onUpdateIssue={(id, data) => updateIssue.mutate({ id, data })}
+          onUpdateIssue={(id, data) => {
+            if (!canWrite) return;
+            updateIssue.mutate({ id, data });
+          }}
         />
       </div>
       {paged && (visibleIssues.length > 0 || paging.page > 1) && (

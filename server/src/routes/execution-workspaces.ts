@@ -10,7 +10,9 @@ import {
   cleanupExecutionWorkspaceArtifacts,
   stopRuntimeServicesForExecutionWorkspace,
 } from "../services/workspace-runtime.js";
+import { accessService } from "../services/access.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { assertCompanyWriteAccess } from "./authz-write.js";
 
 const TERMINAL_ISSUE_STATUSES = new Set(["done", "cancelled"]);
 
@@ -18,6 +20,7 @@ export function executionWorkspaceRoutes(db: Db) {
   const router = Router();
   const svc = executionWorkspaceService(db);
   const workspaceOperationsSvc = workspaceOperationService(db);
+  const access = accessService(db);
 
   router.get("/companies/:companyId/execution-workspaces", async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -72,7 +75,7 @@ export function executionWorkspaceRoutes(db: Db) {
       res.status(404).json({ error: "Execution workspace not found" });
       return;
     }
-    assertCompanyAccess(req, existing.companyId);
+    await assertCompanyWriteAccess(access, req, existing.companyId);
     const patch: Record<string, unknown> = {
       ...req.body,
       ...(req.body.cleanupEligibleAt ? { cleanupEligibleAt: new Date(req.body.cleanupEligibleAt) } : {}),

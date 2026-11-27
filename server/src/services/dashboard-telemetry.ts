@@ -8,21 +8,12 @@ import type {
   DashboardTelemetryResponse,
   DashboardTelemetryWindow,
   DashboardUsageShare,
-  DgateDashboardBridgeResponse,
-  DgateSnapshot,
-  DgateSnapshotPushResponse,
 } from "@paperclipai/shared";
-import { HttpError, badRequest } from "../errors.js";
 
 export const TELEMETRY_WINDOWS: readonly DashboardTelemetryWindow[] = ["10m", "1h", "6h", "24h"];
 export const DEFAULT_TELEMETRY_WINDOW: DashboardTelemetryWindow = "6h";
-export const MAX_DGATE_SNAPSHOT_BYTES = 512 * 1024;
-const DGATE_POLL_TIMEOUT_MS = 2_000;
-const DGATE_PUSH_TTL_MS = 60_000;
-const DGATE_PUSH_STALE_MS = 15_000;
 const TOP_MODEL_LIMIT = 5;
 const RECENT_RUNS_LIMIT = 40;
-const GLOBAL_DGATE_KEY = "__global__";
 
 interface WindowSpec {
   window: DashboardTelemetryWindow;
@@ -85,18 +76,6 @@ export interface TelemetryRunCostAggRow {
   costCents: number;
   model: string | null;
   provider: string | null;
-}
-
-interface CachedDgateSnapshot {
-  snapshot: DgateSnapshot;
-  fetchedAt: string;
-  fetchedAtMs: number;
-}
-
-const dgateSnapshotCache = new Map<string, CachedDgateSnapshot>();
-
-export function clearDgateSnapshotCache(): void {
-  dgateSnapshotCache.clear();
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -381,14 +360,10 @@ export function buildDashboardTelemetryFromRows(input: {
 
 export interface DashboardTelemetryServiceOptions {
   now?: () => Date;
-  fetchImpl?: typeof fetch;
-  dgateWebUrl?: () => string | undefined;
 }
 
 export function dashboardTelemetryService(db: Db, options: DashboardTelemetryServiceOptions = {}) {
   const getNow = options.now ?? (() => new Date());
-  const fetchFn = options.fetchImpl ?? fetch;
-  const getDgateWebUrl = options.dgateWebUrl ?? (() => process.env.DGATE_WEB_URL);
 
   return {
     telemetry: async (companyId: string, rawWindow?: unknown): Promise<DashboardTelemetryResponse> => {
@@ -477,96 +452,6 @@ export function dashboardTelemetryService(db: Db, options: DashboardTelemetrySer
         runRows,
         runCostRows,
       });
-    },
-
-    getDgateSnapshot: async (companyId: string): Promise<DgateDashboardBridgeResponse> => {
-      const now = getNow();
-      const nowMs = now.getTime();
-      const baseUrl = getDgateWebUrl()?.trim();
-      let pollFailureReason: string | null = null;
-
-      if (baseUrl) {
-        const targetUrl = `${baseUrl.replace(/\/+$/, "")}/api/snapshot`;
-        try {
-          const response = await fetchFn(targetUrl, {
-            method: "GET",
-            headers: { accept: "application/json" },
-            signal: AbortSignal.timeout(DGATE_POLL_TIMEOUT_MS),
-          });
-          if (response.ok) {
-            const parsed: unknown = await response.json();
-            if (isPlainObject(parsed)) {
-              return {
-                available: true,
-                source: "poll",
-                stale: false,
-                fetchedAt: now.toISOString(),
-                snapshot: parsed,
-              };
-            }
-            pollFailureReason = "dgate poll returned non-object JSON payload";
-          } else {
-            pollFailureReason = `dgate poll failed with HTTP ${response.status}`;
-          }
-        } catch (err) {
-          pollFailureReason = err instanceof Error ? `dgate poll error: ${err.message}` : "dgate poll error";
-        }
-      }
-
-      const cached = dgateSnapshotCache.get(companyId) ?? dgateSnapshotCache.get(GLOBAL_DGATE_KEY);
-      if (cached) {
-        const ageMs = Math.max(0, nowMs - cached.fetchedAtMs);
-        if (ageMs < DGATE_PUSH_TTL_MS) {
-          return {
-            available: true,
-            source: "push",
-            stale: ageMs > DGATE_PUSH_STALE_MS,
-            fetchedAt: cached.fetchedAt,
-            snapshot: cached.snapshot,
-          };
-        }
-        return {
-          available: false,
-          source: "none",
-          stale: false,
-          fetchedAt: null,
-          snapshot: null,
-          reason: pollFailureReason
-            ? `${pollFailureReason}; pushed snapshot expired`
-            : "pushed snapshot expired",
-        };
-      }
-
-      return {
-        available: false,
-        source: "none",
-        stale: false,
-        fetchedAt: null,
-        snapshot: null,
-        reason: pollFailureReason ?? "DGATE_WEB_URL not configured and no recent pushed snapshot",
-      };
-    },
-
-    pushDgateSnapshot: (companyId: string, payload: unknown): DgateSnapshotPushResponse => {
-      if (!isPlainObject(payload)) {
-        throw badRequest("Snapshot payload must be a plain JSON object");
-      }
-
-      const serialized = JSON.stringify(payload);
-      const byteLength = Buffer.byteLength(serialized, "utf8");
-      if (byteLength > MAX_DGATE_SNAPSHOT_BYTES) {
-        throw new HttpError(413, `Snapshot payload exceeds ${MAX_DGATE_SNAPSHOT_BYTES} bytes limit`);
-      }
-
-      const now = getNow();
-      const fetchedAt = now.toISOString();
-      dgateSnapshotCache.set(companyId, {
-        snapshot: payload,
-        fetchedAt,
-        fetchedAtMs: now.getTime(),
-      });
-
-      return { ok: true, fetchedAt };
     },
   };
 }
