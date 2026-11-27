@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { endpointBotsApi, type EndpointBotRecord } from "../api/endpointBots";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { endpointBotsApi, type EndpointAuditEventRecord, type EndpointBotRecord } from "../api/endpointBots";
 import { useCompany } from "../context/CompanyContext";
+import { EndpointAuditFeed, type EndpointAuditItem } from "../components/EndpointAuditFeed";
 import { EndpointBotPairingCard } from "../components/EndpointBotPairingCard";
 import { EndpointBotStatusList, type EndpointBotSummary } from "../components/EndpointBotStatusList";
 import { EndpointLocalTaskCard, type EndpointLocalTaskInput } from "../components/EndpointLocalTaskCard";
@@ -29,6 +30,25 @@ function toSummary(record: EndpointBotRecord): EndpointBotSummary {
   };
 }
 
+function isAuditKind(kind: string): kind is EndpointAuditItem["kind"] {
+  return kind === "read_file" || kind === "write_file" || kind === "list_dir" || kind === "shell_exec";
+}
+
+function toAuditItems(records: EndpointAuditEventRecord[]): EndpointAuditItem[] {
+  return records.flatMap((record) => {
+    if (!isAuditKind(record.kind)) return [];
+    return [{
+      id: record.id,
+      botName: record.botName,
+      kind: record.kind,
+      targetPath: record.targetPath,
+      outcome: record.outcome,
+      summary: record.summary,
+      createdAt: new Date(record.createdAtMs).toISOString(),
+    }];
+  });
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -44,10 +64,18 @@ export function PersonalEndpoints({ companyId: companyIdProp }: PersonalEndpoint
   const [botName, setBotName] = useState(DEFAULT_BOT_NAME);
   const [folderPath, setFolderPath] = useState(DEFAULT_FOLDER);
   const [folderMode, setFolderMode] = useState<"ro" | "rw">("ro");
+  const queryClient = useQueryClient();
 
   const endpointsQuery = useQuery({
     queryKey: ["endpoint-bots", companyId],
     queryFn: () => endpointBotsApi.list(companyId!),
+    enabled: !!companyId,
+  });
+
+  const auditQueryKey = ["endpoint-bot-audit", companyId] as const;
+  const auditQuery = useQuery({
+    queryKey: [...auditQueryKey, { limit: 20 }],
+    queryFn: () => endpointBotsApi.listAudit(companyId!, { limit: 20 }),
     enabled: !!companyId,
   });
 
@@ -62,7 +90,9 @@ export function PersonalEndpoints({ companyId: companyIdProp }: PersonalEndpoint
   /** Dispatch a local task to the chosen endpoint bot; the card renders the returned task id. */
   const dispatchLocalTask = (deviceId: string, input: EndpointLocalTaskInput) => {
     if (!companyId) return Promise.reject(new Error("먼저 회사를 선택하세요."));
-    return endpointBotsApi.enqueueTask(companyId, deviceId, input);
+    return endpointBotsApi.enqueueTask(companyId, deviceId, input).finally(() => {
+      void queryClient.invalidateQueries({ queryKey: auditQueryKey });
+    });
   };
 
   return (
@@ -163,6 +193,16 @@ export function PersonalEndpoints({ companyId: companyIdProp }: PersonalEndpoint
             onDispatch={dispatchLocalTask}
           />
         )}
+      </section>
+      <section aria-label="최근 로컬 작업 기록" className="space-y-3">
+        <h2 className="text-base font-semibold">최근 로컬 작업 기록</h2>
+        {auditQuery.isLoading && <p role="status" className="text-sm text-muted-foreground">기록을 불러오는 중…</p>}
+        {auditQuery.error && (
+          <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
+            로컬 작업 기록을 불러오지 못했습니다: {errorMessage(auditQuery.error)}
+          </p>
+        )}
+        {auditQuery.data && <EndpointAuditFeed items={toAuditItems(auditQuery.data.items)} />}
       </section>
     </div>
   );
