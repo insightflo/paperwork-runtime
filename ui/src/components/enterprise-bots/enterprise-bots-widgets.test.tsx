@@ -82,7 +82,8 @@ describe("TerminalPairingBanner", () => {
     expect(snippetEl.textContent).not.toContain("--token");
 
     const indicator = container.querySelector("[data-heartbeat-indicator]")!;
-    expect(indicator.textContent).toContain("Waiting for first heartbeat...");
+    expect(indicator.textContent).toContain("첫 신호 대기 중");
+    expect(container.querySelectorAll("[data-pairing-step]")).toHaveLength(3);
     expect(
       container.querySelector("[data-terminal-pairing-banner]")?.getAttribute("data-pairing-status"),
     ).toBe("waiting");
@@ -97,11 +98,11 @@ describe("TerminalPairingBanner", () => {
       buildDoctorSnippet("https://ops.paperwork.local", "term-01"),
     );
 
-    await click(container.querySelector('button[aria-label="Dismiss pairing banner"]'));
+    await click(container.querySelector('button[aria-label="연결 안내 닫기"]'));
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
-  it("flips status indicator to Connected once lastSeenAt is populated", async () => {
+  it("flips status indicator to 연결됨 once lastSeenAt is populated", async () => {
     await render(
       <TerminalPairingBanner
         terminalId="term-01"
@@ -117,7 +118,7 @@ describe("TerminalPairingBanner", () => {
       container.querySelector("[data-terminal-pairing-banner]")?.getAttribute("data-pairing-status"),
     ).toBe("connected");
     expect(container.querySelector("[data-heartbeat-indicator]")?.textContent).toContain(
-      "Connected",
+      "연결됨",
     );
   });
 });
@@ -138,9 +139,12 @@ describe("BotHealthSparkline", () => {
 
     const last3 = bars.slice(-3);
     expect(last3.map((b) => b.getAttribute("data-bar-tone"))).toEqual(["ok", "slow", "error"]);
-    expect(last3[0]?.getAttribute("fill")).toContain("--openbot-success");
-    expect(last3[1]?.getAttribute("fill")).toContain("--openbot-warning");
-    expect(last3[2]?.getAttribute("fill")).toContain("--openbot-danger");
+    expect(last3[0]?.getAttribute("fill")).toContain("--pw-emerald");
+    expect(last3[1]?.getAttribute("fill")).toContain("--pw-amber");
+    expect(last3[2]?.getAttribute("fill")).toContain("--pw-crimson");
+    expect(container.querySelector("svg[data-health-sparkline]")?.getAttribute("aria-label")).toBe(
+      "봇 상태 추이: 최근 3개 중 2개 정상",
+    );
     expect(last3[0]?.querySelector("title")?.textContent).toContain("42ms");
     expect(last3[2]?.querySelector("title")?.textContent).toContain("ref:E_UPSTREAM");
   });
@@ -174,7 +178,8 @@ describe("TerminalTelemetryCard", () => {
     expect(container.querySelector('[data-metric="cpu-mem"]')?.textContent).toContain("4% · 18MB");
     const hb = container.querySelector("[data-heartbeat-badge]")!;
     expect(hb.getAttribute("data-heartbeat-state")).toBe("fresh");
-    expect(hb.textContent).toContain("15s ago");
+    expect(container.textContent).toContain("노드 상태");
+    expect(hb.textContent).toContain("정상 · 15초 전");
     expect(container.querySelectorAll("svg[data-health-sparkline] rect")).toHaveLength(20);
   });
 
@@ -189,7 +194,7 @@ describe("TerminalTelemetryCard", () => {
       />,
     );
     expect(container.querySelector("[data-heartbeat-badge]")?.getAttribute("data-heartbeat-state")).toBe("stale");
-    expect(container.querySelector("[data-heartbeat-badge]")?.textContent).toContain("stale");
+    expect(container.querySelector("[data-heartbeat-badge]")?.textContent).toContain("지연");
 
     await render(
       <TerminalTelemetryCard
@@ -201,7 +206,7 @@ describe("TerminalTelemetryCard", () => {
       />,
     );
     expect(container.querySelector("[data-heartbeat-badge]")?.getAttribute("data-heartbeat-state")).toBe("offline");
-    expect(container.querySelector("[data-heartbeat-badge]")?.textContent).toContain("offline");
+    expect(container.querySelector("[data-heartbeat-badge]")?.textContent).toContain("오프라인");
   });
 });
 

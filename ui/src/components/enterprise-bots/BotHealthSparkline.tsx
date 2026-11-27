@@ -28,18 +28,18 @@ export function classifySampleTone(sample: BotHealthSample | null): SparklineBar
 function toneFill(tone: SparklineBarTone): string {
   switch (tone) {
     case "ok":
-      return "var(--openbot-success, #22c55e)";
+      return "var(--pw-emerald, #4f7d5a)";
     case "slow":
-      return "var(--openbot-warning, #f59e0b)";
+      return "var(--pw-amber, #a16207)";
     case "error":
-      return "var(--openbot-danger, #f43f5e)";
+      return "var(--pw-crimson, #b91c1c)";
     case "empty":
-      return "var(--openbot-border-strong, rgba(148, 163, 184, 0.28))";
+      return "var(--pw-hairline-strong, rgba(31, 27, 22, 0.24))";
   }
 }
 
 export function formatSampleTooltip(sample: BotHealthSample): string {
-  const parts = [sample.ts, sample.ok ? "OK" : "ERR"];
+  const parts = [sample.ts, sample.ok ? "정상" : "오류"];
   if (sample.statusCode != null) parts.push(`HTTP ${sample.statusCode}`);
   if (sample.rttMs != null) parts.push(`${Math.round(sample.rttMs)}ms`);
   if (sample.errorRef) parts.push(`ref:${sample.errorRef}`);
@@ -71,8 +71,8 @@ export function BotHealthSparkline({
   const summaryLabel =
     ariaLabel ??
     (recent.length > 0
-      ? `Bot health sparkline: ${okCount} of ${recent.length} healthy`
-      : "Bot health sparkline: no samples yet");
+      ? `봇 상태 추이: 최근 ${recent.length}개 중 ${okCount}개 정상`
+      : "봇 상태 추이: 아직 표본 없음");
 
   const gap = 2;
   const barWidth = Math.max(2, (width - gap * (count - 1)) / count);
@@ -107,7 +107,7 @@ export function BotHealthSparkline({
         }
 
         const y = height - barHeight;
-        const tooltip = sample ? formatSampleTooltip(sample) : "No sample";
+        const tooltip = sample ? formatSampleTooltip(sample) : "표본 없음";
 
         return (
           <rect
