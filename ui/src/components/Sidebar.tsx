@@ -7,6 +7,7 @@ import {
   History,
   Network,
   BookOpen,
+  BookOpenCheck,
   Brain,
   Boxes,
   Settings,
@@ -231,7 +232,7 @@ export function Sidebar({ onToggleCompact }: SidebarProps = {}) {
                 />
                 {!compact && <span>관리 · 도구</span>}
               </span>
-              {!compact && <span className="font-mono text-[10px] text-muted-foreground/70">15</span>}
+              {!compact && <span className="font-mono text-[10px] text-muted-foreground/70">16</span>}
             </CollapsibleTrigger>
             <CollapsibleContent className="mt-1 max-h-[40vh] overflow-y-auto scrollbar-auto-hide">
               <div className="flex flex-col gap-0.5">
@@ -239,6 +240,7 @@ export function Sidebar({ onToggleCompact }: SidebarProps = {}) {
                 <SidebarNavItem to="/quality" label="Quality" icon={ListChecks} />
                 <SidebarNavItem to="/org" label="Org" icon={Network} />
                 <SidebarNavItem to="/skills" label="Skills" icon={Boxes} />
+                <SidebarNavItem to="/learning-review" label="Learning" icon={BookOpenCheck} />
                 <SidebarNavItem to="/instructions" label="Instructions" icon={BookOpen} />
                 <SidebarNavItem to="/agent-wiki" label="Wiki" icon={Brain} />
                 <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
