@@ -41,6 +41,7 @@ import {
 } from "../api/enterprise-bots";
 import { secretsApi } from "../api/secrets";
 import { EmptyState } from "../components/EmptyState";
+import { EndpointBotPairingCard } from "../components/EndpointBotPairingCard";
 import { ApprovalQueueDrawer } from "../components/enterprise-bots/ApprovalQueueDrawer";
 import { BotHealthSparkline } from "../components/enterprise-bots/BotHealthSparkline";
 import { CapabilityMatrix, type BotCapabilityRule } from "../components/enterprise-bots/CapabilityMatrix";
@@ -780,6 +781,7 @@ function EnterpriseBotsCockpit({
 
   return (
     <div className="space-y-3 tabular-nums">
+      <EndpointBotPairingCard />
       {/* 1-row 4-cell Combo 1 telemetry strip; cells jump to their tab */}
       <div
         className="cockpit-strip h-10 w-full gap-0 overflow-x-auto rounded-xl border border-slate-200/90 bg-white px-0 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)]"
