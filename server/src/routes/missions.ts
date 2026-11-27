@@ -19,7 +19,7 @@
  */
 import { Router } from "express";
 import { mountMissionRevisionStart } from "./mission-revision-start.js";
-import { type Db } from "@paperclipai/db";
+import { heartbeatRuns, type Db } from "@paperclipai/db";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { missionService } from "../services/missions.js";
 import { issueService } from "../services/issues.js";
@@ -608,9 +608,26 @@ export function missionRoutes(db: Db) { const router = Router();
         if (issue.executionRunId) candidateRunIds.add(issue.executionRunId);
         if (issue.checkoutRunId) candidateRunIds.add(issue.checkoutRunId);
       }
-      for (const runId of candidateRunIds) {
-        const run = await heartbeat.getRun(runId);
-        if (!run || run.companyId !== existing.companyId) continue;
+      // N+1 제거: 이슈 트리의 실행·체크아웃 run 들을 회사 소유 필터와 함께 1회 배치 조회한다.
+      //   기존 계약 유지: 미존재·타사 run 은 건너뛰고, 기존 Set 순서대로 활성(queued/running)
+      //   run 만 heartbeat.cancelRun 한다. 빈 Set 은 쿼리 없이 통과한다.
+      const candidateRunIdList = [...candidateRunIds];
+      const candidateRuns =
+        candidateRunIdList.length === 0
+          ? []
+          : await db
+              .select()
+              .from(heartbeatRuns)
+              .where(
+                and(
+                  eq(heartbeatRuns.companyId, existing.companyId),
+                  inArray(heartbeatRuns.id, candidateRunIdList),
+                ),
+              );
+      const candidateRunsById = new Map(candidateRuns.map((run) => [run.id, run]));
+      for (const runId of candidateRunIdList) {
+        const run = candidateRunsById.get(runId);
+        if (!run) continue;
         if (run.status === "queued" || run.status === "running") {
           await heartbeat.cancelRun(run.id);
         }
