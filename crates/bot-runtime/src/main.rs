@@ -24,6 +24,10 @@
 //! - `endpoint-doctor [--config <path>] [--json]`: Checks local endpoint readiness;
 //!   defaults to `~/.paperwork/endpoint.json`, prints a human summary unless `--json`,
 //!   and exits 0 when ready or 1 otherwise. The outbox is next to the config, in `outbox/`.
+//! - `endpoint-scan --folder <path> [--max-files <n>] [--max-depth <n>]`:
+//!   Prints a sorted workspace snapshot as JSON, using the default watch limits unless overridden.
+//! - `endpoint-audit --log <path> [--limit <n>]`:
+//!   Prints the latest redacted audit entries as a JSON array (default 20, oldest first).
 //! - `render-service --os <macos|linux|windows> --server <url> --name <endpoint> [--binary <path>] [--config <path>]`:
 //!   Renders the OS service unit (LaunchAgent plist / systemd user unit / Windows scheduled-task
 //!   script) as raw text on stdout for direct redirection into the service file.
@@ -38,7 +42,9 @@ use paperwork_bot_runtime::control_sock::{
     default_control_socket_dir, default_control_socket_path, ensure_and_validate_socket_dir,
     send_control_command, ControlCommand,
 };
+use paperwork_bot_runtime::endpoint_audit::{redact_sensitive, AuditLogger};
 use paperwork_bot_runtime::endpoint_doctor::{run_endpoint_doctor, DoctorInput, DoctorReport};
+use paperwork_bot_runtime::endpoint_watch::{scan_workspace, WatchLimits};
 #[cfg(unix)]
 use paperwork_bot_runtime::executor::supervisor_self_test;
 use paperwork_bot_runtime::governance::{evaluate_policy, PolicyEvalRequest};
@@ -49,6 +55,7 @@ use paperwork_bot_runtime::service_install::{
 };
 use paperwork_bot_runtime::token::{redact_secrets, validate_token_prefix, verify_token_sha256};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::env;
 use std::io::{self, Read};
 use std::path::PathBuf;
@@ -407,6 +414,56 @@ fn cmd_detect_clis() -> Result<Value, String> {
     Ok(Value::Array(detected))
 }
 
+/// Strict value-taking options for the local inspection commands only.
+fn parse_endpoint_flags<'a>(
+    args: &'a [String],
+    allowed: &[&str],
+) -> Result<HashMap<&'a str, &'a str>, String> {
+    let mut flags = HashMap::new();
+    let mut args = args.iter();
+    while let Some(flag) = args.next() {
+        if !allowed.contains(&flag.as_str()) || flags.contains_key(flag.as_str()) {
+            return Err(format!("unknown or repeated flag {flag:?}"));
+        }
+        let value = args.next()
+            .filter(|v| !v.is_empty() && !v.starts_with("--"))
+            .ok_or_else(|| format!("{flag} requires a value"))?;
+        flags.insert(flag.as_str(), value.as_str());
+    }
+    Ok(flags)
+}
+
+fn endpoint_limit(flags: &HashMap<&str, &str>, name: &str, default: usize) -> Result<usize, String> {
+    flags.get(name).map_or(Ok(default), |value| {
+        value.parse().map_err(|_| format!("invalid {name}; expected a non-negative integer"))
+    })
+}
+
+fn cmd_endpoint_scan(args: &[String]) -> Result<Value, String> {
+    let flags = parse_endpoint_flags(args, &["--folder", "--max-files", "--max-depth"])?;
+    let folder = flags.get("--folder").ok_or("missing required flag --folder")?;
+    let defaults = WatchLimits::default();
+    let limits = WatchLimits {
+        max_files: endpoint_limit(&flags, "--max-files", defaults.max_files)?,
+        max_depth: endpoint_limit(&flags, "--max-depth", defaults.max_depth)?,
+        ..defaults
+    };
+    let snapshot = scan_workspace(std::path::Path::new(folder), &limits)?;
+    serde_json::to_value(snapshot).map_err(|e| format!("failed to serialize snapshot: {e}"))
+}
+
+fn cmd_endpoint_audit(args: &[String]) -> Result<Value, String> {
+    let flags = parse_endpoint_flags(args, &["--log", "--limit"])?;
+    let log = flags.get("--log").ok_or("missing required flag --log")?;
+    let limit = endpoint_limit(&flags, "--limit", 20)?;
+    let mut entries = AuditLogger::new(PathBuf::from(log), u64::MAX).read_recent(limit)?;
+    // Also mask summaries from logs populated outside AuditLogger::append.
+    for entry in &mut entries {
+        entry.summary = redact_sensitive(&entry.summary);
+    }
+    serde_json::to_value(entries).map_err(|e| format!("failed to serialize audit entries: {e}"))
+}
+
 fn cmd_endpoint_doctor(args: &[String]) -> Result<DoctorReport, String> {
     #[derive(serde::Deserialize)]
     struct Config {
@@ -508,7 +565,7 @@ fn cmd_render_service(args: &[String]) -> Result<String, String> {
 }
 
 fn usage() -> &'static str {
-    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound|ctl|doctor|init|detect-clis|render-service|endpoint-doctor> [flags]"
+    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound|ctl|doctor|init|detect-clis|render-service|endpoint-doctor|endpoint-scan|endpoint-audit> [flags]"
 }
 
 fn run(args: &[String]) -> Result<Value, String> {
@@ -526,6 +583,8 @@ fn run(args: &[String]) -> Result<Value, String> {
         "doctor" => cmd_doctor(rest),
         "init" => cmd_init(rest),
         "detect-clis" => cmd_detect_clis(),
+        "endpoint-scan" => cmd_endpoint_scan(rest),
+        "endpoint-audit" => cmd_endpoint_audit(rest),
         "-h" | "--help" | "help" => Ok(json!({ "usage": usage() })),
         other => Err(format!("unknown subcommand {other:?}; {}", usage())),
     }
