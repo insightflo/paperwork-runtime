@@ -5,26 +5,40 @@ import { conflict } from "../errors.js";
 import { producerAttempt } from "./work-products/producer-attempt.js";
 import { WORKFLOW_ATTEMPT_PROOF_KEY, withoutWorkflowAttemptProof, workflowAttemptProofSchema } from "./heartbeat-finalization/workflow-attempt-proof.js";
 
-/** Original insertion only. Nested callers use a savepoint; step locks last until outer admission commits. */
+/** Original insertion only. Nested callers use a savepoint; row locks last until outer admission commits. */
 export async function insertWorkflowWakeRequest(db: Db, values: typeof agentWakeupRequests.$inferInsert,
   parentHeartbeatRunId: string | null = null): Promise<Array<typeof agentWakeupRequests.$inferSelect>> {
   return db.transaction(async tx => {
     const reject = () => { throw conflict("heartbeat_workflow_attempt_unproven"); };
+    const rejectAgent = () => {
+      throw Object.assign(conflict("heartbeat_agent_not_invokable"), { code: "heartbeat_agent_not_invokable" });
+    };
     const id = values.id ?? randomUUID(), payload = withoutWorkflowAttemptProof(values.payload ?? null);
-    // Non-executing rows and historical NULL identities never acquire a proof by inference.
-    if (values.workflowExecutionGeneration == null || ["skipped", "coalesced"].includes(values.status ?? "queued")) {
+    const auditOnly = ["skipped", "coalesced"].includes(values.status ?? "queued");
+    const lockInvokableAgent = async () => {
+      const [agent] = await tx.select({ companyId: agents.companyId, status: agents.status }).from(agents)
+        .where(eq(agents.id, values.agentId)).for("share");
+      if (!agent || agent.companyId !== values.companyId || ["terminated", "archived", "pending_approval"].includes(agent.status)) rejectAgent();
+    };
+    // Diagnostic rows do not execute. Other legacy NULL identities remain NULL, but still need
+    // a current, same-company invokable agent before they may be inserted.
+    if (auditOnly) {
+      return tx.insert(agentWakeupRequests).values({ ...values, id, payload }).returning();
+    }
+    if (values.workflowExecutionGeneration == null) {
+      await lockInvokableAgent();
       return tx.insert(agentWakeupRequests).values({ ...values, id, payload }).returning();
     }
     if (!values.workflowStepRunId || !values.workflowRunId) return reject();
-    const [linked] = await tx.select({ step: workflowStepRuns, run: workflowRuns, issueCompanyId: issues.companyId, agentCompanyId: agents.companyId })
+    const [linked] = await tx.select({ step: workflowStepRuns, run: workflowRuns, issueCompanyId: issues.companyId })
       .from(workflowStepRuns).innerJoin(workflowRuns, eq(workflowRuns.id, workflowStepRuns.workflowRunId))
-      .innerJoin(agents, eq(agents.id, values.agentId))
       .leftJoin(issues, eq(issues.id, workflowStepRuns.issueId))
       .where(eq(workflowStepRuns.id, values.workflowStepRunId)).for("share", { of: workflowStepRuns });
-    if (!linked || linked.run.companyId !== values.companyId || linked.agentCompanyId !== values.companyId || linked.run.id !== values.workflowRunId
+    if (!linked || linked.run.companyId !== values.companyId || linked.run.id !== values.workflowRunId
       || linked.step.issueId !== (values.issueId ?? null) || (values.issueId && linked.issueCompanyId !== values.companyId)
       || linked.run.missionId !== (values.missionId ?? null)
       || linked.step.executionGeneration !== values.workflowExecutionGeneration) return reject();
+    await lockInvokableAgent();
     let attempt = { retryCount: linked.step.retryCount, iterationIndex: linked.step.iterationIndex };
     if (parentHeartbeatRunId) {
       const [parent] = await tx.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, parentHeartbeatRunId)).for("share");

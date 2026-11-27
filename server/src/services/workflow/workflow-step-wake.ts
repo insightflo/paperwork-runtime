@@ -103,6 +103,7 @@ async function wakeExistingWorkflowStepIssueUnlocked(input: WakeExistingInput): 
   if (!isRunnableIssue) return false;
 
   let wakeIssue = issue;
+  if (wakeIssue.assigneeAgentId && !(await runnableWorkflowAssigneeId(input.db, input.run.companyId, { id: wakeIssue.assigneeAgentId }))) return false;
   if (!wakeIssue.assigneeAgentId) {
     const assigneeAgentId = await resolveWorkflowStepAssigneeAgentId(input.db, input.run.companyId, effectiveInput.step);
     if (!assigneeAgentId) return false;
@@ -266,7 +267,7 @@ export async function resolveWorkflowStepAssigneeAgentId(
   step: WorkflowStep,
 ): Promise<string | undefined> {
   if (typeof step.agentId === "string" && step.agentId.trim()) {
-    return step.agentId.trim();
+    return runnableWorkflowAssigneeId(db, companyId, { id: step.agentId.trim() });
   }
 
   const rawAgentName = (step as PersistedWorkflowStep).agentName;
@@ -275,13 +276,22 @@ export async function resolveWorkflowStepAssigneeAgentId(
     : "";
   if (!agentName) return undefined;
 
+  return runnableWorkflowAssigneeId(db, companyId, { name: agentName });
+}
+
+async function runnableWorkflowAssigneeId(
+  db: Db,
+  companyId: string,
+  selector: { id?: string; name?: string },
+): Promise<string | undefined> {
   const [agent] = await db
     .select({ id: agents.id })
     .from(agents)
     .where(and(
       eq(agents.companyId, companyId),
-      eq(agents.name, agentName),
+      selector.id ? eq(agents.id, selector.id) : eq(agents.name, selector.name!),
       ne(agents.status, "terminated"),
+      ne(agents.status, "archived"),
       ne(agents.status, "pending_approval"),
     ))
     .orderBy(asc(agents.createdAt))
