@@ -1086,7 +1086,10 @@ mod tests {
             "[::1]",
             "",
         ] {
-            assert!(!is_loopback_host(host), "expected {host:?} to be non-loopback");
+            assert!(
+                !is_loopback_host(host),
+                "expected {host:?} to be non-loopback"
+            );
         }
     }
 
