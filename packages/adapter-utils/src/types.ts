@@ -389,6 +389,15 @@ export interface CLIAdapterModule {
 // UI config form values (moved from ui/src/components/AgentConfigForm.tsx)
 // ---------------------------------------------------------------------------
 
+/** One ordered backup entry for automatic adapter fallback. */
+export interface AdapterFallbackChainEntry {
+  adapterType?: string;
+  command?: string;
+  provider?: string;
+  model: string;
+  thinking?: string;
+}
+
 export interface CreateConfigValues {
   adapterType: string;
   cwd: string;
@@ -403,6 +412,12 @@ export interface CreateConfigValues {
   command: string;
   fallbackCommand?: string;
   fallbackModel?: string;
+  /** Provider used for automatic fallback runs when the chain below is empty. */
+  fallbackProvider?: string;
+  /** Whether automatic provider/model failover is enabled. Absent or true = on. */
+  fallbackAutomatic?: boolean;
+  /** Ordered backup chain consulted when the primary run fails. */
+  fallbackOrder?: AdapterFallbackChainEntry[];
   args: string;
   extraArgs: string;
   envVars: string;
