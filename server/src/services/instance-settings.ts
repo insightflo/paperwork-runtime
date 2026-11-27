@@ -1,17 +1,11 @@
 import type { Db } from "@paperclipai/db";
 import { companies, instanceSettings } from "@paperclipai/db";
 import {
-  type InstanceGeneralSettings,
-  instanceExperimentalSettingsSchema,
-  judgmentBaseUrlSchema,
-  judgmentModelIdSchema,
-  type InstanceExperimentalSettings,
-  type PatchInstanceGeneralSettings,
-  type InstanceSettings,
-  type PatchInstanceExperimentalSettings,
+  type InstanceGeneralSettings, type InstanceExperimentalSettings, instanceExperimentalSettingsSchema, judgmentBaseUrlSchema,
+  judgmentModelIdSchema, type PatchInstanceGeneralSettings, type PatchInstanceExperimentalSettings, type InstanceSettings,
 } from "@paperclipai/shared";
 import type { LlmStructuredConnectionTestResult } from "@paperclipai/shared/types/instance";
-import { llmStructuredProviderFieldsSchema, type LlmStructuredTestConnectionInput } from "@paperclipai/shared/validators/instance";
+import { hiddenModelsSchema, llmStructuredProviderFieldsSchema, promptCacheTtlSchema, providerAccountPoolStrategySchema, type LlmStructuredTestConnectionInput } from "@paperclipai/shared/validators/instance";
 import { eq } from "drizzle-orm";
 import { localEncryptedProvider } from "../secrets/local-encrypted-provider.js";
 import type { StoredSecretVersionMaterial } from "../secrets/types.js";
@@ -51,6 +45,9 @@ function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
   const llmModel = judgmentModelIdSchema.safeParse(source.llmStructuredModel);
   const providers = readProviders(source.llmStructuredProviders);
   const defaultProvider = providers?.find(({ id }) => id === source.llmStructuredDefaultProviderId);
+  const hiddenModels = hiddenModelsSchema.safeParse(source.hiddenModels);
+  const promptCacheTtl = promptCacheTtlSchema.safeParse(source.promptCacheTtl);
+  const poolStrategy = providerAccountPoolStrategySchema.safeParse(source.providerAccountPoolStrategy);
   // 필드 단위 검증: 한 필드가 손상되어도 다른 필드(예: censorUsernameInLogs)까지
   // 기본값으로 되돌리지 않는다. null/불량값은 해당 오버라이드만 뺀다.
   return {
@@ -65,6 +62,9 @@ function normalizeGeneralSettings(raw: unknown): InstanceGeneralSettings {
       ...fields, apiKeyConfigured: hasEncryptedMaterial(apiKeyEncrypted),
     })) } : {}),
     ...(defaultProvider ? { llmStructuredDefaultProviderId: defaultProvider.id } : {}),
+    ...(hiddenModels.success && hiddenModels.data.length > 0 ? { hiddenModels: hiddenModels.data } : {}),
+    ...(promptCacheTtl.success && promptCacheTtl.data ? { promptCacheTtl: promptCacheTtl.data } : {}),
+    ...(poolStrategy.success && poolStrategy.data ? { providerAccountPoolStrategy: poolStrategy.data } : {}),
   };
 }
 

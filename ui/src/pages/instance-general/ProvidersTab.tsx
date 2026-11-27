@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { ProviderAuthSection } from "@/components/ProviderAuthSection";
-import { instanceSettingsApi, type LlmStructuredConnectionTestResult } from "@/api/instanceSettings";
+import { instanceSettingsApi, type LlmStructuredConnectionTestResult, type PromptCacheTtl, type ProviderAccountPoolStrategy,
+  type UsageLimitGateGeneralSettings, type UsageLimitGateGeneralSettingsPatch } from "@/api/instanceSettings";
+import { queryKeys } from "@/lib/queryKeys";
 import { cn } from "@/lib/utils";
 import {
   chip, chipDanger, chipPrimary, cockpitInset, cockpitPanel, cockpitSectionHeader, INPUT, MONO_SNIPPET,
@@ -122,6 +125,88 @@ function PiSubscriptionAuthProviders() {
   );
 }
 
+/** [stage28-w2] 줄바꿈 또는 쉼표로 구분된 숨길 모델 입력을 정규화한다(공백·빈 항목 제거). */
+export function parseHiddenModelsInput(raw: string): string[] {
+  return raw.split(/[\n,]/).map((part) => part.trim()).filter((part) => part !== "");
+}
+
+export interface ModelPolicyDraft {
+  promptCacheTtl: PromptCacheTtl; providerAccountPoolStrategy: ProviderAccountPoolStrategy; hiddenModelsText: string;
+}
+
+/** 저장된 일반 설정에서 정책 초안을 만든다(W1 병합 전 필드는 undefined → 기본값). */
+export function toModelPolicyDraft(settings?: UsageLimitGateGeneralSettings | null): ModelPolicyDraft {
+  return {
+    promptCacheTtl: settings?.promptCacheTtl ?? "default",
+    providerAccountPoolStrategy: settings?.providerAccountPoolStrategy ?? "earliest_reset",
+    hiddenModelsText: (settings?.hiddenModels ?? []).join(", "),
+  };
+}
+
+export function toModelPolicyPatch(draft: ModelPolicyDraft): UsageLimitGateGeneralSettingsPatch {
+  return {
+    promptCacheTtl: draft.promptCacheTtl,
+    providerAccountPoolStrategy: draft.providerAccountPoolStrategy,
+    hiddenModels: parseHiddenModelsInput(draft.hiddenModelsText),
+  };
+}
+
+const PROMPT_CACHE_TTL_OPTIONS = [
+  { value: "default", label: "기본 (모델 기본값)" }, { value: "5m", label: "5분" }, { value: "1h", label: "1시간" },
+] satisfies ReadonlyArray<{ value: PromptCacheTtl; label: string }>;
+const POOL_STRATEGY_OPTIONS = [
+  { value: "earliest_reset", label: "가장 빠른 리셋 우선 (기본)" }, { value: "round_robin", label: "라운드 로빈" }, { value: "manual", label: "수동" },
+] satisfies ReadonlyArray<{ value: ProviderAccountPoolStrategy; label: string }>;
+
+/** Tab 2 하위 섹션 — 모델 노출(hiddenModels)·Prompt Cache TTL·계정 풀 로테이션 전략 저장. */
+function ModelExposurePolicySection() {
+  const queryClient = useQueryClient();
+  const settingsQuery = useQuery({ queryKey: queryKeys.instance.generalSettings, queryFn: () => instanceSettingsApi.getGeneral() });
+  const settings = settingsQuery.data;
+  const [draft, setDraft] = useState<ModelPolicyDraft>(() => toModelPolicyDraft(settings));
+  const [syncedWith, setSyncedWith] = useState(settings);
+  // 서버 데이터가 바뀌면(초기 로딩·재조회) 초안을 덮어쓴다 — 렌더 중 동기화(SSR 안전, useEffect 불필요).
+  if (settings !== syncedWith) {
+    setSyncedWith(settings);
+    setDraft(toModelPolicyDraft(settings));
+  }
+  const saveMutation = useMutation({
+    mutationFn: () => instanceSettingsApi.updateGeneral(toModelPolicyPatch(draft)),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: queryKeys.instance.generalSettings }); },
+  });
+  const { error } = saveMutation;
+  return (
+    <fieldset disabled={saveMutation.isPending} className={cn("mt-4 grid gap-3", cockpitInset)}>
+      <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+        <label className="grid gap-1 text-sm font-medium">Prompt Cache TTL
+          <select aria-label="Prompt Cache TTL" className={cn(INPUT, "min-w-0 p-2")} value={draft.promptCacheTtl}
+            onChange={(event) => setDraft({ ...draft, promptCacheTtl: event.target.value as PromptCacheTtl })}>
+            {PROMPT_CACHE_TTL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-1 text-sm font-medium">계정 풀 로테이션 전략
+          <select aria-label="계정 풀 로테이션 전략" className={cn(INPUT, "min-w-0 p-2")} value={draft.providerAccountPoolStrategy}
+            onChange={(event) => setDraft({ ...draft, providerAccountPoolStrategy: event.target.value as ProviderAccountPoolStrategy })}>
+            {POOL_STRATEGY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </label>
+      </div>
+      <label className="grid gap-1 text-sm font-medium">숨길 모델 (Hidden models)
+        <textarea aria-label="숨길 모델 (Hidden models)" className="min-h-16 w-full rounded-md border border-border bg-card p-2 font-mono text-xs"
+          placeholder={"예: glm-4.7, gpt-4o-mini\n줄바꿈 또는 쉼표로 구분"} value={draft.hiddenModelsText}
+          onChange={(event) => setDraft({ ...draft, hiddenModelsText: event.target.value })} />
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className={cn(chipPrimary, "w-fit font-semibold")} disabled={saveMutation.isPending}
+          onClick={() => saveMutation.mutate()}>정책 저장</button>
+        {saveMutation.isPending && <p role="status" className="text-xs text-muted-foreground">저장 중…</p>}
+        {saveMutation.isSuccess && <p role="status" className="text-xs text-[var(--pw-lime)]">모델 노출·캐시·계정 풀 정책을 저장했습니다.</p>}
+        {error && <p role="alert" className="text-xs text-destructive">{error instanceof Error ? error.message : "정책 저장에 실패했습니다."}</p>}
+      </div>
+    </fieldset>
+  );
+}
+
 /** Tab 2 — Providers: 구독 인증(Subscription/OAuth) + API 인증(API Key) 하위 섹션. */
 export function ProvidersTab({ controller }: { controller: LlmStructuredProvidersController }) {
   const { rows, savedIds, defaultId, dirty, busy, saved, error, legacyNote } = controller;
@@ -158,6 +243,11 @@ export function ProvidersTab({ controller }: { controller: LlmStructuredProvider
           {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
           {saved && <p role="status" className="text-xs text-[var(--pw-lime)]">공급자 설정을 저장했습니다.</p>}
         </fieldset>
+      </section>
+      <section className={cn(cockpitPanel, "p-4")}>
+        <h2 className={cockpitSectionHeader}>모델 노출 · Prompt Cache · 계정 풀 정책</h2>
+        <p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">숨길 모델은 보드 모델 목록·폴백 제안에서 제외되고, 나머지 정책은 하트비트 실행의 API 사용 방식을 결정합니다.</p>
+        <ModelExposurePolicySection />
       </section>
     </div>
   );
