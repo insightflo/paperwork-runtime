@@ -1,13 +1,7 @@
-// server/src/services/missions/qa-rework-cap-oversight.ts
-//
-// [ purpose ] QA rework cap exhaustion → Mission Owner (Oversight) handoff.
-//   Lease/fencing token in correlationId ensures single-owner create+link.
-//   Append-only claim (never deleted). SHA256 key for safe dedupe.
-//   Wake dispatch always verifies authoritative DB outcome.
-
+// QA cap owner handoff: append-only lease/fencing claims and verified post-commit wakes.
 import { createHash, randomUUID } from "node:crypto";
 import type { Db } from "@paperclipai/db";
-import { issues, workflowTransitionEvents } from "@paperclipai/db";
+import { issues, missions, workflowTransitionEvents } from "@paperclipai/db";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { MissionRow } from "../missions.js";
 import type { MissionServiceDeps } from "../missions.js";
@@ -19,10 +13,6 @@ import { loadLatestMissionOwnerDecision } from "./mission-owner-recovery-ledger.
 export type { QaReworkCapExhaustion } from "./qa-rework-cap-oversight-detection.js";
 export { detectQaReworkCapExhaustion } from "./qa-rework-cap-oversight-detection.js";
 import type { QaReworkCapExhaustion } from "./qa-rework-cap-oversight-detection.js";
-
-// ---------------------------------------------------------------------------
-// Key / marker (SHA256 — safe from LIKE/colon metacharacters in step IDs)
-// ---------------------------------------------------------------------------
 
 export const QA_CAP_KEY_PREFIX = "qa-cap-key";
 
@@ -66,12 +56,7 @@ export function isQaReworkCapOversightIssue(
 const PRODUCER_SOURCE_ISSUE_RE = /^Producer source issue:\s*([0-9a-f-]{36}|[A-Z]+-\d+)\s*$/im;
 const QA_STEP_ID_RE = /^QA: step\s+([A-Za-z0-9_-]+)\s*$/im;
 
-/**
- * [cap-oversight producer authority] qa-cap-oversight 이슈 설명의 "Producer source issue:" 라인에서
- *   producer issue id/identifier 를 추출한다. 이 이슈의 origin 은 oversight issue(스텝 없음)라
- *   supervision 의 DAG 역추적이 producer 를 찾지 못하는 갭을 메우는 유일한 구조 경로다.
- *   자연어 코멘트가 아니라 시스템이 생성한 설명이므로 신뢰 가능한 입력.
- */
+/** Extract the producer reference carried by the legacy cap description. */
 export function extractQaCapProducerIssueRef(
   description: string | null | undefined,
 ): string | null {
@@ -81,11 +66,7 @@ export function extractQaCapProducerIssueRef(
   return ref ? ref : null;
 }
 
-/**
- * [cap-oversight QA gate authority] qa-cap-oversight 이슈 설명의 "QA: step <stepId>" 라인에서
- *   QA step id 를 추출한다. producer rework authorization 의 fresh REQUEST_CHANGES 검증이
- *   QA 게이트 이슈를 찾는 데 쓴다(origin 이 oversight 라 resolveQaGateIssueId 가 null 인 갭 보완).
- */
+/** Extract the QA step reference carried by the legacy cap description. */
 export function extractQaCapQaStepId(
   description: string | null | undefined,
 ): string | null {
@@ -94,10 +75,6 @@ export function extractQaCapQaStepId(
   const ref = match?.[1]?.trim();
   return ref ? ref : null;
 }
-
-// ---------------------------------------------------------------------------
-// Description
-// ---------------------------------------------------------------------------
 
 export function buildQaReworkCapDescription(input: {
   keyMarker: string;
@@ -145,10 +122,6 @@ export function buildQaReworkCapDescription(input: {
   ].join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// Atomic create / reuse + wake
-// ---------------------------------------------------------------------------
-
 const STALE_CLAIM_MS = 60_000;
 
 /** Parse epoch ms from a lease token (`lease:<epochMs>:<nonce>`). */
@@ -176,7 +149,12 @@ export async function ensureQaReworkCapOversightIssue(input: {
   createIssue: (companyId: string, data: IssueCreateInput) => Promise<IssueRow>;
   onOwnerActionCreated: MissionServiceDeps["onOwnerActionCreated"];
 }): Promise<EnsureQaCapResult | null> {
-  const { db, mission, oversightIssue, exhaustion, workflowName, createIssue } = input;
+  const { db, oversightIssue, exhaustion, workflowName, createIssue } = input;
+  // Refresh stale supervision snapshots so the stored assignee and wake use the current DB owner.
+  const [mission] = await db.select().from(missions).where(and(
+    eq(missions.id, input.mission.id), eq(missions.companyId, input.mission.companyId),
+  )).limit(1);
+  if (!mission) throw new Error("qa-cap-oversight: mission not found");
   const onOwnerActionCreated = input.onOwnerActionCreated;
   if (!onOwnerActionCreated) throw new Error("qa-cap-oversight: onOwnerActionCreated callback is required");
   const keyHash = buildQaCapKeyHash({
@@ -260,14 +238,9 @@ export async function ensureQaReworkCapOversightIssue(input: {
   const ok = await fencedLinkAndUnhide(db, claim.id, rawIssue.id, myLeaseToken, mission.companyId);
   if (!ok) return null;
 
-  // 7. Re-read the now-visible issue for dispatch/return.
-  const [issue] = await db.select().from(issues).where(eq(issues.id, rawIssue.id)).limit(1);
-  if (!issue || issue.hiddenAt) return null;
-  await dispatchCapWake({
-    db, mission, issue, oversightIssue,
-    workflowRunId: exhaustion.workflowRunId, keyHash, onOwnerActionCreated,
-  });
-  return { issue, created: true };
+  // Refresh assignment under the same locks as reuse, then dispatch after commit.
+  const result = await reuseExistingIssue(wakeInput, rawIssue.id);
+  return { ...result, created: true };
 }
 
 /** Atomic transaction: CAS-link claim (exact lease token) + unhide issue. Company-scoped. Throw on unhide miss → rollback. */
@@ -294,13 +267,27 @@ interface WakeInput {
 }
 
 async function reuseExistingIssue(wakeInput: WakeInput, issueId: string): Promise<EnsureQaCapResult> {
-  const { db, mission, oversightIssue } = wakeInput;
-  const [issue] = await db.select().from(issues).where(and(
-    eq(issues.id, issueId), eq(issues.companyId, mission.companyId),
-    eq(issues.missionId, mission.id), eq(issues.originKind, "mission_main_executor_unblock"),
-  )).limit(1);
-  if (!issue) throw new Error(`qa-cap-oversight: linked issue ${issueId} not found`);
-  if (issue.hiddenAt) await db.update(issues).set({ hiddenAt: null, updatedAt: new Date() }).where(eq(issues.id, issueId));
+  const { db, oversightIssue } = wakeInput;
+  const { mission, issue } = await db.transaction(async (tx) => {
+    // Mission -> issue lock order prevents an old supervision snapshot undoing an owner transfer.
+    const [mission] = await tx.select().from(missions).where(and(
+      eq(missions.id, wakeInput.mission.id), eq(missions.companyId, wakeInput.mission.companyId),
+    )).limit(1).for("share");
+    if (!mission) throw new Error("qa-cap-oversight: mission not found");
+    let [issue] = await tx.select().from(issues).where(and(
+      eq(issues.id, issueId), eq(issues.companyId, mission.companyId),
+      eq(issues.missionId, mission.id), eq(issues.originKind, "mission_main_executor_unblock"),
+    )).limit(1).for("update");
+    if (!issue) throw new Error(`qa-cap-oversight: linked issue ${issueId} not found`);
+    const repair = mission.ownerAgentId && issue.assigneeAgentId !== mission.ownerAgentId
+      && !["done", "cancelled"].includes(issue.status);
+    if (issue.hiddenAt || repair) {
+      [issue] = await tx.update(issues).set({ hiddenAt: null, updatedAt: new Date(),
+        ...(repair ? { assigneeAgentId: mission.ownerAgentId, assigneeUserId: null } : {}),
+      }).where(eq(issues.id, issueId)).returning();
+    }
+    return { mission, issue };
+  });
   await reconcileOrphanIssues(db, mission.companyId, mission.id, buildQaCapKeyMarker(wakeInput.keyHash), issue.id);
   const ownerDecision = await loadLatestMissionOwnerDecision({
     db,

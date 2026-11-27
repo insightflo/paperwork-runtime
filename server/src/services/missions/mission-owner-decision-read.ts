@@ -1,5 +1,5 @@
 // 구조적 owner 결정 조회·검증. 표시용 자연어는 실행 권위로 읽지 않는다.
-import { and, desc, eq, gte, inArray } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, or, sql, type SQLWrapper } from "drizzle-orm";
 import { heartbeatRuns, issues, workflowTransitionEvents } from "@paperclipai/db";
 import {
   MISSION_OWNER_DECISION_EVENT_TYPE,
@@ -10,6 +10,38 @@ import {
   type MissionOwnerDecisionRecord,
   type MissionOwnerRecoveryLedgerDb,
 } from "./mission-owner-decision-contract.js";
+
+// Both submission and readback require the runtime's durable cap claim and its
+// same-mission supervision parent. Titles/descriptions never confer authority.
+export function qaCapSupervisionScope(input: {
+  companyId: string | SQLWrapper;
+  missionId: string | SQLWrapper | null;
+  ownerIssueId: string | SQLWrapper;
+  supervisionIssueId: string | SQLWrapper | null;
+}) {
+  return sql<boolean>`exists (
+    select 1 from ${workflowTransitionEvents} as cap_claim
+    inner join ${issues} as cap_issue on cap_issue.id = cap_claim.issue_id
+    inner join ${issues} as supervision on supervision.id::text = cap_issue.origin_id
+    where cap_claim.company_id = ${input.companyId} and cap_claim.mission_id = ${input.missionId}
+      and cap_claim.issue_id = ${input.ownerIssueId}
+      and cap_claim.event_type = 'qa_cap_oversight_claim' and cap_claim.layer = 'workflow_validation'
+      and cap_claim.payload->>'kind' = 'qa_cap_oversight_claim'
+      and cap_claim.payload->>'workflowRunId' = cap_claim.workflow_run_id::text
+      and cap_issue.company_id = cap_claim.company_id and cap_issue.mission_id = cap_claim.mission_id
+      and cap_issue.origin_kind = 'mission_main_executor_unblock'
+      and supervision.id = ${input.supervisionIssueId}
+      and supervision.company_id = cap_claim.company_id and supervision.mission_id = cap_claim.mission_id
+      and supervision.origin_kind = 'mission_main_executor_oversight'
+  )`;
+}
+
+function decisionHeartbeatScope() {
+  return or(eq(heartbeatRuns.issueId, workflowTransitionEvents.issueId), qaCapSupervisionScope({
+    companyId: workflowTransitionEvents.companyId, missionId: workflowTransitionEvents.missionId,
+    ownerIssueId: workflowTransitionEvents.issueId, supervisionIssueId: heartbeatRuns.issueId,
+  }));
+}
 
 export async function loadLatestMissionOwnerDecision(input: {
   readonly db: MissionOwnerRecoveryLedgerDb;
@@ -25,11 +57,9 @@ export async function loadLatestMissionOwnerDecision(input: {
     eq(workflowTransitionEvents.layer, MISSION_OWNER_RECOVERY_LAYER),
     // [source marker filter] 고정 reason marker 가 있는 row 만 권위. legacy/parser-derived row 무시.
     eq(workflowTransitionEvents.reason, MISSION_OWNER_DECISION_SOURCE),
-    // [authorship integrity] heartbeat run 의 company 가 event company 와, 그리고 heartbeat issue 가
-    //   event issue(owner-action issue) 와 무조건 일치해야 한다(단순 run-id join 이 아님, missionId-only
-    //   조회에서도 동일). 일치하지 않거나 run 이 없으면 fail closed.
+    // Same-issue authorship, or a cap claim bound to this run's supervision issue.
     eq(heartbeatRuns.companyId, input.companyId),
-    eq(heartbeatRuns.issueId, workflowTransitionEvents.issueId),
+    decisionHeartbeatScope(),
   ];
   if (ownerActionIssueId) {
     conditions.push(eq(workflowTransitionEvents.issueId, ownerActionIssueId));
@@ -121,7 +151,7 @@ export async function loadMissionOwnerDecisions(input: {
       eq(workflowTransitionEvents.layer, MISSION_OWNER_RECOVERY_LAYER),
       eq(workflowTransitionEvents.reason, MISSION_OWNER_DECISION_SOURCE),
       eq(heartbeatRuns.companyId, input.companyId),
-      eq(heartbeatRuns.issueId, workflowTransitionEvents.issueId),
+      decisionHeartbeatScope(),
       ...(issueFilter ? [inArray(workflowTransitionEvents.issueId, issueFilter)] : []),
     ))
     .orderBy(desc(workflowTransitionEvents.createdAt), desc(workflowTransitionEvents.id))
