@@ -197,6 +197,7 @@ export function Sidebar({ onToggleCompact }: SidebarProps = {}) {
               badgeTone={inboxBadge.failedRuns > 0 ? "danger" : "default"}
               alert={inboxBadge.failedRuns > 0}
             />
+            <SidebarNavItem to="/channels" label="Channels" icon={MessageSquare} />
             <SidebarNavItem
               to="/human-operator"
               label="Human Operator"
@@ -242,7 +243,7 @@ export function Sidebar({ onToggleCompact }: SidebarProps = {}) {
                 <SidebarNavItem to="/agent-wiki" label="Wiki" icon={Brain} />
                 <SidebarNavItem to="/costs" label="Costs" icon={DollarSign} />
                 <SidebarNavItem to="/activity" label="Activity" icon={History} />
-                <SidebarNavItem to="/channels" label="Channel" icon={MessageSquare} />
+                <SidebarNavItem to="/channel-config" label="Channel" icon={MessageSquare} />
                 <SidebarNavItem to="/worktree/rules" label="Approval Gates" icon={ShieldCheck} />
                 <SidebarNavItem to="/worktree/proposals" label="Proposals" icon={GitPullRequest} />
                 <SidebarNavItem to="/workflows" label="Workflows" icon={Workflow} />
