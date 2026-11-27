@@ -27,6 +27,12 @@ export interface InstanceGeneralSettings {
   readonly llmStructuredApiKeyConfigured?: boolean;
   llmStructuredProviders?: LlmStructuredProvider[];
   llmStructuredDefaultProviderId?: string;
+  /** 모델 가시성 숨김 목록(trim·중복 제거된 모델 ID). 미설정이면 전체 모델 표시. */
+  hiddenModels?: string[];
+  /** 프롬프트 캐시 TTL 정책. 미설정(undefined)이면 기본 TTL 정책 사용. */
+  promptCacheTtl?: "default" | "5m" | "1h";
+  /** 제공자 계정 풀 선택 전략. 미설정(undefined)이면 earliest_reset. */
+  providerAccountPoolStrategy?: "earliest_reset" | "round_robin" | "manual";
 }
 
 export interface InstanceExperimentalSettings {

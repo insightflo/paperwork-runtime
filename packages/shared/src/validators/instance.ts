@@ -54,6 +54,20 @@ export const llmStructuredTestConnectionSchema = z.object({
 }).strict();
 export type LlmStructuredTestConnectionInput = z.infer<typeof llmStructuredTestConnectionSchema>;
 
+/** 모델 가시성 숨김 목록 — 최대 200개, 각 항목 trim 후 1~160자, 중복 제거(첫 등장 순 유지). */
+export const hiddenModelsSchema = z.array(z.string().max(160)).max(200).transform((items) => {
+  const seen = new Set<string>();
+  for (const item of items) {
+    const value = item.trim();
+    if (value) seen.add(value);
+  }
+  return [...seen];
+});
+/** 프롬프트 캐시 TTL 정책 — "default" 는 기본 TTL, "5m"/"1h" 는 명시 TTL. */
+export const promptCacheTtlSchema = z.enum(["default", "5m", "1h"]);
+/** 제공자 계정 풀 선택 전략. */
+export const providerAccountPoolStrategySchema = z.enum(["earliest_reset", "round_robin", "manual"]);
+
 export const instanceGeneralSettingsSchema = z.object({
   censorUsernameInLogs: z.boolean().default(false),
   judgmentBaseUrl: judgmentBaseUrlSchema.optional(),
@@ -67,6 +81,9 @@ export const instanceGeneralSettingsSchema = z.object({
     apiKeyConfigured: z.boolean(),
   }).strict()).max(20).optional(),
   llmStructuredDefaultProviderId: llmStructuredProviderIdSchema.optional(),
+  hiddenModels: hiddenModelsSchema.optional(),
+  promptCacheTtl: promptCacheTtlSchema.optional(),
+  providerAccountPoolStrategy: providerAccountPoolStrategySchema.optional(),
 }).strict();
 
 export const patchInstanceGeneralSettingsSchema = instanceGeneralSettingsSchema
