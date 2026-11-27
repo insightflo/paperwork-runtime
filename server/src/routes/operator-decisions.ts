@@ -22,6 +22,7 @@ import {
 } from "../services/operator-decisions-write.js";
 import { accessService } from "../services/access.js";
 import { cardSummaryService } from "../services/card-summaries.js";
+import { MISSION_OWNER_HUMAN_INPUT_SOURCE_TYPE } from "../services/operator-decision-currentness.js";
 import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess } from "./authz.js";
 import { assertCompanyWriteAccess } from "./authz-write.js";
 
@@ -151,6 +152,28 @@ export function operatorDecisionRoutes(db: Db) {
       await assertCompanyAdminAccess(access, req, decision.companyId);
       const userId = boardUserId(req);
       const result = await write.resolve(decision.id, req.body, userId);
+      // C08 continuation 관리 대상(mission_owner_human_input)은 leased continuation 계약(resolutionRef,
+      // reason='operator_decision_resolved', idempotencyKey='...:gN:aM')만 허용한다.
+      // 여기서 ad-hoc wakeup을 호출하면 assertOwnerHumanResponseDelivery가 100% 409로 거부하므로
+      // 즉시 wakeup을 생략하고 continuation worker에 위임한다.
+      if (result.decision.sourceType === MISSION_OWNER_HUMAN_INPUT_SOURCE_TYPE) {
+        await logActivity(db, {
+          companyId: decision.companyId,
+          actorType: "user",
+          actorId: userId,
+          action: "operator_decision.immediate_wakeup_skipped",
+          entityType: "operator_decision",
+          entityId: result.decision.id,
+          details: {
+            schemaVersion: 1,
+            operatorDecisionId: result.decision.id,
+            issueId: result.decision.issueId,
+            reason: "c08_continuation_managed",
+          },
+        });
+        res.json({ data: result });
+        return;
+      }
       // 즉시 웨이크업 — 승인 즉시 후속 완료 처리가 이어지도록 한다. 대상은 continuation과
       // 동일 규칙으로 원 요청자에게만 전달한다(요청자≠담당자일 때 담당자의 대리 실행 방지).
       // (operator_decision_continuations 재시도 스케줄은 안전망으로 유지 — 백오프 지연 방지)

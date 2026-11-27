@@ -27,6 +27,8 @@ import { setWorkflowStepRunStatus } from "./workflow/step-status-fencing.js";
 import { recordWorkflowStepStatusTransition } from "./workflow/workflow-sync-source.js";
 import { sanitizeErrorSummary } from "./workflow/retry-metadata.js";
 import { runText } from "./heartbeat-run-presentation.js";
+import { SHUTDOWN_INTERRUPTED_ERROR_CODE } from "./shutdown-flush.js";
+import { runtimeExecutionLifecycle } from "./runtime-execution-lifecycle.js";
 
 type HeartbeatRun = typeof heartbeatRuns.$inferSelect;
 
@@ -61,7 +63,14 @@ export async function settleDispatchBoundTerminalFailure(input: {
 }): Promise<void> {
   const { db, run } = input;
   if (run.status !== "failed" || !run.issueId || !run.workflowStepRunId) return;
-  if (run.errorCode === "c5_held_not_invoked") return;
+  if (
+    run.errorCode === "c5_held_not_invoked"
+    || run.errorCode === "process_lost"
+    || run.errorCode === SHUTDOWN_INTERRUPTED_ERROR_CODE
+    || runtimeExecutionLifecycle.shutdownState() !== null
+  ) {
+    return;
+  }
 
   const stepRun = await db
     .select()

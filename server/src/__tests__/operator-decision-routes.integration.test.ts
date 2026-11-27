@@ -313,6 +313,46 @@ describeDb("operator decision routes", () => {
     });
   });
 
+  it("skips the ad-hoc immediate wakeup for C08 mission_owner_human_input cards", async () => {
+    // T4: C08 continuation 관리 대상 카드는 ad-hoc wakeup(409 유발)을 생략하고 continuation worker에 위임한다.
+    const [card] = await db.insert(operatorDecisions).values({
+      companyId,
+      requestKey: "c08-owner-human-input-wake",
+      requestHash: "c08-owner-human-input-wake",
+      interactionType: "action",
+      title: "Mission owner human input",
+      sourceType: "mission_owner_human_input",
+      sourceId: "fixture-owner-input",
+      sourceContext: { missionId: null, workflowId: null, workflowRunId: null, artifactRefs: [] },
+      definition,
+      issueId,
+      requestedByAgentId: agentId,
+      requestedByUserId: null,
+      continuationMode: "issue_current_assignee",
+    }).returning();
+    const resolved = await request(app())
+      .post(`/api/operator-decisions/${card.id}/resolve`)
+      .send({ actionId: "hold", selectedOptionIds: [], comment: null });
+    expect(resolved.status, JSON.stringify(resolved.body)).toBe(200);
+    const wakes = await immediateWakeupRows(card.id);
+    expect(wakes).toHaveLength(0);
+    const failedLogs = await db
+      .select()
+      .from(activityLog)
+      .where(and(eq(activityLog.entityId, card.id), eq(activityLog.action, "operator_decision.assignee_wakeup_failed")));
+    expect(failedLogs).toHaveLength(0);
+    const skips = await db
+      .select()
+      .from(activityLog)
+      .where(and(eq(activityLog.entityId, card.id), eq(activityLog.action, "operator_decision.immediate_wakeup_skipped")));
+    expect(skips).toHaveLength(1);
+    expect(skips[0].details).toMatchObject({
+      operatorDecisionId: card.id,
+      issueId,
+      reason: "c08_continuation_managed",
+    });
+  });
+
   // FIXME( follow-up ): resolve의 비동기 웨이크업(agent_wakeup_requests → heartbeat_runs →
   // activity_log/run_events 연쇄)이 다음 beforeEach 클린업과 경합한다. 웨이크업 완료 대기 또는
   // 클린업 순서 정리 후 스킵 해제.
