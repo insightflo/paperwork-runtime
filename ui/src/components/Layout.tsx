@@ -262,7 +262,7 @@ export function Layout() {
               tabIndex={-1}
               data-density-tier={slide.metrics.canvasDensityTier}
               className={cn(
-                "flex-1 bg-[#f8fafc] px-4 py-4 md:px-6 md:py-5 dark:bg-[#07090d]",
+                "flex-1 bg-background px-4 py-4 md:px-6 md:py-5",
                 isMobile ? "overflow-visible pb-[calc(5rem+env(safe-area-inset-bottom))]" : "overflow-auto cockpit-canvas-sheet",
               )}
               style={

@@ -66,7 +66,7 @@ function ElapsedText({ startedAt }: { startedAt: string | null }) {
   }, [startedAt]);
   if (!startedAt) return null;
   const sec = Math.max(0, Math.round((Date.now() - new Date(startedAt).getTime()) / 1000));
-  return <span className="font-mono text-[10px] tabular-nums text-muted-foreground dark:text-[#8f9db3]">{sec}s</span>;
+  return <span className="font-mono text-[10px] tabular-nums text-muted-foreground">{sec}s</span>;
 }
 
 function LiveRunRow({ run, current }: { run: LiveRunForIssue; current?: boolean }) {
@@ -74,8 +74,8 @@ function LiveRunRow({ run, current }: { run: LiveRunForIssue; current?: boolean 
     <Link
       to={`/agents/${run.agentId}/runs/${run.id}`}
       className={cn(
-        "flex items-center gap-2 border-l-2 border-l-transparent px-3 py-2 text-xs tabular-nums transition-colors no-underline text-inherit hover:bg-accent/50 dark:hover:bg-[#0e131d]",
-        current && "border-lime-600 bg-accent/30 dark:border-l-[#a3e635] dark:bg-[#a3e635]/10",
+        "flex items-center gap-2 border-l-2 border-l-transparent px-3 py-2 text-xs tabular-nums transition-colors no-underline text-inherit hover:bg-accent/50 dark:hover:bg-card",
+        current && "border-lime-600 bg-accent/30 dark:border-l-[var(--pw-lime)] dark:bg-[var(--pw-lime-soft)]",
       )}
     >
       <span
@@ -84,7 +84,7 @@ function LiveRunRow({ run, current }: { run: LiveRunForIssue; current?: boolean 
         style={{ backgroundColor: "var(--openbot-provider-current)" }}
       />
       <span className="flex-1 min-w-0 truncate font-medium">{run.agentName}</span>
-      <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground dark:text-[#a3e635]">{run.status}</span>
+      <span className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground dark:text-[var(--pw-lime)]">{run.status}</span>
       <ElapsedText startedAt={run.startedAt} />
     </Link>
   );
@@ -126,28 +126,28 @@ function InspectorBody(props: { companyId: string | null; issueId?: string | nul
       <div className="p-3 tabular-nums">{props.panelContent}</div>
     ) : (
       <div className="p-3">
-        <p className="tactile-card dark:bg-[#0e131d] p-3 text-xs text-muted-foreground dark:text-[#8f9db3]">이 페이지에는 속성 패널 콘텐츠가 없습니다.</p>
+        <p className="tactile-card dark:bg-card p-3 text-xs text-muted-foreground">이 페이지에는 속성 패널 콘텐츠가 없습니다.</p>
       </div>
     );
   }
 
   if (props.tab === "live") {
     if (!activeRun) {
-      return <div className="p-3"><p className="tactile-card dark:bg-[#0e131d] p-3 text-xs text-muted-foreground dark:text-[#8f9db3]">실행 중인 작업이 없습니다.</p></div>;
+      return <div className="p-3"><p className="tactile-card dark:bg-card p-3 text-xs text-muted-foreground">실행 중인 작업이 없습니다.</p></div>;
     }
     const ops = opsQuery.data ?? [];
     return (
       <div className="space-y-3 p-3 tabular-nums">
-        <div className="flex items-center gap-2 text-xs font-semibold text-foreground dark:text-[#eef2f8]"><span className="pw-live-dot" />현재 실행: {activeRun.agentName}</div>
-        {cappedLog.truncated && <p className="text-[11px] font-medium text-amber-700 dark:text-[#f59e0b]">{TRUNCATION_GUARD_MESSAGE}</p>}
-        <pre className="tactile-card dark:bg-[#090c12] dark:text-[#c9d3e4] max-h-[50vh] overflow-y-auto overscroll-contain whitespace-pre-wrap break-all p-2 font-mono text-[11px] tabular-nums">
+        <div className="flex items-center gap-2 text-xs font-semibold text-foreground"><span className="pw-live-dot" />현재 실행: {activeRun.agentName}</div>
+        {cappedLog.truncated && <p className="text-[11px] font-medium text-amber-700 dark:text-[var(--pw-amber)]">{TRUNCATION_GUARD_MESSAGE}</p>}
+        <pre className="tactile-card dark:bg-[var(--pw-canvas)] dark:text-secondary-foreground max-h-[50vh] overflow-y-auto overscroll-contain whitespace-pre-wrap break-all p-2 font-mono text-[11px] tabular-nums">
           {logQuery.isLoading ? "로그 불러오는 중…" : cappedLog.text || "(stdout 없음)"}
         </pre>
         {ops.length > 0 && (
-          <div className="tactile-card dark:bg-[#0e131d] space-y-1 p-2">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground dark:text-[#8f9db3]">파일 변경</div>
+          <div className="tactile-card dark:bg-card space-y-1 p-2">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">파일 변경</div>
             {ops.slice(0, 8).map((op) => (
-              <div key={op.id} className="truncate font-mono text-[11px] tabular-nums text-muted-foreground dark:text-[#9aa7bd]">{op.phase}: {op.command ?? op.cwd ?? op.id}</div>
+              <div key={op.id} className="truncate font-mono text-[11px] tabular-nums text-muted-foreground">{op.phase}: {op.command ?? op.cwd ?? op.id}</div>
             ))}
           </div>
         )}
@@ -158,7 +158,7 @@ function InspectorBody(props: { companyId: string | null; issueId?: string | nul
   if (props.tab === "subagents") {
     const runs = (liveQuery.data ?? []).filter((r) => !props.issueId || r.issueId === props.issueId || r.issueId == null);
     if (runs.length === 0) {
-      return <div className="p-3"><p className="tactile-card dark:bg-[#0e131d] p-3 text-xs text-muted-foreground dark:text-[#8f9db3]">활성 서브에이전트 실행이 없습니다.</p></div>;
+      return <div className="p-3"><p className="tactile-card dark:bg-card p-3 text-xs text-muted-foreground">활성 서브에이전트 실행이 없습니다.</p></div>;
     }
     return <div className="divide-y divide-border dark:divide-white/[0.06]">{runs.map((run) => <LiveRunRow key={run.id} run={run} />)}</div>;
   }
@@ -166,21 +166,21 @@ function InspectorBody(props: { companyId: string | null; issueId?: string | nul
   if (queueQuery.isError) {
     return (
       <div className="p-3">
-        <p className="tactile-card dark:bg-[#0e131d] p-3 text-xs text-muted-foreground dark:text-[#8f9db3]">
+        <p className="tactile-card dark:bg-card p-3 text-xs text-muted-foreground">
           큐 엔드포인트에 연결할 수 없습니다 (백엔드 ops-console 미배포 시 정상).
         </p>
       </div>
     );
   }
   if (queueItems.length === 0) {
-    return <div className="p-3"><p className="tactile-card dark:bg-[#0e131d] p-3 text-xs text-muted-foreground dark:text-[#8f9db3]">대기 중인 큐 항목이 없습니다.</p></div>;
+    return <div className="p-3"><p className="tactile-card dark:bg-card p-3 text-xs text-muted-foreground">대기 중인 큐 항목이 없습니다.</p></div>;
   }
   return (
     <div className="divide-y divide-border dark:divide-white/[0.06]">
       {queueItems.map((item) => (
-        <div key={item.id} className="flex items-center gap-2 px-3 py-2 text-xs tabular-nums transition-colors hover:bg-accent/40 dark:hover:bg-[#0e131d]">
+        <div key={item.id} className="flex items-center gap-2 px-3 py-2 text-xs tabular-nums transition-colors hover:bg-accent/40 dark:hover:bg-card">
           <span className="flex-1 min-w-0 truncate">{item.payload?.message ?? item.prompt ?? item.reason ?? item.id}</span>
-          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-muted-foreground dark:text-[#f59e0b]">{item.status ?? "queued"}</span>
+          <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-muted-foreground dark:text-[var(--pw-amber)]">{item.status ?? "queued"}</span>
           <Button
             variant="ghost"
             size="sm"
@@ -214,8 +214,8 @@ export function InspectorSidePanel(props: {
   }, [props.panelContent]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background text-foreground tabular-nums dark:bg-[#090c12] dark:text-[#eef2f8]" style={{ width: "var(--openbot-inspector-width)" }}>
-      <div className="flex shrink-0 items-center justify-between border-b border-border/80 bg-background/80 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/[0.065] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
+    <div className="flex h-full min-h-0 flex-col bg-background text-foreground tabular-nums" style={{ width: "var(--openbot-inspector-width)" }}>
+      <div className="flex shrink-0 items-center justify-between border-b border-border/80 bg-background/80 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] dark:border-white/[0.065] dark:bg-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]">
         <div className="flex items-center gap-1">
           {INSPECTOR_TABS.map((t) => (
             <button
@@ -226,8 +226,8 @@ export function InspectorSidePanel(props: {
               className={cn(
                 "rounded-md border px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors",
                 tab === t.id
-                  ? "border-blue-500/30 bg-blue-500/10 text-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
-                  : "border-transparent text-muted-foreground hover:border-border hover:text-foreground dark:text-[#8f9db3] dark:hover:border-white/[0.08] dark:hover:text-[#eef2f8]",
+                  ? "border-blue-500/30 bg-blue-500/10 text-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)] dark:border-[var(--pw-cobalt)]/30 dark:bg-[var(--pw-cobalt-soft)] dark:text-[var(--pw-cobalt)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+                  : "border-transparent text-muted-foreground hover:border-border hover:text-foreground dark:text-muted-foreground dark:hover:border-white/[0.08] dark:hover:text-foreground",
               )}
             >
               {t.label}
@@ -235,7 +235,7 @@ export function InspectorSidePanel(props: {
           ))}
         </div>
         {props.onClose && (
-          <Button variant="ghost" size="icon-xs" onClick={props.onClose} aria-label="인스펙터 닫기" className="text-muted-foreground hover:text-foreground dark:text-[#8f9db3] dark:hover:bg-white/[0.06] dark:hover:text-[#eef2f8]">
+          <Button variant="ghost" size="icon-xs" onClick={props.onClose} aria-label="인스펙터 닫기" className="text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:bg-white/[0.06] dark:hover:text-foreground">
             <X className="h-4 w-4" />
           </Button>
         )}

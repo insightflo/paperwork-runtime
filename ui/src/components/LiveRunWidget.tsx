@@ -17,7 +17,7 @@ interface LiveRunWidgetProps {
 }
 
 const META_CHIP_CLASS =
-  "inline-flex items-center rounded-md border border-slate-200/90 bg-slate-50/90 px-2 py-1 font-mono text-[11px] tabular-nums text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition-[border-color,color,background-color] duration-150 dark:border-white/[0.08] dark:bg-[#090d14] dark:text-[#9aa7bd] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.045)]";
+  "inline-flex items-center rounded-md border border-slate-200/90 bg-slate-50/90 px-2 py-1 font-mono text-[11px] tabular-nums text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition-[border-color,color,background-color] duration-150 dark:border-white/[0.08] dark:bg-[var(--pw-canvas)] dark:text-muted-foreground dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.045)]";
 
 function toIsoString(value: string | Date | null | undefined): string | null {
   if (!value) return null;
@@ -123,26 +123,26 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
   if (runs.length === 0) return null;
 
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] tabular-nums dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_28px_-12px_rgba(0,0,0,0.72)]">
-      <div className="border-b border-slate-200/80 bg-slate-50/85 px-4 py-3 dark:border-white/[0.065] dark:bg-[#090d14]/90">
-        <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.18em] text-slate-600 dark:text-[#aab6c9]">
+    <div className="overflow-hidden rounded-xl border border-slate-200/90 bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] tabular-nums dark:border-white/[0.08] dark:bg-card dark:text-card-foreground dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_8px_28px_-12px_rgba(0,0,0,0.72)]">
+      <div className="border-b border-slate-200/80 bg-slate-50/85 px-4 py-3 dark:border-white/[0.065] dark:bg-[var(--pw-canvas)]/90">
+        <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.18em] text-slate-600 dark:text-muted-foreground">
           <span
             aria-hidden="true"
             className={cn(
               "h-1.5 w-1.5 shrink-0 rounded-full",
               hasActiveRuns
-                ? "bg-lime-500 shadow-[0_0_8px_rgba(132,204,22,0.55)] motion-safe:animate-pulse dark:bg-[#a3e635] dark:shadow-[0_0_9px_rgba(163,230,53,0.75)]"
-                : "bg-slate-400 dark:bg-[#627089]",
+                ? "bg-lime-500 shadow-[0_0_8px_rgba(132,204,22,0.55)] motion-safe:animate-pulse dark:bg-[var(--pw-lime)] dark:shadow-[0_0_9px_rgba(163,230,53,0.75)]"
+                : "bg-slate-400 dark:bg-muted-foreground",
             )}
           />
           <span>Live Runs</span>
           {hasActiveRuns && (
-            <span className="rounded-full border border-lime-500/30 bg-lime-500/10 px-1.5 py-px font-mono text-[9.5px] font-semibold tracking-normal text-lime-700 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/10 dark:text-[#a3e635]">
+            <span className="rounded-full border border-lime-500/30 bg-lime-500/10 px-1.5 py-px font-mono text-[9.5px] font-semibold tracking-normal text-lime-700 dark:border-[var(--pw-lime)]/30 dark:bg-[var(--pw-lime-soft)] dark:text-[var(--pw-lime)]">
               LIVE
             </span>
           )}
         </div>
-        <div className="mt-1 text-xs text-slate-500 dark:text-[#8b97ad]">
+        <div className="mt-1 text-xs text-slate-500 dark:text-muted-foreground">
           Streamed with the same transcript UI used on the full run detail page.
         </div>
       </div>
@@ -158,15 +158,15 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
             <section key={run.id} className="px-4 py-3">
               <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <Link to={`/agents/${run.agentId}`} className="inline-flex transition-colors hover:text-blue-700 dark:hover:text-[#60a5fa]">
+                  <Link to={`/agents/${run.agentId}`} className="inline-flex transition-colors hover:text-blue-700 dark:hover:text-[var(--pw-cobalt)]">
                     <Identity name={run.agentName} size="sm" />
                   </Link>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-[#8b97ad]">
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-muted-foreground">
                     <Link
                       to={`/agents/${run.agentId}/runs/${run.id}`}
                       className={cn(
                         META_CHIP_CLASS,
-                        "text-blue-700 hover:border-blue-400/50 hover:bg-blue-500/10 hover:text-blue-800 dark:text-[#60a5fa] dark:hover:border-[#60a5fa]/45 dark:hover:bg-[#60a5fa]/12 dark:hover:text-[#bfdbfe]",
+                        "text-blue-700 hover:border-blue-400/50 hover:bg-blue-500/10 hover:text-blue-800 dark:text-[var(--pw-cobalt)] dark:hover:border-[var(--pw-cobalt)]/45 dark:hover:bg-[var(--pw-cobalt-soft)] dark:hover:text-[var(--pw-token-accent-text)]",
                       )}
                     >
                       {run.id.slice(0, 8)}
@@ -185,7 +185,7 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
                     {elapsed && (
                       <span className={cn(
                         "font-mono text-[11px] font-semibold tabular-nums",
-                        isActive ? "text-lime-700 dark:text-[#a3e635]" : "text-blue-700 dark:text-[#60a5fa]",
+                        isActive ? "text-lime-700 dark:text-[var(--pw-lime)]" : "text-blue-700 dark:text-[var(--pw-cobalt)]",
                       )}>
                         {elapsed}
                       </span>
@@ -200,7 +200,7 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
                       type="button"
                       onClick={() => handleCancelRun(run.id)}
                       disabled={cancellingRunIds.has(run.id)}
-                      className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[11px] font-semibold text-rose-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] transition-[border-color,background-color,color,transform,opacity] duration-150 hover:border-rose-500/50 hover:bg-rose-500/15 active:scale-[0.96] disabled:opacity-50 dark:border-[#fb7185]/30 dark:bg-[#fb7185]/10 dark:text-[#fb7185] dark:hover:border-[#fb7185]/50 dark:hover:bg-[#fb7185]/15"
+                      className="inline-flex items-center gap-1 rounded-md border border-rose-500/30 bg-rose-500/10 px-2.5 py-1 text-[11px] font-semibold text-rose-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] transition-[border-color,background-color,color,transform,opacity] duration-150 hover:border-rose-500/50 hover:bg-rose-500/15 active:scale-[0.96] disabled:opacity-50 dark:border-[var(--pw-crimson)]/30 dark:bg-[var(--pw-crimson-soft)] dark:text-[var(--pw-crimson)] dark:hover:border-[var(--pw-crimson)]/50 dark:hover:bg-[var(--pw-crimson-soft)]"
                     >
                       <Square className="h-2.5 w-2.5" fill="currentColor" />
                       {cancellingRunIds.has(run.id) ? "Stopping…" : "Stop"}
@@ -208,7 +208,7 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
                   )}
                   <Link
                     to={`/agents/${run.agentId}/runs/${run.id}`}
-                    className="inline-flex items-center gap-1 rounded-md border border-slate-200/90 bg-slate-50/90 px-2.5 py-1 text-[11px] font-semibold text-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition-[border-color,background-color,color,transform] duration-150 hover:border-blue-400/50 hover:bg-blue-500/10 hover:text-blue-800 active:scale-[0.96] dark:border-white/[0.08] dark:bg-[#090d14] dark:text-[#60a5fa] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.045)] dark:hover:border-[#60a5fa]/45 dark:hover:bg-[#60a5fa]/12 dark:hover:text-[#bfdbfe]"
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-200/90 bg-slate-50/90 px-2.5 py-1 text-[11px] font-semibold text-blue-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition-[border-color,background-color,color,transform] duration-150 hover:border-blue-400/50 hover:bg-blue-500/10 hover:text-blue-800 active:scale-[0.96] dark:border-white/[0.08] dark:bg-[var(--pw-canvas)] dark:text-[var(--pw-cobalt)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.045)] dark:hover:border-[var(--pw-cobalt)]/45 dark:hover:bg-[var(--pw-cobalt-soft)] dark:hover:text-[var(--pw-token-accent-text)]"
                   >
                     Open run
                     <ExternalLink className="h-3 w-3" />
@@ -217,20 +217,20 @@ export function LiveRunWidget({ issueId, companyId }: LiveRunWidgetProps) {
               </div>
 
               {hasSteps && (
-                <div className="mb-2 inline-flex flex-wrap items-center gap-2 rounded-md border border-slate-200/90 bg-slate-50/90 px-2 py-1 font-mono text-[11px] tabular-nums text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/[0.08] dark:bg-[#090d14] dark:text-[#8b97ad] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.045)]">
+                <div className="mb-2 inline-flex flex-wrap items-center gap-2 rounded-md border border-slate-200/90 bg-slate-50/90 px-2 py-1 font-mono text-[11px] tabular-nums text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/[0.08] dark:bg-[var(--pw-canvas)] dark:text-muted-foreground dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.045)]">
                   <span>{stepCounts.tools} tools</span>
                   <span aria-hidden="true">·</span>
                   <span>{stepCounts.thinking} thoughts</span>
                   {stepCounts.errors > 0 && (
                     <>
                       <span aria-hidden="true">·</span>
-                      <span className="text-rose-600 dark:text-[#fb7185]">{stepCounts.errors} errors</span>
+                      <span className="text-rose-600 dark:text-[var(--pw-crimson)]">{stepCounts.errors} errors</span>
                     </>
                   )}
                 </div>
               )}
 
-              <div className="max-h-[320px] overflow-y-auto rounded-lg border border-slate-200/80 bg-slate-50/70 p-2 shadow-[inset_0_1px_1px_rgba(15,23,42,0.045)] dark:border-white/[0.065] dark:bg-[#07090d]/85 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
+              <div className="max-h-[320px] overflow-y-auto rounded-lg border border-slate-200/80 bg-slate-50/70 p-2 shadow-[inset_0_1px_1px_rgba(15,23,42,0.045)] dark:border-white/[0.065] dark:bg-[var(--pw-canvas)]/85 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]">
                 <RunTranscriptView
                   entries={transcript}
                   density="compact"

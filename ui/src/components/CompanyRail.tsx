@@ -129,7 +129,7 @@ export function CompanyRail({ onToggleSidebar }: CompanyRailProps = {}) {
   return (
     <div className="flex flex-col items-center w-[52px] shrink-0 h-full bg-[var(--pw-rail)] border-r border-border">
       <div className="flex items-center justify-center h-12 w-full shrink-0 border-b border-border">
-        <div className="relative flex h-8 w-8 items-center justify-center rounded-[9px] border border-border bg-white shadow-xs dark:border-white/[0.12] dark:bg-gradient-to-b dark:from-[#172030] dark:to-[#0d131f] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.45)]">
+        <div className="relative flex h-8 w-8 items-center justify-center rounded-[9px] border border-border bg-white shadow-xs dark:border-white/[0.12] dark:bg-gradient-to-b dark:from-[var(--pw-panel)] dark:to-[var(--pw-canvas)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.14),0_4px_12px_rgba(0,0,0,0.45)]">
           <PapercompanyLogoIcon className="h-5 w-5" />
           {anyLiveAgents && (
             <span
