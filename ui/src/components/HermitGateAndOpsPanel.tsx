@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "../lib/utils";
+import { useCompany } from "../context/CompanyContext";
 
 export const HERMIT_AUDIT_TOTAL = 25;
 
@@ -62,6 +63,7 @@ function ResourceBar(props: {
           onChange={(e) => props.onThreshold(Number(e.target.value))}
           onPointerUp={props.onCommitThreshold} onKeyUp={props.onCommitThreshold}
           className="w-24 h-1 accent-current" aria-label={`${props.label} 알림 임계값`}
+          title={!props.canEdit ? "임계값 저장은 관리자(owner·admin) 역할만 가능합니다" : undefined}
         />
       </div>
     </div>
@@ -70,6 +72,7 @@ function ResourceBar(props: {
 
 export function HermitGateAndOpsPanel(props: { companyId: string }) {
   const { companyId } = props;
+  const { canWrite = true, canAdmin = true, currentRole } = useCompany();
   const queryClient = useQueryClient();
   const [claimForm, setClaimForm] = useState({ taskId: "", worktreeName: "", paths: "" });
   const [claimError, setClaimError] = useState<string | null>(null);
@@ -96,6 +99,7 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
   const toErrorMsg = (err: unknown, fallback: string) => (err instanceof Error ? err.message : fallback);
 
   const submitClaim = async () => {
+    if (!canWrite) return;
     const paths = claimForm.paths.split(",").map((p) => p.trim()).filter(Boolean);
     if (!claimForm.taskId || !claimForm.worktreeName || paths.length === 0) return;
     setClaimError(null);
@@ -109,7 +113,7 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
   };
 
   const commitThresholds = async () => {
-    if (!thresholdsReady) return;
+    if (!thresholdsReady || !canAdmin) return;
     setOpsError(null);
     try {
       await opsConsoleApi.updateThresholds(companyId, thresholds);
@@ -120,6 +124,7 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
   };
 
   const runValidate = async (stage: "pre-commit" | "pr") => {
+    if (!canWrite) return;
     const paths = claimForm.paths.split(",").map((p) => p.trim()).filter(Boolean);
     const resolved = paths.length > 0 ? paths : claims[0]?.paths ?? [];
     if (resolved.length === 0) { setValidateResult("검증할 경로를 입력해 주세요"); return; }
@@ -130,7 +135,7 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
   };
 
   const addDecision = async () => {
-    if (!decisionForm.decision) return;
+    if (!canWrite || !decisionForm.decision) return;
     setOpsError(null);
     try {
       await hermitGateApi.createDecision(companyId, decisionForm);
@@ -151,6 +156,7 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
   return (
     <div className="space-y-3 tabular-nums">
       {opsError && <p className="rounded-[8px] border border-rose-500/25 bg-rose-500/10 px-2 py-1 text-[11px] font-medium text-rose-700 dark:border-[var(--pw-crimson)]/30 dark:bg-[var(--pw-crimson-soft)] dark:text-[var(--pw-crimson)]">{opsError}</p>}
+      {!canWrite && <p className="text-[11px] font-medium text-amber-700 dark:text-amber-400" title="Member, admin, or owner role required for Hermit Gate and Ops actions">읽기 전용{currentRole ? ` (${currentRole})` : ""} — Hermit 게이트·Ops 변경 작업은 권한이 있는 역할만 가능합니다.</p>}
       <Section title="Hermit 게이트 — 활성 경로 클레임">
         {stateQ.isError ? <Unavailable name="클레임" /> : (
           <div className="space-y-1">
@@ -160,8 +166,9 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
                 <span className="shrink-0">{c.taskId}</span>
                 <span className="text-muted-foreground shrink-0">{c.worktreeName}</span>
                 <span className="flex-1 min-w-0 truncate text-muted-foreground">{c.paths.join(", ")}</span>
-                <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px] text-destructive"
+                <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px] text-destructive" disabled={!canWrite}
                   onClick={async () => {
+                    if (!canWrite) return;
                     setOpsError(null);
                     try { await hermitGateApi.releaseClaim(companyId, c.taskId); invalidateState(); }
                     catch (err) { setOpsError(toErrorMsg(err, "클레임 해제에 실패했습니다")); }
@@ -173,10 +180,10 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
           </div>
         )}
         <div className="flex flex-wrap items-center gap-1.5">
-          <Input className={cn(INPUT_CLASS, "h-7 w-24 text-[11px]")} placeholder="taskId" value={claimForm.taskId} onChange={(e) => setClaimForm({ ...claimForm, taskId: e.target.value })} />
-          <Input className={cn(INPUT_CLASS, "h-7 w-28 text-[11px]")} placeholder="worktree" value={claimForm.worktreeName} onChange={(e) => setClaimForm({ ...claimForm, worktreeName: e.target.value })} />
-          <Input className={cn(INPUT_CLASS, "h-7 flex-1 min-w-32 text-[11px]")} placeholder="paths (쉼표 구분)" value={claimForm.paths} onChange={(e) => setClaimForm({ ...claimForm, paths: e.target.value })} />
-          <Button size="sm" className="h-7 px-2 text-[11px]" onClick={submitClaim}>클레임</Button>
+          <Input className={cn(INPUT_CLASS, "h-7 w-24 text-[11px]")} placeholder="taskId" value={claimForm.taskId} disabled={!canWrite} onChange={(e) => setClaimForm({ ...claimForm, taskId: e.target.value })} />
+          <Input className={cn(INPUT_CLASS, "h-7 w-28 text-[11px]")} placeholder="worktree" value={claimForm.worktreeName} disabled={!canWrite} onChange={(e) => setClaimForm({ ...claimForm, worktreeName: e.target.value })} />
+          <Input className={cn(INPUT_CLASS, "h-7 flex-1 min-w-32 text-[11px]")} placeholder="paths (쉼표 구분)" value={claimForm.paths} disabled={!canWrite} onChange={(e) => setClaimForm({ ...claimForm, paths: e.target.value })} />
+          <Button size="sm" className="h-7 px-2 text-[11px]" onClick={submitClaim} disabled={!canWrite} title={!canWrite ? "Member, admin, or owner role required" : undefined}>클레임</Button>
         </div>
         {claimError && <p className="text-[11px] font-medium text-rose-700 dark:text-[var(--pw-crimson)]">{claimError}</p>}
       </Section>
@@ -188,9 +195,10 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
               <div className="h-full rounded-full bg-blue-500 transition-[width] dark:bg-[var(--pw-cobalt)]" style={{ width: `${auditPct}%` }} />
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
-              <Input className={cn(INPUT_CLASS, "h-7 flex-1 min-w-32 text-[11px]")} placeholder="보류 범위 (쉼표 구분)" value={pendingScope} onChange={(e) => setPendingScope(e.target.value)} />
-              <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" disabled={!pendingScope.trim()}
+              <Input className={cn(INPUT_CLASS, "h-7 flex-1 min-w-32 text-[11px]")} placeholder="보류 범위 (쉼표 구분)" value={pendingScope} disabled={!canWrite} onChange={(e) => setPendingScope(e.target.value)} />
+              <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" disabled={!pendingScope.trim() || !canWrite}
                 onClick={async () => {
+                  if (!canWrite) return;
                   const scopes = pendingScope.split(",").map((s) => s.trim()).filter(Boolean);
                   setOpsError(null);
                   try { await hermitGateApi.completeAudit(companyId, { pendingScopes: scopes }); setPendingScope(""); invalidateState(); }
@@ -198,8 +206,9 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
                 }}>
                 보류 범위 적용
               </Button>
-              <Button size="sm" className="h-7 px-2 text-[11px]" disabled={(audit?.completed ?? 0) === 0 && !audit?.lastAuditMergeSha}
+              <Button size="sm" className="h-7 px-2 text-[11px]" disabled={(audit?.completed ?? 0) === 0 && !audit?.lastAuditMergeSha || !canWrite}
                 onClick={async () => {
+                  if (!canWrite) return;
                   setOpsError(null);
                   try { await hermitGateApi.completeAudit(companyId, {}); invalidateState(); }
                   catch (err) { setOpsError(toErrorMsg(err, "감사 완료 처리에 실패했습니다")); }
@@ -210,8 +219,8 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
           </>
         )}
         <div className="flex items-center gap-1.5">
-          <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => runValidate("pre-commit")}>pre-commit 검증</Button>
-          <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => runValidate("pr")}>PR 검증</Button>
+          <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => runValidate("pre-commit")} disabled={!canWrite}>pre-commit 검증</Button>
+          <Button variant="outline" size="sm" className="h-7 px-2 text-[11px]" onClick={() => runValidate("pr")} disabled={!canWrite}>PR 검증</Button>
           {validateResult && <span className="text-[10px] text-muted-foreground">{validateResult}</span>}
         </div>
       </Section>
@@ -233,21 +242,21 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
         <div className="grid grid-cols-2 gap-1.5">
           {(["decision", "rationale", "impact", "amendTarget"] as const).map((k) => (
             <Input key={k} className="h-7 text-[11px]" placeholder={{ decision: "결정", rationale: "근거·가정", impact: "영향", amendTarget: "수정할 위치" }[k]}
-              value={decisionForm[k]} onChange={(e) => setDecisionForm({ ...decisionForm, [k]: e.target.value })} />
+              value={decisionForm[k]} disabled={!canWrite} onChange={(e) => setDecisionForm({ ...decisionForm, [k]: e.target.value })} />
           ))}
         </div>
-        <Button size="sm" className="h-7 px-2 text-[11px]" onClick={addDecision} disabled={!decisionForm.decision}>결정 기록</Button>
+        <Button size="sm" className="h-7 px-2 text-[11px]" onClick={addDecision} disabled={!decisionForm.decision || !canWrite}>결정 기록</Button>
       </Section>
 
       <Section title="시스템 리소스">
         {overviewQ.isError || !usage ? <Unavailable name="리소스" /> : (
           <div className="space-y-2">
             <ResourceBar label="CPU" icon={<Cpu className="h-3.5 w-3.5" />} percent={usage.cpuPercent} threshold={thresholds.cpuPercent}
-              canEdit={thresholdsReady} onThreshold={(v) => setThresholds({ ...thresholds, cpuPercent: v })} onCommitThreshold={commitThresholds} />
+              canEdit={thresholdsReady && canAdmin} onThreshold={(v) => setThresholds({ ...thresholds, cpuPercent: v })} onCommitThreshold={commitThresholds} />
             <ResourceBar label="RAM" icon={<MemoryStick className="h-3.5 w-3.5" />} percent={usage.ramPercent} threshold={thresholds.ramPercent}
-              canEdit={thresholdsReady} onThreshold={(v) => setThresholds({ ...thresholds, ramPercent: v })} onCommitThreshold={commitThresholds} />
+              canEdit={thresholdsReady && canAdmin} onThreshold={(v) => setThresholds({ ...thresholds, ramPercent: v })} onCommitThreshold={commitThresholds} />
             <ResourceBar label="Disk" icon={<HardDrive className="h-3.5 w-3.5" />} percent={usage.diskPercent} threshold={thresholds.diskPercent}
-              canEdit={thresholdsReady} onThreshold={(v) => setThresholds({ ...thresholds, diskPercent: v })} onCommitThreshold={commitThresholds} />
+              canEdit={thresholdsReady && canAdmin} onThreshold={(v) => setThresholds({ ...thresholds, diskPercent: v })} onCommitThreshold={commitThresholds} />
           </div>
         )}
       </Section>
@@ -262,8 +271,9 @@ export function HermitGateAndOpsPanel(props: { companyId: string }) {
                 <span className="w-16 shrink-0 text-muted-foreground">{p.etime}</span>
                 <span className="flex-1 min-w-0 truncate">{p.command}</span>
                 {p.ownedChild && (
-                  <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px] text-destructive"
+                  <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px] text-destructive" disabled={!canAdmin} title={!canAdmin ? "Admin role required to stop processes" : undefined}
                     onClick={async () => {
+                      if (!canAdmin) return;
                       setOpsError(null);
                       try { await opsConsoleApi.stopProcess(companyId, p.pid); invalidateOverview(); }
                       catch (err) { setOpsError(toErrorMsg(err, "프로세스 중지에 실패했습니다")); }
