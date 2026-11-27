@@ -1,4 +1,4 @@
-import { Fragment, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type JSX, type MouseEvent } from "react";
+import { Fragment, lazy, Suspense, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type JSX, type MouseEvent } from "react";
 import { CompanyContext } from "../context/CompanyContext.js";
 import { jsonToSteps, stepsToJson, type StepDraft } from "./workflows/step-draft.js";
 import type { LabelOption, PluginPageProps, StatusFilter, WorkflowScopeFilter } from "./workflows/workflow-page-types.js";
@@ -12,7 +12,17 @@ import { DefinitionsTable } from "./workflows/workflow-definitions-table.js";
 import { WorkflowCreateForm } from "./workflows/workflow-create-form.js";
 export { WorkflowDashboardWidget, WorkflowSidebarLink } from "./workflows/workflow-sidebar-and-widget.js";
 import { WorkflowRunSections, type WorkflowRunHistoryScope } from "./workflows/workflow-run-sections.js";
-import { renderWorkflowGraphEditor } from "./workflows/graph-editor/WorkflowGraphEditor.js";
+import type { StepWorkspaceGraphEditorProps } from "./workflows/step-workspace-editor.js";
+
+// graph-editor UI 묶음은 무거우므로 라우트 청크에서 분리하고, 편집기를 처음 열 때 로드한다.
+const LazyWorkflowGraphEditor = lazy(async () => ({ default: (await import("./workflows/graph-editor/WorkflowGraphEditor.js")).renderWorkflowGraphEditor }));
+function renderLazyWorkflowGraphEditor(props: StepWorkspaceGraphEditorProps): JSX.Element {
+  return (
+    <Suspense fallback={null}>
+      <LazyWorkflowGraphEditor {...props} />
+    </Suspense>
+  );
+}
 
 export { jsonToSteps, stepsToJson };
 export type { StepDraft };
@@ -320,7 +330,7 @@ export function WorkflowPage(props: PluginPageProps): JSX.Element {
         {!definitionsCollapsed && (
           <Fragment key="definitions-body">
             {showNewWorkflowForm && canWrite ? (
-              <WorkflowCreateForm companyId={companyId} projects={data.projects ?? []} toolSystem={toolSystem} availableTools={availableTools} availableToolGrants={availableToolGrants} renderGraphEditor={renderWorkflowGraphEditor} onCreated={refreshOverview} onCancel={() => setShowNewWorkflowForm(false)} onLabelsRefresh={refreshLabels} />
+              <WorkflowCreateForm companyId={companyId} projects={data.projects ?? []} toolSystem={toolSystem} availableTools={availableTools} availableToolGrants={availableToolGrants} renderGraphEditor={renderLazyWorkflowGraphEditor} onCreated={refreshOverview} onCancel={() => setShowNewWorkflowForm(false)} onLabelsRefresh={refreshLabels} />
             ) : (
               <DefinitionsTable
                 key="definitions-table"

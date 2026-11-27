@@ -1,7 +1,8 @@
-import { useMemo, useState, type JSX } from "react";
+import { lazy, Suspense, useMemo, useState, type JSX } from "react";
 import { buildIssueHref } from "./routes.js";
 import { currentBrowserPathname } from "./shared-controls.js";
-import { WorkflowRunGraphPreview } from "./graph-editor/GraphRunPreview.js";
+// 그래프 미리보기도 무거운 graph-editor 묶음에 속하므로 필요할 때만 로드한다.
+const LazyWorkflowRunGraphPreview = lazy(async () => ({ default: (await import("./graph-editor/GraphRunPreview.js")).WorkflowRunGraphPreview }));
 import { usePluginAction, useWorkflowRunDetail } from "./workflow-page-api.js";
 import { applyStepRunsToGraphSteps } from "./workflow-graph.js";
 import { WorkflowReplacementProposal } from "./workflow-replacement-proposal.js";
@@ -100,13 +101,15 @@ export function WorkflowRunDetailPanel({
           successRatePct={harnessStatus.successRatePct}
         />
       ) : null}
-      <WorkflowRunGraphPreview
-        steps={runGraphSteps}
-        pendingStepRunId={pendingStepId}
-        onRerunStep={(input) => {
-          void handleRerunStep({ stepRunId: input.stepRunId, issueId: input.issueId });
-        }}
-      />
+      <Suspense fallback={null}>
+        <LazyWorkflowRunGraphPreview
+          steps={runGraphSteps}
+          pendingStepRunId={pendingStepId}
+          onRerunStep={(input) => {
+            void handleRerunStep({ stepRunId: input.stepRunId, issueId: input.issueId });
+          }}
+        />
+      </Suspense>
       <div className="tactile-card overflow-hidden rounded-xl border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-sm">
