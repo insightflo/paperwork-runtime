@@ -858,4 +858,34 @@ describe("workflow routes", () => {
     expect(res.body.error).toBe("Workflow run not found");
     expect(mockWorkflowService.listStepRuns).not.toHaveBeenCalled();
   });
+
+  it("rejects unauthenticated harness-status lookups with 401 before any DB lookup", async () => {
+    const res = await request(createApp({ type: "none" })).get(`/api/workflow-runs/${RUN_ID}/harness-status`);
+
+    expect(res.status).toBe(401);
+    expect(mockWorkflowService.getRun).not.toHaveBeenCalled();
+    expect(mockWorkflowService.listStepRuns).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for nonexistent or unauthorized harness-status runs after auth context is valid", async () => {
+    const nonAdminActor = {
+      type: "board",
+      userId: "board-user-1",
+      companyIds: [COMPANY_ID],
+      source: "authenticated",
+      isInstanceAdmin: false,
+    };
+
+    mockWorkflowService.getRun.mockResolvedValueOnce(null);
+    const missing = await request(createApp(nonAdminActor)).get(`/api/workflow-runs/${RUN_ID}/harness-status`);
+    expect(missing.status).toBe(404);
+    expect(missing.body.error).toBe("Workflow run not found");
+    expect(mockWorkflowService.listStepRuns).not.toHaveBeenCalled();
+
+    mockWorkflowService.getRun.mockResolvedValueOnce(workflowRun({ companyId: OTHER_COMPANY_ID }));
+    const crossCompany = await request(createApp(nonAdminActor)).get(`/api/workflow-runs/${RUN_ID}/harness-status`);
+    expect(crossCompany.status).toBe(404);
+    expect(crossCompany.body.error).toBe("Workflow run not found");
+    expect(mockWorkflowService.listStepRuns).not.toHaveBeenCalled();
+  });
 });

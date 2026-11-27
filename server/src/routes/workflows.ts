@@ -633,6 +633,10 @@ export function workflowRoutes(db: Db) {
 
   // Read-only harness telemetry; same RBAC and run/step loading as /detail. Fails closed on missing run/access.
   router.get("/workflow-runs/:runId/harness-status", async (req, res) => {
+    // [auth-before-lookup] 인증 없는 호출은 DB 조회 없이 즉시 401로 실패한다(회사 접근 실패는 여전히 404 fail-closed).
+    if (req.actor.type === "none") {
+      throw unauthorized();
+    }
     const runId = req.params.runId as string;
     const run = await workflowService.getRun(db, runId);
     if (!run || !canAccessRecord(req, run.companyId)) {
