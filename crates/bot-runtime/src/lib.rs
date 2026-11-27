@@ -14,6 +14,7 @@ pub mod control_sock;
 #[cfg(unix)]
 pub mod executor;
 pub mod governance;
+pub mod local_tools;
 pub mod state;
 pub mod token;
 
