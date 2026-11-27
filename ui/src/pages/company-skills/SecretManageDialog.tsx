@@ -6,6 +6,7 @@ import { secretsApi } from "../../api/secrets";
 import { useToast } from "../../context/ToastContext";
 import { queryKeys } from "../../lib/queryKeys";
 import { formatDateTime } from "../../lib/utils";
+import { useCompany } from "../../context/CompanyContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -31,6 +32,7 @@ type RowAction = "none" | "rotate" | "edit" | "delete";
  * rejects referenced deletes with 409 and the error is surfaced here.
  */
 export function SecretManageDialog({ companyId, open, onOpenChange }: SecretManageDialogProps) {
+  const { canAdmin } = useCompany();
   const secretsQuery = useQuery({
     queryKey: queryKeys.secrets.list(companyId),
     queryFn: () => secretsApi.list(companyId),
@@ -46,6 +48,11 @@ export function SecretManageDialog({ companyId, open, onOpenChange }: SecretMana
           <DialogDescription>
             Rename, rotate, or delete company secrets. Values are never shown after creation.
           </DialogDescription>
+          {!canAdmin ? (
+            <p className="text-xs text-muted-foreground">
+              View only — admin or owner role required to change secrets.
+            </p>
+          ) : null}
         </DialogHeader>
 
         <div className="space-y-3">
@@ -70,6 +77,8 @@ export function SecretManageDialog({ companyId, open, onOpenChange }: SecretMana
 function SecretRow({ companyId, secret }: { companyId: string; secret: CompanySecret }) {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
+  const { canAdmin } = useCompany();
+  const adminRequiredTitle = "Admin or owner role required to rotate, edit, or delete secrets";
   const [action, setAction] = useState<RowAction>("none");
   const [rotateValue, setRotateValue] = useState("");
   const [editName, setEditName] = useState(secret.name);
@@ -143,10 +152,22 @@ function SecretRow({ companyId, secret }: { companyId: string; secret: CompanySe
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={() => setAction(action === "rotate" ? "none" : "rotate")} disabled={anyPending}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setAction(action === "rotate" ? "none" : "rotate")}
+            disabled={anyPending || !canAdmin}
+            title={!canAdmin ? adminRequiredTitle : undefined}
+          >
             Rotate
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setAction(action === "edit" ? "none" : "edit")} disabled={anyPending}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setAction(action === "edit" ? "none" : "edit")}
+            disabled={anyPending || !canAdmin}
+            title={!canAdmin ? adminRequiredTitle : undefined}
+          >
             Edit
           </Button>
           <Button
@@ -154,10 +175,12 @@ function SecretRow({ companyId, secret }: { companyId: string; secret: CompanySe
             variant="ghost"
             className="text-destructive"
             onClick={() => {
+              if (!canAdmin) return;
               setDeleteError(null);
               setAction(action === "delete" ? "none" : "delete");
             }}
-            disabled={anyPending}
+            disabled={anyPending || !canAdmin}
+            title={!canAdmin ? adminRequiredTitle : undefined}
           >
             Delete
           </Button>
@@ -186,8 +209,12 @@ function SecretRow({ companyId, secret }: { companyId: string; secret: CompanySe
           <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
-              onClick={() => rotate.mutate({ value: rotateValue })}
-              disabled={rotate.isPending || !rotateValue}
+              onClick={() => {
+                if (!canAdmin) return;
+                rotate.mutate({ value: rotateValue });
+              }}
+              disabled={rotate.isPending || !rotateValue || !canAdmin}
+              title={!canAdmin ? adminRequiredTitle : undefined}
             >
               {rotate.isPending ? "Rotating…" : "Rotate secret"}
             </Button>
@@ -222,8 +249,12 @@ function SecretRow({ companyId, secret }: { companyId: string; secret: CompanySe
           <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
-              onClick={() => update.mutate({ name: editName.trim(), description: editDescription.trim() || null })}
-              disabled={update.isPending || !editName.trim()}
+              onClick={() => {
+                if (!canAdmin) return;
+                update.mutate({ name: editName.trim(), description: editDescription.trim() || null });
+              }}
+              disabled={update.isPending || !editName.trim() || !canAdmin}
+              title={!canAdmin ? adminRequiredTitle : undefined}
             >
               {update.isPending ? "Saving…" : "Save changes"}
             </Button>
@@ -259,8 +290,12 @@ function SecretRow({ companyId, secret }: { companyId: string; secret: CompanySe
             <Button
               size="sm"
               variant="destructive"
-              onClick={() => remove.mutate()}
-              disabled={remove.isPending || usedByTools.length > 0}
+              onClick={() => {
+                if (!canAdmin) return;
+                remove.mutate();
+              }}
+              disabled={remove.isPending || usedByTools.length > 0 || !canAdmin}
+              title={!canAdmin ? adminRequiredTitle : undefined}
             >
               {remove.isPending ? "Deleting…" : "Delete secret"}
             </Button>
