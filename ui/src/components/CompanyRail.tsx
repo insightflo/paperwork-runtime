@@ -223,13 +223,13 @@ export function CompanyRail({ onToggleSidebar }: CompanyRailProps = {}) {
               type="button"
               onClick={() => openOnboarding()}
               className="flex items-center justify-center w-9 h-9 rounded-[8px] border border-dashed border-border text-muted-foreground hover:border-primary/70 hover:text-primary hover:bg-primary/5 transition-[border-color,color,background-color] duration-150"
-              aria-label="Add company"
+              aria-label="회사 추가"
             >
               <Plus className="h-4 w-4" />
             </button>
           </TooltipTrigger>
           <TooltipContent side="right" sideOffset={8}>
-            <p>Add company</p>
+            <p>회사 추가</p>
           </TooltipContent>
         </Tooltip>
       </div>

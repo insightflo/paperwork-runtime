@@ -59,10 +59,10 @@ describe("EnterpriseBots cockpit", () => {
   it("renders the 1-row telemetry strip and 2-axis callableBy × dataScope badges on the Bots tab", async () => {
     await render(<EnterpriseBots initialData={DATA} />);
     const strip = container.querySelector('[aria-label="Enterprise bot telemetry"]')!;
-    expect(strip.textContent).toContain("Active Bots");
-    expect(strip.textContent).toContain("Online Terminals");
-    expect(strip.textContent).toContain("Shared Channels");
-    expect(strip.textContent).toContain("Pending Owner Approvals");
+    expect(strip.textContent).toContain("활성 봇");
+    expect(strip.textContent).toContain("온라인 노드");
+    expect(strip.textContent).toContain("공유 채널");
+    expect(strip.textContent).toContain("승인 대기");
     expect([...strip.querySelectorAll("b")].map((b) => b.textContent)).toEqual(["2", "2", "1", "1"]);
     expect(tabButton("bots")?.getAttribute("aria-pressed")).toBe("true");
     expect(tabButton("bots")?.textContent).toContain("커넥터 · 권한");
@@ -131,7 +131,7 @@ describe("EnterpriseBots cockpit", () => {
   it("falls back to demo data when nothing is injected and to empty states for empty data", async () => {
     await render(<EnterpriseBots />);
     expect(container.textContent).toContain("Research Copilot");
-    expect(button("Register Terminal")).toBeTruthy();
+    expect(button("터미널 등록")).toBeTruthy();
     const empty: EnterpriseBotsData = { bots: [], terminals: [], channels: [], pendingApprovals: [] };
     await render(<EnterpriseBots initialData={empty} />);
     expect(container.textContent).toContain("No bots registered.");
@@ -183,16 +183,16 @@ describe("EnterpriseBots cockpit", () => {
       });
     };
 
-    await setInputValue(dialog.querySelector<HTMLInputElement>('input[aria-label="Bot Name"]')!, "Release Assistant");
-    await setInputValue(dialog.querySelector<HTMLSelectElement>('select[aria-label="Bot Kind"]')!, "company");
-    await setInputValue(dialog.querySelector<HTMLSelectElement>('select[aria-label="Callable By"]')!, "company");
-    await setInputValue(dialog.querySelector<HTMLSelectElement>('select[aria-label="Data Scope"]')!, "team");
+    await setInputValue(dialog.querySelector<HTMLInputElement>('input[aria-label="봇 이름"]')!, "Release Assistant");
+    await setInputValue(dialog.querySelector<HTMLSelectElement>('select[aria-label="봇 종류"]')!, "company");
+    await setInputValue(dialog.querySelector<HTMLSelectElement>('select[aria-label="호출 권한"]')!, "company");
+    await setInputValue(dialog.querySelector<HTMLSelectElement>('select[aria-label="데이터 범위"]')!, "team");
     await setInputValue(
-      dialog.querySelector<HTMLInputElement>('input[aria-label="Webhook URL"]')!,
+      dialog.querySelector<HTMLInputElement>('input[aria-label="웹훅 URL"]')!,
       "https://bots.example.com/hook",
     );
     await setInputValue(
-      dialog.querySelector<HTMLInputElement>('input[aria-label="Capabilities"]')!,
+      dialog.querySelector<HTMLInputElement>('input[aria-label="역량"]')!,
       "deploy.check, logs.read",
     );
 
@@ -233,7 +233,7 @@ describe("EnterpriseBots cockpit", () => {
     });
 
     await render(<EnterpriseBots initialData={DATA} onRegisterTerminalSubmit={onRegisterTerminalSubmit} />);
-    await click(button("Register Terminal"));
+    await click(button("터미널 등록"));
 
     const dialog = container.querySelector('[role="dialog"][aria-label="Register Terminal"]')!;
     expect(dialog).toBeTruthy();
@@ -278,7 +278,7 @@ describe("EnterpriseBots cockpit", () => {
         onRegisterTerminalSubmit={onRegisterTerminalSubmit}
       />,
     );
-    await click(button("Register Terminal"));
+    await click(button("터미널 등록"));
 
     const dialog = container.querySelector('[role="dialog"][aria-label="Register Terminal"]')!;
     // personal_terminal (default) shows no team selector and submits without teamId.
@@ -311,7 +311,7 @@ describe("EnterpriseBots cockpit", () => {
 
   it("shows an explicit error when the team list fails to load for worker_node", async () => {
     await render(<EnterpriseBots initialData={DATA} teams={[]} teamsLoadError="network down" />);
-    await click(button("Register Terminal"));
+    await click(button("터미널 등록"));
     const dialog = container.querySelector('[role="dialog"][aria-label="Register Terminal"]')!;
     await setControlValue(dialog.querySelector<HTMLSelectElement>('select[aria-label="Terminal Kind"]')!, "worker_node");
     const err = dialog.querySelector('[data-teams-error="true"]');
