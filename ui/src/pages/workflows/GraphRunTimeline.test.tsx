@@ -160,7 +160,8 @@ it("renders parallel wave, join, pause indicator and resumed continuation", asyn
   const wait = rendered.querySelector("[data-timeline-segment='human_wait']")!;
   expect(wait).toBeTruthy();
   expect(wait.querySelector("[data-pause-indicator='true']")?.textContent).toContain("Paused · awaiting approval");
-  expect(wait.textContent).toContain("decision dec-1");
+  expect(wait.querySelector("[data-pause-indicator='true']")?.getAttribute("data-wait-state")).toBe("pending");
+  expect(wait.querySelector("[data-decision-id-pill='true']")?.textContent).toBe("#dec-1");
   expect(wait.textContent).toContain("paused");
 
   const resume = rendered.querySelector("[data-timeline-segment='resume']")!;
@@ -195,8 +196,10 @@ it("maps the live humanWaitDecision overlay onto a pending pause segment", async
   const rendered = await renderTimeline(steps);
   const wait = rendered.querySelector("[data-timeline-segment='human_wait']")!;
   expect(wait).toBeTruthy();
-  expect(wait.querySelector("[data-pause-indicator='true']")?.textContent).toBe("Paused · awaiting approval");
-  expect(wait.textContent).toContain("decision dec-live-pending");
+  const pendingIndicator = wait.querySelector("[data-pause-indicator='true']");
+  expect(pendingIndicator?.textContent).toBe("Paused · awaiting approval");
+  expect(pendingIndicator?.getAttribute("data-wait-state")).toBe("pending");
+  expect(wait.querySelector("[data-decision-id-pill='true']")?.textContent).toBe("#dec-live-pen…");
 });
 
 it("maps the live humanWaitDecision overlay onto a resolved resume segment", async () => {
@@ -222,9 +225,54 @@ it("maps the live humanWaitDecision overlay onto a resolved resume segment", asy
   const rendered = await renderTimeline(steps);
   const wait = rendered.querySelector("[data-timeline-segment='human_wait']")!;
   expect(wait).toBeTruthy();
-  expect(wait.querySelector("[data-pause-indicator='true']")?.textContent).toBe("Resolved · approved");
+  const approvedIndicator = wait.querySelector("[data-pause-indicator='true']");
+  expect(approvedIndicator?.textContent).toBe("Approved · resumed");
+  expect(approvedIndicator?.getAttribute("data-wait-state")).toBe("approved");
+  expect(approvedIndicator?.getAttribute("style")).toContain("var(--pw-emerald)");
+  expect(wait.querySelector("[data-decision-id-pill='true']")?.textContent).toBe("#dec-live-res…");
   const resume = rendered.querySelector("[data-timeline-segment='resume']")!;
   expect(resume.querySelector("[data-timeline-step='publish']")).toBeTruthy();
+});
+
+it("renders a rejected human_wait decision as a halted crimson state", async () => {
+  const steps = timelineFixtureWithOverlay({
+    graphRunStatus: "failed",
+    humanWaitDecision: {
+      decisionId: "dec-live-rejected",
+      status: "rejected",
+      pausedAt: "2026-02-14T09:00:07.500Z",
+      resolvedAt: "2026-02-14T09:04:00.000Z",
+    },
+  });
+  const rendered = await renderTimeline(steps);
+  const wait = rendered.querySelector("[data-timeline-segment='human_wait']")!;
+  const indicator = wait.querySelector("[data-pause-indicator='true']")!;
+  expect(indicator.getAttribute("data-wait-state")).toBe("rejected");
+  expect(indicator.textContent).toBe("Rejected · halted");
+  expect(indicator.getAttribute("style")).toContain("var(--pw-crimson)");
+  expect(wait.querySelector("[data-decision-id-pill='true']")?.textContent).toBe("#dec-live-rej…");
+  expect(wait.textContent).not.toContain("Paused · awaiting approval");
+  expect(wait.textContent).not.toContain("Approved · resumed");
+});
+
+it("renders an expired human_wait decision as a halted crimson state distinct from pending", async () => {
+  const steps = timelineFixtureWithOverlay({
+    graphRunStatus: "failed",
+    humanWaitDecision: {
+      decisionId: "dec-x9",
+      status: "expired",
+      pausedAt: "2026-02-14T09:00:07.500Z",
+      resolvedAt: "2026-02-14T09:08:00.000Z",
+    },
+  });
+  const rendered = await renderTimeline(steps);
+  const wait = rendered.querySelector("[data-timeline-segment='human_wait']")!;
+  const indicator = wait.querySelector("[data-pause-indicator='true']")!;
+  expect(indicator.getAttribute("data-wait-state")).toBe("expired");
+  expect(indicator.textContent).toBe("Expired · halted");
+  expect(indicator.getAttribute("style")).toContain("var(--pw-crimson)");
+  expect(wait.querySelector("[data-decision-id-pill='true']")?.textContent).toBe("#dec-x9");
+  expect(wait.textContent).not.toContain("Paused · awaiting approval");
 });
 
 it("renders nothing without steps", async () => {
