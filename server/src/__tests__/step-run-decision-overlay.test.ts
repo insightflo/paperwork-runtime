@@ -4,14 +4,18 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  companies, createDb, issues, operatorDecisions, workflowDefinitions, workflowRuns, workflowStepRuns, type Db,
+  companies, createDb, issues, operatorDecisions, workflowDefinitions, workflowRuns, workflowStepRuns,
+  type Db, type OperatorDecisionResultJson,
 } from "@paperclipai/db";
 import { getEmbeddedPostgresTestSupport, startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import { attachStepRunHumanWaitDecisions } from "../services/workflow/step-run-decision-overlay.js";
-import type { OperatorDecisionOverlayRow } from "../services/workflow/step-run-decision-overlay.js";
+import type { OperatorDecisionOverlayRow, StepRunHumanWaitStatus } from "../services/workflow/step-run-decision-overlay.js";
 
 const T0 = new Date("2026-12-01T00:00:00.000Z");
 const at = (ms: number) => new Date(T0.getTime() + ms);
+
+const approveResult: OperatorDecisionResultJson = { actionId: "approve", outcome: "approve", selectedOptionIds: ["approve"], comment: null };
+const rejectResult: OperatorDecisionResultJson = { actionId: "reject", outcome: "reject", selectedOptionIds: ["reject"], comment: null };
 
 const decisionDefinition = {
   options: [{ id: "approve", label: "Approve", description: null, facts: [], evidenceRefs: [] }],
@@ -44,14 +48,30 @@ describe("attachStepRunHumanWaitDecisions (unit, stub db)", () => {
 
   it("prefers the newest decision row (first in the newest-first result)", async () => {
     const rows: OperatorDecisionOverlayRow[] = [
-      { decisionId: "d-new", issueId: null, workflowRunId: "run-1", status: "resolved", createdAt: at(1_000), resolvedAt: at(2_000) },
-      { decisionId: "d-old", issueId: null, workflowRunId: "run-1", status: "pending", createdAt: at(0), resolvedAt: null },
+      { decisionId: "d-new", issueId: null, workflowRunId: "run-1", status: "resolved", result: approveResult, createdAt: at(1_000), resolvedAt: at(2_000) },
+      { decisionId: "d-old", issueId: null, workflowRunId: "run-1", status: "pending", result: null, createdAt: at(0), resolvedAt: null },
     ];
     const db = { select: () => ({ from: () => ({ where: () => ({ orderBy: () => Promise.resolve(rows) }) }) }) } as unknown as Db;
     const [result] = await attachStepRunHumanWaitDecisions(db, randomUUID(), [stepRun]);
     expect(result.humanWaitDecision).toEqual({
-      decisionId: "d-new", status: "resolved", pausedAt: at(1_000).toISOString(), resolvedAt: at(2_000).toISOString(),
+      decisionId: "d-new", status: "approved", pausedAt: at(1_000).toISOString(), resolvedAt: at(2_000).toISOString(),
     });
+  });
+
+  it("derives the display status from the structured (status, result) row", async () => {
+    const base = { decisionId: "d1", issueId: null, workflowRunId: "run-1", createdAt: at(0), resolvedAt: null };
+    const cases: Array<[Pick<OperatorDecisionOverlayRow, "status" | "result">, StepRunHumanWaitStatus]> = [
+      [{ status: "pending", result: null }, "pending"],
+      [{ status: "resolved", result: approveResult, resolvedAt: at(1_000) }, "approved"],
+      [{ status: "resolved", result: rejectResult, resolvedAt: at(1_000) }, "rejected"],
+      [{ status: "resolved", result: null }, "rejected"],
+      [{ status: "expired", result: null }, "expired"],
+    ];
+    for (const [row, expected] of cases) {
+      const db = { select: () => ({ from: () => ({ where: () => ({ orderBy: () => Promise.resolve([{ ...base, ...row }]) }) }) }) } as unknown as Db;
+      const [result] = await attachStepRunHumanWaitDecisions(db, randomUUID(), [stepRun]);
+      expect(result.humanWaitDecision?.status).toBe(expected);
+    }
   });
 });
 
@@ -74,11 +94,13 @@ describeDb("attachStepRunHumanWaitDecisions (embedded pg)", () => {
     await db.insert(companies).values({ id: companyId, name: `Overlay ${companyId.slice(0, 6)}`, issuePrefix: randomUUID() });
     const [definition] = await db.insert(workflowDefinitions).values({ companyId, name: "Overlay flow", stepsJson: [] }).returning();
     await db.insert(workflowRuns).values({ id: runId, companyId, workflowId: definition.id, triggeredBy: "manual" }).returning();
+    return definition.id;
   }
 
   async function insertDecision(input: {
     companyId: string; issueId?: string | null; workflowRunId?: string | null;
     createdAt: Date; status?: string; resolvedAt?: Date | null;
+    result?: OperatorDecisionResultJson | null;
   }) {
     const resolved = input.status === "resolved";
     const [row] = await db.insert(operatorDecisions).values({
@@ -96,7 +118,7 @@ describeDb("attachStepRunHumanWaitDecisions (embedded pg)", () => {
       resolvedAt: input.resolvedAt ?? null,
       createdAt: input.createdAt,
       resolvedByUserId: resolved ? "operator-1" : null,
-      result: resolved ? { actionId: "approve", outcome: "approve", selectedOptionIds: ["approve"], comment: null } : null,
+      result: input.result ?? (resolved ? { actionId: "approve", outcome: "approve", selectedOptionIds: ["approve"], comment: null } : null),
       definition: decisionDefinition,
     }).returning();
     return row;
@@ -105,7 +127,7 @@ describeDb("attachStepRunHumanWaitDecisions (embedded pg)", () => {
   it("enriches step runs by issueId and sourceContext run, keeps no-match passthrough, and isolates companies", async () => {
     const companyId = randomUUID(), foreignCompanyId = randomUUID();
     const runId = randomUUID(), foreignRunId = randomUUID();
-    await seedCompany(companyId, runId);
+    const definitionId = await seedCompany(companyId, runId);
     await seedCompany(foreignCompanyId, foreignRunId);
     const [issue] = await db.insert(issues).values({ companyId, title: "Gate step" }).returning();
     const [stepByIssue] = await db.insert(workflowStepRuns).values({ workflowRunId: runId, stepId: "produce", issueId: issue.id, status: "running" }).returning();
@@ -120,9 +142,9 @@ describeDb("attachStepRunHumanWaitDecisions (embedded pg)", () => {
     const [enrichedByIssue, enrichedByRun, foreignResult] = await attachStepRunHumanWaitDecisions(db, companyId, [
       { ...stepByIssue }, { ...stepByRun }, { ...foreignStep },
     ]);
-    // 같은 issueId 의 여러 결정 중 최신(resolved)이 이긴다.
+    // 같은 issueId 의 여러 결정 중 최신(resolved+approve result)이 이기고, 파생 상태는 approved 다.
     expect(enrichedByIssue.humanWaitDecision).toEqual({
-      decisionId: ownIssueResolved.id, status: "resolved", pausedAt: at(4_000).toISOString(), resolvedAt: at(5_000).toISOString(),
+      decisionId: ownIssueResolved.id, status: "approved", pausedAt: at(4_000).toISOString(), resolvedAt: at(5_000).toISOString(),
     });
     // run 매치는 자사 pending 결정이며, 더 최신인 타사 결정(at(9_000))은 격리돼 유출되지 않는다.
     expect(enrichedByRun.humanWaitDecision).toEqual({
@@ -130,6 +152,16 @@ describeDb("attachStepRunHumanWaitDecisions (embedded pg)", () => {
     });
     expect(enrichedByRun.humanWaitDecision?.decisionId).not.toBe(foreignDecision.id);
     expect("humanWaitDecision" in foreignResult).toBe(false);
+
+    // resolved+reject result 는 fail-closed 로 rejected 로 파생된다(실제 DB 행 기준).
+    const runIdRejected = randomUUID();
+    await db.insert(workflowRuns).values({ id: runIdRejected, companyId, workflowId: definitionId, triggeredBy: "manual" }).returning();
+    const [rejectedStep] = await db.insert(workflowStepRuns).values({ workflowRunId: runIdRejected, stepId: "manual-gate", status: "running" }).returning();
+    const ownRejected = await insertDecision({ companyId, workflowRunId: runIdRejected, createdAt: at(6_000), status: "resolved", resolvedAt: at(7_000), result: rejectResult });
+    const [rejectedEnriched] = await attachStepRunHumanWaitDecisions(db, companyId, [{ ...rejectedStep }]);
+    expect(rejectedEnriched.humanWaitDecision).toEqual({
+      decisionId: ownRejected.id, status: "rejected", pausedAt: at(6_000).toISOString(), resolvedAt: at(7_000).toISOString(),
+    });
 
     // 외사 스코프 호출: 자사 run B 에 매치할 결정이 없으므로 passthrough.
     const [foreignAgain] = await attachStepRunHumanWaitDecisions(db, foreignCompanyId, [{ ...foreignStep }]);
