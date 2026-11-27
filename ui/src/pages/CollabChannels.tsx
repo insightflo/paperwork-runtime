@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CornerDownRight, MessageSquare, Pause, Plus, Send } from "lucide-react";
 import { agentsApi } from "../api/agents";
@@ -95,6 +95,11 @@ function NewThreadForm({ busy, onSubmit, onCancel }: { busy: boolean; onSubmit: 
 function Composer({ agents, onSend }: { agents: AgentRef[]; onSend: (input: CollabPostMessageInput) => void }) {
   const [body, setBody] = useState("");
   const [targetAgentId, setTargetAgentId] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const mention = (name: string) => {
+    setBody((draft) => `${draft}${draft && !/\s$/.test(draft) ? " " : ""}@${name} `);
+    inputRef.current?.focus();
+  };
   const send = (actionKind: "message" | "user_steer") => {
     const trimmed = body.trim();
     if (!trimmed) return;
@@ -104,7 +109,17 @@ function Composer({ agents, onSend }: { agents: AgentRef[]; onSend: (input: Coll
   };
   return (
     <div className="border-t border-border px-3 py-2.5">
-      <textarea data-testid="composer-input" aria-label="스레드 메시지 작성" className={cn(FIELD, "min-h-16 resize-y")} value={body} onChange={(e) => setBody(e.target.value)} placeholder="@멘션으로 특정 에이전트 지정 또는 방향 수정 입력…" />
+      {agents.length > 0 && (
+        <div role="group" aria-label="에이전트 빠른 멘션" className="mb-2 flex flex-wrap gap-1.5">
+          {agents.map((agent) => <Button key={agent.id} type="button" size="sm" variant="outline" data-mention-agent={agent.id} onClick={() => mention(agent.name)}>@{agent.name}</Button>)}
+        </div>
+      )}
+      <textarea ref={inputRef} data-testid="composer-input" aria-label="스레드 메시지 작성" aria-keyshortcuts="Control+Enter Meta+Enter" className={cn(FIELD, "min-h-16 resize-y")} value={body} onChange={(e) => setBody(e.target.value)} onKeyDown={(event) => {
+        if (event.key !== "Enter" || !(event.metaKey || event.ctrlKey) || event.nativeEvent.isComposing) return;
+        event.preventDefault();
+        send("message");
+      }} placeholder="@멘션으로 특정 에이전트 지정 또는 방향 수정 입력…" />
+      <p className="mt-1 text-[10.5px] text-muted-foreground">Cmd/Ctrl+Enter로 전송 · Enter로 줄바꿈</p>
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
         <select data-testid="composer-target" aria-label="대상 에이전트 지정" className="h-8 rounded-md border border-border bg-background px-1.5 text-xs text-foreground" value={targetAgentId} onChange={(e) => setTargetAgentId(e.target.value)}>
           <option value="">대상 없음</option>
@@ -227,7 +242,17 @@ export function CollabChannels() {
         )}
       </section>
       <section aria-label="스레드 타임라인" className={cn(CARD, "flex min-w-0 flex-1 flex-col")}>
-        {!selectedThread ? (
+        {channels.length === 0 && !channelsQuery.error ? (
+          <div className="flex flex-1 items-center justify-center p-6">
+            <div className="max-w-md rounded-xl border border-border bg-background/60 p-6 text-center">
+              <MessageSquare aria-hidden="true" className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">Paperwork에서 팀 대화를 시작하세요</h2>
+              <p className="mt-2 text-sm text-muted-foreground">팀이나 에이전트와 대화할 채널을 만들어 보세요. 채널 이름을 정하고 함께할 에이전트를 선택하면 됩니다.</p>
+              <p className="mt-2 text-sm text-muted-foreground">채널 안에서 새 스레드(대화)를 열고, @멘션으로 에이전트에게 말을 걸어 보세요.</p>
+              <Button type="button" className="mt-4" data-testid="onboarding-create-channel" onClick={() => { setShowChannelForm(true); setActionError(null); }}><Plus className="h-4 w-4" />첫 채널 만들기</Button>
+            </div>
+          </div>
+        ) : !selectedThread ? (
           <div className="flex flex-1 items-center justify-center p-6"><EmptyState icon={MessageSquare} message="왼쪽에서 스레드를 선택하면 타임라인이 열립니다." /></div>
         ) : (
           <>
