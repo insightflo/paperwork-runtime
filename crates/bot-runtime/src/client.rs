@@ -138,9 +138,7 @@ impl BackoffState {
         let delay_ms = if self.config.jitter_percent == 0 {
             base_ms
         } else {
-            let max_delta = base_ms
-                .saturating_mul(u64::from(self.config.jitter_percent))
-                / 100;
+            let max_delta = base_ms.saturating_mul(u64::from(self.config.jitter_percent)) / 100;
             if max_delta == 0 {
                 base_ms
             } else {

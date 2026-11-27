@@ -199,7 +199,10 @@ mod tests {
             validate_token_prefix("pcp_term_abc123"),
             Some(TokenKind::Terminal)
         );
-        assert_eq!(validate_token_prefix("pcp_bot_xyz-99"), Some(TokenKind::Bot));
+        assert_eq!(
+            validate_token_prefix("pcp_bot_xyz-99"),
+            Some(TokenKind::Bot)
+        );
         assert_eq!(validate_token_prefix("pcp_term_"), None);
         assert_eq!(validate_token_prefix("other_123"), None);
     }
