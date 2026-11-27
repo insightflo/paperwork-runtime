@@ -86,4 +86,65 @@ describe("dataGraphApi", () => {
       }),
     );
   });
+
+  it("queries data-graph with url-encoded companyId and seed", async () => {
+    const result = {
+      seed: { kind: "mission", id: "m-1" },
+      nodes: [{ kind: "mission", id: "m-1", label: null, status: "active", hop: 0 }],
+      edges: [],
+      truncated: false,
+    };
+    const fetchMock: FetchMock = vi.fn(async () => mockResponse(200, result));
+    setFetchMock(fetchMock);
+
+    await expect(
+      dataGraphApi.queryDataGraph("company/a b", { seed: "mission:m-1" }),
+    ).resolves.toEqual(result);
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/companies/company%2Fa%20b/data-graph/query?seed=mission%3Am-1",
+    );
+  });
+
+  it("appends maxHops, limit, includeContextPack as query params with typed passthrough", async () => {
+    const result = {
+      seed: { kind: "issue", id: "i-1" },
+      nodes: [],
+      edges: [
+        {
+          kind: "issue_parent",
+          from: { kind: "issue", id: "i-1" },
+          to: { kind: "issue", id: "i-2" },
+          via: "issues.parent_id",
+        },
+      ],
+      truncated: true,
+      contextPack: {
+        seed: { nodeType: "issue", nodeId: "i-1" },
+        facts: ["issue:i-1 (via seed)"],
+        provenance: [{ nodeType: "issue", nodeId: "i-1", hop: 0, viaEdge: "seed" }],
+        truncated: false,
+        charCount: 15,
+      },
+    };
+    const fetchMock: FetchMock = vi.fn(async () => mockResponse(200, result));
+    setFetchMock(fetchMock);
+
+    await expect(
+      dataGraphApi.queryDataGraph("co-1", {
+        seed: "issue:i-1",
+        maxHops: 1,
+        limit: 25,
+        includeContextPack: true,
+      }),
+    ).resolves.toEqual(result);
+
+    const url = String(fetchMock.mock.calls[0]?.[0]);
+    const parsed = new URL(url, "http://localhost");
+    expect(parsed.pathname).toBe("/api/companies/co-1/data-graph/query");
+    expect(parsed.searchParams.get("seed")).toBe("issue:i-1");
+    expect(parsed.searchParams.get("maxHops")).toBe("1");
+    expect(parsed.searchParams.get("limit")).toBe("25");
+    expect(parsed.searchParams.get("includeContextPack")).toBe("true");
+  });
 });
