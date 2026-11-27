@@ -761,7 +761,12 @@ describe("workflow routes", () => {
     const db = {
       select: vi.fn(() => ({
         from: vi.fn(() => ({
-          where: vi.fn(async () => [{ id: ISSUE_ID, identifier: "CMPA-5230" }]),
+          where: vi.fn(() => {
+            const rows = [{ id: ISSUE_ID, identifier: "CMPA-5230" }];
+            return Object.assign(Promise.resolve(rows), {
+              orderBy: vi.fn(async () => []),
+            });
+          }),
         })),
       })),
     };
