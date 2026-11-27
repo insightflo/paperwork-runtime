@@ -1,12 +1,17 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import express from "express";
 import request from "supertest";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { companies, companyMemberships, createDb } from "@paperclipai/db";
+import { createApp as createServerApp } from "../app.js";
 import { errorHandler } from "../middleware/index.js";
-import {
-  createWorkflowHarnessFleetRouter,
+import { createWorkflowHarnessFleetRouter as makeFleetRouter,
   type WorkflowHarnessFleetDeps,
   type WorkflowHarnessFleetStepRun,
 } from "../routes/workflow-harness-fleet.js";
+import { startEmbeddedPostgresTestDatabase } from "./helpers/embedded-postgres.js";
 import type { HarnessSummaryRun } from "../services/workflow/harness-summary.js";
 
 /**
@@ -46,7 +51,7 @@ function createApp(deps: Partial<WorkflowHarnessFleetDeps>, actor: TestActor) {
     req.actor = actor as typeof req.actor;
     next();
   });
-  app.use("/api", createWorkflowHarnessFleetRouter(deps as WorkflowHarnessFleetDeps));
+  app.use("/api", makeFleetRouter(deps as WorkflowHarnessFleetDeps));
   app.use(errorHandler);
   return app;
 }
@@ -113,4 +118,60 @@ describe("workflow harness fleet route", () => {
       .toEqual(["healthy", "stalled", "timed-out", "done", "pending"]);
     expect(deps.listStepRuns).toHaveBeenCalledWith(["healthy", "stalled", "timed-out", "done", "pending"]);
   });
+});
+
+/** The real `createApp` must mount the fleet router ON the `api` router, directly after `workflowRoutes`. */
+describe("workflow harness fleet mount in createApp", () => {
+  const USER = "harness-fleet-user";
+  let database: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>>;
+  let app: Awaited<ReturnType<typeof createServerApp>>;
+  let localPluginDir = "";
+
+  beforeAll(async () => {
+    database = await startEmbeddedPostgresTestDatabase("workflow-harness-fleet-mount-");
+    const db = createDb(database.connectionString);
+    await db.insert(companies).values({ id: COMPANY, name: "Harness Fleet Mount", issuePrefix: "HF1" });
+    await db.insert(companyMemberships).values({
+      companyId: COMPANY, principalType: "user", principalId: USER, status: "active", membershipRole: "member",
+    });
+    localPluginDir = await mkdtemp(path.join(tmpdir(), "harness-fleet-plugins-"));
+    app = await createServerApp(db, {
+      uiMode: "none", serverPort: 3100, storageService: {} as never,
+      deploymentMode: "authenticated", deploymentExposure: "private",
+      allowedHostnames: [], bindHost: "127.0.0.1", authReady: true,
+      companyDeletionEnabled: false, localPluginDir,
+      resolveSession: async () => ({
+        session: { id: "session-1", userId: USER },
+        user: { id: USER, email: "fleet@example.com", name: "Fleet User" },
+      }),
+    });
+  }, 120_000);
+
+  afterAll(async () => {
+    if (app) await app.runtimeShutdown.dispose();
+    if (localPluginDir) await rm(localPluginDir, { recursive: true, force: true });
+    if (database) await database.cleanup();
+  }, 120_000);
+
+  it("serves GET /api/companies/:companyId/workflows/harness-fleet from a layer right after workflowRoutes", async () => {
+    const res = await request(app).get(PATH).set("Origin", "http://localhost:3100");
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ companyId: COMPANY, totalRuns: 0, healthyRuns: 0, worstStallRunId: null, runs: [] });
+
+    const root = (app as unknown as { router: { stack: Array<{ handle?: { stack?: unknown[] }; match?: (p: string) => boolean }> } }).router.stack;
+    const apiLayer = root.find((layer) => Array.isArray(layer.handle?.stack)
+      && layer.match?.("/api") === true && layer.match?.("/zzz-nomatch") === false);
+    expect(apiLayer).toBeDefined();
+    const apiStack = apiLayer!.handle!.stack!;
+    const fleetIdx = apiStack.findIndex((layer) => {
+      const routes = (layer as { handle?: { stack?: Array<{ route?: { path?: string } }> } }).handle?.stack ?? [];
+      return routes.some((route) => route.route?.path === "/companies/:companyId/workflows/harness-fleet");
+    });
+    const workflowIdx = apiStack.findIndex((layer) => {
+      const routes = (layer as { handle?: { stack?: Array<{ route?: { path?: string } }> } }).handle?.stack ?? [];
+      return routes.some((route) => route.route?.path === "/companies/:companyId/workflows/overview");
+    });
+    expect(workflowIdx).toBeGreaterThanOrEqual(0);
+    expect(fleetIdx).toBe(workflowIdx + 1);
+  }, 30_000);
 });

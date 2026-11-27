@@ -30,6 +30,7 @@ import { missionRoutes } from "./routes/missions.js";
 import { missionSearchRoutes } from "./routes/mission-search.js";
 import { workflowAgentApiRoutes } from "./routes/workflow-agent-api.js";
 import { workflowRoutes } from "./routes/workflows.js";
+import { createWorkflowHarnessFleetRouter } from "./routes/workflow-harness-fleet.js";
 import {
   webhookRawBodyErrorHandler,
   workflowWebhookRoutes,
@@ -666,6 +667,7 @@ export async function createApp(
   api.use(missionRoutes(db));
   api.use(workflowAgentApiRoutes(db));
   api.use(workflowRoutes(db));
+  api.use(createWorkflowHarnessFleetRouter({ db }));
   api.use(workflowWebhookRoutes(db));
   api.use(executionWorkspaceRoutes(db));
   api.use(worktreeRoutes(db));
