@@ -530,6 +530,7 @@ function SkillPane({
   installUpdatePending,
   onSave,
   savePending,
+  canWrite,
 }: {
   loading: boolean;
   detail: CompanySkillDetail | null | undefined;
@@ -549,6 +550,7 @@ function SkillPane({
   installUpdatePending: boolean;
   onSave: () => void;
   savePending: boolean;
+  canWrite: boolean;
 }) {
   const { pushToast } = useToast();
 
@@ -572,7 +574,7 @@ function SkillPane({
         <SourceIcon className="h-4 w-4 shrink-0 text-slate-500 dark:text-[#8b97ad]" />
         <h1 className="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-[#edf2fb]">{detail.name}</h1>
         <span className="min-w-0 flex-1 truncate text-xs text-slate-500 dark:text-[#8b97ad]">{detail.description ?? ""}</span>
-        {detail.editable ? (
+        {detail.editable && canWrite ? (
           <button
             type="button"
             className="ml-auto inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]"
@@ -582,7 +584,12 @@ function SkillPane({
             {editMode ? "Stop editing" : "Edit"}
           </button>
         ) : (
-          <span className="ml-auto min-w-0 truncate text-xs text-slate-500 dark:text-[#8b97ad]">{detail.editableReason}</span>
+          <span
+            className="ml-auto min-w-0 truncate text-xs text-slate-500 dark:text-[#8b97ad]"
+            title={detail.editable ? "Member, admin, or owner role required to edit skills" : undefined}
+          >
+            {detail.editable ? "Read-only (role)" : detail.editableReason}
+          </span>
         )}
       </div>
 
@@ -629,8 +636,12 @@ function SkillPane({
                   <Button
                     size="sm"
                     className={`h-7 text-xs ${CTA}`}
-                    onClick={onInstallUpdate}
-                    disabled={installUpdatePending}
+                    onClick={() => {
+                      if (!canWrite) return;
+                      onInstallUpdate();
+                    }}
+                    disabled={installUpdatePending || !canWrite}
+                    title={!canWrite ? "Member, admin, or owner role required to install skill updates" : undefined}
                   >
                     <RefreshCw className={cn("mr-1.5 h-3.5 w-3.5", installUpdatePending && "animate-spin")} />
                     Install update{latestPin ? ` ${latestPin}` : ""}
@@ -708,7 +719,7 @@ function SkillPane({
                 <Button variant="ghost" size="sm" className="text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]" onClick={() => setEditMode(false)} disabled={savePending}>
                   Cancel
                 </Button>
-                <Button size="sm" className={`h-7 text-xs ${CTA}`} onClick={onSave} disabled={savePending}>
+                <Button size="sm" className={`h-7 text-xs ${CTA}`} onClick={() => { if (!canWrite) return; onSave(); }} disabled={savePending || !canWrite} title={!canWrite ? "Member, admin, or owner role required to edit skills" : undefined}>
                   <Save className="mr-1.5 h-3.5 w-3.5" />
                   {savePending ? "Saving..." : "Save"}
                 </Button>
@@ -754,7 +765,7 @@ export function CompanySkills() {
   const { "*": routePath } = useParams<{ "*": string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canWrite = true, currentRole } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
   const [skillFilter, setSkillFilter] = useState("");
@@ -1012,6 +1023,7 @@ export function CompanySkills() {
   }
 
   function handleAddSkillSource() {
+    if (!canWrite) return;
     const trimmedSource = source.trim();
     if (trimmedSource.length === 0) {
       setEmptySourceHelpOpen(true);
@@ -1100,6 +1112,14 @@ export function CompanySkills() {
         </div>
         <h1 className="ml-3 truncate text-sm font-semibold text-slate-900 dark:text-[#edf2fb]">Company Skills</h1>
         <span className="truncate text-xs text-slate-500 dark:text-[#8b97ad]">Skill library shared by agents in this company</span>
+        {!canWrite && (
+          <span
+            className="ml-auto inline-flex shrink-0 items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#fde68a]"
+            title="Member, admin, or owner role required to import, create, edit, or update skills"
+          >
+            Read-only{currentRole ? ` (${currentRole})` : ""}
+          </span>
+        )}
       </div>
 
       {surface === "tools" ? (
@@ -1120,13 +1140,16 @@ export function CompanySkills() {
                   variant="ghost"
                   size="icon-sm"
                   className="text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]"
-                  onClick={() => scanProjects.mutate()}
-                  disabled={scanProjects.isPending}
-                  title="Scan project workspaces for skills"
+                  onClick={() => {
+                    if (!canWrite) return;
+                    scanProjects.mutate();
+                  }}
+                  disabled={scanProjects.isPending || !canWrite}
+                  title={!canWrite ? "Member, admin, or owner role required to scan for skills" : "Scan project workspaces for skills"}
                 >
                   <RefreshCw className={cn("h-4 w-4", scanProjects.isPending && "animate-spin")} />
                 </Button>
-                <Button variant="ghost" size="icon-sm" className="text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]" onClick={() => setCreateOpen((value) => !value)}>
+                <Button variant="ghost" size="icon-sm" className="text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]" onClick={() => { if (!canWrite) return; setCreateOpen((value) => !value); }} disabled={!canWrite} title={!canWrite ? "Member, admin, or owner role required to create skills" : "Create a new skill"}>
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
@@ -1147,14 +1170,16 @@ export function CompanySkills() {
                 value={source}
                 onChange={(event) => setSource(event.target.value)}
                 placeholder="Paste path, GitHub URL, or skills.sh command"
-                className="w-full bg-transparent text-sm text-slate-900 dark:text-[#edf2fb] outline-none placeholder:text-slate-400 dark:placeholder:text-[#8b97ad]"
+                disabled={!canWrite}
+                className="w-full bg-transparent text-sm text-slate-900 dark:text-[#edf2fb] outline-none placeholder:text-slate-400 dark:placeholder:text-[#8b97ad] disabled:cursor-not-allowed disabled:opacity-60"
               />
               <Button
                 size="sm"
                 variant="ghost"
                 className="shrink-0 text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]"
                 onClick={handleAddSkillSource}
-                disabled={importSkill.isPending}
+                disabled={importSkill.isPending || !canWrite}
+                title={!canWrite ? "Member, admin, or owner role required to import skills" : undefined}
               >
                 {importSkill.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : "Add"}
               </Button>
@@ -1223,8 +1248,12 @@ export function CompanySkills() {
             checkUpdatesPending={updateStatusQuery.isFetching}
             onInstallUpdate={() => installUpdate.mutate()}
             installUpdatePending={installUpdate.isPending}
-            onSave={() => saveFile.mutate()}
+            onSave={() => {
+              if (!canWrite) return;
+              saveFile.mutate();
+            }}
             savePending={saveFile.isPending}
+            canWrite={canWrite}
           />
         </div>
       </div>

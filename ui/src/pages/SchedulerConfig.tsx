@@ -59,11 +59,12 @@ const CRON_PRESETS = [
 
 interface CreateScheduleFormProps {
   companyId: string;
+  canWrite: boolean;
   onCreated: () => void;
   onCancel: () => void;
 }
 
-function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFormProps) {
+function CreateScheduleForm({ companyId, canWrite, onCreated, onCancel }: CreateScheduleFormProps) {
   const queryClient = useQueryClient();
   const [agentId, setAgentId] = useState("");
   const [cronExpression, setCronExpression] = useState("0 * * * *");
@@ -93,6 +94,7 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!canWrite) return;
     setFormError(null);
     if (!agentId) { setFormError("Agent is required"); return; }
     if (!cronExpression.trim()) { setFormError("Cron expression is required"); return; }
@@ -109,7 +111,7 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
       {/* Agent */}
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Agent</label>
-        <Select value={agentId} onValueChange={setAgentId}>
+        <Select value={agentId} onValueChange={setAgentId} disabled={!canWrite}>
           <SelectTrigger className="h-8 text-sm">
             <SelectValue placeholder="Select agent..." />
           </SelectTrigger>
@@ -124,7 +126,7 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
       {/* Cron preset */}
       <div className="space-y-1.5">
         <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Preset</label>
-        <Select onValueChange={handlePreset} defaultValue="__custom__">
+        <Select onValueChange={handlePreset} defaultValue="__custom__" disabled={!canWrite}>
           <SelectTrigger className="h-8 text-sm tabular-nums">
             <SelectValue placeholder="Choose preset..." />
           </SelectTrigger>
@@ -145,6 +147,7 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
           value={cronExpression}
           onChange={(e) => setCronExpression(e.target.value)}
           placeholder="* * * * *"
+          disabled={!canWrite}
         />
         <p className="text-xs text-muted-foreground">
           Format: minute hour day-of-month month day-of-week
@@ -159,6 +162,7 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
           value={timezone}
           onChange={(e) => setTimezone(e.target.value)}
           placeholder="UTC"
+          disabled={!canWrite}
         />
       </div>
 
@@ -167,7 +171,7 @@ function CreateScheduleForm({ companyId, onCreated, onCancel }: CreateScheduleFo
       )}
 
       <div className="flex items-center gap-2 pt-1 xl:col-span-4">
-        <Button type="submit" size="sm" className={`h-7 text-xs ${CTA}`} disabled={createMutation.isPending}>
+        <Button type="submit" size="sm" className={`h-7 text-xs ${CTA}`} disabled={createMutation.isPending || !canWrite} title={!canWrite ? "Member, admin, or owner role required to create schedules" : undefined}>
           {createMutation.isPending ? "Creating..." : "Create schedule"}
         </Button>
         <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={onCancel}>
@@ -186,9 +190,10 @@ interface ScheduleRowProps {
   schedule: Schedule;
   agentName: string;
   companyId: string;
+  canWrite: boolean;
 }
 
-function ScheduleRow({ schedule, agentName, companyId }: ScheduleRowProps) {
+function ScheduleRow({ schedule, agentName, companyId, canWrite }: ScheduleRowProps) {
   const queryClient = useQueryClient();
 
   const toggleMutation = useMutation({
@@ -242,9 +247,12 @@ function ScheduleRow({ schedule, agentName, companyId }: ScheduleRowProps) {
         variant="ghost"
         size="icon-xs"
         className={cn("h-7 w-7 justify-self-center", schedule.enabled ? "text-lime-700 dark:text-[#a3e635] hover:text-lime-700 dark:hover:text-[#a3e635]" : "text-slate-500 dark:text-[#8b97ad] hover:text-slate-900 dark:hover:text-[#eef2f8]")}
-        onClick={() => toggleMutation.mutate(!schedule.enabled)}
-        disabled={toggleMutation.isPending}
-        title={schedule.enabled ? "Disable schedule" : "Enable schedule"}
+        onClick={() => {
+          if (!canWrite) return;
+          toggleMutation.mutate(!schedule.enabled);
+        }}
+        disabled={toggleMutation.isPending || !canWrite}
+        title={!canWrite ? "Member, admin, or owner role required to toggle schedules" : schedule.enabled ? "Disable schedule" : "Enable schedule"}
       >
         {schedule.enabled
           ? <ToggleRight className="h-4 w-4" />
@@ -256,8 +264,12 @@ function ScheduleRow({ schedule, agentName, companyId }: ScheduleRowProps) {
         variant="ghost"
         size="icon-xs"
         className="h-7 w-7 justify-self-center text-slate-500 dark:text-[#8b97ad] hover:text-destructive"
-        onClick={() => deleteMutation.mutate()}
-        disabled={deleteMutation.isPending}
+        onClick={() => {
+          if (!canWrite) return;
+          deleteMutation.mutate();
+        }}
+        disabled={deleteMutation.isPending || !canWrite}
+        title={!canWrite ? "Member, admin, or owner role required to delete schedules" : "Delete schedule"}
       >
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
@@ -270,7 +282,7 @@ function ScheduleRow({ schedule, agentName, companyId }: ScheduleRowProps) {
 // ---------------------------------------------------------------------------
 
 export function SchedulerConfig() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canWrite = true, currentRole } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [showForm, setShowForm] = useState(false);
 
@@ -337,11 +349,24 @@ export function SchedulerConfig() {
           <h1 className="truncate text-sm font-semibold text-slate-950 dark:text-[#eef2f8]">Scheduler</h1>
           <span className="truncate text-xs text-slate-500 dark:text-[#8b97ad]">Cron-based agent wakeup schedules</span>
         </div>
+        {!canWrite && (
+          <span
+            className="ml-auto inline-flex shrink-0 items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#fde68a]"
+            title="Member, admin, or owner role required to create, toggle, or delete schedules"
+          >
+            Read-only{currentRole ? ` (${currentRole})` : ""}
+          </span>
+        )}
         <button
           type="button"
           aria-pressed={showForm}
-          onClick={() => setShowForm((v) => !v)}
-          className="ml-auto inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]"
+          onClick={() => {
+            if (!canWrite) return;
+            setShowForm((v) => !v);
+          }}
+          disabled={!canWrite}
+          title={!canWrite ? "Member, admin, or owner role required to create schedules" : undefined}
+          className="ml-auto inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />New Schedule
         </button>
@@ -351,6 +376,7 @@ export function SchedulerConfig() {
       {showForm && (
         <CreateScheduleForm
           companyId={selectedCompanyId}
+          canWrite={canWrite}
           onCreated={() => setShowForm(false)}
           onCancel={() => setShowForm(false)}
         />
@@ -363,8 +389,7 @@ export function SchedulerConfig() {
         <EmptyState
           icon={CalendarClock}
           message="No schedules yet."
-          action="New Schedule"
-          onAction={() => setShowForm(true)}
+          {...(canWrite ? { action: "New Schedule", onAction: () => setShowForm(true) } : {})}
         />
       )}
 
@@ -387,6 +412,7 @@ export function SchedulerConfig() {
               schedule={schedule}
               agentName={agentMap[schedule.agentId] ?? schedule.agentId}
               companyId={selectedCompanyId}
+              canWrite={canWrite}
             />
           ))}
         </div>

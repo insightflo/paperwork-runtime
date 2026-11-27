@@ -37,7 +37,7 @@ function normalizeDraftPath(value: string) {
 }
 
 export function CompanyInstructions() {
-  const { selectedCompanyId, selectedCompany } = useCompany();
+  const { selectedCompanyId, selectedCompany, canWrite = true, currentRole } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { pushToast } = useToast();
   const queryClient = useQueryClient();
@@ -134,6 +134,11 @@ export function CompanyInstructions() {
     },
   });
 
+  function saveActiveFile() {
+    if (!canWrite) return;
+    saveFile.mutate();
+  }
+
   const statusText = useMemo(() => {
     if (saveFile.isPending) return "Saving...";
     if (dirty) return "Unsaved changes";
@@ -158,13 +163,22 @@ export function CompanyInstructions() {
           </TabsList>
         </Tabs>
         {activeTab === "files" && (
-          <div className="ml-auto flex min-w-0 shrink-0 items-center gap-2">
+          <div className="flex min-w-0 shrink-0 items-center gap-2">
+            {!canWrite && (
+              <span
+                className="inline-flex items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#fde68a]"
+                title="Member, admin, or owner role required to save, create, or delete instruction files"
+              >
+                Read-only{currentRole ? ` (${currentRole})` : ""}
+              </span>
+            )}
             <span className={cn("hidden truncate text-[11px] uppercase tracking-[0.16em] sm:block", dirty ? "text-amber-700 dark:text-[#f59e0b]" : "text-slate-500 dark:text-[#8b97ad]")}>{statusText}</span>
-            <Button variant="outline" size="sm" onClick={() => deleteFile.mutate()} disabled={!activePath || deleteFile.isPending}
+            <Button variant="outline" size="sm" onClick={() => { if (!canWrite) return; deleteFile.mutate(); }} disabled={!activePath || deleteFile.isPending || !canWrite}
+              title={!canWrite ? "Member, admin, or owner role required to delete instruction files" : undefined}
               className={cn(GHOST_CTA, "text-rose-600 dark:text-[#fb7185] hover:bg-rose-500/10 dark:hover:bg-[#fb7185]/10")}>
               <Trash className="h-3.5 w-3.5" /> Delete
             </Button>
-            <Button size="sm" onClick={() => saveFile.mutate()} disabled={!activePath || saveFile.isPending || !dirty} className={PRIMARY_CTA}>
+            <Button size="sm" onClick={saveActiveFile} disabled={!activePath || saveFile.isPending || !dirty || !canWrite} title={!canWrite ? "Member, admin, or owner role required to save instruction files" : undefined} className={PRIMARY_CTA}>
               {saveFile.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save
             </Button>
           </div>
@@ -212,10 +226,11 @@ export function CompanyInstructions() {
                     onChange={(event) => setNewPath(event.target.value)}
                     placeholder="common/research.md"
                     aria-label="New instruction file path"
+                    disabled={!canWrite}
                     className={cn(CONTROL, "h-7 flex-1 font-mono")}
                   />
-                  <Button variant="ghost" size="icon-sm" onClick={() => createFile.mutate()} disabled={createFile.isPending}
-                    title="Create instruction file" className="size-7 text-slate-500 dark:text-[#8b97ad] hover:text-slate-900 dark:hover:text-[#eef2f8]">
+                  <Button variant="ghost" size="icon-sm" onClick={() => { if (!canWrite) return; createFile.mutate(); }} disabled={createFile.isPending || !canWrite}
+                    title={!canWrite ? "Member, admin, or owner role required to create instruction files" : "Create instruction file"} className="size-7 text-slate-500 dark:text-[#8b97ad] hover:text-slate-900 dark:hover:text-[#eef2f8]">
                     {createFile.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                   </Button>
                 </div>
@@ -272,9 +287,11 @@ export function CompanyInstructions() {
                 <Textarea
                   value={draft}
                   onChange={(event) => {
+                    if (!canWrite) return;
                     setDraft(event.target.value);
                     setDirty(true);
                   }}
+                  readOnly={!canWrite}
                   spellCheck={false}
                   aria-label={`Instruction file ${activePath}`}
                   className={cn("min-h-[calc(100vh-14rem)] flex-1 resize-none rounded-none border-0 bg-white dark:bg-[#090c12] text-xs leading-5 text-slate-950 dark:text-[#eef2f8] shadow-none focus-visible:ring-0 focus-visible:ring-inset focus-visible:ring-blue-500 dark:focus-visible:ring-[#60a5fa]", MONO_SNIPPET)}

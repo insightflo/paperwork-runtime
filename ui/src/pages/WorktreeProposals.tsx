@@ -90,10 +90,11 @@ function DiffView({ change }: { change: ProposedRuleChange }) {
 
 interface ReviewFormProps {
   proposal: WorktreeProposal;
+  canAdmin: boolean;
   onDone: () => void;
 }
 
-function ReviewForm({ proposal, onDone }: ReviewFormProps) {
+function ReviewForm({ proposal, canAdmin, onDone }: ReviewFormProps) {
   const lang = useCompanyLanguage();
   const queryClient = useQueryClient();
   const [reviewNote, setReviewNote] = useState("");
@@ -131,11 +132,13 @@ function ReviewForm({ proposal, onDone }: ReviewFormProps) {
       <div className="flex items-center gap-2">
         {/* Deep-cobalt primary: the one governing action of this page */}
         <Button size="sm" variant="outline" className="h-7 bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]"
-          onClick={() => mutation.mutate("approved")} disabled={mutation.isPending || !reviewAcknowledged}>
+          onClick={() => { if (!canAdmin) return; mutation.mutate("approved"); }} disabled={!canAdmin || mutation.isPending || !reviewAcknowledged}
+          title={!canAdmin ? L(lang, { en: "Admin or owner role required to approve proposals", ko: "제안 승인은 관리자 이상 권한이 필요합니다." }) : undefined}>
           <CheckCircle2 className="h-3.5 w-3.5" />{L(lang, { en: "Approve", ko: "승인" })}
         </Button>
         <Button size="sm" variant="outline" className="h-7 border-rose-500/40 text-xs text-rose-600 hover:bg-rose-500/10 hover:text-rose-700 dark:border-[#fb7185]/45 dark:text-[#fb7185] dark:hover:bg-[#fb7185]/10 dark:hover:text-[#fb7185]"
-          onClick={() => mutation.mutate("rejected")} disabled={mutation.isPending}>
+          onClick={() => { if (!canAdmin) return; mutation.mutate("rejected"); }} disabled={!canAdmin || mutation.isPending}
+          title={!canAdmin ? L(lang, { en: "Admin or owner role required to reject proposals", ko: "제안 거절은 관리자 이상 권한이 필요합니다." }) : undefined}>
           <XCircle className="h-3.5 w-3.5" />{L(lang, { en: "Reject", ko: "거절" })}
         </Button>
         <Button size="sm" variant="ghost" className="h-7 text-xs text-slate-500 dark:text-[#8b97ad] hover:text-slate-900 dark:hover:text-[#eef2f8]" onClick={onDone} disabled={mutation.isPending}>
@@ -151,11 +154,12 @@ function ReviewForm({ proposal, onDone }: ReviewFormProps) {
 interface ProposalRowProps {
   proposal: WorktreeProposal;
   agentMap: Record<string, string>;
+  canAdmin: boolean;
   /** 0 = untouched; each "Review next" click bumps the sequence so exactly the requested row opens. */
   reviewSeq: number;
 }
 
-function ProposalRow({ proposal, agentMap, reviewSeq }: ProposalRowProps) {
+function ProposalRow({ proposal, agentMap, canAdmin, reviewSeq }: ProposalRowProps) {
   const lang = useCompanyLanguage();
   const [expanded, setExpanded] = useState(false);
   const [reviewing, setReviewing] = useState(false);
@@ -217,7 +221,7 @@ function ProposalRow({ proposal, agentMap, reviewSeq }: ProposalRowProps) {
         </span>
 
         {/* Review button — only for pending */}
-        {isPending ? (
+        {isPending && canAdmin ? (
           <Button
             size="sm"
             variant="outline"
@@ -256,7 +260,7 @@ function ProposalRow({ proposal, agentMap, reviewSeq }: ProposalRowProps) {
           )}
 
           {/* Review form */}
-          {reviewing && isPending && <ReviewForm proposal={proposal} onDone={() => setReviewing(false)} />}
+          {reviewing && isPending && <ReviewForm proposal={proposal} canAdmin={canAdmin} onDone={() => setReviewing(false)} />}
         </div>
       )}
     </div>
@@ -308,7 +312,8 @@ function AgentRateLimitBar({ proposals, agentMap }: { proposals: WorktreeProposa
 // ── WorktreeProposals page ────────────────────────────────────────────────────
 
 export function WorktreeProposals() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canAdmin = true, currentRole } = useCompany();
+  const lang = useCompanyLanguage();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("proposed");
   const [reviewSeq, setReviewSeq] = useState(0);
@@ -352,6 +357,7 @@ export function WorktreeProposals() {
 
   /** Opens the review form of the oldest pending proposal (or the one already targeted) without new API calls. */
   const reviewNext = () => {
+    if (!canAdmin) return;
     const target = (reviewTarget && allProposals.find((p) => p.id === reviewTarget && p.status === "proposed")) || nextPending;
     if (!target) return;
     setReviewTarget(target.id);
@@ -415,11 +421,20 @@ export function WorktreeProposals() {
         <span className="hidden shrink-0 text-[11px] text-slate-500 dark:text-[#8b97ad] sm:block">
           · <b className="font-mono text-slate-950 dark:text-[#eef2f8]">{counts.proposed}</b> awaiting review
         </span>
+        {!canAdmin && (
+          <span
+            className="ml-auto inline-flex shrink-0 items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#fde68a]"
+            title={L(lang, { en: "Admin or owner role required to review proposals", ko: "제안 검토(승인·거절)는 관리자 이상 권한이 필요합니다." })}
+          >
+            Read-only{currentRole ? ` (${currentRole})` : ""}
+          </span>
+        )}
         <Button
           size="sm"
           variant="outline"
-          disabled={!nextPending}
+          disabled={!nextPending || !canAdmin}
           onClick={reviewNext}
+          title={!canAdmin ? L(lang, { en: "Admin or owner role required to review proposals", ko: "제안 검토(승인·거절)는 관리자 이상 권한이 필요합니다." }) : undefined}
           className="h-7 shrink-0 bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6] disabled:opacity-45"
         >
           Review next
@@ -459,6 +474,7 @@ export function WorktreeProposals() {
               key={proposal.id}
               proposal={proposal}
               agentMap={agentMap}
+              canAdmin={canAdmin}
               reviewSeq={reviewTarget === proposal.id ? reviewSeq : 0}
             />
           ))}
