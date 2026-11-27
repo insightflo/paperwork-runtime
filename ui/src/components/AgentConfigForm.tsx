@@ -28,6 +28,9 @@ import {
 } from "./agent-config-primitives";
 import { isAdapterTypeEnabled } from "./agent-config-adapter-types";
 import { AgentFallbackChainEditor, normalizeFallbackOrder } from "./AgentFallbackChainEditor";
+import { AgentPermissionsFoldersTab } from "./agent-settings/AgentPermissionsFoldersTab";
+import { normalizeBotPolicy, type AgentBotPolicy } from "./agent-settings/AgentBehaviorTab";
+import { AgentBehaviorTab } from "./agent-settings/AgentBehaviorTab";
 import { defaultCreateValues, getStaticThinkingEffortOptions } from "./agent-config-defaults";
 import { getUIAdapter } from "../adapters";
 import { ClaudeLocalAdvancedFields } from "../adapters/claude-local/config-fields";
@@ -358,6 +361,23 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
 
   // Section toggle state — advanced always starts collapsed
   const [runPolicyAdvancedOpen, setRunPolicyAdvancedOpen] = useState(false);
+  // [stage30-w5] 4-tab progressive disclosure. All form state stays in this component,
+  // so switching tabs never loses in-progress changes.
+  const [activeTab, setActiveTab] = useState<"basic" | "permissions" | "behavior" | "advanced">("basic");
+  // [stage30-w5] Bot policy (OpenBot botPolicy) — stored in adapterConfig.botPolicy.
+  // CreateConfigValues has no botPolicy slot, so create mode keeps it in local state
+  // (not persisted on create yet); edit mode persists via the adapterConfig overlay.
+  const [createBotPolicy, setCreateBotPolicy] = useState<AgentBotPolicy>({});
+  const currentBotPolicy = isCreate
+    ? createBotPolicy
+    : normalizeBotPolicy(eff("adapterConfig", "botPolicy", config.botPolicy));
+  function updateBotPolicy(next: AgentBotPolicy) {
+    if (isCreate) {
+      setCreateBotPolicy(next);
+      return;
+    }
+    mark("adapterConfig", "botPolicy", Object.keys(next).length > 0 ? next : undefined);
+  }
   // Popover states
   const [modelOpen, setModelOpen] = useState(false);
   const [thinkingEffortOpen, setThinkingEffortOpen] = useState(false);
@@ -521,6 +541,43 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
         </div>
       )}
 
+      {/* ---- [stage30-w5] 4-tab navigation ---- */}
+      <div role="tablist" aria-label="Agent settings sections" className={cn("flex items-center gap-1 border-b border-slate-200/80 px-3 dark:border-white/[0.07]", cards && "border-b-0 px-0")}>
+        {([
+          ["basic", "기본 · 모델"],
+          ["permissions", "권한 · 폴더"],
+          ["behavior", "협업 · 실행"],
+          ["advanced", "고급 · 환경"],
+        ] as const).map(([tabId, tabLabel]) => (
+          <button
+            key={tabId}
+            type="button"
+            role="tab"
+            id={`agent-tab-${tabId}`}
+            aria-selected={activeTab === tabId}
+            aria-controls={`agent-tabpanel-${tabId}`}
+            onClick={() => setActiveTab(tabId)}
+            className={cn(
+              "border-b-2 px-3 py-1.5 text-xs font-medium transition-colors",
+              activeTab === tabId
+                ? "border-blue-600 text-blue-700 dark:border-blue-400 dark:text-blue-300"
+                : "border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200",
+            )}
+          >
+            {tabLabel}
+          </button>
+        ))}
+      </div>
+
+      {/* ---- [stage30-w5] Tab 1 (basic): identity + adapter + model/fallback chain ---- */}
+      {activeTab === "basic" && (
+        <div
+          role="tabpanel"
+          id="agent-tabpanel-basic"
+          aria-labelledby="agent-tab-basic"
+          tabIndex={0}
+          className={cn(!cards && "border-b border-slate-200/80 dark:border-white/[0.07]")}
+        >
       {/* ---- Identity (edit only) ---- */}
       {!isCreate && (
         <div className={cn(!cards && "border-b border-slate-200/80 dark:border-white/[0.07]")}>
@@ -678,31 +735,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
             <AdapterEnvironmentResult result={testEnvironment.data} />
           )}
 
-          {/* Working directory */}
-          {showLegacyWorkingDirectoryField && (
-            <Field label="Working directory (deprecated)" hint={help.cwd}>
-              <div className="flex items-center gap-2 rounded-md border border-slate-200/90 bg-white px-2.5 py-1.5 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                <FolderOpen className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[#627089]" />
-                <DraftInput
-                  value={
-                    isCreate
-                      ? val!.cwd
-                      : eff("adapterConfig", "cwd", String(config.cwd ?? ""))
-                  }
-                  onCommit={(v) =>
-                    isCreate
-                      ? set!({ cwd: v })
-                      : mark("adapterConfig", "cwd", v || undefined)
-                  }
-                  immediate
-                  className="w-full bg-transparent font-mono text-sm outline-none placeholder:text-slate-400 dark:placeholder:text-[#627089]"
-                  placeholder="/path/to/project"
-                />
-                <ChoosePathButton />
-              </div>
-            </Field>
-          )}
-
           {/* Prompt template (create mode only — edit mode shows this in Identity) */}
           {isLocal && isCreate && (
             <>
@@ -731,40 +763,9 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
 
       </div>
 
-      {/* ---- Permissions & Configuration ---- */}
-      {isLocal && (
-        <div className={cn(!cards && "border-b border-slate-200/80 dark:border-white/[0.07]")}>
-          {cards
-            ? <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-slate-700 dark:text-[#eef2f8] mb-3">Permissions &amp; Configuration</h3>
-            : <div className="px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-[#8f9db3]">Permissions &amp; Configuration</div>
-          }
-          <div className={cn(cards ? "tactile-card rounded-[12px] border-slate-200/90 bg-white/95 p-4 space-y-3 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_-18px_rgba(0,0,0,0.85)]" : "px-4 pb-3 space-y-3")}>
-              <Field label="Command" hint={help.localCommand}>
-                <DraftInput
-                  value={
-                    isCreate
-                      ? val!.command
-                      : eff("adapterConfig", "command", String(config.command ?? ""))
-                  }
-                  onCommit={(v) =>
-                    isCreate
-                      ? set!({ command: v })
-                      : mark("adapterConfig", "command", v || undefined)
-                  }
-                  immediate
-                  className={tactileInputClass}
-                  placeholder={
-                    adapterType === "codex_local"
-                      ? "codex"
-                      : adapterType === "commandcode_local"
-                        ? "cmd"
-                        : adapterType === "pi_local"
-                          ? "pi"
-                          : "claude"
-                  }
-                />
-              </Field>
-
+        {/* [stage30-w5] fallback chain + model + thinking stay on the basic tab */}
+        {isLocal && (
+          <div className={cn("space-y-3", !cards && "px-4 pb-3")}>
               {supportsAdapterFallback && (
                 <AgentFallbackChainEditor
                   primaryAdapterType={adapterType}
@@ -832,6 +833,84 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                     Codex may reject `minimal` thinking when search is enabled.
                   </p>
                 )}
+        </div>
+      )}
+
+        </div>
+      )}
+
+      {/* ---- [stage30-w5] Tab 2 (permissions): botPolicy (OpenBot) ---- */}
+      {activeTab === "permissions" && (
+        <div
+          role="tabpanel"
+          id="agent-tabpanel-permissions"
+          aria-labelledby="agent-tab-permissions"
+          tabIndex={0}
+          className={cn(!cards && "px-4 py-4")}
+        >
+          <AgentPermissionsFoldersTab policy={currentBotPolicy} onChange={updateBotPolicy} />
+        </div>
+      )}
+
+      {/* ---- [stage30-w5] Tab 4 (advanced): CLI command, cwd, bootstrap legacy, env ---- */}
+      {activeTab === "advanced" && (
+        <div
+          role="tabpanel"
+          id="agent-tabpanel-advanced"
+          aria-labelledby="agent-tab-advanced"
+          tabIndex={0}
+          className={cn(!cards && "border-b border-slate-200/80 dark:border-white/[0.07]")}
+        >
+          {isLocal && (
+            <div className={cn("space-y-3", !cards && "px-4 py-3")}>
+              <Field label="Command" hint={help.localCommand}>
+                <DraftInput
+                  value={
+                    isCreate
+                      ? val!.command
+                      : eff("adapterConfig", "command", String(config.command ?? ""))
+                  }
+                  onCommit={(v) =>
+                    isCreate
+                      ? set!({ command: v })
+                      : mark("adapterConfig", "command", v || undefined)
+                  }
+                  immediate
+                  className={tactileInputClass}
+                  placeholder={
+                    adapterType === "codex_local"
+                      ? "codex"
+                      : adapterType === "commandcode_local"
+                        ? "cmd"
+                        : adapterType === "pi_local"
+                          ? "pi"
+                          : "claude"
+                  }
+                />
+              </Field>
+              {showLegacyWorkingDirectoryField && (
+                <Field label="Working directory (deprecated)" hint={help.cwd}>
+                  <div className="flex items-center gap-2 rounded-md border border-slate-200/90 bg-white px-2.5 py-1.5 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                    <FolderOpen className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-[#627089]" />
+                    <DraftInput
+                      value={
+                        isCreate
+                          ? val!.cwd
+                          : eff("adapterConfig", "cwd", String(config.cwd ?? ""))
+                      }
+                      onCommit={(v) =>
+                        isCreate
+                          ? set!({ cwd: v })
+                          : mark("adapterConfig", "cwd", v || undefined)
+                      }
+                      immediate
+                      className="w-full bg-transparent font-mono text-sm outline-none placeholder:text-slate-400 dark:placeholder:text-[#627089]"
+                      placeholder="/path/to/project"
+                    />
+                    <ChoosePathButton />
+                  </div>
+                </Field>
+              )}
               {!isCreate && typeof config.bootstrapPromptTemplate === "string" && config.bootstrapPromptTemplate && (
                 <>
                   <Field label="Bootstrap prompt (legacy)" hint={help.bootstrapPrompt}>
@@ -864,7 +943,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
               {adapterType === "commandcode_local" && (
                 <CommandCodeLocalAdvancedFields {...adapterFieldProps} />
               )}
-
               <Field label="Extra args (comma-separated)" hint={help.extraArgs}>
                 <DraftInput
                   value={
@@ -882,7 +960,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   placeholder="e.g. --verbose, --foo=bar"
                 />
               </Field>
-
               <Field label="Environment variables" hint={help.envVars}>
                 <EnvVarEditor
                   value={
@@ -903,7 +980,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   }
                 />
               </Field>
-
               {/* Edit-only: timeout + grace period */}
               {!isCreate && (
                 <>
@@ -933,10 +1009,21 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   </Field>
                 </>
               )}
-          </div>
+            </div>
+          )}
         </div>
       )}
 
+      {/* ---- [stage30-w5] Tab 3 (behavior): policy + Run Policy as children ---- */}
+      {activeTab === "behavior" && (
+        <div
+          role="tabpanel"
+          id="agent-tabpanel-behavior"
+          aria-labelledby="agent-tab-behavior"
+          tabIndex={0}
+          className={cn(!cards && "px-4 py-3")}
+        >
+          <AgentBehaviorTab policy={currentBotPolicy} onChange={updateBotPolicy}>
       {/* ---- Run Policy ---- */}
       {isCreate && showCreateRunPolicySection ? (
         <div className={cn(!cards && "border-b border-slate-200/80 dark:border-white/[0.07]")}>
@@ -1111,6 +1198,9 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
           </div>
         </div>
       ) : null}
+          </AgentBehaviorTab>
+        </div>
+      )}
 
     </div>
   );
