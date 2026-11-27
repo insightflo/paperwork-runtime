@@ -1,7 +1,7 @@
 import type { ServerAdapterModule } from "@paperclipai/adapter-utils";
 
 export const RETIRED_HERMES_MESSAGE =
-  "The hermes_local adapter has been retired. Migrate existing agents to OpenBot or a supported local adapter (codex_local, claude_local, pi_local, commandcode_local).";
+  "The hermes_local adapter has been retired. Migrate existing agents to the Paperwork runtime or a supported local adapter (codex_local, claude_local, pi_local, commandcode_local).";
 
 export const hermesRetiredAdapter: ServerAdapterModule = {
   type: "hermes_local",
@@ -32,7 +32,7 @@ export const hermesRetiredAdapter: ServerAdapterModule = {
           code: "hermes_local_retired",
           level: "error",
           message: RETIRED_HERMES_MESSAGE,
-          hint: "Migrate this agent to OpenBot or a supported local adapter.",
+          hint: "Migrate this agent to the Paperwork runtime or a supported local adapter.",
         },
       ],
     };

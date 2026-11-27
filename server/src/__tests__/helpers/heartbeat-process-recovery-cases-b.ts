@@ -44,9 +44,12 @@ export function registerHeartbeatProcessRecoveryCasesB(deps: {
     expect(run?.error).toBeNull();
   });
 
-  it("fails a free stale queue once and releases its issue", async () => {
+  it("fails a stale queue for an unavailable agent once and releases its issue", async () => {
     const command = createCountingCommand();
-    const { runId, issueId, wakeupRequestId } = await seedRunFixture({ runStatus: "queued", queuedAt: staleQueuedAt(), agentStatus: "active", adapterType: "process", adapterConfig: { command: command.command } });
+    const { runId, issueId, wakeupRequestId } = await seedRunFixture({ runStatus: "queued", queuedAt: staleQueuedAt(), agentStatus: "paused", adapterType: "process", adapterConfig: { command: command.command } });
+    // [promote-first] capacity 가 비어 있으면 이제 실패 전환 전에 승격이 먼저 시도된다.
+    // 이 케이스는 실패 경로 계약(멱등성·이슈 해제·어댑터 미기동)을 검증하므로 paused agent 로
+    // promote-first 를 skipped_agent_unavailable 로 둔다. 여유 capacity 의 승격 경로는 다음 케이스가 담당한다.
     const heartbeat = heartbeatService(db);
     expect((await heartbeat.reapOrphanedRuns({ queuedStaleThresholdMs: 1_000 })).reaped).toBe(1);
     expect((await heartbeat.reapOrphanedRuns({ queuedStaleThresholdMs: 1_000 })).reaped).toBe(0);
@@ -57,6 +60,24 @@ export function registerHeartbeatProcessRecoveryCasesB(deps: {
     expect(events.filter(event => event.eventType === "lifecycle" && event.message?.startsWith("Queued heartbeat run exceeded"))).toHaveLength(1);
     await heartbeat.resumeQueuedRuns();
     expect(fs.existsSync(command.countPath)).toBe(false);
+  });
+
+  it("starts a free stale queue through promote-first instead of failing it", async () => {
+    const command = createCountingCommand();
+    const { runId } = await seedRunFixture({ runStatus: "queued", queuedAt: staleQueuedAt(), agentStatus: "active", adapterType: "process", adapterConfig: { command: command.command } });
+    // [promote-first 실제 경로] 여유 capacity + 가용 agent 인 stale queued run 은 실패로 전환되지 않고
+    // 실제 promoter 가 시작한다. DB 상태와 어댑터 실행(count.txt)으로 증명한다.
+    const heartbeat = heartbeatService(db);
+    expect((await heartbeat.reapOrphanedRuns({ queuedStaleThresholdMs: 1_000 })).reaped).toBe(0);
+    await waitForRunStatus(db, runId, "running");
+    expect((await heartbeat.getRun(runId))?.errorCode).toBeNull();
+    const deadline = Date.now() + 5_000;
+    while (!fs.existsSync(command.countPath) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(fs.existsSync(command.countPath)).toBe(true);
+    const events = await db.select().from(heartbeatRunEvents).where(eq(heartbeatRunEvents.runId, runId));
+    expect(events.filter(event => event.eventType === "lifecycle" && event.message?.startsWith("Queued heartbeat run exceeded"))).toHaveLength(0);
   });
 
   it("publishes a stale status only after commit and never after rollback", async () => {

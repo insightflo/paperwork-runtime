@@ -269,6 +269,11 @@ fn parse_http_url(base_url: &str) -> Result<ParsedHttpUrl, ClientError> {
     parse_http_url_with_policy(base_url, remote_plain_http_allowed())
 }
 
+/// Actionable rejection for `https://` server URLs. The zero-dependency stdlib client
+/// speaks plain HTTP/1.1 and only trusts loopback targets, so TLS must terminate in a
+/// local proxy in front of the control plane; the message tells the operator exactly that.
+const HTTPS_REJECTION_MESSAGE: &str = "https:// is not supported: paperwork-bot uses a zero-dependency client that speaks plain HTTP to loopback hosts only. Run a local TLS-terminating proxy in front of the HTTPS control plane (or expose it through an http://127.0.0.1:<port> tunnel) and point --server at that loopback http:// URL";
+
 /// Parses a plain `http://` server URL. Non-loopback hosts are rejected unless
 /// `allow_remote_http` is true; the policy is a parameter so tests do not race on
 /// the process environment.
@@ -278,9 +283,7 @@ fn parse_http_url_with_policy(
 ) -> Result<ParsedHttpUrl, ClientError> {
     let trimmed = base_url.trim().trim_end_matches('/');
     if trimmed.starts_with("https://") {
-        return Err(ClientError::new(
-            "https:// is not supported by the zero-dependency stdlib client; route through localhost/http proxy",
-        ));
+        return Err(ClientError::new(HTTPS_REJECTION_MESSAGE));
     }
     let rest = trimmed
         .strip_prefix("http://")
@@ -584,6 +587,80 @@ pub struct DaemonSummary {
     pub last_rtt_ms: Option<u64>,
 }
 
+/// Minimum wall-clock spacing between daemon heartbeat-failure diagnostics on stderr.
+const RETRY_DIAGNOSTIC_MIN_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Rate limiter for the daemon heartbeat-failure stderr diagnostic.
+///
+/// Without it, a wedged server makes the daemon look hung: failures are only retried with
+/// up to 30s backoff and nothing is printed. The limiter always emits the first failure of
+/// a streak, then at most once per [`RETRY_DIAGNOSTIC_MIN_INTERVAL`]; any success re-arms
+/// it so a new failure streak is reported immediately.
+struct RetryDiagnosticRateLimiter {
+    min_interval: Duration,
+    last_emit: Option<Instant>,
+}
+
+impl RetryDiagnosticRateLimiter {
+    fn new() -> Self {
+        Self {
+            min_interval: RETRY_DIAGNOSTIC_MIN_INTERVAL,
+            last_emit: None,
+        }
+    }
+
+    /// Re-arms the limiter after a successful heartbeat.
+    fn note_success(&mut self) {
+        self.last_emit = None;
+    }
+
+    /// Returns the formatted diagnostic line when emission is allowed (first failure of a
+    /// streak, or at least `min_interval` after the previous emission), else `None`.
+    fn diagnostic_for(
+        &mut self,
+        now: Instant,
+        terminal_id: &str,
+        consecutive_failures: u32,
+        reason: &str,
+        next_backoff: Duration,
+    ) -> Option<String> {
+        let allowed = self
+            .last_emit
+            .is_none_or(|last| now.duration_since(last) >= self.min_interval);
+        if !allowed {
+            return None;
+        }
+        self.last_emit = Some(now);
+        Some(format_retry_diagnostic(
+            terminal_id,
+            consecutive_failures,
+            reason,
+            next_backoff,
+        ))
+    }
+}
+
+/// Formats a backoff duration as seconds with one decimal place (e.g. `30.0`).
+fn format_backoff_secs(delay: Duration) -> String {
+    format!("{:.1}", delay.as_secs_f64())
+}
+
+/// Builds the single-line secret-safe stderr diagnostic for a heartbeat failure.
+/// `reason` is re-run through the redactor for defense in depth (the `ClientError`
+/// message is already redacted at construction).
+fn format_retry_diagnostic(
+    terminal_id: &str,
+    consecutive_failures: u32,
+    reason: &str,
+    next_backoff: Duration,
+) -> String {
+    format!(
+        "[paperwork-bot] heartbeat to terminal '{terminal_id}' failed (consecutive={consecutive_failures}): {}; next retry in {}s",
+        redact_secrets(reason),
+        format_backoff_secs(next_backoff),
+    )
+}
+
 /// Runs a terminal heartbeat loop with jittered exponential backoff, enriched telemetry,
 /// optional compatibility handshake, optional UDS control plane, and atomic `state.json` persistence.
 /// Persisted state is restored on startup (fail-open to fresh defaults when missing or unreadable).
@@ -627,6 +704,7 @@ fn run_heartbeat_daemon_with_token(
 
     let started = Instant::now();
     let mut backoff = BackoffState::new(config.backoff);
+    let mut retry_diagnostics = RetryDiagnosticRateLimiter::new();
     let restored = restore_persisted_state(config.state_path.as_deref());
     let mut consecutive_failures: u32 = restored.as_ref().map_or(0, |s| s.consecutive_failures);
     let mut last_rtt_ms: Option<u64> = restored.as_ref().and_then(|s| s.last_rtt_ms);
@@ -674,14 +752,18 @@ fn run_heartbeat_daemon_with_token(
         );
 
         let req_start = Instant::now();
-        let ok = match http_post_json(&config.base_url, path, token, &enriched, config.timeout) {
-            Ok(resp) if resp.is_success() => true,
-            Ok(_) | Err(_) => false,
-        };
+        let failure_reason =
+            match http_post_json(&config.base_url, path, token, &enriched, config.timeout) {
+                Ok(resp) if resp.is_success() => None,
+                Ok(resp) => Some(format!("HTTP status {}", resp.status)),
+                Err(e) => Some(e.to_string()),
+            };
+        let ok = failure_reason.is_none();
         let rtt_ms = req_start.elapsed().as_millis() as u64;
 
         let wait_duration = if ok {
             summary.successes += 1;
+            retry_diagnostics.note_success();
             consecutive_failures = 0;
             last_rtt_ms = Some(rtt_ms);
             last_heartbeat_at = Some(now_unix_secs());
@@ -698,6 +780,15 @@ fn run_heartbeat_daemon_with_token(
             summary.failures += 1;
             consecutive_failures = consecutive_failures.saturating_add(1);
             let delay = backoff.next_delay();
+            if let Some(line) = retry_diagnostics.diagnostic_for(
+                Instant::now(),
+                &config.terminal_id,
+                consecutive_failures,
+                failure_reason.as_deref().unwrap_or("heartbeat failed"),
+                delay,
+            ) {
+                eprintln!("{line}");
+            }
             #[cfg(unix)]
             {
                 telemetry.set_backoff_attempts(backoff.attempts());
@@ -1137,6 +1228,98 @@ mod tests {
         // Loopback hosts never need the opt-in; remote hosts always need it.
         assert!(parse_http_url_with_policy("http://localhost", false).is_ok());
         assert!(parse_http_url_with_policy("http://10.0.0.5:3100", false).is_err());
+    }
+
+    #[test]
+    fn parse_http_url_rejects_https_with_actionable_loopback_guidance() {
+        for url in ["https://control.example.com", "https://127.0.0.1:3100/api"] {
+            let err = parse_http_url(url).unwrap_err();
+            assert!(err.message.contains("plain HTTP"), "{}", err.message);
+            assert!(err.message.contains("loopback"), "{}", err.message);
+            assert!(
+                err.message.contains("TLS-terminating proxy"),
+                "{}",
+                err.message
+            );
+            assert!(
+                err.message.contains("http://127.0.0.1:<port>"),
+                "{}",
+                err.message
+            );
+            assert!(err.message.contains("tunnel"), "{}", err.message);
+        }
+        // Plain http:// loopback targets stay accepted.
+        assert!(parse_http_url("http://127.0.0.1:3100").is_ok());
+    }
+
+    #[test]
+    fn retry_rate_limiter_emits_first_failure_then_throttles_and_rearms() {
+        let mut limiter = RetryDiagnosticRateLimiter::new();
+        let t0 = Instant::now();
+        let backoff = Duration::from_secs(30);
+
+        let line = limiter
+            .diagnostic_for(t0, "t-1", 1, "TCP connect failed: refused", backoff)
+            .expect("first failure must emit a diagnostic");
+        assert!(
+            line.starts_with("[paperwork-bot] heartbeat to terminal 't-1' failed"),
+            "{line}"
+        );
+        assert!(line.contains("consecutive=1"), "{line}");
+        assert!(line.contains("TCP connect failed: refused"), "{line}");
+        assert!(line.contains("next retry in 30.0s"), "{line}");
+
+        // Inside the 60s window the diagnostic is throttled.
+        assert!(limiter
+            .diagnostic_for(
+                t0 + Duration::from_secs(30),
+                "t-1",
+                2,
+                "HTTP status 503",
+                backoff
+            )
+            .is_none());
+        // After the window it is emitted again.
+        let again = limiter
+            .diagnostic_for(
+                t0 + Duration::from_secs(61),
+                "t-1",
+                3,
+                "HTTP status 503",
+                backoff,
+            )
+            .expect("diagnostic after the window must emit");
+        assert!(again.contains("consecutive=3"), "{again}");
+
+        // A success re-arms the limiter so a new streak reports immediately.
+        limiter.note_success();
+        let fresh = limiter
+            .diagnostic_for(
+                t0 + Duration::from_secs(62),
+                "t-1",
+                1,
+                "DNS resolution failed",
+                backoff,
+            )
+            .expect("new failure streak must emit immediately");
+        assert!(fresh.contains("DNS resolution failed"), "{fresh}");
+    }
+
+    #[test]
+    fn retry_diagnostic_redacts_secrets_and_formats_backoff_seconds() {
+        let line = format_retry_diagnostic(
+            "t-1",
+            2,
+            "failed with Bearer abc123 and pcp_bot_topsecret",
+            Duration::from_millis(12_345),
+        );
+        assert!(!line.contains("abc123"));
+        assert!(!line.contains("topsecret"));
+        assert!(line.contains("Bearer [REDACTED]"), "{line}");
+        assert!(line.contains("pcp_bot_[REDACTED]"), "{line}");
+        assert!(line.contains("next retry in 12.3s"), "{line}");
+        assert_eq!(format_backoff_secs(Duration::from_millis(1_000)), "1.0");
+        assert_eq!(format_backoff_secs(Duration::from_millis(30_000)), "30.0");
     }
 
     #[test]

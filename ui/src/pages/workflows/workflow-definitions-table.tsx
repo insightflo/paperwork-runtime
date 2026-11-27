@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, type JSX } from "react";
+import { Fragment, lazy, Suspense, useEffect, useState, type JSX } from "react";
 import { buildManualRunFeedback, findNewRunId, manualRunUnavailableMessage } from "./run-feedback.js";
 import { WorkflowRunDialog } from "./workflow-run-dialog.js";
 import type { WorkflowRunSubmission } from "./workflow-run-inputs.js";
@@ -15,7 +15,17 @@ import { buildWorkflowDefinitionEditDraft, emptyWorkflowDefinitionEditDraft, typ
 import { buildWorkflowDefinitionEditPatch } from "./workflow-definition-edit-patch.js";
 export { WorkflowDashboardWidget, WorkflowSidebarLink } from "./workflow-sidebar-and-widget.js";
 import { WorkflowDefinitionEditorShell } from "./workflow-definition-editor-shell.js";
-import { renderWorkflowGraphEditor } from "./graph-editor/WorkflowGraphEditor.js";
+import type { StepWorkspaceGraphEditorProps } from "./step-workspace-editor.js";
+
+// graph-editor UI 묶음은 무거우므로 편집기를 처음 열 때 로드한다(lazy 경계).
+const LazyWorkflowGraphEditor = lazy(async () => ({ default: (await import("./graph-editor/WorkflowGraphEditor.js")).renderWorkflowGraphEditor }));
+function renderLazyWorkflowGraphEditor(props: StepWorkspaceGraphEditorProps): JSX.Element {
+  return (
+    <Suspense fallback={null}>
+      <LazyWorkflowGraphEditor {...props} />
+    </Suspense>
+  );
+}
 
 export { jsonToSteps, stepsToJson };
 
@@ -570,7 +580,7 @@ export function DefinitionsTable({
           editingTestInputPresetsText={editingTestInputPresetsText}
           availableTools={availableTools}
           availableToolGrants={availableToolGrants}
-          renderGraphEditor={renderWorkflowGraphEditor}
+          renderGraphEditor={renderLazyWorkflowGraphEditor}
           onSelectWorkflow={beginEdit}
           onRunWorkflow={(workflow) => { void onRunWorkflow(workflow); }}
           onSaveEdit={(workflowId) => { void onSaveEdit(workflowId); }}

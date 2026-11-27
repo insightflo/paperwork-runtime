@@ -95,10 +95,11 @@ function StatusIndicator({ status, errorMessage, botUsername }: StatusIndicatorP
 interface TelegramSectionProps {
   companyId: string;
   config: ChannelConfig | null;
+  canWrite: boolean;
   onStatusChange?: (status: ConnectionStatus, botUsername?: string) => void;
 }
 
-function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionProps) {
+function TelegramSection({ companyId, config, canWrite, onStatusChange }: TelegramSectionProps) {
   const queryClient = useQueryClient();
 
   // Form state
@@ -176,6 +177,7 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
+    if (!canWrite) return;
     setFormError(null);
     setSaveSuccess(false);
 
@@ -228,9 +230,12 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
           variant="outline"
           size="sm"
           className="h-7 shrink-0 border-slate-200/90 bg-white text-xs text-slate-700 hover:border-blue-500/40 hover:bg-slate-50 hover:text-slate-950 dark:border-white/[0.1] dark:bg-[#090c12] dark:text-[#eef2f8] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#141b29] dark:hover:text-[#eef2f8]"
-          onClick={() => testMutation.mutate()}
-          disabled={!isConfigured || testMutation.isPending}
-          title={!isConfigured ? "Save a configuration first" : undefined}
+          onClick={() => {
+            if (!canWrite) return;
+            testMutation.mutate();
+          }}
+          disabled={!isConfigured || testMutation.isPending || !canWrite}
+          title={!canWrite ? "Member, admin, or owner role required to test the channel" : !isConfigured ? "Save a configuration first" : undefined}
         >
           <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", testMutation.isPending && "animate-spin")} />
           Test Connection
@@ -251,6 +256,7 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
             value={botUsername}
             onChange={(e) => setBotUsername(e.target.value)}
             placeholder="e.g. papercompanyBot"
+            disabled={!canWrite}
           />
           <p className="text-xs text-slate-500 dark:text-[#8b97ad]">
             The Telegram username of your bot (without @).
@@ -273,6 +279,7 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
             value={botToken}
             onChange={(e) => setBotToken(e.target.value)}
             placeholder={isConfigured ? "Leave blank to keep existing token" : "123456789:ABCdef..."}
+            disabled={!canWrite}
             autoComplete="off"
           />
           <p className="text-xs text-slate-500 dark:text-[#8b97ad]">
@@ -291,6 +298,7 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
               value={secretName}
               onChange={(e) => setSecretName(e.target.value)}
               placeholder="telegram_bot_token"
+            disabled={!canWrite}
             />
             <p className="text-xs text-slate-500 dark:text-[#8b97ad]">
               The name under which the token will be saved in company secrets.
@@ -326,7 +334,8 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
             type="submit"
             size="sm"
             className={`h-7 text-xs ${CTA}`}
-            disabled={isSaving}
+            disabled={isSaving || !canWrite}
+            title={!canWrite ? "Member, admin, or owner role required to save channel configuration" : undefined}
           >
             <Save className="h-3.5 w-3.5 mr-1.5" />
             {isSaving ? "Saving..." : "Save"}
@@ -342,7 +351,7 @@ function TelegramSection({ companyId, config, onStatusChange }: TelegramSectionP
 // ---------------------------------------------------------------------------
 
 export function ChannelConfig() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canWrite = true, currentRole } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const [channelTab, setChannelTab] = useState<"board" | "telegram">("board");
   const [testStatus, setTestStatus] = useState<ConnectionStatus>("unknown");
@@ -408,7 +417,15 @@ export function ChannelConfig() {
           <h1 className="truncate text-sm font-semibold text-slate-950 dark:text-[#eef2f8]">Channel Configuration</h1>
           <span className="hidden truncate text-xs text-slate-500 dark:text-[#8b97ad] md:inline">Configure external messaging channels for agent notifications.</span>
         </div>
-        <div role="group" aria-label="Channel views" className="ml-auto flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-100/90 p-0.5 dark:border-white/[0.08] dark:bg-[#090c12]">
+        {!canWrite && (
+          <span
+            className="ml-auto inline-flex shrink-0 items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#fde68a]"
+            title="Member, admin, or owner role required to configure or test channels"
+          >
+            Read-only{currentRole ? ` (${currentRole})` : ""}
+          </span>
+        )}
+        <div role="group" aria-label="Channel views" className="flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-100/90 p-0.5 dark:border-white/[0.08] dark:bg-[#090c12]">
           {([
             { id: "board", label: "협업 채널 보드" },
             { id: "telegram", label: "Telegram 연동 설정" },
@@ -448,7 +465,7 @@ export function ChannelConfig() {
             )}
           </div>
 
-          <TelegramSection companyId={selectedCompanyId} config={config ?? null} onStatusChange={handleStatusChange} />
+          <TelegramSection companyId={selectedCompanyId} config={config ?? null} canWrite={canWrite} onStatusChange={handleStatusChange} />
         </div>
       )}
     </div>

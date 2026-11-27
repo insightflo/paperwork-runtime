@@ -76,24 +76,33 @@ function OverviewContent({
   project,
   onUpdate,
   imageUploadHandler,
+  canEdit = true,
 }: {
   project: { description: string | null; status: string; targetDate: string | null };
   onUpdate: (data: Record<string, unknown>) => void;
   imageUploadHandler?: (file: File) => Promise<string>;
+  canEdit?: boolean;
 }) {
   return (
     <div className={cn(HAIRLINE_CARD, "divide-y divide-slate-200/80 dark:divide-white/[0.07] tabular-nums")}>
       <div className="px-4 py-3">
         <span className={HAIRLINE_LABEL}>Description</span>
-        <InlineEditor
-          value={project.description ?? ""}
-          onSave={(description) => onUpdate({ description })}
-          as="p"
-          className="mt-1 text-sm text-slate-700 dark:text-[#c9d3e4]"
-          placeholder="Add a description..."
-          multiline
-          imageUploadHandler={imageUploadHandler}
-        />
+        {/* [RBAC] 설명·이미지 수정은 쓰기 권한 필요 — 읽기 전용은 표시만. */}
+        {canEdit ? (
+          <InlineEditor
+            value={project.description ?? ""}
+            onSave={(description) => onUpdate({ description })}
+            as="p"
+            className="mt-1 text-sm text-slate-700 dark:text-[#c9d3e4]"
+            placeholder="Add a description..."
+            multiline
+            imageUploadHandler={imageUploadHandler}
+          />
+        ) : (
+          <p className="mt-1 text-sm text-slate-700 dark:text-[#c9d3e4] whitespace-pre-wrap break-words [overflow-wrap:anywhere]" title="Member, admin, or owner role required to edit work contexts">
+            {project.description || "—"}
+          </p>
+        )}
       </div>
       <dl className="grid grid-cols-1 gap-px divide-y divide-slate-200/80 dark:divide-white/[0.07] bg-slate-200/80 dark:bg-white/[0.08] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
         <div className="bg-slate-50 dark:bg-[#090c12] px-4 py-3">
@@ -231,7 +240,7 @@ export function ProjectDetail() {
     projectId: string;
     filter?: string;
   }>();
-  const { companies, selectedCompanyId, setSelectedCompanyId } = useCompany();
+  const { companies, selectedCompanyId, setSelectedCompanyId, canWrite = true } = useCompany();
   const { closePanel } = usePanel();
   const { openNewIssue } = useDialog();
   const { isMobile } = useSidebar();
@@ -492,17 +501,25 @@ export function ProjectDetail() {
       {/* Tight single-row 40px toolbar: color · name · pause state · tabs · primary action. */}
       <div className="cockpit-toolbar h-10 w-full tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] pl-2 pr-1.5">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
-          <ColorPicker
-            currentColor={project.color ?? "#6366f1"}
-            onSelect={(color) => updateProject.mutate({ color })}
-          />
-          <h2 className="min-w-0 truncate text-sm font-semibold text-slate-950 dark:text-[#eef2f8]">
-            <InlineEditor
-              value={project.name}
-              onSave={(name) => updateProject.mutate({ name })}
-              as="span"
-              className="text-sm font-semibold text-slate-950 dark:text-[#eef2f8]"
+          {canWrite ? (
+            <ColorPicker
+              currentColor={project.color ?? "#6366f1"}
+              onSelect={(color) => updateProject.mutate({ color })}
             />
+          ) : (
+            <span className="h-4 w-4 shrink-0 cursor-default rounded-full border border-slate-300/80 dark:border-white/[0.15]" style={{ backgroundColor: project.color ?? "#6366f1" }} title="Member, admin, or owner role required to edit work contexts" />
+          )}
+          <h2 className="min-w-0 truncate text-sm font-semibold text-slate-950 dark:text-[#eef2f8]">
+            {canWrite ? (
+              <InlineEditor
+                value={project.name}
+                onSave={(name) => updateProject.mutate({ name })}
+                as="span"
+                className="text-sm font-semibold text-slate-950 dark:text-[#eef2f8]"
+              />
+            ) : (
+              <span className="text-sm font-semibold text-slate-950 dark:text-[#eef2f8]" title="Member, admin, or owner role required to edit work contexts">{project.name}</span>
+            )}
           </h2>
           {project.pauseReason === "budget" ? (
             <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-rose-300/80 bg-rose-50 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.18em] text-rose-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
@@ -544,7 +561,9 @@ export function ProjectDetail() {
             size="sm"
             variant="outline"
             onClick={() => openNewIssue({ projectId: project.id })}
-            className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]"
+            disabled={!canWrite}
+            title={!canWrite ? "Member, admin, or owner role required to create work items" : undefined}
+            className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus className="h-3.5 w-3.5" />
             Add Work Item
@@ -556,10 +575,11 @@ export function ProjectDetail() {
         <OverviewContent
           project={project}
           onUpdate={(data) => updateProject.mutate(data)}
-          imageUploadHandler={async (file) => {
+          canEdit={canWrite}
+          imageUploadHandler={canWrite ? async (file) => {
             const asset = await uploadImage.mutateAsync(file);
             return asset.contentPath;
-          }}
+          } : undefined}
         />
       )}
 
@@ -569,12 +589,13 @@ export function ProjectDetail() {
 
       {activeTab === "configuration" && (
         <div className={cn("w-full max-w-6xl 2xl:max-w-none", HAIRLINE_CARD, "p-4 tabular-nums", HAIRLINE_DESCENDANTS)}>
+          {/* [RBAC] 속성 저장·보관은 쓰기 권한 필요 — onArchive 미제공 시 Danger Zone 자체가 숨겨진다. */}
           <ProjectProperties
             project={project}
-            onUpdate={(data) => updateProject.mutate(data)}
-            onFieldUpdate={updateProjectField}
+            onUpdate={canWrite ? (data) => updateProject.mutate(data) : undefined}
+            onFieldUpdate={canWrite ? updateProjectField : undefined}
             getFieldSaveState={(field) => fieldSaveStates[field] ?? "idle"}
-            onArchive={(archived) => archiveProject.mutate(archived)}
+            onArchive={canWrite ? (archived) => archiveProject.mutate(archived) : undefined}
             archivePending={archiveProject.isPending}
           />
         </div>
@@ -591,7 +612,7 @@ export function ProjectDetail() {
               summary={projectBudgetSummary}
               variant="plain"
               isSaving={budgetMutation.isPending}
-              onSave={(amount) => budgetMutation.mutate(amount)}
+              onSave={canWrite ? (amount) => budgetMutation.mutate(amount) : undefined}
             />
           </div>
         </section>

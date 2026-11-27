@@ -30,7 +30,9 @@ const HOVER_ICON = "text-slate-500 opacity-0 group-hover:opacity-100 focus-visib
 const PRIMARY_CTA = "h-7 shrink-0 bg-blue-600 px-2.5 text-xs text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:bg-blue-500 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]";
 
 export function Companies() {
-  const { companies, selectedCompanyId, setSelectedCompanyId, loading, error } = useCompany();
+  const { companies, selectedCompanyId, setSelectedCompanyId, loading, error, canAdmin = true } = useCompany();
+  // [RBAC] 회사명 수정·삭제는 관리자 이상(canAdmin)만 가능 — Approvals/Agents 목록과 동일 기준.
+  const adminRequiredTitle = "Admin or owner role required to manage companies";
   const { openOnboarding } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
@@ -67,11 +69,13 @@ export function Companies() {
   }, [setBreadcrumbs]);
 
   function startEdit(companyId: string, currentName: string) {
+    if (!canAdmin) return;
     setEditingId(companyId);
     setEditName(currentName);
   }
 
   function saveEdit() {
+    if (!canAdmin) return;
     if (!editingId || !editName.trim()) return;
     editMutation.mutate({ id: editingId, newName: editName.trim() });
   }
@@ -170,7 +174,8 @@ export function Companies() {
                         variant="ghost"
                         size="icon-xs"
                         onClick={saveEdit}
-                        disabled={editMutation.isPending}
+                        disabled={!canAdmin || editMutation.isPending}
+                        title={!canAdmin ? adminRequiredTitle : undefined}
                         aria-label="Save company name"
                       >
                         <Check className="h-3.5 w-3.5 text-lime-600 dark:text-[#a3e635]" />
@@ -185,18 +190,20 @@ export function Companies() {
                       <span className={cn(PILL, STATUS_PILL[company.status] ?? PILL_IDLE)}>
                         {company.status}
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        className={HOVER_ICON}
-                        aria-label={`Rename ${company.name}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          startEdit(company.id, company.name);
-                        }}
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </Button>
+                      {canAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className={HOVER_ICON}
+                          aria-label={`Rename ${company.name}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            startEdit(company.id, company.name);
+                          }}
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </Button>
+                      )}
                     </div>
                   )}
                   {company.description && !isEditing && (
@@ -204,7 +211,8 @@ export function Companies() {
                   )}
                 </div>
 
-                {/* Three-dot menu */}
+                {/* Three-dot menu: rename/delete are admin-only, so the menu itself hides for viewers. */}
+                {canAdmin && (
                 <div onClick={(e) => e.stopPropagation()}>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -235,6 +243,7 @@ export function Companies() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
+                )}
               </div>
 
               {/* Stats row: hairline track under the name, bold tabular figures */}
@@ -277,9 +286,10 @@ export function Companies() {
                     <Button
                       variant="destructive"
                       size="xs"
-                      onClick={() => deleteMutation.mutate(company.id)}
-                      disabled={deleteMutation.isPending}
-                      className="h-7 bg-rose-600 px-2.5 text-xs text-white hover:bg-rose-500 dark:bg-[#f87171] dark:text-[#090c12] dark:hover:bg-[#fca5a5]"
+                      onClick={() => { if (!canAdmin) return; deleteMutation.mutate(company.id); }}
+                      disabled={!canAdmin || deleteMutation.isPending}
+                      title={!canAdmin ? adminRequiredTitle : undefined}
+                      className="h-7 bg-rose-600 px-2.5 text-xs text-white hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[#f87171] dark:text-[#090c12] dark:hover:bg-[#fca5a5]"
                     >
                       {deleteMutation.isPending ? "Deleting…" : "Delete"}
                     </Button>

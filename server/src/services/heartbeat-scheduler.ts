@@ -28,6 +28,7 @@ export type HeartbeatSchedulerOptions = {
   timerIntervalMs: number;
   recoveryIntervalMs?: number;
   recoveryStaleThresholdMs?: number;
+  queuedStaleThresholdMs?: number;
 };
 
 export type HeartbeatScheduler = {
@@ -40,11 +41,50 @@ type Lane = "timer" | "recovery";
 
 const RECOVERY_LANE_TIMEOUT_MS = 4 * 60 * 1000;
 
+// [queued-stale threshold 구성화] 기본값은 기존 max(recovery*3, 15m) 을 그대로 유지해
+// env 미설정 시 동작이 100% 보존된다. env 값은 파싱 실패·비양수일 때 기본값으로,
+// 범위 밖 정수일 때 [1분, 24시간] 으로 클램프한다(위험한 소거·과대 지연 방지).
+export const QUEUED_STALE_THRESHOLD_FLOOR_MS = 60 * 1000;
+export const QUEUED_STALE_THRESHOLD_CEILING_MS = 24 * 60 * 60 * 1000;
+export const PAPERCLIP_QUEUED_STALE_THRESHOLD_MS_ENV = "PAPERCLIP_QUEUED_STALE_THRESHOLD_MS";
+
+export function defaultQueuedStaleThresholdMs(recoveryStaleThresholdMs: number): number {
+  return Math.max(recoveryStaleThresholdMs * 3, 15 * 60 * 1000);
+}
+
+export function clampQueuedStaleThresholdMs(ms: number): number {
+  return Math.min(Math.max(ms, QUEUED_STALE_THRESHOLD_FLOOR_MS), QUEUED_STALE_THRESHOLD_CEILING_MS);
+}
+
+/** env 원문을 양의 정수(ms)로 파싱한다. 미설정·빈 값·무한/NaN·비양수는 null. */
+export function parseQueuedStaleThresholdMsEnv(raw: string | undefined): number | null {
+  if (raw === undefined || raw.trim() === "") return null;
+  const parsed = Number(raw.trim());
+  if (!Number.isFinite(parsed)) return null;
+  const truncated = Math.trunc(parsed);
+  return truncated > 0 ? truncated : null;
+}
+
+/** env 값 → 유효 임계값(ms). env 가 없거나 무효면 기존 기본값을 반환한다. */
+export function resolveQueuedStaleThresholdMs(raw: string | undefined, recoveryStaleThresholdMs: number): number {
+  const parsed = parseQueuedStaleThresholdMsEnv(raw);
+  if (parsed === null) return defaultQueuedStaleThresholdMs(recoveryStaleThresholdMs);
+  return clampQueuedStaleThresholdMs(parsed);
+}
+
 export function createHeartbeatScheduler(opts: HeartbeatSchedulerOptions): HeartbeatScheduler {
   const recoveryIntervalMs = opts.recoveryIntervalMs ?? Math.max(opts.timerIntervalMs * 10, 5 * 60 * 1000);
   const recoveryStaleThresholdMs = opts.recoveryStaleThresholdMs ?? 5 * 60 * 1000;
   const activeExecutionTimeoutMs = 15 * 60 * 1000;
-  const queuedStaleThresholdMs = Math.max(recoveryStaleThresholdMs * 3, 15 * 60 * 1000);
+  const queuedStaleEnvRaw = process.env[PAPERCLIP_QUEUED_STALE_THRESHOLD_MS_ENV];
+  if (opts.queuedStaleThresholdMs === undefined && queuedStaleEnvRaw !== undefined
+    && parseQueuedStaleThresholdMsEnv(queuedStaleEnvRaw) === null) {
+    opts.logger.warn(
+      `Ignoring invalid ${PAPERCLIP_QUEUED_STALE_THRESHOLD_MS_ENV}=${JSON.stringify(queuedStaleEnvRaw)}; using the default queued-stale threshold`,
+    );
+  }
+  const queuedStaleThresholdMs = opts.queuedStaleThresholdMs
+    ?? resolveQueuedStaleThresholdMs(queuedStaleEnvRaw, recoveryStaleThresholdMs);
   const laneTimeoutMs: Record<Lane, number> = {
     timer: Math.max(opts.timerIntervalMs * 2, 30_000),
     recovery: Math.min(RECOVERY_LANE_TIMEOUT_MS, Math.max(recoveryIntervalMs - 30_000, 30_000)),
@@ -144,16 +184,14 @@ export function createHeartbeatScheduler(opts: HeartbeatSchedulerOptions): Heart
     }
   };
 
+  // [startup recovery] 시작 즉시 틱은 staleThresholdMs 를 생략해(0) 죽은 PID 고아 런을
+  // 5분 대기 없이 즉시 회수하면서(process-loss 재기동 계약 보존), queuedStaleThresholdMs 는
+  // 함께 전달해 재시작 직후에도 큐 정체 회수가 동작하도록 한다.
   const recover = async (staleThresholdMs?: number) => {
-    if (staleThresholdMs === undefined) {
-      await opts.heartbeat.reapOrphanedRuns();
-    } else {
-      await opts.heartbeat.reapOrphanedRuns({
-        staleThresholdMs,
-        activeExecutionTimeoutMs,
-        queuedStaleThresholdMs,
-      });
-    }
+    await opts.heartbeat.reapOrphanedRuns({
+      ...(staleThresholdMs !== undefined ? { staleThresholdMs, activeExecutionTimeoutMs } : {}),
+      queuedStaleThresholdMs,
+    });
     // [mission-runtime busy 고착 회수기] 백킹 런 없이 busy로 남은 미션 런타임을 회수한다.
     // reapOrphanedRuns 직후에 실행: run 회수(실행_stale 등)로 백킹이 사라진 busy도 같은
     // 스윕에서 풀리게 한다. 실패해도 recovery lane 의 나머지(resumeQueuedRuns)는 계속된다.

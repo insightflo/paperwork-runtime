@@ -8,21 +8,24 @@
 //   - 게이트 판정은 구조화 레코드로만 제출(자연어/프로즈 파싱 금지 — 규칙 8).
 //     에이전트 apply는 인라인 판정 거부 — 판정 원장 PASS만 인정(자기 인증 차단).
 //     보드(운영자)는 기존대로 인라인 판정 허용.
-//   - 회사 스코프 강제(assertCompanyAccess). 다른 회사 자산 접근 불가.
+//   - 회사 스코프 강제 + 보드 쓰기 권한 강제(assertCompanyWriteAccess). 다른 회사 자산 접근 불가.
+//     viewer 역할 보드 사용자는 dry-run/verdicts/apply 호출 불가(403). 에이전트 키는 기존 회사 스코프 유지.
 
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
 import { selfImprovementAdoptionService } from "../services/self-improvement-adoption.js";
-import { assertCompanyAccess } from "./authz.js";
+import { accessService } from "../services/access.js";
+import { assertCompanyWriteAccess } from "./authz-write.js";
 
 export function selfImprovementAdoptionsRoutes(db: Db) {
   const router = Router();
   const svc = selfImprovementAdoptionService(db);
+  const access = accessService(db);
 
   // POST /api/companies/:companyId/self-improvement-adoptions/dry-run
   router.post("/companies/:companyId/self-improvement-adoptions/dry-run", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const result = await svc.dryRun({
       companyId,
       candidates: req.body?.candidates,
@@ -36,7 +39,7 @@ export function selfImprovementAdoptionsRoutes(db: Db) {
   //   note는 표시용 — 판정 권위는 레코드 필드(gateOwner/candidateHash/verdict)뿐.
   router.post("/companies/:companyId/self-improvement-adoptions/verdicts", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const actor = req.actor;
     const verdict = await svc.recordGateVerdict({
       companyId,
@@ -52,7 +55,7 @@ export function selfImprovementAdoptionsRoutes(db: Db) {
   // POST /api/companies/:companyId/self-improvement-adoptions/apply
   router.post("/companies/:companyId/self-improvement-adoptions/apply", async (req, res) => {
     const companyId = req.params.companyId as string;
-    assertCompanyAccess(req, companyId);
+    await assertCompanyWriteAccess(access, req, companyId);
     const actor = req.actor;
     const result = await svc.apply({
       companyId,

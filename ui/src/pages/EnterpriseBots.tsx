@@ -32,6 +32,7 @@ import {
   type EnterpriseBotAuditEvent,
   type EnterpriseBotCallableBy,
   type EnterpriseBotsSnapshot,
+  type EnterpriseBotTeam,
   type HealthSample,
   type PingBotResponse,
   type RegisterTerminalResponse,
@@ -133,6 +134,8 @@ export interface RegisterTerminalSubmitPayload {
   name: string;
   kind: TerminalKind;
   transport: BotTerminalTransport;
+  /** Required by the server for `worker_node`; omitted for `personal_terminal`. */
+  teamId?: string;
 }
 
 export interface EnterpriseBotsProps {
@@ -155,6 +158,10 @@ export interface EnterpriseBotsProps {
     request: ChannelInvokePreviewRequest,
   ) => Promise<ChannelInvokePreviewResult | void> | ChannelInvokePreviewResult | void;
   auditEntries?: ChannelAuditEntry[];
+  /** Injected team directory for the `worker_node` registration selector; live mode fetches when omitted. */
+  teams?: EnterpriseBotTeam[];
+  /** Injected teams fetch failure; surfaced explicitly in the registration modal. */
+  teamsLoadError?: string | null;
 }
 
 export const EXEC_OWNER_ONLY_REASON =
@@ -413,6 +420,8 @@ export function EnterpriseBots(props: EnterpriseBotsProps) {
       onCommandTerminal={props.onCommandTerminal}
       onPreviewChannelInvoke={props.onPreviewChannelInvoke}
       auditEntries={props.auditEntries ?? []}
+      teams={props.teams ?? []}
+      teamsLoadError={props.teamsLoadError ?? null}
     />
   );
 }
@@ -433,6 +442,8 @@ function LiveEnterpriseBots({
   onCommandTerminal,
   onPreviewChannelInvoke,
   auditEntries,
+  teams,
+  teamsLoadError,
 }: EnterpriseBotsProps & { companyId: string; selectedCompany: Company | null }) {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
@@ -440,6 +451,13 @@ function LiveEnterpriseBots({
   const snapshotQuery = useQuery({
     queryKey: queryKeys.enterpriseBots.snapshot(companyId),
     queryFn: () => enterpriseBotsApi.getSnapshot(companyId),
+    // Derived online/offline status flips as heartbeats age; poll so the 45s window stays visible.
+    refetchInterval: 10_000,
+  });
+
+  const teamsQuery = useQuery({
+    queryKey: queryKeys.enterpriseBots.teams(companyId),
+    queryFn: () => enterpriseBotsApi.listTeams(companyId),
   });
 
   const auditQuery = useQuery({
@@ -510,6 +528,7 @@ function LiveEnterpriseBots({
       name: input.name,
       kind: input.kind,
       transport: input.transport,
+      ...(input.kind === "worker_node" && input.teamId ? { teamId: input.teamId } : {}),
     });
     await invalidateSnapshot();
     pushToast({
@@ -631,6 +650,8 @@ function LiveEnterpriseBots({
       onCommandTerminal={handleCommandTerminal}
       onPreviewChannelInvoke={handlePreviewChannelInvoke}
       auditEntries={resolvedAuditEntries}
+      teams={teams ?? teamsQuery.data ?? []}
+      teamsLoadError={teamsLoadError ?? (teams !== undefined ? null : teamsQuery.error instanceof Error ? teamsQuery.error.message : null)}
       onActionError={(title, err) =>
         pushToast({
           title,
@@ -666,6 +687,8 @@ interface EnterpriseBotsCockpitProps {
   ) => Promise<ChannelInvokePreviewResult | void> | ChannelInvokePreviewResult | void;
   auditEntries: ChannelAuditEntry[];
   onActionError?: (title: string, err: unknown) => void;
+  teams: EnterpriseBotTeam[];
+  teamsLoadError: string | null;
 }
 
 function EnterpriseBotsCockpit({
@@ -688,6 +711,8 @@ function EnterpriseBotsCockpit({
   onPreviewChannelInvoke,
   auditEntries,
   onActionError,
+  teams,
+  teamsLoadError,
 }: EnterpriseBotsCockpitProps) {
   const [tab, setTab] = useState<Tab>("bots");
   const [search, setSearch] = useState("");
@@ -1123,6 +1148,8 @@ function EnterpriseBotsCockpit({
       {registerTerminalOpen && (
         <RegisterTerminalModal
           busy={busyAction === "register-terminal"}
+          teams={teams}
+          teamsLoadError={teamsLoadError}
           onClose={() => setRegisterTerminalOpen(false)}
           onSubmit={async (payload) => {
             const res = await runAction("register-terminal", "Failed to register terminal", () =>
@@ -1636,21 +1663,28 @@ function AttachConnectorModal({
 
 function RegisterTerminalModal({
   busy,
+  teams,
+  teamsLoadError,
   onClose,
   onSubmit,
 }: {
   busy: boolean;
+  teams: EnterpriseBotTeam[];
+  teamsLoadError: string | null;
   onClose: () => void;
   onSubmit: (payload: RegisterTerminalSubmitPayload) => Promise<void>;
 }) {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<TerminalKind>("personal_terminal");
   const [transport, setTransport] = useState<BotTerminalTransport>("outbound_wss");
+  const [teamId, setTeamId] = useState("");
+  const requiresTeam = kind === "worker_node";
+  const teamMissing = requiresTeam && !teamId;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
-    await onSubmit({ name: name.trim(), kind, transport });
+    if (!name.trim() || teamMissing) return;
+    await onSubmit({ name: name.trim(), kind, transport, ...(requiresTeam && teamId ? { teamId } : {}) });
   };
 
   return (
@@ -1711,13 +1745,41 @@ function RegisterTerminalModal({
             </label>
           </div>
 
+          {requiresTeam && (
+            <label className="block space-y-1">
+              <span className="font-medium text-slate-700 dark:text-[#cbd5e1]">Team</span>
+              <select
+                aria-label="Terminal Team"
+                value={teamId}
+                onChange={(e) => setTeamId(e.target.value)}
+                className={INPUT_CLASS}
+              >
+                <option value="">Select a team...</option>
+                {teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              {teamsLoadError ? (
+                <span role="note" data-teams-error="true" className="text-[11px] text-rose-600 dark:text-rose-400">
+                  Failed to load teams: {teamsLoadError}
+                </span>
+              ) : teams.length === 0 ? (
+                <span role="note" data-teams-empty="true" className="text-[11px] text-amber-600 dark:text-amber-400">
+                  No teams found for this company. Create a team first.
+                </span>
+              ) : null}
+            </label>
+          )}
+
           <div className="flex justify-end gap-2 border-t border-slate-200/80 pt-3 dark:border-white/[0.06]">
             <button type="button" onClick={onClose} className={ACTION}>
               Cancel
             </button>
             <button
               type="submit"
-              disabled={busy || !name.trim()}
+              disabled={busy || !name.trim() || teamMissing}
               className="inline-flex h-7.5 cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-primary/90 disabled:opacity-50"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden />

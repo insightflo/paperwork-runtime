@@ -38,6 +38,16 @@ const button = (name: string) => [...container.querySelectorAll("button")].find(
 const tabButton = (key: string) => container.querySelector<HTMLButtonElement>(`button[data-tab="${key}"]`);
 const detail = () => container.querySelector('section[aria-label$="detail"]')!;
 
+async function setControlValue(el: HTMLInputElement | HTMLSelectElement, value: string) {
+  const proto = el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, "value")!.set!;
+  await act(async () => {
+    setter.call(el, value);
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+}
+
 afterEach(async () => {
   await act(async () => { root?.unmount(); });
   root = null;
@@ -253,6 +263,61 @@ describe("EnterpriseBots cockpit", () => {
     expect(snippet).toContain("export PAPERWORK_TERMINAL_TOKEN='pcp_term_once_999'");
     expect(snippet).toContain('paperwork-bot daemon --server');
     expect(banner.querySelector("[data-doctor-snippet]")?.textContent).toContain("paperwork-bot doctor");
+  });
+
+  it("requires a team for worker_node registration and sends teamId in the payload", async () => {
+    const onRegisterTerminalSubmit = vi.fn().mockResolvedValue({
+      terminal: { id: "t-n1", companyId: "c-1", kind: "worker_node", name: "gpu-worker-02", ownerUserId: null, teamId: "team-1", botId: null, transport: "outbound_wss", status: "offline", lastSeenAt: null, revokedAt: null },
+      token: "pcp_term_once_777",
+    });
+
+    await render(
+      <EnterpriseBots
+        initialData={DATA}
+        teams={[{ id: "team-1", name: "Platform" }, { id: "team-2", name: "Sales" }]}
+        onRegisterTerminalSubmit={onRegisterTerminalSubmit}
+      />,
+    );
+    await click(button("Register Terminal"));
+
+    const dialog = container.querySelector('[role="dialog"][aria-label="Register Terminal"]')!;
+    // personal_terminal (default) shows no team selector and submits without teamId.
+    expect(dialog.querySelector('select[aria-label="Terminal Team"]')).toBeNull();
+
+    await setControlValue(dialog.querySelector<HTMLSelectElement>('select[aria-label="Terminal Kind"]')!, "worker_node");
+    const teamSelect = dialog.querySelector<HTMLSelectElement>('select[aria-label="Terminal Team"]')!;
+    expect(teamSelect).toBeTruthy();
+    expect([...teamSelect.querySelectorAll("option")].map((o) => o.textContent)).toEqual(["Select a team...", "Platform", "Sales"]);
+
+    const nameInput = dialog.querySelector<HTMLInputElement>('input[aria-label="Terminal Name"]')!;
+    await setControlValue(nameInput, "gpu-worker-02");
+    // Without a team the submit stays disabled and no payload is sent.
+    const submitBtn = [...dialog.querySelectorAll("button")].find((b) => b.getAttribute("type") === "submit")!;
+    expect(submitBtn.hasAttribute("disabled")).toBe(true);
+    await act(async () => { dialog.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    expect(onRegisterTerminalSubmit).not.toHaveBeenCalled();
+
+    await setControlValue(teamSelect, "team-1");
+    expect(submitBtn.hasAttribute("disabled")).toBe(false);
+    await act(async () => { dialog.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    expect(onRegisterTerminalSubmit).toHaveBeenCalledWith({
+      name: "gpu-worker-02",
+      kind: "worker_node",
+      transport: "outbound_wss",
+      teamId: "team-1",
+    });
+    expect(container.querySelector("[data-terminal-pairing-banner]")).toBeTruthy();
+  });
+
+  it("shows an explicit error when the team list fails to load for worker_node", async () => {
+    await render(<EnterpriseBots initialData={DATA} teams={[]} teamsLoadError="network down" />);
+    await click(button("Register Terminal"));
+    const dialog = container.querySelector('[role="dialog"][aria-label="Register Terminal"]')!;
+    await setControlValue(dialog.querySelector<HTMLSelectElement>('select[aria-label="Terminal Kind"]')!, "worker_node");
+    const err = dialog.querySelector('[data-teams-error="true"]');
+    expect(err).toBeTruthy();
+    expect(err!.textContent).toContain("Failed to load teams");
+    expect(err!.textContent).toContain("network down");
   });
 
   it("wires Bot Test Ping, Pause, Revoke and Terminal Stop/Revoke live action callbacks", async () => {

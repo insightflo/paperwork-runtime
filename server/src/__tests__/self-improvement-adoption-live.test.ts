@@ -4,7 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import express from "express";
 import request from "supertest";
 import { eq, inArray } from "drizzle-orm";
-import { activityLog, companies, companySkills, createDb, issueComments, issues, workflowDefinitions, workflowRuns } from "@paperclipai/db";
+import { activityLog, companies, companyMemberships, companySkills, createDb, issueComments, issues, workflowDefinitions, workflowRuns } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -56,6 +56,11 @@ describeEP("self-improvement adoption live wiring (planner→executor→ledger)"
       { id: companyId, name: "Adoption Co", status: "active", issuePrefix: "AD1" },
       { id: otherCompanyId, name: "Other Adoption Co", status: "active", issuePrefix: "AD2" },
     ]);
+    // [쓰기 권한 픽스처] 라우트 assertCompanyWriteAccess가 보드 사용자 멤버십을 검증하므로
+    //   board-user(member) 행을 둔다 — knowledge-patterns.test.ts와 동일 픽스처 규약.
+    await db.insert(companyMemberships).values({
+      companyId, principalType: "user", principalId: "board-user", status: "active", membershipRole: "member",
+    });
 
     const [skill] = await db
       .insert(companySkills)
@@ -200,7 +205,7 @@ describeEP("self-improvement adoption live wiring (planner→executor→ledger)"
     app.use((req, _res, next) => {
       (req as typeof req & { actor: unknown }).actor = {
         type: "board", source: "board_key", companyId, companyIds: [companyId], isInstanceAdmin: false,
-        actorId: "board-user", agentId: null,
+        userId: "board-user", agentId: null,
       };
       next();
     });

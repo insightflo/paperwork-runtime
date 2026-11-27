@@ -32,16 +32,16 @@ const CATEGORY_PILLS: { id: ActivityCategory; label: string; dot: string }[] = [
   { id: "all", label: "전체", dot: "bg-blue-500 dark:bg-[var(--pw-cobalt)]" },
   { id: "agent", label: "에이전트", dot: "bg-emerald-700 dark:bg-emerald-300" },
   { id: "mission", label: "미션", dot: "bg-blue-500 dark:bg-[var(--pw-cobalt)]" },
-  { id: "decision", label: "결정", dot: "bg-amber-500 dark:bg-[#f59e0b]" },
-  { id: "worktree", label: "워크트리", dot: "bg-slate-400 dark:bg-[#8b97ad]" },
+  { id: "decision", label: "결정", dot: "bg-amber-500 dark:bg-[var(--pw-amber)]" },
+  { id: "worktree", label: "워크트리", dot: "bg-slate-400 dark:bg-muted-foreground" },
 ];
 
 const STRIP_CELL_CLASS =
-  "cockpit-cell min-w-[5.5rem] flex-1 cursor-pointer justify-center transition-colors hover:bg-slate-50 hover:text-slate-950 dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]";
-const STRIP_CELL_ACTIVE_CLASS = "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_var(--color-emerald-700)] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_var(--color-emerald-300)]";
+  "cockpit-cell min-w-[5.5rem] flex-1 cursor-pointer justify-center transition-colors hover:bg-slate-50 hover:text-slate-950 dark:hover:bg-accent dark:hover:text-foreground";
+const STRIP_CELL_ACTIVE_CLASS = "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_var(--color-emerald-700)] dark:bg-accent dark:text-accent-foreground dark:shadow-[inset_0_-2px_0_var(--color-emerald-300)]";
 const STRIP_CLASS = "cockpit-strip tactile-card h-8 w-full gap-0 overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-none dark:bg-card";
 const TOOLBAR_CLASS = "cockpit-toolbar tactile-card h-10 w-full overflow-x-auto rounded-[12px] border-slate-200/90 bg-white/95 px-2 dark:border-white/[0.08] dark:bg-none dark:bg-card";
-const FEED_CLASS = "tactile-card space-y-1 overflow-hidden rounded-[12px] border-slate-200/90 bg-slate-50/75 p-1 transition-opacity dark:border-white/[0.08] dark:bg-none dark:bg-[#090c12]";
+const FEED_CLASS = "tactile-card space-y-1 overflow-hidden rounded-[12px] border-slate-200/90 bg-slate-50/75 p-1 transition-opacity dark:border-white/[0.08] dark:bg-none dark:bg-background";
 const ROW_CARD_CLASS = "tactile-card tactile-card-interactive overflow-hidden rounded-[8px] border-slate-200/80 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/[0.07] dark:bg-none dark:bg-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] [&_article]:px-3 [&_article]:py-1.5";
 
 export function categorizeActivityEvent(event: ActivityEvent): Exclude<ActivityCategory, "all"> | null {
@@ -82,7 +82,7 @@ function DiffBadge({ diff }: { diff: ActivityDiffBadge }) {
       <span style={{ color: "var(--openbot-diff-before-text)", backgroundColor: "var(--openbot-diff-before-bg)" }} className="rounded px-1">
         {diff.from}
       </span>
-      <span className="text-slate-500 dark:text-[#8b97ad]">→</span>
+      <span className="text-slate-500 dark:text-muted-foreground">→</span>
       <span style={{ color: "var(--openbot-diff-after-text)", backgroundColor: "var(--openbot-diff-after-bg)" }} className="rounded px-1">
         {diff.to}
       </span>
@@ -215,7 +215,7 @@ export function Activity() {
             >
               <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${pill.dot}`} />
               <span className="truncate uppercase tracking-wide">{pill.label}</span>
-              <b className="ml-1 font-semibold text-slate-950 dark:text-[#edf2fb]">{data ? categoryCounts[pill.id] : "—"}</b>
+              <b className="ml-1 font-semibold text-slate-950 dark:text-foreground">{data ? categoryCounts[pill.id] : "—"}</b>
             </button>
           );
         })}
@@ -228,20 +228,20 @@ export function Activity() {
       {/* Tight 40px toolbar: full-width local search */}
       <div className={TOOLBAR_CLASS}>
         <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-[#8b97ad]" />
+          <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500 dark:text-muted-foreground" />
           <input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="활동 검색…"
             aria-label="활동 검색"
-            className="h-7 w-full rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-slate-100 dark:bg-[#090c12] pl-7 pr-2 text-xs text-slate-900 dark:text-[#edf2fb] outline-none placeholder:text-slate-400 dark:placeholder:text-[#8b97ad] focus:border-blue-500 dark:focus:border-[var(--pw-cobalt)] focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-[var(--pw-cobalt)]/25"
+            className="h-7 w-full rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-slate-100 dark:bg-background pl-7 pr-2 text-xs text-slate-900 dark:text-foreground outline-none placeholder:text-slate-400 dark:placeholder:text-muted-foreground focus:border-blue-500 dark:focus:border-[var(--pw-cobalt)] focus:ring-2 focus:ring-blue-500/20 dark:focus:ring-[var(--pw-cobalt)]/25"
           />
         </div>
       </div>
 
       {error && <p className="text-sm text-destructive">{error.message}</p>}
 
-      <CompactPagination page={page} count={filtered.length} hasMore={hasMore} loading={isFetching} onPageChange={setPage} className="rounded-[12px] border-slate-200/90 bg-slate-50/95 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] [&_button]:text-slate-600 dark:[&_button]:text-[#cbd5e1] [&_button:hover]:bg-white dark:[&_button:hover]:bg-[#141b29] [&_span]:text-slate-600 dark:[&_span]:text-[#8b97ad] [&_b]:text-slate-950 dark:[&_b]:text-[#edf2fb] [&_svg]:text-blue-600 dark:[&_svg]:text-[var(--pw-cobalt)]" />
+      <CompactPagination page={page} count={filtered.length} hasMore={hasMore} loading={isFetching} onPageChange={setPage} className="rounded-[12px] border-slate-200/90 bg-slate-50/95 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-background dark:text-foreground dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] [&_button]:text-slate-600 dark:[&_button]:text-secondary-foreground [&_button:hover]:bg-white dark:[&_button:hover]:bg-accent [&_span]:text-slate-600 dark:[&_span]:text-muted-foreground [&_b]:text-slate-950 dark:[&_b]:text-foreground [&_svg]:text-blue-600 dark:[&_svg]:text-[var(--pw-cobalt)]" />
 
       {filtered.length === 0 && !isFetching && (
         <EmptyState icon={History} message={filterActive ? "이 페이지에 조건에 맞는 활동이 없습니다." : "No activity yet."} />

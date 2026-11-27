@@ -24,6 +24,7 @@ import {
  * - `POST /channels/:channelId/invoke`      → 200 | 202 relay decision
  * Stage 19 OpenBot routes:
  * - `GET  /companies/:companyId/snapshot`
+ * - `GET  /companies/:companyId/teams`     → 200 `[{ id, name }]` (worker_node registration selector)
  * - `POST /companies/:companyId/bots`
  * - `PATCH /companies/:companyId/bots/:botId`
  * - `DELETE /companies/:companyId/bots/:botId`
@@ -302,6 +303,12 @@ export function createEnterpriseBotsRouter(service: BotTerminalChannelService, r
     });
   };
 
+  const listTeams: RequestHandler = async (req, res) => {
+    const companyId = idParam(req, "companyId");
+    await requireActor(req, companyId);
+    res.json(await service.listTeams(companyId));
+  };
+
   const createBot: RequestHandler = async (req, res) => {
     const companyId = idParam(req, "companyId");
     const actor = await requireAdminActor(req, companyId);
@@ -394,6 +401,7 @@ export function createEnterpriseBotsRouter(service: BotTerminalChannelService, r
   router.post("/channels/:channelId/invoke", validate(invokeSchema), invoke);
 
   router.get("/companies/:companyId/snapshot", snapshot);
+  router.get("/companies/:companyId/teams", listTeams);
   router.get("/companies/:companyId/audit", audit);
   router.post("/companies/:companyId/bots", validate(createBotSchema), createBot);
   router.patch("/companies/:companyId/bots/:botId", validate(updateBotSchema), updateBot);

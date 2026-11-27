@@ -191,46 +191,46 @@ export function ChannelCollaborationBoard(props: { companyId: string }) {
 
   return (
     <div className="space-y-3 tabular-nums">
-      <div className="tactile-card rounded-[12px] border-slate-200/90 p-3 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.10)] dark:border-white/[0.08] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.42)] [--openbot-surface-25d-bg:#ffffff] dark:[--openbot-surface-25d-bg:#0e131d] space-y-2" style={{ backgroundColor: "var(--openbot-surface-25d-bg)" }}>
-        <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} placeholder="메시지를 입력하고 @에이전트를 멘션하세요…" className="w-full resize-y rounded-[10px] border border-slate-200/90 bg-white px-2.5 py-2 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20" aria-label="채널 메시지" />
+      <div className="tactile-card rounded-[12px] border-slate-200/90 p-3 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.10)] dark:border-white/[0.08] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_rgba(0,0,0,0.42)] [--openbot-surface-25d-bg:var(--pw-card)] space-y-2" style={{ backgroundColor: "var(--openbot-surface-25d-bg)" }}>
+        <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2} placeholder="메시지를 입력하고 @에이전트를 멘션하세요…" className="w-full resize-y rounded-[10px] border border-slate-200/90 bg-white px-2.5 py-2 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 dark:border-white/[0.09] dark:bg-background dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-[var(--pw-cobalt)] dark:focus:ring-[var(--pw-cobalt)]/20" aria-label="채널 메시지" />
         {routing.mentioned.length > 0 && (
-          <p className="font-mono text-[11px] font-medium text-blue-700 dark:text-[#60a5fa]">라우팅: {routing.mentioned.map((a) => `@${a.name}`).join(", ")}</p>
+          <p className="font-mono text-[11px] font-medium text-blue-700 dark:text-[var(--pw-cobalt)]">라우팅: {routing.mentioned.map((a) => `@${a.name}`).join(", ")}</p>
         )}
         <div className="flex justify-end">
-          <Button size="sm" className="h-7 bg-blue-600 px-3 text-xs text-white hover:bg-blue-500 dark:bg-[#60a5fa] dark:text-[#06101f] dark:hover:bg-[#7db5fb]" onClick={assign} disabled={!draft.trim()}><Plus className="h-3.5 w-3.5 mr-1" />할당</Button>
+          <Button size="sm" className="h-7 bg-blue-600 px-3 text-xs text-white hover:bg-blue-500 dark:bg-[var(--pw-cobalt)] dark:text-primary-foreground dark:hover:bg-[var(--pw-token-accent-text)]" onClick={assign} disabled={!draft.trim()}><Plus className="h-3.5 w-3.5 mr-1" />할당</Button>
         </div>
       </div>
 
-      {notice && <p className="rounded-[8px] border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-800 dark:border-[#f59e0b]/30 dark:bg-[#f59e0b]/12 dark:text-[#f59e0b]">{notice}</p>}
+      {notice && <p className="rounded-[8px] border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-800 dark:border-[var(--pw-amber)]/30 dark:bg-[var(--pw-amber-soft)] dark:text-[var(--pw-amber)]">{notice}</p>}
 
       {visibleCards.length === 0 ? (
-        <p className="rounded-[10px] border border-dashed border-slate-300/80 bg-white/70 px-3 py-4 text-center text-xs text-slate-500 dark:border-white/[0.12] dark:bg-[#0e131d]/70 dark:text-[#8f9db3]">아직 채널 작업 카드가 없습니다.</p>
+        <p className="rounded-[10px] border border-dashed border-slate-300/80 bg-white/70 px-3 py-4 text-center text-xs text-slate-500 dark:border-white/[0.12] dark:bg-card/70 dark:text-muted-foreground">아직 채널 작업 카드가 없습니다.</p>
       ) : (
         <div className="space-y-2">
           {visibleCards.map((card) => (
-            <div key={card.id} className={cn("tactile-card tactile-card-interactive rounded-[12px] border-slate-200/90 bg-white px-3 py-2 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_22px_rgba(15,23,42,0.07)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_8px_22px_rgba(0,0,0,0.34)] space-y-1.5", card.status === "done" && "opacity-60")}>
+            <div key={card.id} className={cn("tactile-card tactile-card-interactive rounded-[12px] border-slate-200/90 bg-white px-3 py-2 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_8px_22px_rgba(15,23,42,0.07)] dark:border-white/[0.08] dark:bg-card dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_8px_22px_rgba(0,0,0,0.34)] space-y-1.5", card.status === "done" && "opacity-60")}>
               <div className="flex items-center gap-2 text-sm">
                 <span className="flex-1 min-w-0 truncate font-medium text-slate-950 dark:text-slate-50">{card.title}</span>
                 <span
                   className={cn(
                     "shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px] tabular-nums",
                     isAtHopLimit(card)
-                      ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#f59e0b]"
-                      : "border-slate-200/90 bg-slate-100 text-slate-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-[#8f9db3]",
+                      ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:border-[var(--pw-amber)]/35 dark:bg-[var(--pw-amber-soft)] dark:text-[var(--pw-amber)]"
+                      : "border-slate-200/90 bg-slate-100 text-slate-500 dark:border-white/[0.08] dark:bg-white/[0.04] dark:text-muted-foreground",
                   )}
                   title={isAtHopLimit(card) ? "이관 상한 도달" : "할당 홉 수"}
                 >
                   {hopBadgeText(card)}
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-[#8f9db3]">
-                <span className={cn(card.assigneeName && "font-medium text-blue-700 dark:text-[#60a5fa]")}>{card.assigneeName ? `@${card.assigneeName}` : "미할당"}</span>
+              <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-muted-foreground">
+                <span className={cn(card.assigneeName && "font-medium text-blue-700 dark:text-[var(--pw-cobalt)]")}>{card.assigneeName ? `@${card.assigneeName}` : "미할당"}</span>
                 <span>·</span>
                 <span>{ACTION_LABEL[card.lastAction]}</span>
                 {card.replies > 0 && (
                   <><span>·</span><span className="flex items-center gap-0.5 tabular-nums"><CornerDownRight className="h-3 w-3" />회신 {Math.min(card.replies, CHANNEL_REPLY_BADGE_MAX)}/{CHANNEL_REPLY_BADGE_MAX}</span></>
                 )}
-                {card.status === "done" && <span className="font-medium text-lime-700 dark:text-[#a3e635]">완료됨</span>}
+                {card.status === "done" && <span className="font-medium text-lime-700 dark:text-[var(--pw-lime)]">완료됨</span>}
                 <span className="ml-auto flex items-center gap-1">
                   {card.status === "open" && (
                     <>

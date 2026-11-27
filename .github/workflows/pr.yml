@@ -292,7 +292,7 @@ jobs:
             n=0; bad=0
             for r in "$FULL_RES" "$REUSE_RES" "$DOCS_RES"; do case "$r" in success) n=$((n+1));; skipped) ;; *) bad=1;; esac; done
             [ "$bad" = 0 ] && [ "$n" = 1 ] && { echo "merge gate: exactly one suite path succeeded"; exit 0; }
-            echo "::error::merge gate: need exactly one success among full-gate=$FULL_RES reused=$REUSE_RES docs-only=$DOCS_RES"; exit 1
+            echo "::error::merge gate: need exactly one success among full-gate=$FULL_RES reused=$REUSE_RES docs-only=$DOCS_RES (hint: after pushing a fix commit, re-apply the ci-full label to re-run the full suite)"; exit 1
           fi
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             [ "$P_RES" = "success" ] && [ "$FULL_RES" = "success" ] && { echo "merge gate: dispatch full suite succeeded"; exit 0; }

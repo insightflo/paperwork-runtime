@@ -463,7 +463,7 @@ export async function reapOrphanedRuns(deps: HeartbeatOrphanReaperDeps, opts?: {
   }
 
   if (queuedStaleThresholdMs > 0) {
-    const recoverQueuedStaleWork = createHeartbeatQueuedStaleRecovery({
+    const queuedStaleRecovery = createHeartbeatQueuedStaleRecovery({
       db: deps.db,
       activeExecutionTimeoutMs,
       withAgentStartLock,
@@ -486,7 +486,7 @@ export async function reapOrphanedRuns(deps: HeartbeatOrphanReaperDeps, opts?: {
       finalizeAgentStatus: deps.finalizeAgentStatus,
       recordQueueTransitionEvent: deps.recordQueueTransitionEvent,
     });
-    const queuedRecovery = await recoverQueuedStaleWork(queuedStaleThresholdMs);
+    const queuedRecovery = await queuedStaleRecovery.recover(queuedStaleThresholdMs);
     reaped.push(...queuedRecovery.reapedRunIds);
   }
 

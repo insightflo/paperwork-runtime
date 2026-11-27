@@ -227,7 +227,8 @@ export async function waitForRunStatus(
       settleHeartbeatAfterExecution: async () => { effects.settlements++; }, finalizeAgentStatus: async () => { effects.finalizations++; },
       recordQueueTransitionEvent: async () => { effects.queueEvents++; },
     });
-    return { recover: recovery, effects };
+    // factory 반환형: { recover(thresholdMs) } — process-recovery 케이스는 recover 속성으로 호출한다.
+    return { recover: recovery.recover, effects };
   }
 
   export async function setFinalizationV1(enabled: boolean) {

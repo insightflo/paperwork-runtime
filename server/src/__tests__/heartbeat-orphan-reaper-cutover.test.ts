@@ -178,6 +178,9 @@ describe("reapOrphanedRuns with cutover flag ON", () => {
         startedAt: new Date(now), updatedAt: new Date(now - 120_000) });
       const queRun = run(QUE, { issueId: ISS2, status: "queued", updatedAt: new Date(now - 120_000) });
       const deadQue = { ...queRun, status: "failed" };
+      // promote-first 가 getRun 으로 승격 여부를 확인하므로 getRun 은 run 의 현재 상태를 반영해야 한다:
+      // 실패 전환(setHb) 전 queued, 이후 failed. 무상태 deadQue 반환은 promoted_started 오판을 낳는다.
+      let queuedState: typeof queRun = queRun;
       let approvalChecked = false;
       const db = mockDb((q) => {
         if (q.table === heartbeatRuns) {
@@ -198,13 +201,13 @@ describe("reapOrphanedRuns with cutover flag ON", () => {
       const { client, calls } = engineStub(() => ({ runs: [stale(DET)] }));
       const setRunStatus = vi.fn(async () => null);
       const demote = vi.fn(async () => undefined);
-      const setHb = vi.fn(async () => deadQue);
+      const setHb = vi.fn(async () => { queuedState = deadQue; return deadQue; });
       const result = await reapOrphanedRuns({
         db, engineClient: client, cutoverEnv: ON,
         appendRunEvent: vi.fn(), nextRunEventSeq: vi.fn(async () => 1),
         setRunStatus, setWakeupStatus: vi.fn(), recordQueueTransitionEvent: vi.fn(),
         finalizeAgentStatus: vi.fn(), countRunningRunsForAgent: vi.fn(async () => 0),
-        getAgent: vi.fn(async () => AGENT_ROW), getRun: vi.fn(async () => deadQue),
+        getAgent: vi.fn(async () => AGENT_ROW), getRun: vi.fn(async () => queuedState),
         demoteAgentStuckDetached: demote, startNextQueuedRunForAgent: vi.fn(),
         releaseIssueExecutionAndPromote: vi.fn(),
         resolveRunActiveExecutionTimeoutMs: vi.fn(async (_r: unknown, b: number) => b),
