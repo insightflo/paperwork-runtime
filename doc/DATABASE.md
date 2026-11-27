@@ -191,3 +191,47 @@ Relevant `heartbeat_runs` columns: `execution_epoch`, `execution_token`, `execut
 New tables: `heartbeat_run_finalizations` (finalization parent: immutable outcome, finalizer lease/fence), `heartbeat_run_finalization_steps` (Q/C/O stage records, unique `(company_id, heartbeat_run_id, stage_kind, idempotency_key)`), `workflow_resync_jobs`, `agent_queue_admission_jobs` (durable post-settlement work with `pending|leased|completed|dead_letter` lifecycle, lease/fence, `SKIP LOCKED` claiming).
 
 Stage classes: **Q** (non-compensable — exact revoked-owner quiescence, process/provider absence, run-owned `workspace_operations` non-running, `workspace_runtime_services` stopped, bound `mission_agent_runtimes` not busy; positive observation only; a dead-lettered Q stage permanently blocks settlement as `blocked_noncompensable`), **C** (compensable business side-effects; may be satisfied by an equivalent structured failure), **O** (optional; may dead-letter). Enforcement (successor dispatch and workflow finalization gated on evidence-ready AND owner-settled) lands in a later phase; until then these columns are written in shadow and unread.
+
+## Logical Data Graph Edge Catalog (Zero-Copy Over Existing Tables)
+
+The logical data graph (see `SPEC-implementation.md` §22.2) is a read-only relation
+view derived at query time from FK columns, self-FKs, and jsonb reference columns
+that already exist. It adds no tables, no physical edge storage, no views, and no
+ETL. The 15 logical edge kinds below span `missions`, `issues`, `issue_work_products`,
+`operator_decisions`, `heartbeat_runs`, `workflow_runs`, `workflow_step_runs`,
+`knowledge_nodes` (scoped by their `knowledge_bases` parent), and `agent_wiki_entries`.
+
+| # | Edge kind | From → To | Derived from | Covering index (existing) |
+|---|---|---|---|---|
+| 1 | `mission_issue` | mission → issue | `issues.mission_id` | `issues_company_mission_idx (company_id, mission_id)` |
+| 2 | `issue_parent` | issue → issue | `issues.parent_id` | `issues_company_parent_idx (company_id, parent_id)` |
+| 3 | `issue_work_product` | issue → work_product | `issue_work_products.issue_id` | `issue_work_products_company_issue_type_idx (company_id, issue_id, type)` |
+| 4 | `issue_run` | issue → heartbeat run | `issues.checkout_run_id`, `issues.execution_run_id` | reverse direction: `heartbeat_runs_company_issue_created_idx (company_id, issue_id, created_at)` |
+| 5 | `work_product_run` | work_product → heartbeat run | `issue_work_products.created_by_run_id` | `issue_work_products_created_by_run_generation_idx (created_by_run_id, source_execution_generation)` |
+| 6 | `run_retry` | heartbeat run → heartbeat run | `heartbeat_runs.retry_of_run_id` | none dedicated (FK column) |
+| 7 | `run_step_run` | heartbeat run → step run | `heartbeat_runs.workflow_step_run_id` (+ `workflow_execution_generation`) | `heartbeat_runs_workflow_step_generation_idx (company_id, workflow_step_run_id, workflow_execution_generation)` |
+| 8 | `workflow_run_mission` | workflow run → mission | `workflow_runs.mission_id` | `idx_workflow_runs_company_id_mission_id (company_id, mission_id)` |
+| 9 | `workflow_run_parent` | workflow run → workflow run | `workflow_runs.parent_run_id`, `workflow_runs.parent_step_run_id`, `workflow_runs.root_run_id` | `idx_workflow_runs_parent_run_id`, `idx_workflow_runs_parent_step_run_id`, `idx_workflow_runs_root_run_id` |
+| 10 | `step_run_issue` | step run → issue | `workflow_step_runs.issue_id` | `idx_workflow_step_runs_issue_id` |
+| 11 | `decision_issue` | operator decision → issue | `operator_decisions.issue_id` | `operator_decisions_issue_created_idx (issue_id, created_at) WHERE issue_id IS NOT NULL` |
+| 12 | `decision_workflow_run` | operator decision → workflow run | `operator_decisions.source_context ->> 'workflowRunId'` (jsonb) | none dedicated (jsonb expression; reads are company-scoped) |
+| 13 | `knowledge_source` | knowledge node → mission/issue/file/url/pr/manual | `knowledge_nodes.source_refs` (jsonb `{type, id}`) | scan scoped by `idx_knowledge_nodes_company_kb (company_id, kb_id)` |
+| 14 | `knowledge_link` | knowledge node → knowledge node | `knowledge_nodes.linked_node_ids` (text[] wiki links) | none dedicated (scan scoped by `idx_knowledge_nodes_company_kb`) |
+| 15 | `wiki_mission` | wiki entry → mission | `agent_wiki_entries.mission_id` | none dedicated (company-scoped reads) |
+
+Invariants:
+
+- **Zero copy.** Node and edge sets are derived from the columns above at query time.
+  Edges must never be materialized into new storage: no physical edge table, no
+  materialized view, and no vector index is introduced for the data graph.
+- **Company scoping.** Every traversal branch filters on `company_id`, matching the
+  company ownership of the source tables (`knowledge_nodes` carries its own
+  `company_id` alongside `kb_id`). An agent API key can only reach nodes of its own
+  company; cross-company nodes are unreachable through the graph.
+- **Bounded traversal.** Expansion is fixed at two hops (seed → hop 1 → hop 2) with
+  per-branch limits and a global node/edge cap; capped responses report `truncated`.
+  Existing indexes are expected to cover traversal; reliance on them must be
+  confirmed with `EXPLAIN` on representative seeds before the query surface ships.
+- **Derivations are not authority.** Edge rows are query-time derivations for context
+  and display. They are never written back and never replace the structured records
+  (operator decisions, continuations, receipts) that drive workflow execution.
