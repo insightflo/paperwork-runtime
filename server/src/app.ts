@@ -681,7 +681,7 @@ export async function createApp(
   api.use(agentWikiRoutes(db));
   api.use(knowledgePatternsRoutes(db));
   api.use(knowledgeBasesRoutes(db));
-  api.use(dataGraphRoutes());
+  api.use(dataGraphRoutes(db));
   api.use(selfImprovementAdoptionsRoutes(db));
   api.use(channelConfigRoutes(db));
   api.use(strategyPlaybookRoutes(db));

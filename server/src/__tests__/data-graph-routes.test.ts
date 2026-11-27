@@ -4,11 +4,15 @@
 //   컨텍스트 팩의 출처 보존·비밀 가림, 잘못된 입력 400, 미인증 401·타회사 403.
 // [범위] 라우트는 DB 없는 순수 서비스 호출만 하므로 supertest + 가짜 actor 미들웨어로 검증한다.
 
+import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { Db } from "@paperclipai/db";
+import { agents, companies, issues, missions } from "@paperclipai/db";
 import { dataGraphRoutes } from "../routes/data-graph.js";
 import { errorHandler } from "../middleware/index.js";
+import { terminalDatabase } from "./helpers/terminal-cleanup-fixture.js";
 
 type TestActor = {
   type: "board" | "agent" | "none";
@@ -19,14 +23,14 @@ type TestActor = {
   isInstanceAdmin?: boolean;
 };
 
-function createApp(actor: TestActor) {
+function createApp(actor: TestActor, db?: Db) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
     (req as any).actor = actor;
     next();
   });
-  app.use("/api", dataGraphRoutes());
+  app.use("/api", dataGraphRoutes(db));
   app.use(errorHandler);
   return app;
 }
@@ -115,6 +119,71 @@ describe("POST /companies/:companyId/data-graph/context-pack", () => {
       .send({ nodes: [], edges: [] });
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("Validation error");
+  });
+});
+
+describe("GET /companies/:companyId/data-graph/query", () => {
+  let db: Db;
+  let closeDb: () => Promise<void>;
+  let companyId: string;
+  let missionId: string;
+  let issueId: string;
+
+  beforeAll(async () => {
+    const fixture = await terminalDatabase();
+    db = fixture.db;
+    closeDb = fixture.close;
+    const [company] = await db.insert(companies).values({ name: "Query Co", issuePrefix: randomUUID() }).returning();
+    const [agent] = await db.insert(agents).values({ companyId: company.id, name: "Q Worker", status: "running" }).returning();
+    const [mission] = await db.insert(missions).values({ companyId: company.id, ownerAgentId: agent.id, title: "Q Mission", status: "active" }).returning();
+    const [issue] = await db.insert(issues).values({ companyId: company.id, missionId: mission.id, title: "Q Issue", status: "in_progress" }).returning();
+    companyId = company.id;
+    missionId = mission.id;
+    issueId = issue.id;
+  });
+
+  afterAll(async () => {
+    await closeDb();
+  });
+
+  it("returns the bounded traversal for a valid seed", async () => {
+    const res = await request(createApp(boardActor, db))
+      .get(`/api/companies/${companyId}/data-graph/query`)
+      .query({ seed: `mission:${missionId}` });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.seed).toEqual({ kind: "mission", id: missionId });
+    const nodeKeys = res.body.nodes.map((node: { kind: string; id: string }) => `${node.kind}:${node.id}`);
+    expect(nodeKeys).toContain(`mission:${missionId}`);
+    expect(nodeKeys).toContain(`issue:${issueId}`);
+    expect(res.body.edges).toHaveLength(1);
+    expect(res.body.edges[0]).toMatchObject({ kind: "mission_issue", via: "issues.mission_id" });
+    expect(res.body.truncated).toBe(false);
+    expect(res.body.contextPack).toBeUndefined();
+  });
+
+  it("rejects a malformed seed with 400", async () => {
+    const res = await request(createApp(boardActor, db))
+      .get(`/api/companies/${companyId}/data-graph/query`)
+      .query({ seed: "mission:not-a-uuid" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Validation error");
+  });
+
+  it("rejects an agent key of another company with 403", async () => {
+    const res = await request(createApp(otherCompanyAgentActor, db))
+      .get(`${COMPANY_PATH}/data-graph/query`)
+      .query({ seed: `mission:${missionId}` });
+    expect(res.status).toBe(403);
+  });
+
+  it("attaches a provenance-bearing context pack when includeContextPack=true", async () => {
+    const res = await request(createApp(boardActor, db))
+      .get(`/api/companies/${companyId}/data-graph/query`)
+      .query({ seed: `mission:${missionId}`, includeContextPack: "true" });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(res.body.contextPack.seed).toEqual({ nodeType: "mission", nodeId: missionId });
+    expect(res.body.contextPack.facts[0]).toContain(`mission:${missionId} (hop 0, via seed)`);
+    expect(JSON.stringify(res.body.contextPack.provenance)).toContain("issues.mission_id");
   });
 });
 
