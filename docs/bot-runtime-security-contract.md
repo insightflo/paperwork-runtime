@@ -8,13 +8,13 @@ Source of truth: `crates/bot-runtime/src/{client,token,executor,control_sock,sta
 ## 1. Loopback-only HTTP transport / 루프백 전용 HTTP 전송
 
 EN
-- `paperwork-bot` uses a zero-dependency `std::net::TcpStream` client (`client.rs::parse_http_url`). It accepts only `http://`; any `https://` base URL is rejected by design with the message `https:// is not supported by the zero-dependency stdlib client; route through localhost/http proxy`.
+- `paperwork-bot` uses a zero-dependency `std::net::TcpStream` client (`client.rs::parse_http_url`). It accepts only `http://`; any `https://` base URL is rejected by design with the actionable message `https:// is not supported: paperwork-bot uses a zero-dependency client that speaks plain HTTP to loopback hosts only. Run a local TLS-terminating proxy in front of the HTTPS control plane (or expose it through an http://127.0.0.1:<port> tunnel) and point --server at that loopback http:// URL`.
 - The supported deployment is a loopback target: `http://127.0.0.1:3100` (default) or `http://localhost:3100`, i.e. the daemon and the API server share a host. No TLS is terminated inside the daemon.
 - Remote or TLS-required deployments must put a local TLS-terminating proxy (loopback `http://` -> remote `https://`) in front of the daemon. The daemon never speaks TLS itself.
 - Note: the URL parser validates scheme, host, and port but does not assert that `host` is loopback. "Loopback-only" is an operational contract enforced by configuration (`--server`), not by a host allow-list in code. Tokens must therefore never be pointed at an untrusted `http://` host.
 
 KO
-- `paperwork-bot`은 의존성 없는 `std::net::TcpStream` 클라이언트(`client.rs::parse_http_url`)를 쓰며 `http://`만 허용한다. `https://` 기본 URL은 설계상 거부되고 "localhost/http 프록시를 경유하라"는 오류를 낸다.
+- `paperwork-bot`은 의존성 없는 `std::net::TcpStream` 클라이언트(`client.rs::parse_http_url`)를 쓰며 `http://`만 허용한다. `https://` 기본 URL은 설계상 거부되고, "paperwork-bot은 loopback 대상 plain HTTP 전용"이라고 안내한 뒤 로컬 TLS 종료 프록시나 `http://127.0.0.1:<port>` 터널 사용을 권하는 행동 가능한 오류를 낸다.
 - 지원 배포는 루프백 대상이다: 기본값 `http://127.0.0.1:3100` 또는 `http://localhost:3100`. 데몬과 API 서버가 같은 호스트에 있고, 데몬 내부에서 TLS를 종료하지 않는다.
 - 원격 또는 TLS 필수 환경은 데몬 앞에 로컬 TLS 종료 프록시(루프백 `http://` -> 원격 `https://`)를 둔다. 데몬은 스스로 TLS를 사용하지 않는다.
 - 주의: URL 파서는 스킴·호스트·포트만 검증하고 호스트가 루프백인지 코드로 강제하지 않는다. "루프백 전용"은 `--server` 설정으로 지키는 운영 계약이므로, 신뢰할 수 없는 `http://` 호스트를 가리키면 안 된다.
