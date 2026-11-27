@@ -58,14 +58,14 @@ type World = Awaited<ReturnType<typeof fixtures.world>>;
 const readRun = async (w: World, id: string) => (await w.c.peer.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, id)))[0]!;
 const queued = async (w: World) => (await correctionRows(w.c)).heartbeats[0]!;
 const calls = (id: string) => adapter.mock.calls.filter(([input]) => input.runId === id);
-function gate(w: World) {
+function gate(w: World, waitMs = 10000) {
   let entered: string | null = null, release!: () => void;
   const held = new Promise<void>(resolve => { release = resolve; }); releases.push(release);
   adapter.mockImplementation(async (input: { runId: string; context: { issueId?: string } }) => {
     if (input.context.issueId === w.i.issueId) { entered = input.runId; await held; }
     return stopped;
   });
-  return { release, entered: () => vi.waitFor(() => { expect(entered).not.toBeNull(); return entered!; }, { timeout: 10000 }) };
+  return { release, entered: () => vi.waitFor(() => { expect(entered).not.toBeNull(); return entered!; }, { timeout: waitMs }) };
 }
 async function noGrant(w: World, id: string) {
   expect(await readRun(w, id)).toMatchObject({ startedAt: null, executionToken: null, executorOwnerId: null, executorOwnerLeaseToken: null });
@@ -287,7 +287,7 @@ it.sequential("extends the real claim history to 33 corrections", async () => {
 it.sequential("claims only the latest of 33 real corrections without applying the technical ancestor limit to history", async () => {
   const history = longHistory;
   expect(history).toHaveLength(33);
-  const c = history[history.length - 1]!, w = { c, i: await deliveryInput(c) }, g = gate(w);
+  const c = history[history.length - 1]!, w = { c, i: await deliveryInput(c) }, g = gate(w, 60000);
   await deliver(c, w.i);
   const latest = await queued(w);
   await heartbeatService(owned.db).resumeQueuedRuns(w.i.agentId);

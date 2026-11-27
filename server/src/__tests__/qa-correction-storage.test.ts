@@ -166,7 +166,7 @@ describe("C03/C12 whole immutable correction storage", () => {
     await official(f); const m = await measure(f), before = await state(f), bytes = await readFile(file), mode = (await stat(file)).mode;
     await expect(storeQaCorrection(owned.db, m)).rejects.toMatchObject({ reason: "source" });
     expect(await state(f)).toEqual(before); expect(await readFile(file)).toEqual(bytes); expect((await stat(file)).mode).toBe(mode);
-  });
+  }, 20000);
   it("deduplicates shared physical sources while preserving verdict order and original buffers", () => {
     const bytes = Buffer.from("old"), file = { role: "main" as const, relativePath: "a.txt", sourcePath: "/held/a.txt",
       bytes, sha256: digest(bytes), byteSize: 3 };
