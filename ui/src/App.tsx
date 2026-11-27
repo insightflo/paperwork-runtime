@@ -46,6 +46,7 @@ const Costs = lazy(async () => ({ default: (await import("./pages/Costs")).Costs
 const AgentWiki = lazy(async () => ({ default: (await import("./pages/AgentWiki")).AgentWiki }));
 const Activity = lazy(async () => ({ default: (await import("./pages/Activity")).Activity }));
 const CompanySkills = lazy(async () => ({ default: (await import("./pages/CompanySkills")).CompanySkills }));
+const MemoryAndSkillsReview = lazy(async () => ({ default: (await import("./pages/MemoryAndSkillsReview")).MemoryAndSkillsReview }));
 const CompanyInstructions = lazy(async () => ({ default: (await import("./pages/CompanyInstructions")).CompanyInstructions }));
 const HumanOperator = lazy(async () => ({ default: (await import("./pages/HumanOperator")).HumanOperator }));
 const InstanceGeneralSettings = lazy(async () => ({ default: (await import("./pages/InstanceGeneralSettings")).InstanceGeneralSettings }));
@@ -71,6 +72,7 @@ const ROUTE_CHUNK_LOADERS: Record<string, () => Promise<unknown>> = {
   "/human-operator": () => import("./pages/HumanOperator"),
   "/company/settings": () => import("./pages/CompanySettings"),
   "/skills": () => import("./pages/CompanySkills"),
+  "/learning-review": () => import("./pages/MemoryAndSkillsReview"),
   "/scheduler": () => import("./pages/SchedulerConfig"),
   "/channel-config": () => import("./pages/ChannelConfig"),
   "/channels": () => import("./pages/CollabChannels"),
@@ -227,6 +229,7 @@ function boardRoutes() {
       <Route path="companies" element={lazyRoute(<Companies />)} />
       <Route path="company/settings" element={lazyRoute(<CompanySettings />)} />
       <Route path="skills/*" element={lazyRoute(<CompanySkills />)} />
+      <Route path="learning-review" element={lazyRoute(<MemoryAndSkillsReview />)} />
       <Route path="instructions" element={lazyRoute(<CompanyInstructions />)} />
       <Route path="human-operator" element={lazyRoute(<HumanOperator />)} />
       <Route path="settings" element={<LegacySettingsRedirect />} />

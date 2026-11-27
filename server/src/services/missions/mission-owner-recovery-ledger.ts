@@ -119,11 +119,24 @@ export async function recordMissionOwnerDecision(input: {
     eq(workflowTransitionEvents.issueId, input.issue.id),
   )).limit(1);
   if (!existing) {
+    // [RES-12852] A same-company insert conflict whose authoritative row cannot be resolved is
+    // cross-anchor human request-key reuse, not an internal race: fail closed with the
+    // documented conflict instead of an opaque error. Non-human keys embed their anchor and
+    // keep the internal race guard.
+    if (human) {
+      throw conflict("Owner human request key conflicts with its original decision", {
+        reason: "owner_human_request_key_conflict",
+      });
+    }
     throw new Error("mission-owner-recovery-ledger: failed to resolve authoritative decision event after insert");
   }
+  // [RES-12852] Idempotent replay compares the authoritative semantic submission only. The
+  // correlation column records the CAS input at original write time and legitimately differs
+  // when a replaying run names the advanced current lifetime (RES-12852 A1 lockup); CAS
+  // currency stays enforced by the submit orchestration and the state writer, not re-derived
+  // from run-ephemeral metadata here.
   if (human && (existing.missionId !== input.issue.missionId
     || existing.reasonCode !== MISSION_OWNER_DECISION_SOURCE
-    || existing.correlationId !== ownerHumanExpectedCorrelation(human.expectedCurrentLifetimeId)
     || !sameOwnerHumanValue(existing.payload, payload))) {
     throw conflict("Owner human request key conflicts with its original decision", {
       reason: "owner_human_request_key_conflict",
