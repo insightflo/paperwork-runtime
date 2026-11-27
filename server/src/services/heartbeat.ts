@@ -216,6 +216,11 @@ import {
 } from "./heartbeat-finalization/shadow-writes.js";
 import { deriveTaskKey, readNonEmptyString, resolveAdapterFallbackAttempt } from "./heartbeat-run-context.js";
 import { enqueueAdapterFallbackRun, enqueueProcessLossRetry, type HeartbeatRetryEnqueueDeps } from "./heartbeat-retry-enqueue.js";
+import {
+  overloadBackoffEventMessage,
+  resolveOverloadFailureHandling,
+  scheduleOverloadCooldownRetry,
+} from "./heartbeat-overload-backoff.js";
 import { withoutWorkflowAttemptProof } from "./heartbeat-finalization/workflow-attempt-proof.js";
 import { assertHeartbeatRecoveryAdmission, claimQueuedRunWithRecoveryGuard, claimAvailableHeartbeatRuns,
   executeHeartbeatWithRecoveryGuard, startHeartbeatWithC5ExecutionGuard } from "./heartbeat-recovery-guard.js";
@@ -4768,6 +4773,8 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         }
         let queuedAdapterFallbackRun: typeof heartbeatRuns.$inferSelect | null = null;
         let transientAdapterRetryQueued = false;
+        // [s34-w1 overload] 과부하 run 은 release(→ dispatch_run_retries_exhausted 정산)를 하지 않고 defer 한다.
+        let overloadBackoffDeferred = false;
         // Adapter failures can use a fallback command, but do not repeat the same
         // fallback after a deterministic provider/model configuration failure.
         // [shutdown-interrupted exit] 종료 인터럽트 런의 실패 후처리(일반 transient retry·adapter fallback
@@ -4782,7 +4789,43 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           const runDurationSec = finalizedRun.startedAt
             ? Math.max(0, (finishedRef.getTime() - finalizedRun.startedAt.getTime()) / 1000)
             : Number.POSITIVE_INFINITY;
+          // [s34-w1 overload] provider 429/일시 과부하는 일시 재시도 게이트(duration/1회 캡)와
+          //   폴백 체인 대신 쿨다운 백오프 재시도로 흡수한다. 예산 소진 시에도 인간 카드 없이
+          //   defer 한다(사용자 원칙 — overload ≠ 계정 한도 소진).
+          const overloadFailure = resolveOverloadFailureHandling({
+            errorText: finalizedRun.error ?? adapterResult.errorMessage
+              ?? finalizedRun.stderrExcerpt ?? finalizedRun.stdoutExcerpt,
+            processLossRetryCount: finalizedRun.processLossRetryCount,
+          });
+          if (overloadFailure.isOverload) {
+            overloadBackoffDeferred = true;
+            await appendRunEvent(finalizedRun, seq++, {
+              eventType: "lifecycle",
+              stream: "system",
+              level: "warn",
+              message: overloadBackoffEventMessage(overloadFailure),
+              payload: {
+                exitCode: adapterResult.exitCode ?? null,
+                errorMessage: adapterResult.errorMessage ?? null,
+                overloadAttempt: overloadFailure.attempt,
+                cooldownSec: overloadFailure.cooldownSec,
+              },
+            }).catch(() => undefined);
+            if (overloadFailure.retryQueued) {
+              scheduleOverloadCooldownRetry({
+                cooldownSec: overloadFailure.cooldownSec,
+                enqueue: () => enqueueProcessLossRetry(retryEnqueueDeps, finalizedRun, agent, new Date(), {
+                  kind: "adapter_failed_transient",
+                }),
+                onError: (enqueueErr) => logger.warn(
+                  { err: enqueueErr, runId: finalizedRun.id },
+                  "overload cooldown retry enqueue failed",
+                ),
+              });
+            }
+          }
           const transientRetryQueued =
+            !overloadFailure.isOverload &&
             failedErrorCode === "adapter_failed" &&
             transientRetryMaxSec > 0 &&
             (finalizedRun.processLossRetryCount ?? 0) < 1 &&
@@ -4814,7 +4857,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
                   return queued;
                 }).catch(() => false)
               : false;
-          if (!transientRetryQueued) {
+          if (!transientRetryQueued && !overloadFailure.isOverload) {
           const fb = resolveAdapterFallbackConfig(agent.adapterConfig);
           const currentFallbackAttempt = resolveAdapterFallbackAttempt(finalizedRun.contextSnapshot);
           // [s27-w2 순차 폴백 체인] 게이트로 차단된 후보를 건너뛰고 다음 유효 후보를 고른다.
@@ -4886,7 +4929,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         }
         // [shutdown-interrupted exit] 이슈 처분(릴리즈/후계 이관)은 종료 플러시 계약이 소유한다 — 완료
         // 경로가 재릴리즈하면 플러시가 큐잉한 재시도와 충돌한다.
-        if (!queuedAdapterFallbackRun && !transientAdapterRetryQueued && !shutdownInterruptedExit) {
+        if (!queuedAdapterFallbackRun && !transientAdapterRetryQueued && !overloadBackoffDeferred && !shutdownInterruptedExit) {
           const releaseDisposition = await releaseFinishedRun(finalizedRun);
           // [instant-advance v1.2] 런 종결+이슈 정산 커밋 후 즉시 진행. fallback/retry 재큐 시엔 스텝이
           // 아직 미종결(재시도 런이 완료 시점에 훅 발화)이라 스킵한다.
@@ -5002,13 +5045,47 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         });
         let queuedAdapterFallbackRun: typeof heartbeatRuns.$inferSelect | null = null;
         let transientAdapterRetryQueued = false;
+        // [s34-w1 overload] 과부하 run 은 release(→ dispatch_run_retries_exhausted 정산)를 하지 않고 defer 한다.
+        let overloadBackoffDeferred = false;
         // The adapter was invoked, but the scoped child boundary proves no child started.
         // Keep the failed reason and use the existing one-attempt transient retry budget.
         const retryMaxSec = resolveAdapterFailedTransientRetryMaxSec();
         const failedDurationSec = failedRun.startedAt
           ? Math.max(0, ((failedRun.finishedAt ?? new Date()).getTime() - failedRun.startedAt.getTime()) / 1000)
           : Number.POSITIVE_INFINITY;
-        if (!c5Held && actual?.outcome === "rejected" && actual.error === err
+        // [s34-w1 overload] provider 429/일시 과부하는 일시 재시도 게이트(duration/1회 캡)와
+        //   폴백 체인 대신 쿨다운 백오프 재시도로 흡수한다. 예산 소진 시에도 인간 카드 없이 defer.
+        const overloadFailure = resolveOverloadFailureHandling({
+          errorText: failedRun.error ?? message,
+          processLossRetryCount: failedRun.processLossRetryCount,
+        });
+        if (overloadFailure.isOverload && !c5Held) {
+          overloadBackoffDeferred = true;
+          await appendRunEvent(failedRun, seq++, {
+            eventType: "lifecycle",
+            stream: "system",
+            level: "warn",
+            message: overloadBackoffEventMessage(overloadFailure),
+            payload: {
+              errorMessage: message,
+              overloadAttempt: overloadFailure.attempt,
+              cooldownSec: overloadFailure.cooldownSec,
+            },
+          });
+          if (overloadFailure.retryQueued) {
+            scheduleOverloadCooldownRetry({
+              cooldownSec: overloadFailure.cooldownSec,
+              enqueue: () => enqueueProcessLossRetry(retryEnqueueDeps, failedRun, agent, new Date(), {
+                kind: "adapter_failed_transient",
+              }),
+              onError: (enqueueErr) => logger.warn(
+                { err: enqueueErr, runId: failedRun.id },
+                "overload cooldown retry enqueue failed",
+              ),
+            });
+          }
+        }
+        if (!c5Held && !overloadFailure.isOverload && actual?.outcome === "rejected" && actual.error === err
           && errorCode === "child_process_start_rejected" && adapterStartScope && adapterStartIdentity
           && isHeartbeatUnstartedDeferral(err, adapterStartScope, adapterStartIdentity, runtimeExecutionLifecycle)
           && retryMaxSec > 0 && failedDurationSec <= retryMaxSec && (failedRun.processLossRetryCount ?? 0) < 1
@@ -5017,7 +5094,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           transientAdapterRetryQueued = Boolean(await enqueueProcessLossRetry(retryEnqueueDeps, failedRun, agent, new Date(),
             { kind: "adapter_failed_transient" }).catch(() => null));
         }
-        if (!c5Held && (actual === null || (actual.outcome === "rejected" && actual.error === err))
+        if (!c5Held && !overloadFailure.isOverload && (actual === null || (actual.outcome === "rejected" && actual.error === err))
         && errorCode === "adapter_failed") {
           const fb = resolveAdapterFallbackConfig(agent.adapterConfig);
           if (fb && shouldQueueRunFailureAdapterFallback({ run: failedRun, fallback: fb })) {
@@ -5071,7 +5148,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
             logger.warn({ err: runtimeErr, runId, agentId: agent.id }, "failed to mark mission runtime failed");
           });
         }
-        if (!queuedAdapterFallbackRun && !transientAdapterRetryQueued) {
+        if (!queuedAdapterFallbackRun && !transientAdapterRetryQueued && !overloadBackoffDeferred) {
           const releaseDisposition = await releaseFinishedRun(failedRun);
           // [instant-advance v1.2] 실패도 진행 트리거 — 실패 정산(이슈 blocked/스텝 failed) 커밋 후 즉시 재평가.
           if (!c5Held && releaseDisposition.kind === "legacy") fireInstantWorkflowAdvanceForTerminalRun(failedRun);
