@@ -28,6 +28,8 @@ const OVERLOAD_ERROR_SIGNALS: ReadonlyArray<{ kind: "phrase"; value: string } | 
   { kind: "code", value: "529" },
   { kind: "phrase", value: "503 service unavailable" },
   { kind: "phrase", value: "too many requests" },
+  { kind: "code", value: "55p03" },
+  { kind: "phrase", value: "canceling statement due to lock timeout" },
 ];
 
 /** provider 429/일시 과부하 신호(텍스트) 판정 — null/빈값/무관한 실패는 false. */

@@ -20,7 +20,7 @@ export function shouldSuppressRunFailure(input: SuppressionInput): boolean {
     input.retryScheduled, input.suppressedByRetry].some((value) => value === true)) return true;
   if (typeof input.errorCode === "string"
     && input.errorCode.trim().toLowerCase() === "adapter_failed_transient") return true;
-  const overload = /\b(?:429|529)\b|\brate limit reached for requests\b|\boverloaded\b|\b503\s+service unavailable\b|\btoo many requests\b/i;
+  const overload = /\b(?:429|529|55p03)\b|\brate limit reached for requests\b|\boverloaded\b|\b503\s+service unavailable\b|\btoo many requests\b|\bcanceling statement due to lock timeout\b/i;
   return [input.error, input.errorMessage, input.errorCode, input.stderrExcerpt]
     .some((value) => typeof value === "string" && overload.test(value));
 }
