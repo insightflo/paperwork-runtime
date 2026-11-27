@@ -37,9 +37,9 @@ export const RADAR_CHIPS: readonly RadarBucketMeta[] = [
   {
     key: "run",
     label: "실행 중",
-    dotClass: "bg-[#a3e635] shadow-[0_0_8px_rgba(163,230,53,0.75)]",
+    dotClass: "bg-emerald-700 dark:bg-emerald-300",
     activeChipClass:
-      "border-[#a3e635]/60 bg-[#a3e635]/15 text-lime-800 dark:text-[#d9f99d] dark:shadow-[0_0_14px_-4px_rgba(163,230,53,0.7)]",
+      "border-emerald-700/60 bg-emerald-700/15 text-emerald-800 dark:border-emerald-300/60 dark:bg-emerald-300/15 dark:text-emerald-300",
   },
   {
     key: "wait",
@@ -51,9 +51,8 @@ export const RADAR_CHIPS: readonly RadarBucketMeta[] = [
   {
     key: "done",
     label: "완료",
-    dotClass: "bg-[#60a5fa]",
-    activeChipClass:
-      "border-[#60a5fa]/60 bg-[#60a5fa]/15 text-blue-800 dark:text-[#c7dcff] dark:shadow-[0_0_14px_-4px_rgba(96,165,250,0.65)]",
+    dotClass: "bg-primary",
+    activeChipClass: "border-primary/60 bg-primary/15 text-primary",
   },
 ];
 
@@ -180,7 +179,7 @@ export function MissionFleetRadar({
     <section
       aria-label="Mission Fleet Radar"
       data-mission-radar
-      className="tactile-card flex flex-wrap items-center gap-2 rounded-[12px] border border-slate-200/90 bg-white/95 p-2.5 text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] tabular-nums dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_-18px_rgba(0,0,0,0.85)]"
+      className="tactile-card flex flex-wrap items-center gap-2 rounded-[12px] border border-border bg-card p-2.5 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] tabular-nums dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_-18px_rgba(0,0,0,0.85)]"
     >
       <div
         role="group"
@@ -199,7 +198,7 @@ export function MissionFleetRadar({
               className={`inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-bold transition-all whitespace-nowrap ${
                 active
                   ? chip.activeChipClass
-                  : "border-transparent bg-slate-100/90 text-slate-600 hover:bg-slate-200/80 hover:text-slate-950 dark:bg-white/[0.05] dark:text-[#98a2b6] dark:hover:bg-white/[0.1] dark:hover:text-[#eef1f6]"
+                  : "border-transparent bg-muted text-muted-foreground hover:bg-accent hover:text-foreground"
               }`}
             >
               {chip.key !== "all" && (
@@ -217,7 +216,7 @@ export function MissionFleetRadar({
       <div className="relative min-w-[180px] flex-1 max-w-xs">
         <Search
           aria-hidden
-          className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-[#627089]"
+          className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
         />
         <input
           ref={searchInputRef}
@@ -226,19 +225,19 @@ export function MissionFleetRadar({
           value={searchQuery}
           onChange={(e) => onSearchQueryChange(e.target.value)}
           placeholder="미션 ID · 제목 · 워크플로 검색"
-          className="h-7 w-full rounded-lg border border-slate-200/90 bg-slate-50/80 pl-8 pr-7 text-xs font-medium text-slate-950 outline-none transition-colors placeholder:text-slate-400 focus:border-[#60a5fa] focus:bg-white focus:ring-2 focus:ring-[#60a5fa]/20 dark:border-white/[0.1] dark:bg-[#07090d] dark:text-[#eef1f6] dark:placeholder:text-[#5d677b] dark:focus:border-[#60a5fa]"
+          className="h-7 w-full rounded-lg border border-border bg-muted/40 pl-8 pr-7 text-xs font-medium text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:bg-card focus:ring-2 focus:ring-primary/20 dark:bg-card"
         />
         {searchQuery ? (
           <button
             type="button"
             aria-label="Clear mission search"
             onClick={() => onSearchQueryChange("")}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:text-slate-900 dark:text-[#627089] dark:hover:text-[#eef1f6]"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
           >
             <X className="h-3 w-3" />
           </button>
         ) : (
-          <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-slate-200 bg-white px-1 font-mono text-[9px] text-slate-500 sm:inline dark:border-white/[0.14] dark:bg-[#0e131d] dark:text-[#9aa7bd]">
+          <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-card px-1 font-mono text-[9px] text-muted-foreground sm:inline dark:bg-muted">
             /
           </kbd>
         )}
@@ -248,7 +247,7 @@ export function MissionFleetRadar({
         aria-label="Filter by workflow"
         value={workflowFilter}
         onChange={(e) => onWorkflowFilterChange(e.target.value)}
-        className="h-7 max-w-[190px] cursor-pointer rounded-lg border border-slate-200/90 bg-slate-50/80 px-2.5 text-xs font-semibold text-slate-900 outline-none transition-colors focus:border-[#60a5fa] focus:bg-white dark:border-white/[0.1] dark:bg-[#07090d] dark:text-[#eef1f6]"
+        className="h-7 max-w-[190px] cursor-pointer rounded-lg border border-border bg-muted/40 px-2.5 text-xs font-semibold text-foreground outline-none transition-colors focus:border-primary focus:bg-card dark:bg-card"
       >
         <option value="all">워크플로: 전체</option>
         {workflows.map((wf) => (
@@ -258,13 +257,13 @@ export function MissionFleetRadar({
         ))}
       </select>
 
-      <div className="ml-auto hidden items-center gap-2.5 text-[10px] font-semibold text-slate-500 xl:flex dark:text-[#9aa7bd]">
+      <div className="ml-auto hidden items-center gap-2.5 text-[10px] font-semibold text-muted-foreground xl:flex">
         <span className="inline-flex items-center gap-1">
           <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[#f43f5e]" />
           개입 경고
         </span>
         <span className="inline-flex items-center gap-1">
-          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[#a3e635]" />
+          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-700 dark:bg-emerald-300" />
           실행 맥동
         </span>
         <span className="inline-flex items-center gap-1">
@@ -272,7 +271,7 @@ export function MissionFleetRadar({
           대기
         </span>
         <span className="inline-flex items-center gap-1">
-          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-[#60a5fa]/80" />
+          <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-primary/80" />
           완료
         </span>
       </div>
