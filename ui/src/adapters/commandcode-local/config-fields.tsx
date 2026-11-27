@@ -1,12 +1,6 @@
-import type { AdapterConfigFieldsProps, CreateConfigValues } from "../types";
+import type { AdapterConfigFieldsProps } from "../types";
 import { Field, ToggleField, DraftInput, DraftNumberInput } from "../../components/agent-config-primitives";
 import { ChoosePathButton } from "../../components/PathInstructionsModal";
-
-/**
- * Create-form carrier for the Command Code per-run turn cap (adapterConfig.maxTurns).
- * Kept as a local extension until CreateConfigValues grows a shared optional key.
- */
-type CommandCodeCreateValues = CreateConfigValues & { maxTurns?: number };
 
 const inputClass =
   "w-full rounded-md border border-border px-2.5 py-1.5 bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/40";
@@ -88,13 +82,9 @@ export function CommandCodeLocalAdvancedFields({
             type="number"
             min={0}
             className={inputClass}
-            value={
-              (values as CommandCodeCreateValues)!.maxTurns
-                ? (values as CommandCodeCreateValues)!.maxTurns!
-                : ""
-            }
+            value={values!.maxTurns ? values!.maxTurns : ""}
             onChange={(e) =>
-              set!({ maxTurns: Number(e.target.value) } as Partial<CreateConfigValues>)
+              set!({ maxTurns: Number(e.target.value) })
             }
             placeholder="CLI default (no cap)"
           />
