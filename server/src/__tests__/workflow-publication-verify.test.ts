@@ -108,14 +108,14 @@ it('consumes the durable publication across recovery generation bumps', async ()
 });
 it('rejects an undeclared path parameter instead of routing by its familiar name', async () => {
   const f = await setup('durableReceipt'), result = await f.invoke({ publishResultPath: f.published.artifactPath });
-  expect(result.status).toBe(500);
+  expect(result.status).toBe(409);
   expect(result.body.error).toBe('qa_artifact_consumer_receipt_required');
   expect(result.body.invocationProvenance).toBeNull();
 });
 it('rejects another run/company publication path even when the file is valid', async () => {
   const f = await setup(), other = await setup();
   const result = await f.invoke({ publishResultPath: other.published.artifactPath });
-  expect(result.status).toBe(500);
+  expect(result.status).toBe(409);
   expect(result.body.error).toBe('qa_artifact_consumer_receipt_required');
   expect(result.body.invocationProvenance).toBeNull();
 }, 45000);
