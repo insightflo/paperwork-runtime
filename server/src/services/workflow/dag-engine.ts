@@ -691,7 +691,13 @@ export async function processQueuedWorkflowToolStepRuns(
         companyId: row.run.companyId,
         missionId: row.run.missionId,
         runId: row.run.id,
-      }, (lock) => claimStepRun(lock.tx)).catch(() => null);
+      }, (lock) => claimStepRun(lock.tx)).catch((err: unknown) => {
+        // [s25-error-obs] claim 실패(진짜 DB/serialization 오류)와 lost race(rows[0] 없음)를 구분해 관측한다.
+        //   기존 동작(null 반환 → skippedCount 증가, 다음 틱 재시도)은 그대로 유지한다.
+        logger.warn({ err, workflowRunId: row.run.id, stepRunId: row.stepRun.id, requestId },
+          "Workflow tool step claim transaction failed; skipping this tick (existing behavior)");
+        return null;
+      });
 
     if (!claimedStepRun) {
       result.skippedCount += 1;

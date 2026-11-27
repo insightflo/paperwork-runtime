@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import { patchInstanceExperimentalSettingsSchema, patchInstanceGeneralSettingsSchema } from "@paperclipai/shared";
 import { llmStructuredTestConnectionSchema } from "@paperclipai/shared/validators/instance";
 import { badRequest, forbidden } from "../errors.js";
+import { logger } from "../middleware/logger.js";
 import { validate } from "../middleware/validate.js";
 import { instanceSettingsService, logActivity } from "../services/index.js";
 import {
@@ -89,7 +90,13 @@ export function instanceSettingsRoutes(db: Db) {
         req.body.llmStructuredBaseUrl !== undefined ||
         req.body.llmStructuredApiKey !== undefined
       ) {
-        await syncInstanceProvidersWithPiCli(db, { direction: "to_pi" }).catch(() => undefined);
+        await syncInstanceProvidersWithPiCli(db, { direction: "to_pi" }).catch((err: unknown) => {
+          // [s25-error-obs] 설정 저장·활동 로그(성공 판정)와 부수 동기화 실패를 분리해 관측한다.
+          //   응답 흐름은 기존과 동일하게 계속 진행한다. provider 값(시크릿 포함)은 로그에 남기지 않는다.
+          logger.warn({ err, direction: "to_pi" },
+            "Instance provider sync with pi CLI failed after settings update; DB settings remain saved");
+          return undefined;
+        });
       }
       const actor = getActorInfo(req);
       const companyIds = await svc.listCompanyIds();
