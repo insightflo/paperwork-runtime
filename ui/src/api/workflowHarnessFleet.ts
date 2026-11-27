@@ -4,7 +4,7 @@
 //   응답 형태가 계약과 다르면 null로 실패 닫힘(fail-closed)하며, HTTP/네트워크 오류는 그대로 전파한다.
 import { api } from "./client";
 
-export const WORKFLOW_HARNESS_FLEET_METRICS_PATH = "workflow-harness/fleet-metrics";
+export const WORKFLOW_HARNESS_FLEET_METRICS_PATH = "workflows/harness-fleet";
 
 /** Company-scoped aggregate over recent workflow-harness runs. Mirrors the server fleet summary. */
 export interface WorkflowHarnessFleetMetrics {
@@ -53,7 +53,8 @@ export function isWorkflowHarnessFleetMetrics(v: unknown): v is WorkflowHarnessF
 }
 
 /**
- * GET /api/companies/:companyId/workflow-harness/fleet-metrics
+ * GET /api/companies/:companyId/workflows/harness-fleet
+ * (server/src/routes/workflow-harness-fleet.ts)
  * Returns null (without a network call) for an empty companyId, and null when the
  * payload does not match the metrics contract. Transport/HTTP errors propagate.
  */

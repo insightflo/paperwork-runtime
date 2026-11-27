@@ -8,7 +8,7 @@ import {
 } from "./workflowHarnessFleet";
 
 const COMPANY_ID = "company-1";
-const URL = `/api/companies/${COMPANY_ID}/workflow-harness/fleet-metrics`;
+const URL = `/api/companies/${COMPANY_ID}/workflows/harness-fleet`;
 
 const VALID: WorkflowHarnessFleetMetrics = {
   totalRuns: 12,
