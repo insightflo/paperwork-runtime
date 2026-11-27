@@ -12,10 +12,12 @@ vi.mock("../context/CompanyContext", () => ({ useCompany: () => ({ selectedCompa
 
 let listMock: MockInstance<typeof endpointBotsApi.list>;
 let codeMock: MockInstance<typeof endpointBotsApi.issuePairingCode>;
+let enqueueMock: MockInstance<typeof endpointBotsApi.enqueueTask>;
 
 beforeEach(() => {
   listMock = vi.spyOn(endpointBotsApi, "list");
   codeMock = vi.spyOn(endpointBotsApi, "issuePairingCode");
+  enqueueMock = vi.spyOn(endpointBotsApi, "enqueueTask");
 });
 
 const LAST_SEEN_MS = Date.parse("2026-01-01T09:00:00.000Z");
@@ -114,5 +116,31 @@ describe("PersonalEndpoints", () => {
     expect(banner).toBeTruthy();
     expect(banner!.textContent).toContain("단말 봇 목록을 불러오지 못했습니다");
     expect(banner!.textContent).toContain("network down");
+  });
+
+  it("dispatches a local task via endpointBotsApi.enqueueTask and renders the returned taskId", async () => {
+    listMock.mockResolvedValue(RECORDS);
+    enqueueMock.mockResolvedValue({
+      companyId: "company-1",
+      deviceId: "dev-1",
+      taskId: "task-77",
+      kind: "list_dir",
+      targetPath: "~/Projects/paperclip",
+      status: "pending",
+      createdAtMs: Date.now(),
+    });
+    await renderPage();
+    // 유일한 온라인 봇(dev-1)이 카드에서 자동 선택되므로 경로만 입력해 제출한다.
+    const pathInput = container.querySelector<HTMLInputElement>('input[aria-label="대상 경로"]')!;
+    await setInput(pathInput, "~/Projects/paperclip");
+    const taskForm = container.querySelector<HTMLFormElement>('[aria-label="로컬 작업 접수"] form')!;
+    await act(async () => { taskForm.requestSubmit(); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(enqueueMock).toHaveBeenCalledTimes(1);
+    expect(enqueueMock).toHaveBeenCalledWith("company-1", "dev-1", {
+      kind: "list_dir",
+      targetPath: "~/Projects/paperclip",
+    });
+    expect(container.textContent).toContain("task-77");
   });
 });

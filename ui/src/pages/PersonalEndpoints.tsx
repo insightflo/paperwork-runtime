@@ -4,6 +4,7 @@ import { endpointBotsApi, type EndpointBotRecord } from "../api/endpointBots";
 import { useCompany } from "../context/CompanyContext";
 import { EndpointBotPairingCard } from "../components/EndpointBotPairingCard";
 import { EndpointBotStatusList, type EndpointBotSummary } from "../components/EndpointBotStatusList";
+import { EndpointLocalTaskCard, type EndpointLocalTaskInput } from "../components/EndpointLocalTaskCard";
 import { PageSkeleton } from "../components/PageSkeleton";
 
 const DEFAULT_BOT_NAME = "my-bot";
@@ -57,6 +58,12 @@ export function PersonalEndpoints({ companyId: companyIdProp }: PersonalEndpoint
         requestedFolders: [{ path: folderPath.trim() || DEFAULT_FOLDER, mode: folderMode }],
       }),
   });
+
+  /** Dispatch a local task to the chosen endpoint bot; the card renders the returned task id. */
+  const dispatchLocalTask = (deviceId: string, input: EndpointLocalTaskInput) => {
+    if (!companyId) return Promise.reject(new Error("먼저 회사를 선택하세요."));
+    return endpointBotsApi.enqueueTask(companyId, deviceId, input);
+  };
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6 p-6">
@@ -146,6 +153,16 @@ export function PersonalEndpoints({ companyId: companyIdProp }: PersonalEndpoint
           </p>
         )}
         {endpointsQuery.data && <EndpointBotStatusList endpoints={endpointsQuery.data.map(toSummary)} />}
+        {endpointsQuery.data && (
+          <EndpointLocalTaskCard
+            endpoints={endpointsQuery.data.map((record) => ({
+              deviceId: record.deviceId,
+              botName: record.botName,
+              online: record.online,
+            }))}
+            onDispatch={dispatchLocalTask}
+          />
+        )}
       </section>
     </div>
   );
