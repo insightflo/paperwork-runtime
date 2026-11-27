@@ -1,4 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
+import { HttpError } from "../../errors.js";
 import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { executeAgentArtifactTool } from './agent-artifact-tool.js';
@@ -37,7 +38,6 @@ import type { JudgmentService } from "../judgment/judgment-service.js";
 import { createCoreToolRuntimeStart, resolveCoreToolRuntimeScope } from "./core-tool-runtime-start.js";
 import type { DeferredBeforeStart, RuntimeExecutionLifecycle, RuntimeExecutionIdentity } from "../runtime-execution-lifecycle.js";
 export { parametersToCliArgs, resolveRunStepEnv, resolveWorkflowRunStepEnv } from "./core-tool-context.js";
-
 const execFile = promisify(execFileCallback);
 export type CoreWorkflowToolExecutionResult = {
   status: 200 | 403 | 404 | 409 | 422 | 500 | 501 | 503;
@@ -338,8 +338,8 @@ export async function executeCoreWorkflowTool(input: {
     if (invocationProvenance?.phase === "prepared") await recordToolCallProvenance(input.db, invocationProvenance, "threw");
     const typed = error as Error & { code?: string | number; exitCode?: number; stdout?: unknown; stderr?: unknown };
     const stdout = typeof typed.stdout === "string" ? typed.stdout.trim() : "", stderr = typeof typed.stderr === "string" ? typed.stderr.trim() : "";
-    const code = typed.code === undefined ? "" : ` (exit: ${String(typed.code)})`, status = (error instanceof ToolProgressError && error.status === 422) || typed.message.startsWith("artifact_contract_") ? 422 : 500;
-    const message = adapterConfig.progress !== undefined && !(error instanceof ToolProgressError) && !(error instanceof QaArtifactRejectionError) && !typed.message.startsWith("artifact_contract_")
+    const code = typed.code === undefined ? "" : ` (exit: ${String(typed.code)})`, status = error instanceof HttpError && error.status === 409 && typed.message === "qa_artifact_consumer_receipt_required" ? 409 : (error instanceof ToolProgressError && error.status === 422) || typed.message.startsWith("artifact_contract_") ? 422 : 500;
+    const message = adapterConfig.progress !== undefined && status !== 409 && !(error instanceof ToolProgressError) && !(error instanceof QaArtifactRejectionError) && !typed.message.startsWith("artifact_contract_")
       ? "tool_progress_execution_failed" : typed.message;
     return { status, body: { error: `${message}${code}`, data: { stdout, ...(typed.exitCode === undefined ? {} : { exitCode: typed.exitCode }) }, stderr, tool: input.toolName, source: "core", invocationProvenance } };
   }

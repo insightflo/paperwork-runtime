@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { conflict } from '../../errors.js';
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { and, eq } from 'drizzle-orm';
@@ -16,13 +17,13 @@ export async function preparePublicationVerifyConsumer(input: QaDispatchScope & 
   artifactExecution: FrozenArtifactAttempt; dispatch?: Awaited<ReturnType<typeof captureQaDispatch>> }) {
   const contract = input.artifactExecution.contract, args = readObject(input.parameters);
   const sourcePath = contract.consumerParams && args[contract.consumerParams.receipt];
-  if (typeof sourcePath !== 'string' || !path.isAbsolute(sourcePath)) throw new Error('qa_artifact_consumer_receipt_required');
+  if (typeof sourcePath !== 'string' || !path.isAbsolute(sourcePath)) throw conflict('qa_artifact_consumer_receipt_required');
   const dispatch = input.dispatch ?? await captureQaDispatch(input);
   const rows = await input.db.select({ step: workflowStepRuns, run: workflowRuns }).from(workflowStepRuns)
     .innerJoin(workflowRuns, eq(workflowRuns.id, workflowStepRuns.workflowRunId)).where(and(
       eq(workflowRuns.id, input.workflowRunId!), eq(workflowRuns.companyId, input.companyId)));
   const matches = rows.filter(({ step }) => readObject(step.metadata.toolResult).artifactPath === sourcePath);
-  if (matches.length !== 1) throw new Error('qa_artifact_consumer_receipt_required');
+  if (matches.length !== 1) throw conflict('qa_artifact_consumer_receipt_required');
   const { step, run } = matches[0], stored = readObject(step.metadata.toolResult);
   if (step.status !== 'completed' || step.metadata.cacheHit || stored.success !== true
     || stored.requestId !== step.lastDispatchRequestId) throw new Error('qa_publication_receipt_unavailable');
