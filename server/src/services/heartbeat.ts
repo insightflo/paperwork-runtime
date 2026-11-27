@@ -38,6 +38,7 @@ import {
   operatorDecisions,
   projects,
   projectWorkspaces,
+  workflowDefinitions,
   workflowStepRuns,
 } from "@paperclipai/db";
 import { conflict, notFound } from "../errors.js";
@@ -146,6 +147,7 @@ import { computeConsecutiveNoProgress, type NoProgressAssessment } from "./heart
 export { computeConsecutiveNoProgress, type NoProgressAssessment } from "./heartbeat-no-progress.js";
 import { evaluateStepInputManifestGuard } from "./step-input-manifest-guard.js";
 import { completeLinkedWorkflowStepRunsForIssue } from "./workflow/issue-step-closeout.js";
+import { shouldDeferWorkflowStepAutoComplete } from "./workflow/step-output-completion-gate.js";
 import { settleDispatchBoundTerminalFailure } from "./heartbeat-dispatch-settle.js";
 import {
   configureInstantWorkflowAdvanceDb,
@@ -6284,7 +6286,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         // 남기지 않았다면 done 전환이 아니라 명시적 완료 안내만 남긴다(상태 불변).
         if (shouldAutoCompleteSuccessfulIssue && !shouldAutoCaptureMissionChildOutput) {
           const linkedStepRun = await tx
-            .select({ id: workflowStepRuns.id })
+            .select({ id: workflowStepRuns.id, stepId: workflowStepRuns.stepId, workflowRunId: workflowStepRuns.workflowRunId })
             .from(workflowStepRuns)
             .where(eq(workflowStepRuns.issueId, issue.id))
             .limit(1)
@@ -6303,15 +6305,48 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
             const thisRunRegistered = runCompletionEvidence.some(
               (row) => row.createdByRunId === run.id,
             );
-            // 후속 무변화 실행 차단: 이슈에 산출물이 있어 완료 계약이 성립했는데 이번 실행이
-            // 새로 등록한 것이 없다면(폴링성 실행) 자동 완료하지 않는다. 산출물이 아직 없는
-            // 첫 완료는 기존 자동 완료 동작을 그대로 유지한다.
-            if (hasAnyProduct && !thisRunRegistered) {
+            // [RES-12860 fail-closed gate] 산출물이 0건인 첫 완료도 이 단계가 산출물 계약
+            //   (이슈 본문의 출력 디렉토리 블록 또는 후속 step의 $steps.<stepId> 소비)을
+            //   가지면 done 전환을 보류한다. 계약 없는 일반 step의 기존 자동 완료는 그대로
+            //   유지한다. 판정은 순수 헬퍼가 담당하고, 정의 steps는 run → workflow
+            //   definition 의 stepsJson 이 권위다.
+            let definitionSnapshot: unknown = null;
+            if (!hasAnyProduct) {
+              definitionSnapshot = await tx
+                .select({ steps: workflowDefinitions.stepsJson })
+                .from(workflowRuns)
+                .innerJoin(workflowDefinitions, eq(workflowRuns.workflowId, workflowDefinitions.id))
+                .where(eq(workflowRuns.id, linkedStepRun.workflowRunId))
+                .limit(1)
+                .then((rows) => (rows[0] ? { steps: rows[0].steps } : null));
+            }
+            const autoCompleteVerdict = shouldDeferWorkflowStepAutoComplete({
+              hasAnyProduct,
+              thisRunRegistered,
+              issueDescription: issue.description,
+              stepId: linkedStepRun.stepId,
+              definitionSnapshot,
+            });
+            // follow_up_without_new_evidence: 이슈에 산출물이 있어 완료 계약이 성립했는데 이번 실행이
+            //   새로 등록한 것이 없다면(폴링성 실행) 자동 완료하지 않는다(기존 동작 보존).
+            //   missing_required_step_deliverable: 산출물이 0건인데 산출물 계약이 있는 단계 —
+            //   RES-12860처럼 성공 run이 산출물 없이 done 전환되던 결함의 fail-closed 차단.
+            if (autoCompleteVerdict.defer) {
+              const missingRequiredDeliverable = autoCompleteVerdict.reason === "missing_required_step_deliverable";
+              const deliverableDirLine = missingRequiredDeliverable && autoCompleteVerdict.expectedOutputDir
+                ? `\n- 필수 산출물 디렉토리 (Required deliverable directory): \`${autoCompleteVerdict.expectedOutputDir}\``
+                : "";
               await tx.insert(issueComments).values({
                 companyId: issue.companyId,
                 issueId: issue.id,
                 authorAgentId: run.agentId,
-                body: runText(run, "업무 자동 완료를 보류했습니다. 실행은 성공으로 종료됐지만 이번 실행의 등록 산출물이나 검증 기록이 없습니다. 다음 행동: 작업 흐름 계약에 맞게 산출물을 등록하고 workflow/complete를 호출해 주세요. 실행 성공만으로 업무 완료가 확인되지는 않습니다.", "Automatic completion is on hold. The run succeeded, but this run has no registered work product or validation record. Next action: register artifacts under the workflow contract and call workflow/complete. Run success alone does not confirm issue completion."),
+                body: missingRequiredDeliverable
+                  ? runText(
+                      run,
+                      `업무 자동 완료를 보류했습니다. 실행은 성공으로 종료됐지만 이 워크플로 단계의 필수 산출물이 등록되지 않았습니다.${deliverableDirLine}\n다음 행동: 지정된 산출물 디렉토리에 결과물을 만들고 Workflow API로 등록한 뒤 workflow/complete를 호출해 주세요. 실행 성공만으로 업무 완료가 확인되지는 않습니다.`,
+                      `Automatic completion is on hold. The run succeeded, but this workflow step's required deliverable is not registered.${deliverableDirLine}\nNext action: create the deliverable in the assigned output directory, register it via the Workflow API, and call workflow/complete. Run success alone does not confirm issue completion.`,
+                    )
+                  : runText(run, "업무 자동 완료를 보류했습니다. 실행은 성공으로 종료됐지만 이번 실행의 등록 산출물이나 검증 기록이 없습니다. 다음 행동: 작업 흐름 계약에 맞게 산출물을 등록하고 workflow/complete를 호출해 주세요. 실행 성공만으로 업무 완료가 확인되지는 않습니다.", "Automatic completion is on hold. The run succeeded, but this run has no registered work product or validation record. Next action: register artifacts under the workflow contract and call workflow/complete. Run success alone does not confirm issue completion."),
               });
               await tx.insert(activityLog).values({
                 companyId: issue.companyId,
@@ -6323,7 +6358,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
                 agentId: run.agentId,
                 runId: run.id,
                 details: {
-                  reason: "successful_run_without_completion_evidence",
+                  reason: missingRequiredDeliverable ? "missing_required_step_deliverable" : "successful_run_without_completion_evidence",
                   previousStatus: issue.status,
                   nextStatus: issue.status,
                 },
@@ -6333,7 +6368,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
               //   shared structured outcome: clear the lock fields, write the structured
               //   issue.completion_evidence_missing activity, queue the bounded post-tx follow-up.
               await applyMissingCompletionEvidenceOutcome({
-                requiredAction: MISSING_EVIDENCE_REQUIRED_ACTION,
+                requiredAction: missingRequiredDeliverable && autoCompleteVerdict.expectedOutputDir
+                  ? `${MISSING_EVIDENCE_REQUIRED_ACTION} (deliverable output directory: ${autoCompleteVerdict.expectedOutputDir})`
+                  : MISSING_EVIDENCE_REQUIRED_ACTION,
               });
               queuePostTransactionWorkflowIssueSync(issue.id);
               return { promotedRun: null };
