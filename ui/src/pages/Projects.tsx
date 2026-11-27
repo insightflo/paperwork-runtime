@@ -64,7 +64,7 @@ function StripCell({ label, value, active, dot, title, onClick }: StripCellProps
 }
 
 export function Projects() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canWrite = true } = useCompany();
   const { openNewProject } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
   const { isMobile } = useSidebar();
@@ -197,7 +197,7 @@ export function Projects() {
             <span className="font-mono text-slate-950 dark:text-[#eef2f8]">{visible.length}</span> of {projects.length}
           </span>
         </div>
-        <Button size="sm" variant="outline" onClick={openNewProject} className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8]">
+        <Button size="sm" variant="outline" onClick={openNewProject} disabled={!canWrite} title={!canWrite ? "Member, admin, or owner role required to create work contexts" : undefined} className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs text-[#f8fafc] hover:bg-[#1d4fd8] disabled:cursor-not-allowed disabled:opacity-50">
           <Plus className="h-3.5 w-3.5" />
           Add Work Context
         </Button>
@@ -209,8 +209,8 @@ export function Projects() {
         <EmptyState
           icon={Hexagon}
           message="No work contexts yet."
-          action="Add Work Context"
-          onAction={openNewProject}
+          action={canWrite ? "Add Work Context" : undefined}
+          onAction={canWrite ? openNewProject : undefined}
         />
       )}
 

@@ -362,7 +362,11 @@ function DetailPane({ shown, onBack, actionBar, children }: {
 
 export function Inbox() {
   const lang = useCompanyLanguage();
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canWrite = true, canAdmin = true } = useCompany();
+  // [RBAC] 승인 결정·합류 승인은 관리자 이상(canAdmin), 실패 run 재시도는 쓰기 권한(canWrite) 필요 — Approvals 목록과 동일 기준.
+  const adminRequiredTitle = L(lang, { en: "Admin or owner role required to decide approvals", ko: "승인 결정은 관리자 이상 권한이 필요합니다." });
+  const joinAdminRequiredTitle = L(lang, { en: "Admin or owner role required to decide join requests", ko: "합류 요청 결정은 관리자 이상 권한이 필요합니다." });
+  const writeRequiredTitle = L(lang, { en: "Member, admin, or owner role required to retry failed runs", ko: "실패한 실행 재시도는 멤버 이상 권한이 필요합니다." });
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
   const location = useLocation();
@@ -719,7 +723,7 @@ export function Inbox() {
   };
 
   const approveItem = (item: TriageItem) => {
-    if (item.kind !== "approval" || !isDecidableApproval(item.approval)) return;
+    if (!canAdmin || item.kind !== "approval" || !isDecidableApproval(item.approval)) return;
     approveMutation.mutate(item.approval.id);
   };
 
@@ -824,10 +828,10 @@ export function Inbox() {
     const nodes: ReactNode[] = [];
     if (item.kind === "approval" && isDecidableApproval(item.approval)) {
       nodes.push(
-        <Button key="approve" type="button" size="xs" onClick={() => approveItem(item)} disabled={approvalPending} data-testid="inbox-approve">
+        <Button key="approve" type="button" size="xs" onClick={() => approveItem(item)} disabled={!canAdmin || approvalPending} title={!canAdmin ? adminRequiredTitle : undefined} className="disabled:cursor-not-allowed disabled:opacity-50" data-testid="inbox-approve">
           Approve<span className="ml-1.5 font-mono text-[10px] opacity-70">a</span>
         </Button>,
-        <Button key="reject" type="button" size="xs" variant="outline" className="border-red-500/40 text-red-700 hover:text-red-700 dark:text-red-300 dark:hover:text-red-200" onClick={() => { rejectMutation.mutate(item.approval.id); advanceFrom(selectedIndex); }} disabled={approvalPending}>
+        <Button key="reject" type="button" size="xs" variant="outline" className="border-red-500/40 text-red-700 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-300 dark:hover:text-red-200" onClick={() => { if (!canAdmin) return; rejectMutation.mutate(item.approval.id); advanceFrom(selectedIndex); }} disabled={!canAdmin || approvalPending} title={!canAdmin ? adminRequiredTitle : undefined}>
           Reject
         </Button>,
       );
@@ -835,7 +839,7 @@ export function Inbox() {
     if (item.kind === "failed_run") {
       const retrying = retryingRunIds.has(item.run.id);
       nodes.push(
-        <Button key="retry" type="button" size="xs" variant="outline" onClick={() => retryRunMutation.mutate(item.run)} disabled={retrying}>
+        <Button key="retry" type="button" size="xs" variant="outline" onClick={() => { if (!canWrite) return; retryRunMutation.mutate(item.run); }} disabled={!canWrite || retrying} title={!canWrite ? writeRequiredTitle : undefined} className="disabled:cursor-not-allowed disabled:opacity-50">
           <RotateCcw className="size-3" />
           {retrying ? "Retrying…" : "Retry"}
         </Button>,
@@ -1193,15 +1197,19 @@ export function Inbox() {
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={approveJoinMutation.isPending || rejectJoinMutation.isPending}
-                        onClick={() => rejectJoinMutation.mutate(joinRequest)}
+                        disabled={!canAdmin || approveJoinMutation.isPending || rejectJoinMutation.isPending}
+                        title={!canAdmin ? joinAdminRequiredTitle : undefined}
+                        className="disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => { if (!canAdmin) return; rejectJoinMutation.mutate(joinRequest); }}
                       >
                         {L(lang, { en: "Reject", ko: "거절" })}
                       </Button>
                       <Button
                         size="sm"
-                        disabled={approveJoinMutation.isPending || rejectJoinMutation.isPending}
-                        onClick={() => approveJoinMutation.mutate(joinRequest)}
+                        disabled={!canAdmin || approveJoinMutation.isPending || rejectJoinMutation.isPending}
+                        title={!canAdmin ? joinAdminRequiredTitle : undefined}
+                        className="disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => { if (!canAdmin) return; approveJoinMutation.mutate(joinRequest); }}
                       >
                         {L(lang, { en: "Approve", ko: "승인" })}
                       </Button>

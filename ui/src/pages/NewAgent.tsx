@@ -60,7 +60,9 @@ function createValuesForAdapterType(
 }
 
 export function NewAgent() {
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canWrite = true } = useCompany();
+  // [RBAC] 에이전트 생성은 쓰기 권한(canWrite) 필요.
+  const writeRequiredTitle = "Member, admin, or owner role required to create agents";
   const { setBreadcrumbs } = useBreadcrumbs();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -136,6 +138,7 @@ export function NewAgent() {
   });
 
   function handleSubmit() {
+    if (!canWrite) return;
     if (!selectedCompanyId || !name.trim()) return;
     setFormError(null);
     createAgent.mutate({
@@ -286,7 +289,7 @@ export function NewAgent() {
         </div>
         <div className="flex items-center justify-end gap-2">
           <Button variant="outline" size="sm" onClick={() => navigate("/agents")} className={CTA_GHOST}>Cancel</Button>
-          <Button size="sm" disabled={!name.trim() || createAgent.isPending} onClick={handleSubmit} className={CTA_PRIMARY}>
+          <Button size="sm" disabled={!canWrite || !name.trim() || createAgent.isPending} onClick={handleSubmit} title={!canWrite ? writeRequiredTitle : undefined} className={cn(CTA_PRIMARY, "disabled:cursor-not-allowed disabled:opacity-50")}>
             {createAgent.isPending ? "Creating…" : "Create agent"}
           </Button>
         </div>

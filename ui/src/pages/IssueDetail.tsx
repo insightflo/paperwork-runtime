@@ -210,7 +210,7 @@ function StatusPill({ status }: { status: string }) {
 
 export function IssueDetail() {
   const { issueId } = useParams<{ issueId: string }>();
-  const { selectedCompanyId } = useCompany();
+  const { selectedCompanyId, canWrite = true } = useCompany();
   const { openPanel, closePanel, panelVisible, setPanelVisible } = usePanel();
   const { openNewIssue } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -218,6 +218,8 @@ export function IssueDetail() {
   const navigate = useNavigate();
   const location = useLocation();
   const { pushToast } = useToast();
+  // [RBAC] 상태·우선순위·속성·첨부 등 변이는 쓰기 권한(canWrite) 필요 — 목록(Issues)과 동일 기준.
+  const writeRequiredTitle = "Member, admin, or owner role required to edit work items";
   const [moreOpen, setMoreOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mobilePropsOpen, setMobilePropsOpen] = useState(false);
@@ -598,11 +600,20 @@ export function IssueDetail() {
   useEffect(() => {
     if (issue) {
       openPanel(
-        <IssueProperties issue={issue} onUpdate={(data) => updateIssue.mutate(data)} />
+        <IssueProperties issue={issue} onUpdate={updateIssueProperties} />
       );
     }
     return () => closePanel();
   }, [issue]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // [RBAC] 속성 패널 저장은 쓰기 권한 필요 — viewer 차단 시 토스트로 안내.
+  const updateIssueProperties = (data: Record<string, unknown>) => {
+    if (!canWrite) {
+      pushToast({ title: writeRequiredTitle, tone: "warn" });
+      return;
+    }
+    updateIssue.mutate(data);
+  };
 
   const copyIssueToClipboard = async () => {
     if (!issue) return;
@@ -628,6 +639,7 @@ export function IssueDetail() {
   const ancestors = issue.ancestors ?? [];
   // Markdown files become documents; everything else uploads as an attachment (sequential, picked order preserved).
   const importOrUpload = async (files: FileList | null) => {
+    if (!canWrite) return; // [RBAC] 첨부 업로드는 쓰기 권한 필요.
     for (const file of Array.from(files ?? [])) {
       await (isMarkdownFile(file) ? importMarkdownDocument.mutateAsync(file) : uploadAttachment.mutateAsync(file));
     }
@@ -660,9 +672,10 @@ export function IssueDetail() {
         variant="outline"
         size="sm"
         onClick={() => fileInputRef.current?.click()}
-        disabled={uploadAttachment.isPending || importMarkdownDocument.isPending}
+        disabled={!canWrite || uploadAttachment.isPending || importMarkdownDocument.isPending}
+        title={!canWrite ? writeRequiredTitle : undefined}
         className={cn(
-          "shadow-none",
+          "shadow-none disabled:cursor-not-allowed disabled:opacity-50",
           attachmentDragActive && "border-primary bg-primary/5",
         )}
       >
@@ -685,11 +698,16 @@ export function IssueDetail() {
           <span className="shrink-0 font-mono tabular-nums">{issue.identifier ?? issue.id.slice(0, 8)}</span>
         </nav>
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          <StatusIcon status={issue.status} onChange={(status) => updateIssue.mutate({ status })} />
-          <PriorityIcon priority={issue.priority} onChange={(priority) => updateIssue.mutate({ priority })} />
+          {/* [RBAC] 상태·우선순위 변경은 쓰기 권한 필요 — 읽기 전용은 표시만. */}
+          <StatusIcon status={issue.status} onChange={canWrite ? (status) => updateIssue.mutate({ status }) : undefined} />
+          <PriorityIcon priority={issue.priority} onChange={canWrite ? (priority) => updateIssue.mutate({ priority }) : undefined} />
           <div className="min-w-0 flex-1 truncate">
-            <InlineEditor value={issue.title} onSave={(title) => updateIssue.mutateAsync({ title })} as="h2"
-              className="inline text-sm font-semibold text-slate-950 dark:text-[#eef2f8]" />
+            {canWrite ? (
+              <InlineEditor value={issue.title} onSave={(title) => updateIssue.mutateAsync({ title })} as="h2"
+                className="inline text-sm font-semibold text-slate-950 dark:text-[#eef2f8]" />
+            ) : (
+              <h2 className="inline text-sm font-semibold text-slate-950 dark:text-[#eef2f8]" title={writeRequiredTitle}>{issue.title}</h2>
+            )}
           </div>
         </div>
         <StatusPill status={issue.status} />
@@ -704,8 +722,10 @@ export function IssueDetail() {
         )}
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {/* Single deep-cobalt primary for this screen; reuses the existing new-issue dialog with this item as parent. */}
-          <Button size="sm" className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs font-semibold text-[#f8fafc] hover:bg-[#1d4ed8]"
-            onClick={() => openNewIssue({ parentId: issue.id, projectId: issue.projectId ?? undefined })}>
+          <Button size="sm" className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs font-semibold text-[#f8fafc] hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-50"
+            onClick={() => openNewIssue({ parentId: issue.id, projectId: issue.projectId ?? undefined })}
+            disabled={!canWrite}
+            title={!canWrite ? "Member, admin, or owner role required to create work items" : undefined}>
             <Plus className="h-3.5 w-3.5 sm:mr-1" />
             <span className="hidden sm:inline">Sub-item</span>
           </Button>
@@ -725,8 +745,10 @@ export function IssueDetail() {
               <Button variant="ghost" size="icon-xs" className="hidden shrink-0 md:inline-flex"><MoreHorizontal className="h-4 w-4" /></Button>
             </PopoverTrigger>
             <PopoverContent className="w-44 p-1" align="end">
-              <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-destructive hover:bg-accent/50"
-                onClick={() => { updateIssue.mutate({ hiddenAt: new Date().toISOString() }, { onSuccess: () => navigate("/issues/all") }); setMoreOpen(false); }}>
+              <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-destructive hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => { updateIssue.mutate({ hiddenAt: new Date().toISOString() }, { onSuccess: () => navigate("/issues/all") }); setMoreOpen(false); }}
+                disabled={!canWrite}
+                title={!canWrite ? writeRequiredTitle : undefined}>
                 <EyeOff className="h-3 w-3" />
                 Hide this Work Item
               </button>
@@ -779,24 +801,31 @@ export function IssueDetail() {
       </div>
 
       <section className="tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] px-3 py-2">
-        <InlineEditor
-          value={issue.description ?? ""}
-          onSave={(description) => updateIssue.mutateAsync({ description })}
-          as="p"
-          className="whitespace-pre-wrap break-words text-[15px] leading-7 text-foreground"
-          placeholder="Add a description..."
-          multiline
-          mentions={mentionOptions}
-          imageUploadHandler={async (file) => {
-            const attachment = await uploadAttachment.mutateAsync(file);
-            return attachment.contentPath;
-          }}
-        />
+        {/* [RBAC] 설명 수정·이미지 첨부는 쓰기 권한 필요 — 읽기 전용은 표시만. */}
+        {canWrite ? (
+          <InlineEditor
+            value={issue.description ?? ""}
+            onSave={(description) => updateIssue.mutateAsync({ description })}
+            as="p"
+            className="whitespace-pre-wrap break-words text-[15px] leading-7 text-foreground"
+            placeholder="Add a description..."
+            multiline
+            mentions={mentionOptions}
+            imageUploadHandler={async (file) => {
+              const attachment = await uploadAttachment.mutateAsync(file);
+              return attachment.contentPath;
+            }}
+          />
+        ) : (
+          <p className="whitespace-pre-wrap break-words text-[15px] leading-7 text-foreground" title={writeRequiredTitle}>
+            {issue.description || "—"}
+          </p>
+        )}
       </section>
 
       <IssueDocumentsSection
         issue={issue}
-        canDeleteDocuments={Boolean(session?.user?.id)}
+        canDeleteDocuments={canWrite && Boolean(session?.user?.id)}
         mentions={mentionOptions}
         imageUploadHandler={async (file) => {
           const attachment = await uploadAttachment.mutateAsync(file);
@@ -848,10 +877,10 @@ export function IssueDetail() {
                 </a>
                 <button
                   type="button"
-                  className="text-muted-foreground hover:text-destructive"
+                  className="text-muted-foreground hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => deleteAttachment.mutate(attachment.id)}
-                  disabled={deleteAttachment.isPending}
-                  title="Delete attachment"
+                  disabled={!canWrite || deleteAttachment.isPending}
+                  title={!canWrite ? writeRequiredTitle : "Delete attachment"}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
@@ -908,6 +937,7 @@ export function IssueDetail() {
             currentAssigneeValue={actualAssigneeValue}
             suggestedAssigneeValue={suggestedAssigneeValue}
             mentions={mentionOptions}
+            readOnly={!canWrite}
             onAdd={async (body, reopen, reassignment) => {
               if (reassignment) {
                 await addCommentAndReassign.mutateAsync({ body, reopen, reassignment });
@@ -1069,7 +1099,7 @@ export function IssueDetail() {
           </SheetHeader>
           <ScrollArea className="flex-1 overflow-y-auto">
             <div className="px-4 pb-4">
-              <IssueProperties issue={issue} onUpdate={(data) => updateIssue.mutate(data)} inline />
+              <IssueProperties issue={issue} onUpdate={updateIssueProperties} inline />
             </div>
           </ScrollArea>
         </SheetContent>
