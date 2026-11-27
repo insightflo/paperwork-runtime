@@ -279,8 +279,13 @@ describe("Missions", () => {
     expect(html).toContain('aria-label="Created to"');
     expect(html).toContain('aria-label="Toggle mission preview pane"');
     expect(html).toContain('value="2026-04-29"');
-    expect(html).toContain('bg-[#2563eb]');
-    expect(html).toContain("New Mission");
+    // The New Mission CTA keeps its primary fill across the Paperwork token migration:
+    // `bg-[#2563eb]` on this branch, `bg-primary` once Wave 4d lands. Scope the check to
+    // that button so other primary-tinted dots cannot satisfy it.
+    const newMissionIndex = html.indexOf("New Mission");
+    const newMissionButton = html.slice(html.lastIndexOf("<button", newMissionIndex), html.indexOf("</button>", newMissionIndex));
+    expect(newMissionButton).toContain("New Mission");
+    expect(newMissionButton).toMatch(/class="[^"]*\bbg-(?:\[#2563eb\]|primary)/);
   });
 
   it("opens the split preview pane from a row with summary, step checklist, and the full-mission link", async () => {
