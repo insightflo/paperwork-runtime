@@ -914,7 +914,7 @@ export function NewIssueDialog() {
         showCloseButton={false}
         aria-describedby={undefined}
         className={cn(
-          "tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_50px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_50px_rgba(0,0,0,0.48)] [&_[data-slot=popover-content]]:rounded-[12px] [&_[data-slot=popover-content]]:border-[var(--pw-hairline)] [&_[data-slot=popover-content]]:bg-white [&_[data-slot=popover-content]]:text-slate-900 [&_[data-slot=popover-content]]:shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:[&_[data-slot=popover-content]]:border-white/10 dark:[&_[data-slot=popover-content]]:bg-[#0e131d] dark:[&_[data-slot=popover-content]]:bg-none dark:[&_[data-slot=popover-content]]:text-slate-100 dark:[&_[data-slot=popover-content]]:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] p-0 gap-0 flex flex-col max-h-[calc(100dvh-2rem)]",
+          "tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_50px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-card dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_50px_rgba(0,0,0,0.48)] [&_[data-slot=popover-content]]:rounded-[12px] [&_[data-slot=popover-content]]:border-[var(--pw-hairline)] [&_[data-slot=popover-content]]:bg-white [&_[data-slot=popover-content]]:text-slate-900 [&_[data-slot=popover-content]]:shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:[&_[data-slot=popover-content]]:border-white/10 dark:[&_[data-slot=popover-content]]:bg-card dark:[&_[data-slot=popover-content]]:bg-none dark:[&_[data-slot=popover-content]]:text-slate-100 dark:[&_[data-slot=popover-content]]:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] p-0 gap-0 flex flex-col max-h-[calc(100dvh-2rem)]",
           expanded
             ? "sm:max-w-2xl h-[calc(100dvh-2rem)]"
             : "sm:max-w-lg"
@@ -943,14 +943,14 @@ export function NewIssueDialog() {
         }}
       >
         {/* Header bar */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200/80 bg-slate-50/70 shrink-0 dark:border-white/10 dark:bg-[#07090d]">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-200/80 bg-slate-50/70 shrink-0 dark:border-white/10 dark:bg-background">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Popover open={companyOpen} onOpenChange={setCompanyOpen}>
               <PopoverTrigger asChild>
                 <button
                   className={cn(
                     "px-1.5 py-0.5 rounded text-xs font-semibold cursor-pointer hover:opacity-80 transition-opacity",
-                    !dialogCompany?.brandColor && "border border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300",
+                    !dialogCompany?.brandColor && "border border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-background dark:text-slate-300",
                   )}
                   style={
                     dialogCompany?.brandColor
@@ -964,7 +964,7 @@ export function NewIssueDialog() {
                   {(dialogCompany?.name ?? "").slice(0, 3).toUpperCase()}
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-48 p-1" align="start">
+              <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-card dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-48 p-1" align="start">
                 {companies.filter((c) => c.status !== "archived").map((c) => (
                   <button
                     key={c.id}
@@ -980,7 +980,7 @@ export function NewIssueDialog() {
                     <span
                       className={cn(
                         "px-1 py-0.5 rounded text-[10px] font-semibold leading-none",
-                        !c.brandColor && "border border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300",
+                        !c.brandColor && "border border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-background dark:text-slate-300",
                       )}
                       style={
                         c.brandColor
@@ -1026,7 +1026,7 @@ export function NewIssueDialog() {
         {/* Title */}
         <div className="px-4 pt-4 pb-2 shrink-0">
           <textarea
-            className="w-full text-lg font-semibold bg-transparent text-slate-950 caret-[#65a30d] outline-none resize-none overflow-hidden placeholder:text-slate-400 dark:text-slate-50 dark:caret-[#a3e635] dark:placeholder:text-slate-500"
+            className="w-full text-lg font-semibold bg-transparent text-slate-950 caret-emerald-700 outline-none resize-none overflow-hidden placeholder:text-slate-400 dark:text-slate-50 dark:caret-emerald-300 dark:placeholder:text-slate-500"
             placeholder="Work item title"
             rows={1}
             value={title}
@@ -1073,7 +1073,7 @@ export function NewIssueDialog() {
                 value={assigneeValue}
                 options={assigneeOptions}
                 placeholder="Assignee"
-                disablePortal className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]"
+                disablePortal className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]"
                 noneLabel="No assignee"
                 searchPlaceholder="Search assignees..."
                 emptyMessage="No assignees found."
@@ -1124,7 +1124,7 @@ export function NewIssueDialog() {
                 value={projectId}
                 options={projectOptions}
                 placeholder="Work context"
-                disablePortal className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]"
+                disablePortal className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]"
                 noneLabel="No work context"
                 searchPlaceholder="Search work contexts..."
                 emptyMessage="No work contexts found."
@@ -1171,7 +1171,7 @@ export function NewIssueDialog() {
                 Control whether this work item runs in the shared execution context, a new isolated execution context, or an existing one.
               </div>
               <select
-                className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none transition-colors focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
+                className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15 dark:border-white/10 dark:bg-background dark:text-slate-200 dark:focus:border-primary dark:focus:ring-primary/20"
                 value={executionWorkspaceMode}
                 onChange={(e) => {
                   setExecutionWorkspaceMode(e.target.value);
@@ -1188,7 +1188,7 @@ export function NewIssueDialog() {
               </select>
               {executionWorkspaceMode === "reuse_existing" && (
                 <select
-                  className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none transition-colors focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
+                  className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15 dark:border-white/10 dark:bg-background dark:text-slate-200 dark:focus:border-primary dark:focus:ring-primary/20"
                   value={selectedExecutionWorkspaceId}
                   onChange={(e) => setSelectedExecutionWorkspaceId(e.target.value)}
                 >
@@ -1219,14 +1219,14 @@ export function NewIssueDialog() {
               {assigneeOptionsTitle}
             </button>
             {assigneeOptionsOpen && (
-              <div className="mt-2 rounded-[12px] border border-slate-200/80 bg-slate-50/60 p-3 space-y-3 dark:border-white/10 dark:bg-[#07090d]">
+              <div className="mt-2 rounded-[12px] border border-slate-200/80 bg-slate-50/60 p-3 space-y-3 dark:border-white/10 dark:bg-background">
                 <div className="space-y-1.5">
                   <div className="text-xs text-muted-foreground">Model</div>
                   <InlineEntitySelector
                     value={assigneeModelOverride}
                     options={modelOverrideOptions}
                     placeholder="Default model"
-                    disablePortal className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]"
+                    disablePortal className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]"
                     noneLabel="Default model"
                     searchPlaceholder="Search models..."
                     emptyMessage="No models found."
@@ -1256,7 +1256,7 @@ export function NewIssueDialog() {
                     <button
                       className={cn(
                         "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
-                        assigneeChrome ? "bg-[#65a30d] dark:bg-[#a3e635]" : "bg-slate-200 dark:bg-white/10"
+                        assigneeChrome ? "bg-emerald-700 dark:bg-emerald-300" : "bg-slate-200 dark:bg-white/10"
                       )}
                       onClick={() => setAssigneeChrome((value) => !value)}
                     >
@@ -1303,13 +1303,13 @@ export function NewIssueDialog() {
             />
           </div>
           {stagedFiles.length > 0 ? (
-            <div className="mt-4 space-y-3 rounded-[12px] border border-slate-200/80 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-[#07090d]">
+            <div className="mt-4 space-y-3 rounded-[12px] border border-slate-200/80 bg-slate-50/60 p-3 dark:border-white/10 dark:bg-background">
               {stagedDocuments.length > 0 ? (
                 <div className="space-y-2">
                   <div className="text-xs font-medium text-muted-foreground">Documents</div>
                   <div className="space-y-2">
                     {stagedDocuments.map((file) => (
-                      <div key={file.id} className="flex items-start justify-between gap-3 rounded-md border border-slate-200/80 bg-white px-3 py-2 dark:border-white/10 dark:bg-[#0e131d]">
+                      <div key={file.id} className="flex items-start justify-between gap-3 rounded-md border border-slate-200/80 bg-white px-3 py-2 dark:border-white/10 dark:bg-card">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
@@ -1345,7 +1345,7 @@ export function NewIssueDialog() {
                   <div className="text-xs font-medium text-muted-foreground">Attachments</div>
                   <div className="space-y-2">
                     {stagedAttachments.map((file) => (
-                      <div key={file.id} className="flex items-start justify-between gap-3 rounded-md border border-slate-200/80 bg-white px-3 py-2 dark:border-white/10 dark:bg-[#0e131d]">
+                      <div key={file.id} className="flex items-start justify-between gap-3 rounded-md border border-slate-200/80 bg-white px-3 py-2 dark:border-white/10 dark:bg-card">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <Paperclip className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -1375,16 +1375,16 @@ export function NewIssueDialog() {
         </div>
 
         {/* Property chips bar */}
-        <div className="flex items-center gap-1.5 px-4 py-2 border-t border-slate-200/80 bg-slate-50/50 flex-wrap shrink-0 dark:border-white/10 dark:bg-[#07090d]">
+        <div className="flex items-center gap-1.5 px-4 py-2 border-t border-slate-200/80 bg-slate-50/50 flex-wrap shrink-0 dark:border-white/10 dark:bg-background">
           {/* Status chip */}
           <Popover open={statusOpen} onOpenChange={setStatusOpen}>
             <PopoverTrigger asChild>
-              <button className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
+              <button className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
                 <CircleDot className={cn("h-3 w-3", currentStatus.color)} />
                 {currentStatus.label}
               </button>
             </PopoverTrigger>
-            <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-36 p-1" align="start">
+            <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-card dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-36 p-1" align="start">
               {statuses.map((s) => (
                 <button
                   key={s.value}
@@ -1404,7 +1404,7 @@ export function NewIssueDialog() {
           {/* Priority chip */}
           <Popover open={priorityOpen} onOpenChange={setPriorityOpen}>
             <PopoverTrigger asChild>
-              <button className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
+              <button className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
                 {currentPriority ? (
                   <>
                     <currentPriority.icon className={cn("h-3 w-3", currentPriority.color)} />
@@ -1418,7 +1418,7 @@ export function NewIssueDialog() {
                 )}
               </button>
             </PopoverTrigger>
-            <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-36 p-1" align="start">
+            <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-card dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-36 p-1" align="start">
               {priorities.map((p) => (
                 <button
                   key={p.value}
@@ -1436,7 +1436,7 @@ export function NewIssueDialog() {
           </Popover>
 
           {/* Labels chip (placeholder) */}
-          <button className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
+          <button className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
             <Tag className="h-3 w-3" />
             Labels
           </button>
@@ -1450,7 +1450,7 @@ export function NewIssueDialog() {
             multiple
           />
           <button
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]"
             onClick={() => stageFileInputRef.current?.click()}
             disabled={createIssue.isPending}
           >
@@ -1461,11 +1461,11 @@ export function NewIssueDialog() {
           {/* More (dates) */}
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
-              <button className="inline-flex items-center justify-center rounded-md border border-slate-200/90 bg-white p-1 text-xs text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-400 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
+              <button className="inline-flex items-center justify-center rounded-md border border-slate-200/90 bg-white p-1 text-xs text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-400 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
                 <MoreHorizontal className="h-3 w-3" />
               </button>
             </PopoverTrigger>
-            <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-44 p-1" align="start">
+            <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-card dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-44 p-1" align="start">
               <button className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5 text-muted-foreground">
                 <Calendar className="h-3 w-3" />
                 Start date
@@ -1479,7 +1479,7 @@ export function NewIssueDialog() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-200/80 bg-slate-50/50 shrink-0 dark:border-white/10 dark:bg-[#07090d]">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-200/80 bg-slate-50/50 shrink-0 dark:border-white/10 dark:bg-background">
           <Button
             variant="ghost"
             size="sm"
@@ -1502,7 +1502,7 @@ export function NewIssueDialog() {
             </div>
             <Button
               size="sm"
-              className="min-w-[8.5rem] bg-[#4d7c0f] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:bg-[#3f6212] dark:bg-[#a3e635] dark:text-[#07090d] dark:hover:bg-[#bef264] tabular-nums disabled:opacity-100"
+              className="min-w-[8.5rem] bg-primary text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:bg-primary/90 tabular-nums disabled:opacity-100"
               disabled={!title.trim() || createIssue.isPending}
               onClick={handleSubmit}
               aria-busy={createIssue.isPending}
