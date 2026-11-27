@@ -113,6 +113,12 @@ pub fn classify_run_failure(input: &Value) -> Result<Value, String> {
     if status == Some("cancelled") {
         return Ok(out("cancelled", "RUN_CANCELLED", "Heartbeat run was cancelled.", fallback_candidates));
     }
+    // commandcode_local --max-turns cap (mirrors the TS arm): match only on a
+    // trimmed string errorCode; non-string errorCode flows onward so overload
+    // ToString coercion and the adapter-fallback TypeError parity stay intact.
+    if input.get("errorCode").and_then(Value::as_str).map(js::js_trim) == Some("commandcode_max_turns") {
+        return Ok(out("adapter", "COMMANDCODE_MAX_TURNS", "Command Code stopped at the --max-turns cap and returned a partial response; the session is preserved so the next wake can resume. Not an adapter/auth/quota failure — raise this agent's Max turns per run (adapterConfig.maxTurns) or narrow the task scope.", fallback_candidates));
+    }
     // Overload is matched on errorCode before stderr so a stray ENOENT warning
     // cannot misclassify a transient 5xx as a command failure.
     let overload_status = CLAUDE_API_ERROR

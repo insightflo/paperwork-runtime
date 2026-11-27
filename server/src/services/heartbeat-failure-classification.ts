@@ -74,10 +74,12 @@ export function classifyHeartbeatRunFailure(input: {
   // settles as failed here. Classify it explicitly with actionable guidance
   // instead of the generic adapter fallback. Display/classification only —
   // never execution authority (AGENTS.md rule 9). Category stays inside the
-  // shared TS/Rust set; the opt-in Rust arm (crates/heartbeat-core, out of
-  // scope for this change) still returns the generic classification for this
-  // errorCode until its mirror is updated.
-  if (input.errorCode?.trim() === "commandcode_max_turns") {
+  // shared TS/Rust set; the Rust arm in crates/heartbeat-core mirrors this
+  // branch. typeof guard keeps parity with the overload check below:
+  // non-string errorCode must not throw here (it throws only at the adapter
+  // fallback), so coercion-sensitive cases like array errorCode keep flowing
+  // to ToString-based matching on both sides.
+  if (typeof input.errorCode === "string" && input.errorCode.trim() === "commandcode_max_turns") {
     return {
       category: "adapter",
       reasonCode: "COMMANDCODE_MAX_TURNS",
