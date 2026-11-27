@@ -55,6 +55,7 @@ describe("EnterpriseBots cockpit", () => {
     expect(strip.textContent).toContain("Pending Owner Approvals");
     expect([...strip.querySelectorAll("b")].map((b) => b.textContent)).toEqual(["2", "2", "1", "1"]);
     expect(tabButton("bots")?.getAttribute("aria-pressed")).toBe("true");
+    expect(tabButton("bots")?.textContent).toContain("커넥터 · 권한");
     const badges = [...container.querySelectorAll('[role="button"] [data-security-badge]')].map((b) => b.textContent);
     expect(badges).toEqual(["company × company", "team × team", "owner × self"]);
     expect(detail().querySelector("[data-security-badge]")?.textContent).toBe("company × company");
@@ -67,11 +68,13 @@ describe("EnterpriseBots cockpit", () => {
     await click(tabButton("terminals"));
     expect(tabButton("terminals")?.getAttribute("aria-pressed")).toBe("true");
     expect(tabButton("bots")?.getAttribute("aria-pressed")).toBe("false");
-    expect(detail().getAttribute("aria-label")).toBe("Client Terminals detail");
+    expect(tabButton("terminals")?.textContent).toContain("런타임 노드");
+    expect(detail().getAttribute("aria-label")).toBe("런타임 노드 detail");
     expect(container.textContent).toContain("maya-macbook");
     expect(container.textContent).toContain("12s ago");
     await click(tabButton("channels"));
-    expect(detail().getAttribute("aria-label")).toBe("Channels & @mentions detail");
+    expect(tabButton("channels")?.textContent).toContain("채널 · 멘션");
+    expect(detail().getAttribute("aria-label")).toBe("채널 · 멘션 detail");
     expect(container.textContent).toContain("eng-alerts");
     expect(container.querySelector("[data-security-badge]")).toBeNull();
   });
@@ -131,14 +134,15 @@ describe("EnterpriseBots cockpit", () => {
     expect(container.querySelectorAll(".cockpit-strip .cockpit-cell").length).toBe(4);
     expect(container.querySelector(".cockpit-toolbar.tactile-card")).toBeTruthy();
     expect(container.querySelectorAll(".tactile-card").length).toBeGreaterThanOrEqual(3);
-
+    // Page-owned markup only: components/enterprise-bots/* tokens are Wave 3b scope.
+    for (const sel of [".cockpit-strip", ".cockpit-toolbar"]) expect(container.querySelector(sel)!.outerHTML).not.toMatch(/openbot|#a3e635|#2563eb|#60a5fa|lime-/i);
     await click(tabButton("terminals"));
     const dds = [...detail().querySelectorAll("dd")].map((d) => d.textContent?.trim());
     expect(dds).toContain("member");
     expect(dds).not.toContain("admin");
   });
 
-  it("opens Attach OpenBot dialog, submits bot creation, and shows one-time pcp_bot_ token banner", async () => {
+  it("opens 커넥터 연결 dialog, submits bot creation, and shows one-time pcp_bot_ token banner", async () => {
     const onCreateBot = vi.fn().mockResolvedValue({
       bot: {
         id: "b-new",
@@ -153,10 +157,11 @@ describe("EnterpriseBots cockpit", () => {
     });
 
     await render(<EnterpriseBots initialData={DATA} onCreateBot={onCreateBot} />);
-    await click(button("Attach OpenBot"));
+    await click(button("커넥터 연결"));
 
-    const dialog = container.querySelector('[role="dialog"][aria-label="Attach OpenBot"]')!;
+    const dialog = container.querySelector('[role="dialog"][aria-label="커넥터 연결"]')!;
     expect(dialog).toBeTruthy();
+    expect(dialog.textContent).not.toMatch(/openbot/i);
 
     const setInputValue = async (el: HTMLInputElement | HTMLSelectElement, value: string) => {
       const proto = el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
