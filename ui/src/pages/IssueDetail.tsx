@@ -20,6 +20,7 @@ import { relativeTime, cn, formatDate, formatTokens, visibleRunCostUsd } from ".
 import { InlineEditor } from "../components/InlineEditor";
 import { CommentThread } from "../components/CommentThread";
 import { IssueDocumentsSection } from "../components/IssueDocumentsSection";
+import { DataGraphContextPanel } from "../components/DataGraphContextPanel";
 import { openWorkProductInBrowser } from "../lib/workProductOpen";
 import { IssueProperties } from "../components/IssueProperties";
 import { LiveRunWidget } from "../components/LiveRunWidget";
@@ -228,6 +229,8 @@ export function IssueDetail() {
     approvals: false,
     workProducts: true,
   });
+  // [연결 맥락] 기본 접힘 — 열 때만 DataGraphContextPanel을 마운트해 기본 로드에서 2-hop 탐색 쿼리가 발생하지 않게 한다.
+  const [showDataGraphContext, setShowDataGraphContext] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [attachmentDragActive, setAttachmentDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -833,6 +836,29 @@ export function IssueDetail() {
         }}
         extraActions={!hasAttachments ? attachmentUploadButton : undefined}
       />
+
+      <Collapsible
+        open={showDataGraphContext}
+        onOpenChange={setShowDataGraphContext}
+        className="tactile-card"
+        style={{ borderColor: "var(--pw-token-border)", backgroundColor: "var(--pw-token-bg-surface)" }}
+      >
+        <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">연결 맥락 (Data Graph · 2-hop)</span>
+          <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", showDataGraphContext && "rotate-180")} />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="border-t px-3 py-2" style={{ borderColor: "var(--pw-token-border)" }}>
+            <DataGraphContextPanel
+              companyId={issue.companyId}
+              seedKind="issue"
+              seedId={issue.id}
+              maxHops={2}
+              includeContextPack={true}
+            />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
 
       {hasAttachments ? (
         <div
