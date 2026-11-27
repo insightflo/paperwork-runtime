@@ -6,6 +6,7 @@ import { findWorkflowToolReferenceErrors } from "../workflow/step-artifact-refer
 import { readObject } from "../workflow/core-tool-context.js";
 import { validateDeclaredStructuralPlanReadiness } from "../workflow/control-flow/structural-gate-readiness.js";
 import { validateDeclaredStructuralPlan } from "./structural-materialization.js";
+import { findKnowledgeBaseReferenceErrors } from "./plan-kbids-validation.js";
 import { revisionPlanDiagnostics } from "./revision-plan-validation.js";
 import { PaqoArtifactContractError } from "./paqo-artifact-contracts.js";
 
@@ -85,6 +86,11 @@ export async function missionPlanMaterializationPreflight(input: {
     const structuralErrors = [...structuralPlanErrors, ...structuralReadinessErrors];
     if (structuralErrors.length) return { reason: "structural_plan_validation_failed",
       diagnostics: structuralErrors.map(message => ({ code: "structural_plan_error", message, severity: "invalid" as const })) };
+    // [RES-12846 prevention] Mirror the runtime knowledge-contract check at plan submission:
+    // a kbIds entry that is a knowledge_nodes.id used to pass admission and fail only at
+    // step execution (workflow_step_kb_contract_invalid). Reject early with the parent KB hint.
+    const kbIdsErrors = await findKnowledgeBaseReferenceErrors({ db, companyId, units });
+    if (kbIdsErrors.length) return { reason: "plan_kbids_invalid", diagnostics: kbIdsErrors };
     const steps = input.mission ? buildSteps(input.mission) : null;
     const toolReferenceErrors = steps ? findWorkflowToolReferenceErrors(steps) : [];
     if (toolReferenceErrors.length) return { reason: "workflow_tool_reference_invalid",
