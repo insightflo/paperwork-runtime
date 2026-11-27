@@ -302,7 +302,9 @@ export function jsonToSteps(steps: WorkflowStepDraftInput): StepDraft[] {
       title: s.title,
       description: raw.description as string || "",
       // [workflow child step] type:"workflow" 도 draft 로 보존 — 저장 시 agent 로 강등되지 않는다.
-      type: s.type === "tool" || s.type === "if" || s.type === "complete" || s.type === "workflow" ? s.type : "agent",
+      // [stage26 human_wait] Wave 2 의 6번째 멤버 type:"human_wait" 도 보존한다 — 임포트→재저장
+      // 왕복에서 사람 승인 대기 타입이 agent 로 침묵 강등되지 않는다(공유 검증기가 human_wait 을 수용).
+      type: s.type === "tool" || s.type === "if" || s.type === "complete" || s.type === "workflow" || s.type === "human_wait" ? s.type : "agent",
       // [descope v1 D1] literal true 만 1급 필드로 승격한다. false/문자열 등 invalid 값은
       // 1급 승격 없이 extra 통과값으로 그대로 남겨 공유 검증기가 거부한다(침묵 강등/제거 금지).
       wait: raw.wait === true ? true : undefined,
