@@ -1,12 +1,14 @@
 // @vitest-environment node
 
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import {
   InstanceGeneralSettings,
   createNewProviderRow,
   piCatalogModelName,
   piCliVersionLabel,
+  resolveGeneralSettingsTab,
   toLlmStructuredProvidersDraft,
   toLlmStructuredProvidersPatch,
   toGeneralPatch,
@@ -45,100 +47,55 @@ vi.mock("../context/BreadcrumbContext", () => ({
   useBreadcrumbs: () => ({ setBreadcrumbs: vi.fn() }),
 }));
 
-describe("toJudgmentDraft", () => {
-  it("builds an empty draft from empty settings", () => {
-    expect(toJudgmentDraft(undefined)).toEqual({ judgmentBaseUrl: "", judgmentModelId: "" });
-    expect(toJudgmentDraft({})).toEqual({ judgmentBaseUrl: "", judgmentModelId: "" });
+const renderPage = (tab?: string) =>
+  renderToStaticMarkup(
+    <MemoryRouter initialEntries={[`/instance/settings/general${tab ? `?tab=${tab}` : ""}`]}>
+      <InstanceGeneralSettings />
+    </MemoryRouter>,
+  );
+
+describe("toJudgmentDraft / toGeneralPatch (Judgment API key draft·patch)", () => {
+  it("builds an empty draft (never copies a key) and carries saved overrides", () => {
+    expect(toJudgmentDraft(undefined)).toEqual({
+      judgmentBaseUrl: "", judgmentModelId: "", judgmentApiKey: "", clearJudgmentApiKey: false,
+    });
+    expect(toJudgmentDraft({ judgmentBaseUrl: "https://api.example.com", judgmentModelId: "jev-1.13.0" })).toEqual({
+      judgmentBaseUrl: "https://api.example.com", judgmentModelId: "jev-1.13.0", judgmentApiKey: "", clearJudgmentApiKey: false,
+    });
   });
 
-  it("carries saved overrides into the draft", () => {
-    expect(
-      toJudgmentDraft({ judgmentBaseUrl: "https://api.example.com", judgmentModelId: "jev-1.13.0" }),
-    ).toEqual({ judgmentBaseUrl: "https://api.example.com", judgmentModelId: "jev-1.13.0" });
-  });
-});
-
-describe("toGeneralPatch", () => {
   it("maps blank fields to null (clear) and values through trimmed", () => {
-    expect(toGeneralPatch({ judgmentBaseUrl: "", judgmentModelId: "alt-model-1" })).toEqual({
-      judgmentBaseUrl: null,
-      judgmentModelId: "alt-model-1",
-    });
-    expect(toGeneralPatch({ judgmentBaseUrl: "  https://api.example.com  ", judgmentModelId: " " })).toEqual({
-      judgmentBaseUrl: "https://api.example.com",
-      judgmentModelId: null,
-    });
+    expect(toGeneralPatch({ judgmentBaseUrl: "", judgmentModelId: "alt-model-1", judgmentApiKey: "", clearJudgmentApiKey: false }))
+      .toEqual({ judgmentBaseUrl: null, judgmentModelId: "alt-model-1" });
+    expect(toGeneralPatch({ judgmentBaseUrl: "  https://api.example.com  ", judgmentModelId: " ", judgmentApiKey: " sk-example ", clearJudgmentApiKey: false }))
+      .toEqual({ judgmentBaseUrl: "https://api.example.com", judgmentModelId: null, judgmentApiKey: "sk-example" });
+  });
+
+  it("sends null (clear) for the judgment key only when Clear key is checked", () => {
+    expect(toGeneralPatch({ judgmentBaseUrl: "", judgmentModelId: "", judgmentApiKey: "", clearJudgmentApiKey: false }))
+      .toEqual({ judgmentBaseUrl: null, judgmentModelId: null });
+    expect(toGeneralPatch({ judgmentBaseUrl: "", judgmentModelId: "", judgmentApiKey: "sk-x", clearJudgmentApiKey: true }).judgmentApiKey)
+      .toBeNull();
   });
 });
 
-describe("toLlmStructuredDraft", () => {
-  it("defaults to empty fields", () => {
+describe("toLlmStructuredDraft / toLlmStructuredPatch", () => {
+  it("defaults to empty fields and never copies a key", () => {
     expect(toLlmStructuredDraft(null)).toEqual({
       llmStructuredBaseUrl: "", llmStructuredModel: "", llmStructuredApiKey: "",
     });
-  });
-
-  it("hydrates public fields but never copies a key", () => {
-    const settings = {
-      llmStructuredBaseUrl: "https://api.deepseek.com/v1",
-      llmStructuredModel: "deepseek-chat",
-      llmStructuredApiKey: "do-not-copy",
-    };
+    const settings = { llmStructuredBaseUrl: "https://api.deepseek.com/v1", llmStructuredModel: "deepseek-chat", llmStructuredApiKey: "do-not-copy" };
     expect(toLlmStructuredDraft(settings)).toEqual({ ...settings, llmStructuredApiKey: "" });
   });
-});
 
-describe("toLlmStructuredPatch", () => {
-  const draft = {
-    llmStructuredBaseUrl: " https://api.deepseek.com/v1 ",
-    llmStructuredModel: " deepseek-chat ",
-    llmStructuredApiKey: " \t ",
-  };
-
-  it("trims public fields and omits a blank key to preserve the saved key", () => {
+  it("trims public fields, omits a blank key, and handles replacement/clear keys", () => {
+    const draft = { llmStructuredBaseUrl: " https://api.deepseek.com/v1 ", llmStructuredModel: " deepseek-chat ", llmStructuredApiKey: " \t " };
     expect(toLlmStructuredPatch(draft)).toStrictEqual({
       llmStructuredBaseUrl: "https://api.deepseek.com/v1", llmStructuredModel: "deepseek-chat",
     });
-  });
-
-  it("sends a trimmed replacement key", () => {
-    expect(toLlmStructuredPatch({ ...draft, llmStructuredApiKey: " sk-example " }).llmStructuredApiKey)
-      .toBe("sk-example");
-  });
-
-  it("clears the key explicitly even with a replacement typed in", () => {
-    expect(toLlmStructuredPatch({ ...draft, llmStructuredApiKey: "sk-example" }, { clearApiKey: true })
-      .llmStructuredApiKey).toBeNull();
-  });
-
-  it("sends null for blank URL and model", () => {
-    expect(toLlmStructuredPatch(toLlmStructuredDraft())).toStrictEqual({
-      llmStructuredBaseUrl: null, llmStructuredModel: null,
-    });
-  });
-});
-
-describe("InstanceGeneralSettings structured LLM section", () => {
-  it.each([false, true])("renders the correct controls when key configured is %s", (configured) => {
-    queryData.mockReturnValueOnce({ censorUsernameInLogs: false, llmStructuredProviders: [
-      { id: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", apiKeyConfigured: configured },
-    ], llmStructuredDefaultProviderId: "openai" });
-    const html = renderToStaticMarkup(<InstanceGeneralSettings />);
-    const title = "Structured LLM connection (1-shot API)";
-    expect(html).toContain(title);
-    expect(html.indexOf(title)).toBeGreaterThan(html.indexOf("Judgment connection"));
-    expect(html).toContain("Base URL");
-    expect(html).toContain("Model");
-    expect(html).toContain('aria-pressed="true"');
-    const keyInput = html.match(/<input\b[^>]*\btype="password"[^>]*>/)?.[0];
-    expect(keyInput).toContain('type="password"');
-    expect(keyInput).toContain('autoComplete="new-password"');
-    expect(html).toContain("Save structured LLM providers");
-    expect(html.includes("Clear key")).toBe(configured);
-    expect(html).toContain(configured ? "키 등록됨" : "키 미등록");
-    expect(html).toContain("+ 공급자 추가");
-    expect(html).toMatch(/<button\b[^>]*>연결 테스트 · 모델 조회<\/button>/);
-    expect(html).toContain(configured ? "비워두면 기존 키 유지" : 'placeholder="sk-..."');
+    expect(toLlmStructuredPatch({ ...draft, llmStructuredApiKey: " sk-example " }).llmStructuredApiKey).toBe("sk-example");
+    expect(toLlmStructuredPatch({ ...draft, llmStructuredApiKey: "sk-example" }, { clearApiKey: true }).llmStructuredApiKey).toBeNull();
+    expect(toLlmStructuredPatch(toLlmStructuredDraft())).toStrictEqual({ llmStructuredBaseUrl: null, llmStructuredModel: null });
   });
 });
 
@@ -171,30 +128,6 @@ describe("structured provider drafts", () => {
       llmStructuredProviders: [{ id: "custom" }], llmStructuredDefaultProviderId: null,
     });
   });
-
-  it("keeps legacy settings visible without pretending the legacy key belongs to a new provider", () => {
-    queryData.mockReturnValueOnce({ censorUsernameInLogs: false, llmStructuredBaseUrl: "https://legacy.example/v1",
-      llmStructuredApiKeyConfigured: true });
-    const html = renderToStaticMarkup(<InstanceGeneralSettings />);
-    expect(html).toContain("https://legacy.example/v1");
-    expect(html).toContain("키 등록됨");
-    expect(html).not.toContain('type="password"');
-  });
-});
-
-describe("InstanceGeneralSettings judgment connection section", () => {
-  it("renders the two labeled inputs and the key-forwarding warning", () => {
-    const html = renderToStaticMarkup(<InstanceGeneralSettings />);
-
-    expect(html).toContain("Judgment connection");
-    expect(html).toContain('id="judgment-base-url"');
-    expect(html).toContain("Base URL");
-    expect(html).toContain('id="judgment-model-id"');
-    expect(html).toContain("Model id");
-    expect(html).toContain("TypeSafe 호환 판단 API 주소(비우면 기본값)");
-    expect(html).toContain("모델 미설정 시 정의별 모델 사용");
-    expect(html).toContain("서버 환경의 기존 판단 API 키가 이 주소로 전송됨");
-  });
 });
 
 describe("pi cli helpers", () => {
@@ -213,55 +146,133 @@ describe("pi cli helpers", () => {
   });
 });
 
-describe("InstanceGeneralSettings Multi-CLI manager section", () => {
-  it("renders multi-CLI runtimes, pi providers, and catalog state when installed", () => {
+describe("InstanceGeneralSettings tabs", () => {
+  it("defaults to the General tab with an accessible 4-tab tablist", () => {
+    const html = renderPage();
+    expect(html).toContain('role="tablist"');
+    expect(html.match(/role="tab"/g)).toHaveLength(4);
+    expect(html.match(/role="tabpanel"/g)).toHaveLength(1);
+    expect(html).toContain('aria-selected="true"');
+    expect(html).toContain("General settings summary");
+    expect(html).toContain("Censor username in logs");
+    expect(html).not.toContain("Judgment connection");
+    expect(html).not.toContain("Installed Coding Agent CLIs");
+    expect(html).not.toContain("구독 인증");
+  });
+
+  it("resolves ?tab= to the requested panel (unknown → general)", () => {
+    expect(resolveGeneralSettingsTab(null)).toBe("general");
+    expect(resolveGeneralSettingsTab("bogus")).toBe("general");
+    for (const tab of ["providers", "judgment", "runtimes"] as const) expect(resolveGeneralSettingsTab(tab)).toBe(tab);
+    const providers = renderPage("providers");
+    expect(providers).toContain("구독 인증 (Subscription / OAuth)");
+    expect(providers).toContain("API 인증 (API Key)");
+    expect(providers).not.toContain("Judgment connection");
+    expect(providers).not.toContain("Censor username in logs");
+    const runtimes = renderPage("runtimes");
+    expect(runtimes).toContain("멀티 CLI · 모델 런타임 관리");
+    expect(runtimes).toContain("Live Pi Model Catalog");
+    expect(runtimes).not.toContain("구독 인증");
+    expect(runtimes).not.toContain("Censor username in logs");
+  });
+});
+
+describe("InstanceGeneralSettings structured LLM section (providers tab)", () => {
+  it.each([false, true])("renders the correct controls when key configured is %s", (configured) => {
+    queryData.mockReturnValueOnce({ censorUsernameInLogs: false, llmStructuredProviders: [
+      { id: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", apiKeyConfigured: configured },
+    ], llmStructuredDefaultProviderId: "openai" });
+    const html = renderPage("providers");
+    expect(html).toContain("Structured LLM connection (1-shot API)");
+    expect(html).toContain("Base URL");
+    expect(html).toContain("Model");
+    expect(html).toContain('aria-pressed="true"');
+    const keyInput = html.match(/<input\b[^>]*\btype="password"[^>]*>/)?.[0];
+    expect(keyInput).toContain('type="password"');
+    expect(keyInput).toContain('autoComplete="new-password"');
+    expect(html).toContain("Save structured LLM providers");
+    expect(html.includes("Clear key")).toBe(configured);
+    expect(html).toContain(configured ? "키 등록됨" : "키 미등록");
+    expect(html).toContain("+ 공급자 추가");
+    expect(html).toMatch(/<button\b[^>]*>연결 테스트 · 모델 조회<\/button>/);
+    expect(html).toContain(configured ? "비워두면 기존 키 유지" : 'placeholder="sk-..."');
+  });
+
+  it("keeps legacy settings visible without pretending the legacy key belongs to a new provider", () => {
+    queryData.mockReturnValueOnce({ censorUsernameInLogs: false, llmStructuredBaseUrl: "https://legacy.example/v1",
+      llmStructuredApiKeyConfigured: true });
+    const html = renderPage("providers");
+    expect(html).toContain("https://legacy.example/v1");
+    expect(html).toContain("키 등록됨");
+    expect(html).not.toContain('type="password"');
+  });
+
+  it("renders pi auth.json providers with logout under 구독 인증", () => {
     piStatusData.mockReturnValueOnce({
-      installed: true,
-      executablePath: "/home/u/.bun/bin/pi",
-      version: "pi 9.9.9",
-      agentDir: "/home/u/.pi/agent",
+      installed: true, executablePath: "/home/u/.bun/bin/pi", version: "9.9.9", agentDir: "/home/u/.pi/agent",
       providers: [
-        { id: "zai", baseUrl: "https://api.z.ai/api/coding/paas/v4", api: "openai-completions", modelCount: 2, models: ["zai/glm-4.6", "zai/glm-4.5"], authConfigured: true },
+        { id: "zai", baseUrl: "https://api.z.ai/api/coding/paas/v4", api: "openai-completions", modelCount: 2, models: ["zai/glm-4.6"], authConfigured: true },
         { id: "solo", baseUrl: "https://solo.example/v1", modelCount: 1, models: ["solo/m1"], authConfigured: false },
       ],
-      catalogModels: ["solo/m1", "zai/glm-4.5", "zai/glm-4.6"],
-      runtimes: [
-        {
-          id: "pi",
-          name: "Pi CLI",
-          adapterType: "pi_local",
-          installed: true,
-          executablePath: "/home/u/.bun/bin/pi",
-          version: "9.9.9",
-          authConfigured: true,
-          authSource: "~/.pi/agent/auth.json",
-          modelCount: 3,
-          sampleModels: ["zai/glm-4.6"],
-          supportsSelfUpdate: true,
-          supportsModelUpdate: true,
-          supportsProviderSync: true,
-        },
-        {
-          id: "codex",
-          name: "OpenAI Codex",
-          adapterType: "codex_local",
-          installed: false,
-          executablePath: null,
-          version: null,
-          authConfigured: false,
-          authSource: null,
-          modelCount: 0,
-          sampleModels: [],
-          supportsSelfUpdate: true,
-          supportsModelUpdate: false,
-          supportsProviderSync: false,
-        },
-      ],
+      catalogModels: [], runtimes: [],
     });
-    const html = renderToStaticMarkup(<InstanceGeneralSettings />);
+    const html = renderPage("providers");
+    expect(html).toContain("로그인됨 (auth.json)");
+    expect(html).toContain("미인증");
+    expect(html).toContain("로그아웃");
+    expect(html).toContain("1 / 2 로그인됨");
+    expect(html).toContain("openai-completions");
+  });
+});
 
+describe("InstanceGeneralSettings judgment tab", () => {
+  it.each([false, true])("renders labeled inputs, key pill, and clear control (configured=%s)", (configured) => {
+    queryData.mockReturnValueOnce({ censorUsernameInLogs: false, judgmentApiKeyConfigured: configured } as GeneralSettings);
+    const html = renderPage("judgment");
+    expect(html).toContain("Judgment connection");
+    expect(html).toContain('id="judgment-base-url"');
+    expect(html).toContain("Base URL");
+    expect(html).toContain('id="judgment-model-id"');
+    expect(html).toContain("Model id");
+    expect(html).toContain("TypeSafe 호환 판단 API 주소(비우면 기본값)");
+    expect(html).toContain("모델 미설정 시 정의별 모델 사용");
+    expect(html).toContain("서버 환경의 기존 판단 API 키가 이 주소로 전송됨");
+    const keyInput = html.match(/<input\b[^>]*\bid="judgment-api-key"[^>]*>/)?.[0];
+    expect(keyInput).toContain('type="password"');
+    expect(keyInput).toContain(`placeholder="${configured ? "비워두면 기존 키 유지" : "서버 환경 키 사용"}"`);
+    expect(html).toContain(configured ? "키 등록됨" : "서버 환경 키");
+    expect(html.includes("Clear key")).toBe(configured);
+    expect(html).toContain("Save judgment connection");
+  });
+});
+
+describe("InstanceGeneralSettings Multi-CLI manager section (runtimes tab)", () => {
+  const snapshot = {
+    installed: true,
+    executablePath: "/home/u/.bun/bin/pi",
+    version: "pi 9.9.9",
+    agentDir: "/home/u/.pi/agent",
+    providers: [],
+    catalogModels: ["solo/m1", "zai/glm-4.5", "zai/glm-4.6"],
+    runtimes: [
+      {
+        id: "pi", name: "Pi CLI", adapterType: "pi_local", installed: true,
+        executablePath: "/home/u/.bun/bin/pi", version: "9.9.9", authConfigured: true,
+        authSource: "~/.pi/agent/auth.json", modelCount: 3, sampleModels: ["zai/glm-4.6"],
+        supportsSelfUpdate: true, supportsModelUpdate: true, supportsProviderSync: true,
+      },
+      {
+        id: "codex", name: "OpenAI Codex", adapterType: "codex_local", installed: false,
+        executablePath: null, version: null, authConfigured: false, authSource: null,
+        modelCount: 0, sampleModels: [], supportsSelfUpdate: true, supportsModelUpdate: false, supportsProviderSync: false,
+      },
+    ],
+  } as PiCliStatusSnapshot;
+
+  it("renders multi-CLI runtimes and the catalog when installed", () => {
+    piStatusData.mockReturnValueOnce(snapshot);
+    const html = renderPage("runtimes");
     expect(html).toContain("멀티 CLI · 모델 런타임 관리");
-    expect(html.indexOf("멀티 CLI · 모델 런타임 관리")).toBeGreaterThan(html.indexOf("Structured LLM connection"));
     expect(html).toContain("1 / 2 CLI 설치됨");
     expect(html).toContain("Installed Coding Agent CLIs");
     expect(html).toContain("OpenAI Codex");
@@ -274,68 +285,36 @@ describe("InstanceGeneralSettings Multi-CLI manager section", () => {
     expect(html).toContain("Pi CLI v9.9.9");
     expect(html).toContain("총 3개 모델");
     expect(html).toContain("/home/u/.bun/bin/pi");
-    expect(html).toContain("/home/u/.pi/agent");
     expect(html).toContain("Pi CLI ↔ 웹 설정 동기화");
     expect(html).toContain("모델 카탈로그 새로고침 (pi update --models)");
     expect(html).toContain("CLI 버전 업데이트 (pi update --self)");
-    expect(html).toContain("상태 새로고침");
-    expect(html).toContain("로그인됨 (auth.json)");
-    expect(html).toContain("미인증");
-    expect(html).toContain("로그아웃");
     expect(html).toContain("모델 검색");
     expect(html).toContain("zai/glm-4.6");
     expect(html).toContain("복사");
     expect(html).toContain("적용");
-    expect(html).toContain("openai-completions");
+    expect(html).toContain("인증됨");
   });
 
   it("shows the CLI 업데이트 button + 업데이트 가능 badge only when updateAvailable is true", () => {
     piStatusData.mockReturnValueOnce({
-      installed: true,
-      executablePath: "/home/u/.bun/bin/pi",
-      version: "9.9.9",
-      agentDir: "/home/u/.pi/agent",
-      providers: [],
+      ...snapshot,
       catalogModels: [],
       runtimes: [
         {
-          id: "codex",
-          name: "OpenAI Codex",
-          adapterType: "codex_local",
-          installed: true,
-          executablePath: "/usr/local/bin/codex",
-          version: "1.0.0",
-          authConfigured: false,
-          authSource: null,
-          modelCount: 0,
-          sampleModels: [],
-          supportsSelfUpdate: true,
-          supportsModelUpdate: false,
-          supportsProviderSync: false,
-          latestVersion: "1.0.1",
-          updateAvailable: true,
+          id: "codex", name: "OpenAI Codex", adapterType: "codex_local", installed: true,
+          executablePath: "/usr/local/bin/codex", version: "1.0.0", authConfigured: false, authSource: null,
+          modelCount: 0, sampleModels: [], supportsSelfUpdate: true, supportsModelUpdate: false, supportsProviderSync: false,
+          latestVersion: "1.0.1", updateAvailable: true,
         },
         {
-          id: "claude",
-          name: "Claude Code",
-          adapterType: "claude_local",
-          installed: true,
-          executablePath: "/usr/local/bin/claude",
-          version: "2.0.0",
-          authConfigured: false,
-          authSource: null,
-          modelCount: 0,
-          sampleModels: [],
-          supportsSelfUpdate: true,
-          supportsModelUpdate: false,
-          supportsProviderSync: false,
-          latestVersion: "2.0.0",
-          updateAvailable: false,
+          id: "claude", name: "Claude Code", adapterType: "claude_local", installed: true,
+          executablePath: "/usr/local/bin/claude", version: "2.0.0", authConfigured: false, authSource: null,
+          modelCount: 0, sampleModels: [], supportsSelfUpdate: true, supportsModelUpdate: false, supportsProviderSync: false,
+          latestVersion: "2.0.0", updateAvailable: false,
         },
       ],
     });
-    const html = renderToStaticMarkup(<InstanceGeneralSettings />);
-
+    const html = renderPage("runtimes");
     // updateAvailable: true → amber 배지 + 버전 전환 + CLI 업데이트 버튼
     expect(html).toContain("업데이트 가능");
     expect(html).toContain("v1.0.0 → v1.0.1");
@@ -349,17 +328,10 @@ describe("InstanceGeneralSettings Multi-CLI manager section", () => {
 
   it("renders the not-detected badge and no logout when pi is absent", () => {
     piStatusData.mockReturnValueOnce({
-      installed: false,
-      executablePath: null,
-      version: null,
-      agentDir: "/x/.pi/agent",
-      providers: [],
-      catalogModels: [],
-      runtimes: [],
-      error: "spawn pi ENOENT",
+      installed: false, executablePath: null, version: null, agentDir: "/x/.pi/agent",
+      providers: [], catalogModels: [], runtimes: [], error: "spawn pi ENOENT",
     });
-    const html = renderToStaticMarkup(<InstanceGeneralSettings />);
-
+    const html = renderPage("runtimes");
     expect(html).toContain("Pi CLI not detected");
     expect(html).toContain("총 0개 모델");
     expect(html).toContain("spawn pi ENOENT");
