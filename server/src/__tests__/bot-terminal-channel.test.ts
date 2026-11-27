@@ -335,6 +335,32 @@ describe("enterprise-bots router", () => {
     await request(app).post(`/api/terminals/not-a-uuid/heartbeat`).set("Authorization", `Bearer ${registered.body.token}`).expect(400);
   });
 
+  it("accepts the paperwork-bot heartbeat wire shape and rejects the legacy flat shape", async () => {
+    // Mirrors `build_enriched_heartbeat_payload` in crates/bot-runtime/src/client.rs.
+    const { app, terminals } = createApp(resolveFromHeader());
+    const reg = await request(app).post("/api/terminals/register").set("x-actor", OWNER)
+      .send({ companyId: COMPANY, kind: "personal_terminal", name: "rust-daemon" }).expect(201);
+    const terminalId = reg.body.terminal.id as string;
+    const post = (body: unknown) => request(app).post(`/api/terminals/${terminalId}/heartbeat`)
+      .set("Authorization", `Bearer ${reg.body.token as string}`).send(body);
+
+    // Legacy shape: telemetry flat on the body, string protocolVersion, null lastRttMs -> strict() rejects.
+    await post({ status: "online", hostname: null, os: "macos", arch: "aarch64", daemonVersion: "0.1.0",
+      protocolVersion: "1.0", uptimeSecs: 0, lastRttMs: null, activeChildren: 0 }).expect(400);
+
+    // First beat: no lastRttMs key at all (not null).
+    const identity = { os: "macos", arch: "aarch64", daemonVersion: "0.1.0", protocolVersion: 1 };
+    const first = await post({ telemetry: { ...identity, uptimeSecs: 0, activeChildren: 0 } }).expect(200);
+    expect(first.body.terminal.telemetry).toEqual({ ...identity, uptimeSecs: 0, activeChildren: 0 });
+    expect(first.body.terminal.healthHistory.at(-1)).toMatchObject({ ok: true, rttMs: null });
+
+    // Second beat: lastRttMs is a number and the persisted terminal carries it.
+    const second = await post({ telemetry: { ...identity, uptimeSecs: 15, activeChildren: 1, lastRttMs: 12 } }).expect(200);
+    expect(second.body.terminal.telemetry).toMatchObject({ protocolVersion: 1, uptimeSecs: 15, activeChildren: 1, lastRttMs: 12 });
+    expect(second.body.terminal.healthHistory.at(-1)).toMatchObject({ ok: true, rttMs: 12 });
+    expect([...terminals.values()][0].telemetry).toMatchObject({ protocolVersion: 1, lastRttMs: 12 });
+  });
+
   it("maps admin exec denial to 403 and revoke to 200 through the router", async () => {
     const { app, service } = createApp(resolveFromHeader());
     const { terminal } = await registerPersonalTerminal(service);
