@@ -184,15 +184,12 @@ export function createHeartbeatScheduler(opts: HeartbeatSchedulerOptions): Heart
     }
   };
 
-  // [startup recovery = interval recovery와 동일 계약] 시작 즉시 틱도 interval 틱과 같은
-  // 임계값(stale/execution-timeout/queued-stale)을 전달한다. 재시작 직후에도 queued-stale
-  // 회수(env PAPERCLIP_QUEUED_STALE_THRESHOLD_MS 포함)가 첫 틱에서 동작해 큐 정체가
-  // recoveryIntervalMs 만큼 지연되지 않는다. 무인자 호출은 opts 미전달 → reaper 내부에서
-  // threshold 0 처리(queued-stale 스킵)가 되어 이 계약을 만족하지 못한다.
-  const recover = async (staleThresholdMs: number) => {
+  // [startup recovery] 시작 즉시 틱은 staleThresholdMs 를 생략해(0) 죽은 PID 고아 런을
+  // 5분 대기 없이 즉시 회수하면서(process-loss 재기동 계약 보존), queuedStaleThresholdMs 는
+  // 함께 전달해 재시작 직후에도 큐 정체 회수가 동작하도록 한다.
+  const recover = async (staleThresholdMs?: number) => {
     await opts.heartbeat.reapOrphanedRuns({
-      staleThresholdMs,
-      activeExecutionTimeoutMs,
+      ...(staleThresholdMs !== undefined ? { staleThresholdMs, activeExecutionTimeoutMs } : {}),
       queuedStaleThresholdMs,
     });
     // [mission-runtime busy 고착 회수기] 백킹 런 없이 busy로 남은 미션 런타임을 회수한다.
@@ -219,7 +216,7 @@ export function createHeartbeatScheduler(opts: HeartbeatSchedulerOptions): Heart
       running = true;
       const generation = ++timerGeneration;
 
-      runAutomaticLane(generation, "recovery", () => recover(recoveryStaleThresholdMs));
+      runAutomaticLane(generation, "recovery", () => recover());
       timerHandle = setInterval(() => runAutomaticLane(generation, "timer", tickTimers), opts.timerIntervalMs);
       recoveryHandle = setInterval(
         () => runAutomaticLane(generation, "recovery", () => recover(recoveryStaleThresholdMs)),

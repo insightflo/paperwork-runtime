@@ -98,8 +98,6 @@ describe("PAPERCLIP_QUEUED_STALE_THRESHOLD_MS scheduler wiring", () => {
     delete process.env[PAPERCLIP_QUEUED_STALE_THRESHOLD_MS_ENV];
     const opts = await firstRecoveryCall(makeSchedulerHarness());
     expect(opts).toEqual({
-      staleThresholdMs: RECOVERY_STALE_MS,
-      activeExecutionTimeoutMs: 15 * 60 * 1000,
       queuedStaleThresholdMs: DEFAULT_QUEUED_STALE_MS,
     });
   });

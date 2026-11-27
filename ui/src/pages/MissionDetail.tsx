@@ -505,19 +505,14 @@ export function MissionDetail() {
           <span aria-hidden className="shrink-0 text-[#4a5670]">/</span><span className="shrink-0 font-mono tabular-nums">{missionId.slice(0, 8)}</span>
         </nav>
         <div className="min-w-0 flex-1 truncate">
-          {/* [RBAC] 상태 전이·속성 수정은 쓰기 권한(canWrite) 필요 — 읽기 전용은 표시만. */}
-          {canWrite ? (
-            <InlineEditor value={mission.title} onSave={(title) => updateMission.mutate({ title })}
-              className="text-sm font-semibold leading-tight text-slate-950 dark:text-[#eef2f8]" placeholder="Mission title" />
-          ) : (
-            <span className="text-sm font-semibold leading-tight text-slate-950 dark:text-[#eef2f8]" title="Member, admin, or owner role required to edit missions">{mission.title}</span>
-          )}
+          {canWrite
+            ? <InlineEditor value={mission.title} onSave={(title) => updateMission.mutate({ title })} className="text-sm font-semibold leading-tight text-slate-950 dark:text-[#eef2f8]" placeholder="Mission title" />
+            : <span className="text-sm font-semibold leading-tight text-slate-950 dark:text-[#eef2f8]" title="Member, admin, or owner role required to edit missions">{mission.title}</span>}
         </div>
         <StatusPill status={mission.status} />
         {primaryTransition && (
           <Button size="sm" className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs font-semibold text-[#f8fafc] hover:bg-[#1d4ed8]"
-            onClick={() => updateMission.mutate({ status: primaryTransition.to })} disabled={!canWrite || updateMission.isPending}
-            title={!canWrite ? "Member, admin, or owner role required to change mission status" : undefined}>
+            onClick={() => updateMission.mutate({ status: primaryTransition.to })} disabled={!canWrite || updateMission.isPending} title={!canWrite ? "Member, admin, or owner role required to change mission status" : undefined}>
             {primaryTransition.label}
           </Button>
         )}
@@ -552,19 +547,9 @@ export function MissionDetail() {
       <section className="tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] px-3 py-2">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Description</p>
         <div className="mt-1.5 max-h-[32dvh] min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
-          {canWrite ? (
-            <InlineEditor
-              value={mission.description ?? ""}
-              onSave={(description) => updateMission.mutate({ description })}
-              className="text-sm leading-relaxed max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
-              placeholder="Add a description..."
-              multiline
-            />
-          ) : (
-            <p className="text-sm leading-relaxed max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-slate-950 dark:text-[#eef2f8]" title="Member, admin, or owner role required to edit missions">
-              {mission.description || "—"}
-            </p>
-          )}
+          {canWrite
+            ? <InlineEditor value={mission.description ?? ""} onSave={(description) => updateMission.mutate({ description })} className="text-sm leading-relaxed max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere]" placeholder="Add a description..." multiline />
+            : <p className="text-sm leading-relaxed max-w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-slate-950 dark:text-[#eef2f8]" title="Member, admin, or owner role required to edit missions">{mission.description || "—"}</p>}
         </div>
       </section>
 
