@@ -57,3 +57,27 @@ describe("buildCommandCodeLocalConfig", () => {
     });
   });
 });
+
+describe("buildCommandCodeLocalConfig maxTurns", () => {
+  it("maps a positive integer maxTurns into adapterConfig", () => {
+    const ac = buildCommandCodeLocalConfig(baseValues({ maxTurns: 25 }));
+    expect(ac.maxTurns).toBe(25);
+  });
+
+  it("floors a positive fractional maxTurns to an integer", () => {
+    const ac = buildCommandCodeLocalConfig(baseValues({ maxTurns: 12.9 }));
+    expect(ac.maxTurns).toBe(12);
+  });
+
+  it("omits maxTurns when unset", () => {
+    const ac = buildCommandCodeLocalConfig(baseValues({}));
+    expect(ac).not.toHaveProperty("maxTurns");
+  });
+
+  it("omits maxTurns for zero, negative, and non-finite values", () => {
+    for (const invalid of [0, -3, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const ac = buildCommandCodeLocalConfig(baseValues({ maxTurns: invalid }));
+      expect(ac).not.toHaveProperty("maxTurns");
+    }
+  });
+});

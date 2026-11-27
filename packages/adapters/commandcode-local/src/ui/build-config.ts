@@ -1,11 +1,5 @@
 import type { CreateConfigValues } from "@paperclipai/adapter-utils";
 
-/**
- * Create-form carrier for the Command Code per-run turn cap (adapterConfig.maxTurns).
- * Local extension until CreateConfigValues grows a shared optional key.
- */
-type CommandCodeCreateValues = CreateConfigValues & { maxTurns?: number };
-
 /** Parse the comma-separated UI extraArgs string into a flag array. */
 function parseCommaArgs(value: string): string[] {
   return value
@@ -66,7 +60,7 @@ export function buildCommandCodeLocalConfig(v: CreateConfigValues): Record<strin
 
   // Optional per-run turn cap read by execute.ts (config.maxTurns). 0/absent
   // keeps the CLI default (no --max-turns flag), matching the adapter's default of 0.
-  const maxTurns = Number((v as CommandCodeCreateValues).maxTurns ?? 0);
+  const maxTurns = Number(v.maxTurns ?? 0);
   if (Number.isFinite(maxTurns) && maxTurns > 0) ac.maxTurns = Math.floor(maxTurns);
 
   // Command Code runs until the CLI exits naturally; keep the hard timeout off.
