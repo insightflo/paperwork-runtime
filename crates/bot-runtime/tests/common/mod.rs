@@ -3,7 +3,6 @@
 //! Every invocation runs the real binary against an isolated temporary runtime directory
 //! (`XDG_RUNTIME_DIR`) with all token environment variables removed, so tests never depend on a
 //! developer shell, a running daemon, or a reachable server.
-#![allow(dead_code)]
 
 use serde_json::Value;
 use std::fs;
