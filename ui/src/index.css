@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 @custom-variant dark (&:is(.dark *));
+/* Paperwork typography: warm humanist sans stack for Korean + Latin. */
+@theme {
+  --font-sans: "Pretendard Variable", "Pretendard", "Apple SD Gothic Neo", "Inter", system-ui, sans-serif;
+}
 @theme inline {
   --color-background: var(--background); --color-foreground: var(--foreground); --color-card: var(--card);
   --color-card-foreground: var(--card-foreground); --color-popover: var(--popover); --color-popover-foreground: var(--popover-foreground);
@@ -16,37 +20,37 @@
   --radius-lg: 12px; --radius-xl: 14px;
 }
 :root {
-  color-scheme: light; --radius: 0.625rem; --background: oklch(0.99 0 0); --foreground: oklch(0.145 0 0); --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0); --popover: oklch(1 0 0); --popover-foreground: oklch(0.145 0 0); --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0); --secondary: oklch(0.968 0 0); --secondary-foreground: oklch(0.205 0 0); --muted: oklch(0.968 0 0);
-  --muted-foreground: oklch(0.49 0 0); --accent: oklch(0.96 0 0); --accent-foreground: oklch(0.205 0 0); --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0); --border: oklch(0.91 0 0); --input: oklch(0.91 0 0); --ring: oklch(0.62 0.16 255);
-  --chart-1: oklch(0.56 0.2 255); --chart-2: oklch(0.58 0.16 140); --chart-3: oklch(0.68 0.17 75); --chart-4: oklch(0.56 0.19 295);
-  --chart-5: oklch(0.58 0.22 18); --sidebar: #f8fafc; --sidebar-foreground: #0f172a; --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0); --sidebar-accent: #eef2f7; --sidebar-accent-foreground: #0f172a;
-  --sidebar-border: rgba(15, 23, 42, 0.09); --sidebar-ring: #2563eb;
-  --pw-canvas: #f8fafc; --pw-rail: #f1f5f9; --pw-sidebar: #f8fafc; --pw-panel: #ffffff; --pw-card: #ffffff; --pw-card-elevated: #f8fafc;
-  --pw-hairline: rgba(15, 23, 42, 0.09); --pw-hairline-strong: rgba(15, 23, 42, 0.16); --pw-hairline-width: 1px;
-  --pw-specular: rgba(255, 255, 255, 0.9); --pw-ink: #0f172a; --pw-muted: #64748b;
-  --pw-lime: #4d7c0f; --pw-lime-soft: rgba(101, 163, 13, 0.12); --pw-lime-glow: rgba(101, 163, 13, 0.25);
-  --pw-cobalt: #2563eb; --pw-cobalt-soft: rgba(37, 99, 235, 0.1); --pw-cobalt-glow: rgba(37, 99, 235, 0.22);
-  --pw-emerald: #15803d; --pw-amber: #b45309; --pw-amber-soft: rgba(217, 119, 6, 0.12);
-  --pw-crimson: #e11d48; --pw-crimson-soft: rgba(225, 29, 72, 0.1);
+  color-scheme: light; --radius: 0.625rem; --background: #f3eee4; --foreground: #1f1b16; --card: #fbf8f1;
+  --card-foreground: #1f1b16; --popover: #fbf8f1; --popover-foreground: #1f1b16; --primary: #9a3b2e;
+  --primary-foreground: #fbf8f1; --secondary: #ebe5d8; --secondary-foreground: #1f1b16; --muted: #ebe5d8;
+  --muted-foreground: #6b6358; --accent: #ebe5d8; --accent-foreground: #1f1b16; --destructive: #b91c1c;
+  --destructive-foreground: #fbf8f1; --border: rgba(31, 27, 22, 0.12); --input: rgba(31, 27, 22, 0.16); --ring: #9a3b2e;
+  --chart-1: #9a3b2e; --chart-2: #4f7d5a; --chart-3: #a16207; --chart-4: #7c5a3a; --chart-5: #b91c1c;
+  --sidebar: #efe9dd; --sidebar-foreground: #1f1b16; --sidebar-primary: #9a3b2e;
+  --sidebar-primary-foreground: #fbf8f1; --sidebar-accent: #ebe5d8; --sidebar-accent-foreground: #1f1b16;
+  --sidebar-border: rgba(31, 27, 22, 0.12); --sidebar-ring: #9a3b2e;
+  --pw-canvas: #f3eee4; --pw-rail: #ebe5d8; --pw-sidebar: #efe9dd; --pw-panel: #fbf8f1; --pw-card: #fbf8f1; --pw-card-elevated: #fdfbf6;
+  --pw-hairline: rgba(31, 27, 22, 0.12); --pw-hairline-strong: rgba(31, 27, 22, 0.24); --pw-hairline-width: 1px;
+  --pw-specular: rgba(255, 255, 255, 0.55); --pw-ink: #1f1b16; --pw-muted: #6b6358;
+  --pw-lime: #4f7d5a; --pw-lime-soft: rgba(79, 125, 90, 0.12); --pw-lime-glow: rgba(79, 125, 90, 0.22);
+  --pw-cobalt: #9a3b2e; --pw-cobalt-soft: rgba(154, 59, 46, 0.1); --pw-cobalt-glow: rgba(154, 59, 46, 0.22);
+  --pw-emerald: #4f7d5a; --pw-amber: #a16207; --pw-amber-soft: rgba(161, 98, 7, 0.12);
+  --pw-crimson: #b91c1c; --pw-crimson-soft: rgba(185, 28, 28, 0.1);
 }
 .dark {
-  --background: #07090d; --foreground: #eef2f8; --card: #0d1118; --card-foreground: #eef2f8; --popover: #111621; --popover-foreground: #eef2f8;
-  --primary: #2563eb; --primary-foreground: #f8fafc; --secondary: #111621; --secondary-foreground: #eef2f8; --muted: #111621;
-  --muted-foreground: #8f9db3; --accent: #171f30; --accent-foreground: #eef2f8; --destructive: #f43f5e; --destructive-foreground: #fff1f2;
-  --border: rgba(255, 255, 255, 0.08); --input: rgba(255, 255, 255, 0.1); --ring: #60a5fa; --chart-1: #60a5fa; --chart-2: #a3e635; --chart-3: #f59e0b; --chart-4: #a78bfa;
-  --chart-5: #f43f5e; --sidebar: #0b0f17; --sidebar-foreground: #eef2f8; --sidebar-primary: #2563eb; --sidebar-primary-foreground: #f8fafc;
-  --sidebar-accent: #121826; --sidebar-accent-foreground: #eef2f8; --sidebar-border: rgba(255, 255, 255, 0.065); --sidebar-ring: #60a5fa;
-  --pw-canvas: #07090d; --pw-rail: #090c12; --pw-sidebar: #0b0f17; --pw-panel: #0d1118; --pw-card: #0d1118; --pw-card-elevated: #111621;
-  --pw-hairline: rgba(255, 255, 255, 0.07); --pw-hairline-strong: rgba(255, 255, 255, 0.13); --pw-hairline-width: 1px;
-  --pw-specular: rgba(255, 255, 255, 0.07); --pw-ink: #eef2f8; --pw-muted: #8f9db3;
-  --pw-lime: #a3e635; --pw-lime-soft: rgba(163, 230, 53, 0.14); --pw-lime-glow: rgba(163, 230, 53, 0.42);
-  --pw-cobalt: #60a5fa; --pw-cobalt-soft: rgba(96, 165, 250, 0.14); --pw-cobalt-glow: rgba(96, 165, 250, 0.35);
-  --pw-emerald: #a3e635; --pw-amber: #f59e0b; --pw-amber-soft: rgba(245, 158, 11, 0.15);
-  --pw-crimson: #f43f5e; --pw-crimson-soft: rgba(244, 63, 94, 0.14);
+  --background: #171412; --foreground: #efe9dd; --card: #1f1b18; --card-foreground: #efe9dd; --popover: #1f1b18; --popover-foreground: #efe9dd;
+  --primary: #d9705f; --primary-foreground: #171412; --secondary: #262019; --secondary-foreground: #efe9dd; --muted: #262019;
+  --muted-foreground: #a39b8f; --accent: #262019; --accent-foreground: #efe9dd; --destructive: #e2574a; --destructive-foreground: #fff5f3;
+  --border: rgba(239, 233, 221, 0.1); --input: rgba(239, 233, 221, 0.14); --ring: #d9705f; --chart-1: #d9705f; --chart-2: #8fbf9a; --chart-3: #d2a648; --chart-4: #c9a27a;
+  --chart-5: #e2574a; --sidebar: #141110; --sidebar-foreground: #efe9dd; --sidebar-primary: #d9705f; --sidebar-primary-foreground: #171412;
+  --sidebar-accent: #262019; --sidebar-accent-foreground: #efe9dd; --sidebar-border: rgba(239, 233, 221, 0.1); --sidebar-ring: #d9705f;
+  --pw-canvas: #171412; --pw-rail: #12100e; --pw-sidebar: #141110; --pw-panel: #1f1b18; --pw-card: #1f1b18; --pw-card-elevated: #262019;
+  --pw-hairline: rgba(239, 233, 221, 0.1); --pw-hairline-strong: rgba(239, 233, 221, 0.2); --pw-hairline-width: 1px;
+  --pw-specular: rgba(255, 255, 255, 0.04); --pw-ink: #efe9dd; --pw-muted: #a39b8f;
+  --pw-lime: #8fbf9a; --pw-lime-soft: rgba(143, 191, 154, 0.14); --pw-lime-glow: rgba(143, 191, 154, 0.28);
+  --pw-cobalt: #d9705f; --pw-cobalt-soft: rgba(217, 112, 95, 0.14); --pw-cobalt-glow: rgba(217, 112, 95, 0.3);
+  --pw-emerald: #8fbf9a; --pw-amber: #d2a648; --pw-amber-soft: rgba(210, 166, 72, 0.15);
+  --pw-crimson: #e2574a; --pw-crimson-soft: rgba(226, 87, 74, 0.14);
 }
 @layer base {
   * { @apply border-border; }
@@ -70,7 +74,7 @@
 .scrollbar-auto-hide::-webkit-scrollbar-track { background: transparent !important; }
 .scrollbar-auto-hide::-webkit-scrollbar-thumb { background: transparent !important; }
 .scrollbar-auto-hide:hover::-webkit-scrollbar-track { background: transparent !important; }
-.scrollbar-auto-hide:hover::-webkit-scrollbar-thumb { background: rgba(15, 23, 42, 0.18) !important; border-radius: 999px !important; }
+.scrollbar-auto-hide:hover::-webkit-scrollbar-thumb { background: rgba(31, 27, 22, 0.18) !important; border-radius: 999px !important; }
 .dark .scrollbar-auto-hide:hover::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14) !important; }
 .dark .scrollbar-auto-hide:hover::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.24) !important; }
 /* Combo 1 Tactile Telemetry Cockpit primitives (components layer so utilities can still override). */
@@ -82,26 +86,22 @@
   .pw-tabular {
     font-variant-numeric: tabular-nums;
   }
+  /* Live indicator: calm sage dot, no neon glow. */
   .pw-live-dot {
     display: inline-block;
     width: 6px;
     height: 6px;
     border-radius: 9999px;
     background: var(--pw-lime);
-    box-shadow: 0 0 8px var(--pw-lime-glow);
-    animation: pw-live-pulse 1.8s ease-in-out infinite;
+    animation: pw-live-pulse 2.4s ease-in-out infinite;
     flex-shrink: 0;
   }
-  .tactile-card {
-    background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-    border: var(--pw-hairline-width, 1px) solid rgba(15, 23, 42, 0.09);
+  /* Crisp 1px hairline paper sheet; `.pw-sheet` is an alias of `.tactile-card`. */
+  .tactile-card, .pw-sheet {
+    background: var(--pw-card);
+    border: var(--pw-hairline-width, 1px) solid var(--pw-hairline);
     border-radius: var(--radius-lg, 12px);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 1px 3px rgba(15, 23, 42, 0.06), 0 6px 18px rgba(15, 23, 42, 0.03);
-  }
-  .dark .tactile-card {
-    background: linear-gradient(180deg, #121824 0%, #0b0f17 100%);
-    border-color: rgba(255, 255, 255, 0.08);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), 0 10px 28px rgba(0, 0, 0, 0.42);
+    box-shadow: 0 1px 0 color-mix(in oklab, var(--pw-ink) 4%, transparent);
   }
   .tactile-card-interactive {
     transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
@@ -109,65 +109,36 @@
   .tactile-card-interactive:hover {
     border-color: var(--pw-hairline-strong);
   }
-  .cockpit-shell {
+  .cockpit-shell, main.cockpit-canvas-sheet {
     background-color: var(--pw-canvas);
   }
-  .dark .cockpit-shell {
-    background-color: #07090d;
-  }
-  main.cockpit-canvas-sheet {
-    background-color: var(--pw-canvas);
-  }
-  .dark main.cockpit-canvas-sheet {
-    background-color: #07090d;
-    background-image:
-      radial-gradient(640px 280px at 24% 0%, rgba(163, 230, 53, 0.045), transparent 70%),
-      radial-gradient(560px 260px at 82% 0%, rgba(96, 165, 250, 0.04), transparent 72%);
-  }
-  /* Calm, cool-toned border-first sidebar active styling (aligned with SidebarNavItem) */
+  /* Border-first sidebar active styling (aligned with SidebarNavItem) */
   .cockpit-sidebar-nav a[aria-current="page"] {
-    background-color: rgba(241, 245, 249, 0.9);
-    border-color: rgba(203, 213, 225, 0.9);
-    color: #0f172a;
-  }
-  .dark .cockpit-sidebar-nav a[aria-current="page"] {
-    background-color: rgba(255, 255, 255, 0.04);
-    border-color: rgba(255, 255, 255, 0.15);
-    color: #f1f5f9;
-  }
-  /* Refine 48px command header for both light-mode legibility and dark obsidian translucency. */
-  :root:not(.dark) .cockpit-header-slot > div {
-    background-color: rgba(255, 255, 255, 0.9);
-    border-bottom-color: var(--pw-hairline);
+    background-color: color-mix(in oklab, var(--pw-ink) 6%, transparent);
+    border-color: var(--pw-hairline-strong);
     color: var(--pw-ink);
   }
-  :root:not(.dark) .cockpit-header-slot button[aria-keyshortcuts="Meta+K"] {
-    background-color: #f8fafc;
-    border-color: rgba(15, 23, 42, 0.12);
-    color: #475569;
-  }
-  :root:not(.dark) .cockpit-header-slot button[aria-keyshortcuts="Meta+K"]:hover {
-    background-color: #f1f5f9;
-    border-color: rgba(15, 23, 42, 0.22);
-    color: #0f172a;
-  }
-  :root:not(.dark) .cockpit-header-slot button[aria-keyshortcuts="Meta+K"] kbd {
-    background-color: #ffffff;
-    border-color: rgba(15, 23, 42, 0.14);
-    color: #475569;
-  }
-  .dark .cockpit-header-slot > div {
-    background-color: rgba(9, 12, 18, 0.88);
-    border-bottom-color: rgba(255, 255, 255, 0.065);
+  /* 48px command header: translucent sheet with hairline bottom border. */
+  .cockpit-header-slot > div {
+    background-color: color-mix(in oklab, var(--pw-card) 90%, transparent);
+    border-bottom-color: var(--pw-hairline);
+    color: var(--pw-ink);
     backdrop-filter: blur(12px);
   }
-  .dark .cockpit-header-slot button[aria-keyshortcuts="Meta+K"] {
-    background: linear-gradient(180deg, #131926, #0d111a);
-    border-color: rgba(255, 255, 255, 0.08);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), 0 2px 8px rgba(0, 0, 0, 0.28);
+  .cockpit-header-slot button[aria-keyshortcuts="Meta+K"] {
+    background-color: var(--pw-panel);
+    border-color: var(--pw-hairline);
+    color: var(--pw-muted);
   }
-  .dark .cockpit-header-slot button[aria-keyshortcuts="Meta+K"]:hover {
-    border-color: rgba(255, 255, 255, 0.15);
+  .cockpit-header-slot button[aria-keyshortcuts="Meta+K"]:hover {
+    background-color: var(--pw-rail);
+    border-color: var(--pw-hairline-strong);
+    color: var(--pw-ink);
+  }
+  .cockpit-header-slot button[aria-keyshortcuts="Meta+K"] kbd {
+    background-color: var(--pw-card);
+    border-color: var(--pw-hairline);
+    color: var(--pw-muted);
   }
   .cockpit-strip {
     display: flex;
