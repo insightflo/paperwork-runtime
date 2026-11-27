@@ -93,7 +93,19 @@ async function exactLaterRetry(tx: OwnerHumanTx, current: OwnerHumanCurrentRecor
     ? target ? target.kind === "issue" && target.issueId === scope.issueId
       : payload?.sourceIssueId === scope.issueId
     : target?.kind === "tool_step" && sameToolTarget(target, scope));
-  if (!exact) return false;
+  if (!exact) {
+    // [RES-12852] recoveryNeeded deliberately survives card resolution (settlement owns
+    // closure), so an answered request must not pin this wait forever. Once the linked
+    // operator card is resolved, a strictly later structured non-human owner decision
+    // supersedes the wait; a pending (unanswered) request keeps holding it.
+    if (submission.decision === "request_input" || submission.decision === "escalate") return false;
+    const cardKey = current.lifetime.identityMode === "legacy_exact"
+      ? `moi1:${current.lifetime.decisionEventId}` : `moi2:${current.lifetime.lifetimeId}`;
+    const [card] = await tx.select({ status: operatorDecisions.status }).from(operatorDecisions).where(and(
+      eq(operatorDecisions.companyId, current.lifetime.scope.companyId),
+      eq(operatorDecisions.requestKey, cardKey)));
+    return card?.status === "resolved";
+  }
   const [anchor] = await tx.select({ originKind: issues.originKind, originId: issues.originId }).from(issues).where(and(
     eq(issues.id, current.lifetime.anchorIssueId), eq(issues.companyId, context.companyId),
     eq(issues.missionId, context.missionId)));
