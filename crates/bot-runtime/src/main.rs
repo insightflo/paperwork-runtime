@@ -21,6 +21,9 @@
 //! - `init --server <url> --name <endpoint> [--folder <path>...] [--config <path>]`:
 //!   Validates the server URL, writes the `0600` endpoint config JSON, and prints a JSON summary.
 //! - `detect-clis`: Prints a JSON array of detected local AI-coding CLIs on the process `PATH`.
+//! - `endpoint-doctor [--config <path>] [--json]`: Checks local endpoint readiness;
+//!   defaults to `~/.paperwork/endpoint.json`, prints a human summary unless `--json`,
+//!   and exits 0 when ready or 1 otherwise. The outbox is next to the config, in `outbox/`.
 //! - `render-service --os <macos|linux|windows> --server <url> --name <endpoint> [--binary <path>] [--config <path>]`:
 //!   Renders the OS service unit (LaunchAgent plist / systemd user unit / Windows scheduled-task
 //!   script) as raw text on stdout for direct redirection into the service file.
@@ -35,6 +38,7 @@ use paperwork_bot_runtime::control_sock::{
     default_control_socket_dir, default_control_socket_path, ensure_and_validate_socket_dir,
     send_control_command, ControlCommand,
 };
+use paperwork_bot_runtime::endpoint_doctor::{run_endpoint_doctor, DoctorInput, DoctorReport};
 #[cfg(unix)]
 use paperwork_bot_runtime::executor::supervisor_self_test;
 use paperwork_bot_runtime::governance::{evaluate_policy, PolicyEvalRequest};
@@ -403,6 +407,49 @@ fn cmd_detect_clis() -> Result<Value, String> {
     Ok(Value::Array(detected))
 }
 
+fn cmd_endpoint_doctor(args: &[String]) -> Result<DoctorReport, String> {
+    #[derive(serde::Deserialize)]
+    struct Config {
+        server_url: String,
+        endpoint_name: String,
+        allowed_folders: Vec<String>,
+    }
+    let mut config_path = None;
+    let mut flags = args.iter();
+    while let Some(flag) = flags.next() {
+        match flag.as_str() {
+            "--json" => {}
+            "--config" if config_path.is_none() => {
+                let path = flags.next()
+                    .filter(|p| !p.is_empty() && !p.starts_with("--"))
+                    .ok_or("--config requires a path")?;
+                config_path = Some(PathBuf::from(path));
+            }
+            _ => return Err(format!("invalid endpoint-doctor flag {flag:?}")),
+        }
+    }
+    let config_path = config_path.map(Ok).unwrap_or_else(default_endpoint_config_path)?;
+    let bytes = std::fs::read(&config_path).map_err(|e| format!("read endpoint config: {e}"))?;
+    let config: Config = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("invalid endpoint config: {e}"))?;
+    if config.endpoint_name.trim().is_empty() {
+        return Err("endpoint name must not be empty".into());
+    }
+    let outbox_dir = config_path.parent()
+        .unwrap_or(std::path::Path::new(".")).join("outbox");
+    let detected_clis = detect_local_clis().into_iter()
+        .filter(|cli| cli.available).map(|cli| cli.id.to_string()).collect();
+    Ok(run_endpoint_doctor(&DoctorInput {
+        server_url: config.server_url,
+        config_path,
+        // The installer stores plain paths without grant modes; check directory access only.
+        allowed_folders: config.allowed_folders.into_iter()
+            .map(|p| (p.into(), "ro".into())).collect(),
+        outbox_dir,
+        detected_clis,
+    }))
+}
+
 fn cmd_init(args: &[String]) -> Result<Value, String> {
     let server = validate_server_url(&require_flag(args, "--server")?)?;
     let name = require_flag(args, "--name")?;
@@ -461,7 +508,7 @@ fn cmd_render_service(args: &[String]) -> Result<String, String> {
 }
 
 fn usage() -> &'static str {
-    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound|ctl|doctor|init|detect-clis|render-service> [flags]"
+    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound|ctl|doctor|init|detect-clis|render-service|endpoint-doctor> [flags]"
 }
 
 fn run(args: &[String]) -> Result<Value, String> {
@@ -486,8 +533,24 @@ fn run(args: &[String]) -> Result<Value, String> {
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("endpoint-doctor") {
+        match cmd_endpoint_doctor(&args[1..]) {
+            Ok(report) => {
+                if args[1..].iter().any(|a| a == "--json") {
+                    println!("{}", serde_json::to_string(&report).expect("serialize doctor report"));
+                } else {
+                    print!("{}", report.format_human());
+                }
+                process::exit(if report.ready { 0 } else { 1 });
+            }
+            Err(e) => {
+                eprintln!("{}", json!({ "error": redact_secrets(&e) }));
+                process::exit(1);
+            }
+        }
+    }
     // `render-service` streams the raw OS unit text to stdout (for shell redirection into the
-    // service file); every other subcommand prints a single JSON value.
+    // service file); remaining subcommands print a single JSON value.
     if args.first().map(String::as_str) == Some("render-service") {
         match cmd_render_service(&args[1..]) {
             Ok(text) => print!("{text}"),

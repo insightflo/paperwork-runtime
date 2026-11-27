@@ -10,9 +10,19 @@
 //! - [`service_install`]: Personal endpoint config validation/writing and OS service-unit renderers.
 //! - [`local_tools`]: Fail-closed local file/shell/CLI primitives and local CLI auto-discovery.
 
+// Preserve crate-qualified imports in endpoint modules also included by standalone tests.
+extern crate self as paperwork_bot_runtime;
+
 pub mod client;
 #[cfg(unix)]
 pub mod control_sock;
+pub mod endpoint_audit;
+pub mod endpoint_daemon;
+pub mod endpoint_dispatch;
+pub mod endpoint_doctor;
+pub mod endpoint_pairing;
+pub mod endpoint_protocol;
+pub mod endpoint_sync;
 #[cfg(unix)]
 pub mod executor;
 pub mod governance;
