@@ -28,6 +28,10 @@
 //!   Prints a sorted workspace snapshot as JSON, using the default watch limits unless overridden.
 //! - `endpoint-audit --log <path> [--limit <n>]`:
 //!   Prints the latest redacted audit entries as a JSON array (default 20, oldest first).
+//! - `endpoint-pair --server <url> --code <6char> [--cred <path>] [--folder <path[:ro|rw]>]`:
+//!   Exchanges a pairing code for a device credential via `POST /api/endpoints/pair`, stores
+//!   the hashed credential atomically with `0600`, and prints a JSON summary. The raw device
+//!   token is never printed or persisted.
 //! - `render-service --os <macos|linux|windows> --server <url> --name <endpoint> [--binary <path>] [--config <path>]`:
 //!   Renders the OS service unit (LaunchAgent plist / systemd user unit / Windows scheduled-task
 //!   script) as raw text on stdout for direct redirection into the service file.
@@ -44,6 +48,13 @@ use paperwork_bot_runtime::control_sock::{
 };
 use paperwork_bot_runtime::endpoint_audit::{redact_sensitive, AuditLogger};
 use paperwork_bot_runtime::endpoint_doctor::{run_endpoint_doctor, DoctorInput, DoctorReport};
+use paperwork_bot_runtime::endpoint_http::{parse_json_response, post_json, HttpTransportConfig};
+use paperwork_bot_runtime::endpoint_pairing::{
+    normalize_pairing_code, write_credentials_atomic, DeviceCredential,
+};
+use paperwork_bot_runtime::endpoint_protocol::{
+    DetectedCli as WireDetectedCli, EndpointUrls, PairRequest, PairResponse,
+};
 use paperwork_bot_runtime::endpoint_watch::{scan_workspace, WatchLimits};
 #[cfg(unix)]
 use paperwork_bot_runtime::executor::supervisor_self_test;
@@ -53,7 +64,9 @@ use paperwork_bot_runtime::service_install::{
     render_linux_systemd_user_unit, render_macos_launch_agent_plist, render_windows_task_script,
     validate_server_url, write_endpoint_config, EndpointInitConfig,
 };
-use paperwork_bot_runtime::token::{redact_secrets, validate_token_prefix, verify_token_sha256};
+use paperwork_bot_runtime::token::{
+    redact_secrets, sha256_hex, validate_token_prefix, verify_token_sha256,
+};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::env;
@@ -464,6 +477,99 @@ fn cmd_endpoint_audit(args: &[String]) -> Result<Value, String> {
     serde_json::to_value(entries).map_err(|e| format!("failed to serialize audit entries: {e}"))
 }
 
+/// Client-side re-pairing horizon: the issued device token is long-lived, so this default
+/// only drives `DeviceCredential::is_expired` refresh checks, not server-side revocation.
+const DEFAULT_CREDENTIAL_TTL_MS: u64 = 90 * 24 * 60 * 60 * 1000;
+
+/// Default pairing credential location under the user home (`$HOME` / `$USERPROFILE`).
+fn default_pairing_credentials_path() -> Result<PathBuf, String> {
+    let home = env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .ok_or_else(|| "cannot determine home directory; pass --cred <path>".to_string())?;
+    Ok(PathBuf::from(home).join(".paperwork").join("credentials.json"))
+}
+
+/// Validates one `--folder path[:ro|rw]` value. The verbatim string is stored in the
+/// credential's `allowedFolders`; a lone `X:` prefix (Windows drive) is a plain path.
+fn parse_folder_grant(raw: &str) -> Result<String, String> {
+    match raw.rsplit_once(':') {
+        Some((path, mode)) if (mode == "ro" || mode == "rw") && !path.is_empty() => {
+            Ok(raw.to_string())
+        }
+        Some((drive, _)) if drive.len() == 1 && raw.as_bytes().get(1) == Some(&b':') => {
+            Ok(raw.to_string())
+        }
+        Some(_) => Err(format!("invalid --folder {raw:?}; expected path[:ro|rw]")),
+        None => Ok(raw.to_string()),
+    }
+}
+
+fn cmd_endpoint_pair(args: &[String]) -> Result<Value, String> {
+    let server = require_flag(args, "--server")?;
+    // Validate the human-entered code first: invalid codes fail closed before any URL
+    // construction, CLI probing, or network I/O.
+    let code = normalize_pairing_code(&require_flag(args, "--code")?)?;
+    let cred_path = match find_flag(args, "--cred") {
+        Some(path) if !path.trim().is_empty() => PathBuf::from(path),
+        Some(_) => return Err("--cred requires a path".to_string()),
+        None => default_pairing_credentials_path()?,
+    };
+    let allowed_folders = collect_flags(args, "--folder")
+        .into_iter()
+        .map(|raw| parse_folder_grant(&raw))
+        .collect::<Result<Vec<_>, _>>()?;
+    let pair_url = EndpointUrls::new(&server)?.pair_url();
+    let detected_clis = detect_local_clis()
+        .into_iter()
+        .map(|cli| WireDetectedCli::Details {
+            id: cli.id.to_string(),
+            binary: cli.binary.to_string(),
+            path: cli.path.map(|p| p.to_string_lossy().into_owned()),
+            available: cli.available,
+        })
+        .collect();
+    let request = PairRequest {
+        code,
+        os: env::consts::OS.to_string(),
+        arch: env::consts::ARCH.to_string(),
+        detected_clis,
+    };
+    let body = serde_json::to_string(&request)
+        .map_err(|e| format!("failed to serialize pair request: {e}"))?;
+    let transport = HttpTransportConfig {
+        server_url: server,
+        timeout_secs: 15,
+        company_id: None,
+        device_token: None,
+    };
+    let response = post_json(&transport, &pair_url, &body)?;
+    // PairResponse carries the raw device token: consume it only into the stored hash and
+    // the summary preview; it must never reach stdout, stderr, or error messages.
+    let pair: PairResponse = parse_json_response(&response)?;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    let credential = DeviceCredential {
+        device_id: pair.device_id.clone(),
+        bot_name: pair.bot_name.clone(),
+        server_url: transport.server_url.clone(),
+        token_hash: sha256_hex(&pair.device_token),
+        issued_at_ms: now_ms,
+        expires_at_ms: now_ms + DEFAULT_CREDENTIAL_TTL_MS,
+        allowed_folders,
+    };
+    write_credentials_atomic(&cred_path, &credential).map_err(|e| e.to_string())?;
+    Ok(json!({
+        "ok": true,
+        "deviceId": pair.device_id,
+        "botName": pair.bot_name,
+        "companyId": pair.company_id,
+        "tokenPreview": pair.token_preview,
+        "credPath": cred_path.to_string_lossy().into_owned(),
+    }))
+}
+
 fn cmd_endpoint_doctor(args: &[String]) -> Result<DoctorReport, String> {
     #[derive(serde::Deserialize)]
     struct Config {
@@ -565,7 +671,7 @@ fn cmd_render_service(args: &[String]) -> Result<String, String> {
 }
 
 fn usage() -> &'static str {
-    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound|ctl|doctor|init|detect-clis|render-service|endpoint-doctor|endpoint-scan|endpoint-audit> [flags]"
+    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound|ctl|doctor|init|detect-clis|render-service|endpoint-doctor|endpoint-scan|endpoint-audit|endpoint-pair> [flags]"
 }
 
 fn run(args: &[String]) -> Result<Value, String> {
@@ -585,6 +691,7 @@ fn run(args: &[String]) -> Result<Value, String> {
         "detect-clis" => cmd_detect_clis(),
         "endpoint-scan" => cmd_endpoint_scan(rest),
         "endpoint-audit" => cmd_endpoint_audit(rest),
+        "endpoint-pair" => cmd_endpoint_pair(rest),
         "-h" | "--help" | "help" => Ok(json!({ "usage": usage() })),
         other => Err(format!("unknown subcommand {other:?}; {}", usage())),
     }

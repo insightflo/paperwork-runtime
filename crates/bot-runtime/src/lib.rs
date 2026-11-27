@@ -20,6 +20,7 @@ pub mod endpoint_audit;
 pub mod endpoint_daemon;
 pub mod endpoint_dispatch;
 pub mod endpoint_doctor;
+pub mod endpoint_http;
 pub mod endpoint_pairing;
 pub mod endpoint_protocol;
 pub mod endpoint_sync;
