@@ -110,28 +110,28 @@ function isWorkerFailed(status: string): boolean {
 
 function statusPillClass(status: string): string {
   if (isWorkerActive(status)) {
-    return "border-lime-500/40 bg-lime-500/10 text-lime-700 dark:border-[#a3e635]/40 dark:bg-[#a3e635]/10 dark:text-[#a3e635]";
+    return "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/15 dark:text-emerald-300";
   }
   if (isWorkerQueued(status)) {
-    return "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-[#f59e0b]/40 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]";
+    return "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/40 dark:text-amber-500";
   }
   if (isWorkerFailed(status)) {
     return "border-rose-500/40 bg-rose-500/10 text-rose-600 dark:text-rose-400";
   }
   const s = status.toLowerCase();
   if (s === "succeeded" || s === "completed" || s === "pass" || s === "passed") {
-    return "border-blue-500/35 bg-blue-500/10 text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa]";
+    return "border-primary/35 bg-primary/10 text-primary";
   }
-  return "border-border bg-muted/40 text-muted-foreground dark:border-white/[0.07] dark:bg-[#07090d]";
+  return "border-border bg-muted/40 text-muted-foreground dark:bg-background";
 }
 
 function statusDotClass(status: string): string {
-  if (isWorkerActive(status)) return "bg-lime-500 dark:bg-[#a3e635]";
-  if (isWorkerQueued(status)) return "bg-amber-500 dark:bg-[#f59e0b]";
+  if (isWorkerActive(status)) return "bg-emerald-500 dark:bg-emerald-300";
+  if (isWorkerQueued(status)) return "bg-amber-500";
   if (isWorkerFailed(status)) return "bg-rose-500 dark:bg-rose-400";
   const s = status.toLowerCase();
   if (s === "succeeded" || s === "completed" || s === "pass" || s === "passed") {
-    return "bg-blue-500 dark:bg-[#60a5fa]";
+    return "bg-primary";
   }
   return "bg-muted-foreground/50";
 }
@@ -148,12 +148,12 @@ function eventKindTone(kind: string): string {
     return "border-rose-500/35 bg-rose-500/10 text-rose-600 dark:text-rose-400";
   }
   if (k.includes("approval") || k.includes("gate") || k.includes("decision") || k.includes("proposal") || k.includes("warn")) {
-    return "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]";
+    return "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:border-amber-500/35 dark:text-amber-500";
   }
   if (k.includes("succeed") || k.includes("pass") || k.includes("approve") || k.includes("complete") || k.includes("run")) {
-    return "border-lime-500/35 bg-lime-500/10 text-lime-700 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/10 dark:text-[#a3e635]";
+    return "border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/15 dark:text-emerald-300";
   }
-  return "border-blue-500/35 bg-blue-500/10 text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa]";
+  return "border-primary/35 bg-primary/10 text-primary";
 }
 
 interface NormalizedWorker {
@@ -545,13 +545,13 @@ function WorkerCard({ worker }: { worker: NormalizedWorker }) {
     <div
       data-testid={`control-plane-worker-${worker.key}`}
       className={cn(
-        "group flex flex-col justify-between gap-2 rounded-lg border border-slate-200/80 bg-slate-50/75 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] transition-colors dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
-        worker.agentId && "hover:border-blue-500/40 hover:bg-white dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#111827]",
+        "group flex flex-col justify-between gap-2 rounded-lg border border-border bg-muted/40 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] transition-colors dark:bg-background dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
+        worker.agentId && "hover:border-primary/40 hover:bg-card dark:hover:bg-accent",
       )}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5">
-          <span className="shrink-0 rounded border border-blue-500/35 bg-blue-500/10 px-1.5 py-0.5 font-mono text-[9.5px] font-semibold text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa]">
+          <span className="shrink-0 rounded border border-primary/35 bg-primary/10 px-1.5 py-0.5 font-mono text-[9.5px] font-semibold text-primary">
             {worker.role}
           </span>
           <span className="truncate text-xs font-semibold text-foreground" title={worker.name}>
@@ -567,7 +567,7 @@ function WorkerCard({ worker }: { worker: NormalizedWorker }) {
         >
           <span className="relative flex h-1.5 w-1.5">
             {active && (
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-lime-400 opacity-75 dark:bg-[#a3e635]" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75 dark:bg-emerald-300" />
             )}
             <span className={cn("relative inline-flex h-1.5 w-1.5 rounded-full", statusDotClass(worker.status))} />
           </span>
@@ -579,7 +579,7 @@ function WorkerCard({ worker }: { worker: NormalizedWorker }) {
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           {spec.length > 0 ? (
             <span
-              className="truncate rounded border border-border/70 bg-background/70 px-1.5 py-0.5 font-mono text-[9.5px] text-foreground/85 dark:border-white/[0.08] dark:bg-[#0e131d]"
+              className="truncate rounded border border-border/70 bg-background/70 px-1.5 py-0.5 font-mono text-[9.5px] text-foreground/85 dark:bg-card"
               title={spec.join(" · ")}
             >
               {spec.join(" · ")}
@@ -588,7 +588,7 @@ function WorkerCard({ worker }: { worker: NormalizedWorker }) {
             <span className="font-mono text-[9.5px] text-muted-foreground">native-runtime</span>
           )}
           {worker.issueIdentifier && (
-            <span className="rounded border border-slate-200/80 bg-white/80 px-1.5 py-0.5 font-mono text-[9.5px] text-slate-600 dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-[#9aa7bd]">
+            <span className="rounded border border-border bg-card/80 px-1.5 py-0.5 font-mono text-[9.5px] text-muted-foreground ">
               {worker.issueIdentifier}
             </span>
           )}
@@ -602,7 +602,7 @@ function WorkerCard({ worker }: { worker: NormalizedWorker }) {
 
       {worker.activity && (
         <p
-          className="truncate rounded bg-muted/40 px-2 py-1 font-mono text-[10px] text-muted-foreground dark:bg-[#0e131d]"
+          className="truncate rounded bg-muted/40 px-2 py-1 font-mono text-[10px] text-muted-foreground dark:bg-card"
           title={worker.activity}
         >
           {worker.activity}
@@ -615,7 +615,7 @@ function WorkerCard({ worker }: { worker: NormalizedWorker }) {
     return (
       <Link
         to={`/agents/${worker.agentId}`}
-        className="block no-underline text-inherit focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 rounded-lg"
+        className="block no-underline text-inherit focus:outline-none focus-visible:ring-1 focus-visible:ring-primary rounded-lg"
       >
         {cardBody}
       </Link>
@@ -634,7 +634,7 @@ export function DgateMonitorPanel({
     return (
       <div
         className={cn(
-          "tactile-card rounded-[12px] border border-slate-200/90 bg-white p-4 tabular-nums dark:border-white/[0.08] dark:bg-[#0e131d] dark:[background-image:none]",
+          "tactile-card rounded-[12px] border border-border bg-card p-4 tabular-nums dark:[background-image:none]",
           className,
         )}
         aria-busy="true"
@@ -645,13 +645,13 @@ export function DgateMonitorPanel({
           {[0, 1, 2, 3].map((idx) => (
             <div
               key={idx}
-              className="h-16 animate-pulse rounded-lg border border-slate-200/80 bg-slate-100/80 dark:border-white/[0.07] dark:bg-[#07090d]"
+              className="h-16 animate-pulse rounded-lg border border-border bg-muted/50 dark:bg-background"
             />
           ))}
         </div>
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-12">
-          <div className="h-44 animate-pulse rounded-lg border border-slate-200/80 bg-slate-100/80 dark:border-white/[0.07] dark:bg-[#07090d] lg:col-span-8" />
-          <div className="h-44 animate-pulse rounded-lg border border-slate-200/80 bg-slate-100/80 dark:border-white/[0.07] dark:bg-[#07090d] lg:col-span-4" />
+          <div className="h-44 animate-pulse rounded-lg border border-border bg-muted/50 dark:bg-background lg:col-span-8" />
+          <div className="h-44 animate-pulse rounded-lg border border-border bg-muted/50 dark:bg-background lg:col-span-4" />
         </div>
       </div>
     );
@@ -732,36 +732,36 @@ export function DgateMonitorPanel({
     <div
       data-testid="dgate-live-panel"
       className={cn(
-        "tactile-card flex flex-col gap-4 rounded-[12px] border border-slate-200/90 bg-white p-4 tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:[background-image:none] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
+        "tactile-card flex flex-col gap-4 rounded-[12px] border border-border bg-card p-4 tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:bg-card dark:[background-image:none] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
         className,
       )}
     >
       {/* Top Control Plane Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3 dark:border-white/[0.07]">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={cn(
               "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[10px] font-semibold",
               isStale
-                ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-[#f59e0b]/40 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]"
-                : "border-lime-500/40 bg-lime-500/10 text-lime-700 dark:border-[#a3e635]/40 dark:bg-[#a3e635]/10 dark:text-[#a3e635]",
+                ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/40 dark:text-amber-500"
+                : "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/15 dark:text-emerald-300",
             )}
           >
             <span className="relative flex h-1.5 w-1.5">
               {!isStale && (
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-lime-400 opacity-75 dark:bg-[#a3e635]" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75 dark:bg-emerald-300" />
               )}
               <span
                 className={cn(
                   "relative inline-flex h-1.5 w-1.5 rounded-full",
-                  isStale ? "bg-amber-500 dark:bg-[#f59e0b]" : "bg-lime-500 dark:bg-[#a3e635]",
+                  isStale ? "bg-amber-500" : "bg-emerald-500 dark:bg-emerald-300",
                 )}
               />
             </span>
             {isStale ? "STALE" : "CONTROL PLANE LIVE"}
           </span>
 
-          <span className="rounded border border-border/80 bg-muted/40 px-2 py-0.5 font-mono text-[10px] text-foreground dark:border-white/[0.07] dark:bg-[#07090d]">
+          <span className="rounded border border-border/80 bg-muted/40 px-2 py-0.5 font-mono text-[10px] text-foreground dark:bg-background">
             {scopeLabel}
           </span>
 
@@ -771,11 +771,11 @@ export function DgateMonitorPanel({
         </div>
 
         <div className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1 rounded border border-blue-500/35 bg-blue-500/10 px-2 py-0.5 text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa]">
+          <span className="inline-flex items-center gap-1 rounded border border-primary/35 bg-primary/10 px-2 py-0.5 text-primary">
             <ShieldCheck className="h-3 w-3" />
             PAPERWORK INTERNAL
           </span>
-          <span className="rounded border border-border/80 bg-muted/30 px-2 py-0.5 text-foreground dark:border-white/[0.07] dark:bg-[#07090d]">
+          <span className="rounded border border-border/80 bg-muted/30 px-2 py-0.5 text-foreground dark:bg-background">
             DB {dbLive ? "LIVE" : "SYNCING"}
           </span>
         </div>
@@ -784,10 +784,10 @@ export function DgateMonitorPanel({
       {/* Top 4-cell KPI Strip */}
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4" data-testid="control-plane-kpi-strip">
         {/* KPI 1: 실행 중 워커 */}
-        <div className="rounded-lg border border-slate-200/80 bg-slate-50/75 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:bg-background dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-medium text-muted-foreground">실행 중 워커</span>
-            <Cpu className="h-3.5 w-3.5 text-lime-600 dark:text-[#a3e635]" />
+            <Cpu className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" />
           </div>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-xl font-bold tracking-tight text-foreground tabular-nums">
@@ -800,15 +800,15 @@ export function DgateMonitorPanel({
         </div>
 
         {/* KPI 2: 대기 통제 게이트 */}
-        <div className="rounded-lg border border-slate-200/80 bg-slate-50/75 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:bg-background dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-medium text-muted-foreground">대기 통제 게이트</span>
             <ShieldAlert
               className={cn(
                 "h-3.5 w-3.5",
                 pendingGatesCount > 0
-                  ? "text-amber-600 dark:text-[#f59e0b]"
-                  : "text-lime-600 dark:text-[#a3e635]",
+                  ? "text-amber-600 dark:text-amber-500"
+                  : "text-emerald-700 dark:text-emerald-300",
               )}
             />
           </div>
@@ -816,7 +816,7 @@ export function DgateMonitorPanel({
             <span
               className={cn(
                 "text-xl font-bold tracking-tight tabular-nums",
-                pendingGatesCount > 0 ? "text-amber-600 dark:text-[#f59e0b]" : "text-foreground",
+                pendingGatesCount > 0 ? "text-amber-600 dark:text-amber-500" : "text-foreground",
               )}
             >
               {pendingGatesCount}
@@ -828,10 +828,10 @@ export function DgateMonitorPanel({
         </div>
 
         {/* KPI 3: 24h 성공률 */}
-        <div className="rounded-lg border border-slate-200/80 bg-slate-50/75 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:bg-background dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-medium text-muted-foreground">24h 성공률</span>
-            <CheckCircle2 className="h-3.5 w-3.5 text-blue-600 dark:text-[#60a5fa]" />
+            <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
           </div>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-xl font-bold tracking-tight text-foreground tabular-nums">
@@ -844,10 +844,10 @@ export function DgateMonitorPanel({
         </div>
 
         {/* KPI 4: 활성 에이전트 */}
-        <div className="rounded-lg border border-slate-200/80 bg-slate-50/75 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="rounded-lg border border-border bg-muted/40 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:bg-background dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-medium text-muted-foreground">활성 에이전트</span>
-            <Bot className="h-3.5 w-3.5 text-blue-600 dark:text-[#60a5fa]" />
+            <Bot className="h-3.5 w-3.5 text-primary" />
           </div>
           <div className="mt-1 flex items-baseline gap-2">
             <span className="text-xl font-bold tracking-tight text-foreground tabular-nums">
@@ -868,7 +868,7 @@ export function DgateMonitorPanel({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <Cpu className="h-3.5 w-3.5 text-lime-600 dark:text-[#a3e635]" />
+                <Cpu className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" />
                 <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Agent Workers Grid
                 </h4>
@@ -879,7 +879,7 @@ export function DgateMonitorPanel({
             </div>
 
             {workers.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-border/70 bg-muted/15 px-4 py-6 text-center text-xs text-muted-foreground dark:border-white/[0.08] dark:bg-[#07090d]">
+              <div className="rounded-lg border border-dashed border-border/70 bg-muted/15 px-4 py-6 text-center text-xs text-muted-foreground dark:bg-background">
                 현재 실행 중이거나 최근 실행된 에이전트 워커가 없습니다.
               </div>
             ) : (
@@ -892,22 +892,22 @@ export function DgateMonitorPanel({
           </div>
 
           {/* 24h Outcome & Provider Routing Bar */}
-          <div className="space-y-2.5 rounded-lg border border-slate-200/80 bg-slate-50/60 p-3 dark:border-white/[0.07] dark:bg-[#07090d]">
+          <div className="space-y-2.5 rounded-lg border border-border bg-muted/30 p-3 dark:bg-background">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5">
-                <Layers className="h-3.5 w-3.5 text-blue-600 dark:text-[#60a5fa]" />
+                <Layers className="h-3.5 w-3.5 text-primary" />
                 <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   24h Outcome &amp; Provider Routing
                 </h4>
               </div>
               <div className="flex flex-wrap items-center gap-1.5 font-mono text-[10px]">
-                <span className="rounded border border-lime-500/35 bg-lime-500/10 px-1.5 py-0.5 text-lime-700 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/10 dark:text-[#a3e635]">
+                <span className="rounded border border-emerald-500/35 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700 dark:border-emerald-400/30 dark:bg-emerald-500/15 dark:text-emerald-300">
                   성공 {outcomes.succeeded}
                 </span>
-                <span className="rounded border border-blue-500/35 bg-blue-500/10 px-1.5 py-0.5 text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa]">
+                <span className="rounded border border-primary/35 bg-primary/10 px-1.5 py-0.5 text-primary">
                   실행 {outcomes.running}
                 </span>
-                <span className="rounded border border-amber-500/35 bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]">
+                <span className="rounded border border-amber-500/35 bg-amber-500/10 px-1.5 py-0.5 text-amber-700 dark:border-amber-500/35 dark:text-amber-500">
                   대기 {outcomes.queued}
                 </span>
                 <span className="rounded border border-rose-500/35 bg-rose-500/10 px-1.5 py-0.5 text-rose-600 dark:text-rose-400">
@@ -918,7 +918,7 @@ export function DgateMonitorPanel({
 
             {/* Stacked Outcome Bar */}
             <div
-              className="flex h-2.5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/[0.08]"
+              className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted"
               role="img"
               aria-label={`24시간 실행 결과: 성공 ${outcomes.succeeded}, 실행 ${outcomes.running}, 대기 ${outcomes.queued}, 실패 ${outcomes.failed}`}
             >
@@ -926,19 +926,19 @@ export function DgateMonitorPanel({
                 <>
                   {outcomes.succeeded > 0 && (
                     <div
-                      className="h-full bg-lime-500 dark:bg-[#a3e635]"
+                      className="h-full bg-emerald-500 dark:bg-emerald-300"
                       style={{ width: `${succeededPct}%` }}
                     />
                   )}
                   {outcomes.running > 0 && (
                     <div
-                      className="h-full bg-blue-500 dark:bg-[#60a5fa]"
+                      className="h-full bg-primary"
                       style={{ width: `${runningPct}%` }}
                     />
                   )}
                   {outcomes.queued > 0 && (
                     <div
-                      className="h-full bg-amber-500 dark:bg-[#f59e0b]"
+                      className="h-full bg-amber-500"
                       style={{ width: `${queuedPct}%` }}
                     />
                   )}
@@ -958,7 +958,7 @@ export function DgateMonitorPanel({
                 {adapters.slice(0, 6).map((adapter) => (
                   <div
                     key={adapter.key}
-                    className="rounded-md border border-slate-200/80 bg-white/80 px-2.5 py-2 dark:border-white/[0.06] dark:bg-[#0e131d]"
+                    className="rounded-md border border-border bg-card/80 px-2.5 py-2"
                   >
                     <div className="flex items-center justify-between gap-2 text-[10.5px]">
                       <span className="truncate font-mono font-semibold text-foreground" title={adapter.label}>
@@ -968,9 +968,9 @@ export function DgateMonitorPanel({
                         {adapter.runs} runs · {adapter.sharePct}%
                       </span>
                     </div>
-                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/[0.08]">
+                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
                       <div
-                        className="h-full rounded-full bg-blue-500 dark:bg-[#60a5fa]"
+                        className="h-full rounded-full bg-primary"
                         style={{ width: `${Math.max(4, adapter.sharePct)}%` }}
                       />
                     </div>
@@ -994,7 +994,7 @@ export function DgateMonitorPanel({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
-                <ShieldCheck className="h-3.5 w-3.5 text-blue-600 dark:text-[#60a5fa]" />
+                <ShieldCheck className="h-3.5 w-3.5 text-primary" />
                 <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Internal Control Gates
                 </h4>
@@ -1013,14 +1013,14 @@ export function DgateMonitorPanel({
                     key={gate.key}
                     to={gate.to}
                     data-testid={`control-gate-${gate.key}`}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-slate-200/80 bg-slate-50/75 px-3 py-2 text-inherit no-underline shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] transition-colors hover:border-blue-500/40 hover:bg-white dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#111827]"
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-inherit no-underline shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] transition-colors hover:border-primary/40 hover:bg-card dark:bg-background dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:hover:bg-accent"
                   >
                     <div className="flex min-w-0 items-center gap-2">
                       <Icon
                         className={cn(
                           "h-3.5 w-3.5 shrink-0",
                           hasPending
-                            ? "text-amber-600 dark:text-[#f59e0b]"
+                            ? "text-amber-600 dark:text-amber-500"
                             : "text-muted-foreground",
                         )}
                       />
@@ -1037,8 +1037,8 @@ export function DgateMonitorPanel({
                         className={cn(
                           "rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold tabular-nums",
                           hasPending
-                            ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-[#f59e0b]/40 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]"
-                            : "border-border bg-muted/40 text-muted-foreground dark:border-white/[0.08] dark:bg-[#0e131d]",
+                            ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:border-amber-500/40 dark:text-amber-500"
+                            : "border-border bg-muted/40 text-muted-foreground dark:bg-card",
                         )}
                       >
                         {gate.count}
@@ -1066,7 +1066,7 @@ export function DgateMonitorPanel({
             </div>
 
             {recentEvents.length > 0 ? (
-              <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-slate-200/80 bg-slate-50/75 p-2.5 font-mono text-[10.5px] dark:border-white/[0.07] dark:bg-[#07090d]">
+              <div className="max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-border bg-muted/40 p-2.5 font-mono text-[10.5px] dark:bg-background">
                 {recentEvents.slice(0, 15).map((ev, idx) => {
                   const ts = asStr(ev.timestamp ?? ev.ts ?? ev.createdAt ?? ev.at, "");
                   const kind = asStr(ev.kind ?? ev.type ?? ev.event ?? ev.action, "event");
@@ -1075,7 +1075,7 @@ export function DgateMonitorPanel({
                   return (
                     <div
                       key={asStr(ev.id, `${ts}-${idx}`)}
-                      className="flex flex-col gap-0.5 border-b border-border/40 pb-1.5 last:border-b-0 last:pb-0 dark:border-white/[0.05]"
+                      className="flex flex-col gap-0.5 border-b border-border/40 pb-1.5 last:border-b-0 last:pb-0"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span
@@ -1101,7 +1101,7 @@ export function DgateMonitorPanel({
                 })}
               </div>
             ) : (
-              <div className="rounded-lg border border-dashed border-border/70 bg-muted/15 px-3 py-4 text-center text-[11px] text-muted-foreground dark:border-white/[0.08] dark:bg-[#07090d]">
+              <div className="rounded-lg border border-dashed border-border/70 bg-muted/15 px-3 py-4 text-center text-[11px] text-muted-foreground dark:bg-background">
                 최근 통제 이벤트가 없습니다.
               </div>
             )}
