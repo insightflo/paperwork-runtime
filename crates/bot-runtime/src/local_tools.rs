@@ -178,6 +178,11 @@ pub fn run_local_shell(
     let mut cmd = Command::new(program);
     cmd.args([flag, command]);
     cmd.current_dir(&confined_cwd).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
     let mut child = cmd.spawn().map_err(|e| format!("shell_spawn_failed: {e}"))?;
     let stdout_pipe = child.stdout.take().ok_or("shell_pipe_failed")?;
     let stderr_pipe = child.stderr.take().ok_or("shell_pipe_failed")?;
@@ -191,6 +196,11 @@ pub fn run_local_shell(
             break status;
         }
         if Instant::now() >= deadline {
+            #[cfg(unix)]
+            {
+                let pgid = format!("-{}", child.id());
+                let _ = Command::new("kill").args(["-9", &pgid]).status();
+            }
             let _ = child.kill();
             timed_out = true;
             break child.wait().map_err(|e| format!("shell_wait_failed: {e}"))?;
