@@ -47,7 +47,7 @@ import {
   Github,
   Link2,
   ExternalLink,
-  Paperclip,
+  FileCheck2,
   Pencil,
   Plus,
   RefreshCw,
@@ -170,7 +170,7 @@ function sourceMeta(sourceBadge: CompanySkillSourceBadge, sourceLabel: string | 
     case "local":
       return { icon: Folder, label: sourceLabel ?? "Folder", managedLabel: "Folder managed" };
     case "paperclip":
-      return { icon: Paperclip, label: sourceLabel ?? "Paperwork", managedLabel: "Paperwork managed" };
+      return { icon: FileCheck2, label: sourceLabel ?? "Paperwork", managedLabel: "Paperwork managed" };
     default:
       return { icon: Boxes, label: sourceLabel ?? "Catalog", managedLabel: "Catalog managed" };
   }
