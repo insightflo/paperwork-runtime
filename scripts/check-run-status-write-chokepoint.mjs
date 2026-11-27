@@ -196,10 +196,6 @@ const WRITE_ALLOWLIST = new Map([
     "LEGACY|스텝 재시도 스케줄러 전이",
   ],
   [
-    "server/src/services/workflow/source-issue-failed-state-restore.ts",
-    "LEGACY|원본 이슈 실패 상태 복원",
-  ],
-  [
     "server/src/services/workflow/workflow-step-materialization.ts",
     "LEGACY|스텝 구체화(materialization) 전이",
   ],
