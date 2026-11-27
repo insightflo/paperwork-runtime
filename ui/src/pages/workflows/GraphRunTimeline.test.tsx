@@ -10,6 +10,7 @@ import {
 import {
   buildGraphRunTimelineSegments,
   formatGraphRunStepDuration,
+  type GraphRunTimelineStepInput,
 } from "./graph-run-timeline-segments.js";
 import { GraphRunTimeline } from "./GraphRunTimeline.js";
 import type { WorkflowGraphStep } from "./workflow-graph.js";
@@ -168,6 +169,62 @@ it("renders parallel wave, join, pause indicator and resumed continuation", asyn
 
   expect(rendered.textContent).toContain("4.0s");
   expect(rendered.textContent).toContain("Parallel wave");
+});
+
+function timelineFixtureWithOverlay(approveOverrides: Record<string, unknown>): GraphRunTimelineStepInput[] {
+  return timelineFixture().map((step) => (step.id === "approve" ? { ...step, ...approveOverrides } : step));
+}
+
+it("maps the live humanWaitDecision overlay onto a pending pause segment", async () => {
+  const steps = timelineFixtureWithOverlay({
+    graphRunDecisionId: "dec-legacy",
+    humanWaitDecision: {
+      decisionId: "dec-live-pending",
+      status: "pending",
+      pausedAt: "2026-02-14T09:00:07.500Z",
+      resolvedAt: null,
+    },
+  });
+  const segments = buildGraphRunTimelineSegments(steps);
+  if (segments[2]?.kind !== "human_wait") throw new Error("expected human_wait segment");
+  expect(segments[2].decisionId).toBe("dec-live-pending");
+  expect(segments[2].pausedAt).toBe("2026-02-14T09:00:07.500Z");
+  expect(segments[2].resolvedAt).toBeNull();
+  expect(segments[2].outcome).toBe("pending");
+
+  const rendered = await renderTimeline(steps);
+  const wait = rendered.querySelector("[data-timeline-segment='human_wait']")!;
+  expect(wait).toBeTruthy();
+  expect(wait.querySelector("[data-pause-indicator='true']")?.textContent).toBe("Paused · awaiting approval");
+  expect(wait.textContent).toContain("decision dec-live-pending");
+});
+
+it("maps the live humanWaitDecision overlay onto a resolved resume segment", async () => {
+  const steps = timelineFixtureWithOverlay({
+    graphRunStatus: "succeeded",
+    graphRunCompletedAt: "2026-02-14T09:06:30.000Z",
+    humanWaitDecision: {
+      decisionId: "dec-live-resolved",
+      status: "approved",
+      pausedAt: "2026-02-14T09:00:07.500Z",
+      resolvedAt: "2026-02-14T09:05:00.000Z",
+    },
+  });
+  const segments = buildGraphRunTimelineSegments(steps);
+  if (segments[2]?.kind !== "human_wait") throw new Error("expected human_wait segment");
+  expect(segments[2].decisionId).toBe("dec-live-resolved");
+  expect(segments[2].pausedAt).toBe("2026-02-14T09:00:07.500Z");
+  expect(segments[2].resolvedAt).toBe("2026-02-14T09:05:00.000Z");
+  expect(segments[2].outcome).toBe("approved");
+  if (segments[3]?.kind !== "resume") throw new Error("expected resume segment");
+  expect(segments[3].afterStepId).toBe("approve");
+
+  const rendered = await renderTimeline(steps);
+  const wait = rendered.querySelector("[data-timeline-segment='human_wait']")!;
+  expect(wait).toBeTruthy();
+  expect(wait.querySelector("[data-pause-indicator='true']")?.textContent).toBe("Resolved · approved");
+  const resume = rendered.querySelector("[data-timeline-segment='resume']")!;
+  expect(resume.querySelector("[data-timeline-step='publish']")).toBeTruthy();
 });
 
 it("renders nothing without steps", async () => {

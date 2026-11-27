@@ -36,8 +36,35 @@ export type GraphRunTimelineStepInfo = {
   completedAt: string;
 };
 
+// Server step-run decision overlay (read-only display metadata; see
+// server/src/services/workflow/step-run-decision-overlay.ts). Optional on
+// timeline step inputs; mapped into the human_wait segment fields below.
+export type GraphRunTimelineHumanWaitDecision = {
+  decisionId: string;
+  status: string;
+  pausedAt: string | null;
+  resolvedAt: string | null;
+};
+
+export type GraphRunTimelineStepInput<TStep extends WorkflowGraphStep = WorkflowGraphStep> = TStep & {
+  humanWaitDecision?: GraphRunTimelineHumanWaitDecision;
+};
+
+function readHumanWaitDecisionOverlay(step: unknown): GraphRunTimelineHumanWaitDecision | null {
+  if (!step || typeof step !== "object") return null;
+  const overlay = (step as Record<string, unknown>).humanWaitDecision;
+  if (!overlay || typeof overlay !== "object" || Array.isArray(overlay)) return null;
+  const record = overlay as Record<string, unknown>;
+  const decisionId = typeof record.decisionId === "string" ? record.decisionId.trim() : "";
+  const status = typeof record.status === "string" ? record.status.trim() : "";
+  const pausedAt = typeof record.pausedAt === "string" ? record.pausedAt.trim() : "";
+  const resolvedAt = typeof record.resolvedAt === "string" ? record.resolvedAt.trim() : "";
+  if (!decisionId && !status && !pausedAt && !resolvedAt) return null;
+  return { decisionId, status, pausedAt: pausedAt || null, resolvedAt: resolvedAt || null };
+}
+
 export function buildGraphRunTimelineSegments<TStep extends WorkflowGraphStep>(
-  steps: TStep[],
+  steps: GraphRunTimelineStepInput<TStep>[],
 ): GraphRunTimelineSegment[] {
   const graph = buildWorkflowGraphModel(steps);
   const inboundByStepId = new Map<string, string[]>();
@@ -65,16 +92,17 @@ export function buildGraphRunTimelineSegments<TStep extends WorkflowGraphStep>(
     const stepId = node.step.id.trim();
     if (resolveNodeLogicalClass(node.step) === "human_wait") {
       const record = node.step as Record<string, unknown>;
-      const decisionId = typeof record.graphRunDecisionId === "string" ? record.graphRunDecisionId.trim() : "";
+      const overlay = readHumanWaitDecisionOverlay(node.step);
+      const legacyDecisionId = typeof record.graphRunDecisionId === "string" ? record.graphRunDecisionId.trim() : "";
       segments.push({
         kind: "human_wait",
         layer,
         stepId,
         stepRunId: node.runStatus.stepRunId,
-        decisionId: decisionId || null,
-        pausedAt: node.runStatus.startedAt || node.runStatus.updatedAt || null,
-        resolvedAt: node.runStatus.completedAt || null,
-        outcome: node.runStatus.controlOutcome || null,
+        decisionId: overlay?.decisionId || legacyDecisionId || null,
+        pausedAt: overlay?.pausedAt || node.runStatus.startedAt || node.runStatus.updatedAt || null,
+        resolvedAt: overlay?.resolvedAt || node.runStatus.completedAt || null,
+        outcome: overlay?.status || node.runStatus.controlOutcome || null,
       });
       continue;
     }
