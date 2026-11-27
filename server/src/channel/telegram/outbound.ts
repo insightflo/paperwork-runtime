@@ -14,6 +14,8 @@ import { getChannelRegistry } from "../index.js";
 import { logger } from "../../middleware/logger.js";
 import { summarizeHeartbeatRunResultJson } from "../../services/heartbeat-run-summary.js";
 import { applyRunHonestyCaveat } from "../../services/run-honesty-guard.js";
+import { buildRunFailureNotification, getRunStatusEmoji, shouldSuppressRunFailure } from "./run-failure-notification.js";
+export { composeRunFailureNotification } from "./run-failure-notification.js";
 
 /**
  * Map of companyId → chatId for users who have messaged the bot.
@@ -85,13 +87,16 @@ function buildOutboundHandler(db: Db, companyId: string) {
     }
 
     try {
+      const failure = await buildRunFailureNotification(db, event);
+      // Suppression must stop every path, including conversation and minimal fallback.
+      if (failure?.message === null) return;
       const conversationReply = await formatTelegramConversationReply(db, event);
       if (conversationReply) {
         await sender(conversationReply.chatId, conversationReply.message);
         return;
       }
 
-      let message = await buildRunFailureNotification(db, event);
+      let message = failure?.message ?? null;
       if (!message) {
         // [card alert] 오너 결정 카드 생성 알림 — 비동기 DB 조회가 필요해 전용 빌더에서 처리한다.
         message = await buildOperatorDecisionCardNotification(db, event);
@@ -182,108 +187,6 @@ async function formatTelegramConversationReply(
     chatId,
     message: `${prefix}\n${body.slice(0, 3500)}`,
   };
-}
-
-/**
- * Format a live event as a human-readable Telegram notification.
- * Returns null if the event type should not be notified.
- */
-/**
- * Compose an operator-readable run-failure notification from resolved context.
- * Pure function — exported for tests. Lines with missing context are omitted
- * so the message degrades gracefully instead of showing "unknown".
- */
-export function composeRunFailureNotification(input: {
-  status: string;
-  runId: string;
-  agentName?: string | null;
-  issueIdentifier?: string | null;
-  issueTitle?: string | null;
-  missionTitle?: string | null;
-  missionId?: string | null;
-  error?: string | null;
-}): string {
-  const emoji = getRunStatusEmoji(input.status);
-  const statusLabel =
-    input.status === "timed_out" ? "시간 초과" :
-    input.status === "cancelled" ? "취소" :
-    "실패";
-  const runLabel = input.runId.slice(0, 8);
-
-  const issueLine = [
-    input.issueIdentifier ?? null,
-    input.issueTitle ?? null,
-  ].filter(Boolean).join(" — ");
-
-  const errorFirstLine = input.error?.split("\n")[0]?.trim() ?? "";
-  const errorLine = errorFirstLine ? errorFirstLine.slice(0, 160) : null;
-
-  const lines = [
-    `${emoji} *런 ${statusLabel}*`,
-    input.agentName ? `에이전트: ${input.agentName}` : null,
-    issueLine ? `이슈: ${issueLine}` : null,
-    input.missionTitle ? `미션: ${input.missionTitle}` : null,
-    `런: *${runLabel}* (${input.status})`,
-    errorLine ? `에러: ${errorLine}` : null,
-  ].filter((line): line is string => Boolean(line));
-
-  return lines.join("\n").slice(0, 3500);
-}
-
-/**
- * Build an enriched run-failure notification: resolve the run's agent, issue,
- * and mission from the DB so the operator can tell WHICH mission/issue failed.
- * Returns null for non-terminal-failure events (and when the run cannot be
- * loaded — the caller falls back to the minimal pure formatter).
- */
-async function buildRunFailureNotification(
-  db: Db,
-  event: { type: string; payload?: Record<string, unknown> },
-): Promise<string | null> {
-  if (event.type !== "heartbeat.run.status") return null;
-  const status = readString(event.payload?.status);
-  const runId = readString(event.payload?.runId);
-  if (!status || !runId) return null;
-  if (!["failed", "timed_out", "cancelled"].includes(status)) return null;
-
-  try {
-    const [row] = await db
-      .select({
-        status: heartbeatRuns.status,
-        error: heartbeatRuns.error,
-        agentName: agents.name,
-        issueIdentifier: issues.identifier,
-        issueTitle: issues.title,
-        missionId: issues.missionId,
-        missionTitle: missions.title,
-      })
-      .from(heartbeatRuns)
-      .innerJoin(agents, eq(heartbeatRuns.agentId, agents.id))
-      .leftJoin(issues, eq(heartbeatRuns.issueId, issues.id))
-      .leftJoin(missions, eq(issues.missionId, missions.id))
-      .where(eq(heartbeatRuns.id, runId))
-      .limit(1);
-
-    if (!row) return null;
-
-    return composeRunFailureNotification({
-      status,
-      runId,
-      agentName: row.agentName,
-      issueIdentifier: row.issueIdentifier,
-      issueTitle: row.issueTitle,
-      missionTitle: row.missionTitle,
-      missionId: row.missionId,
-      error: row.error,
-    });
-  } catch (err) {
-    logger.warn({
-      msg: "Failed to enrich run-failure notification; falling back to minimal format",
-      runId,
-      error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
-    });
-    return null;
-  }
 }
 
 /**
@@ -482,6 +385,7 @@ export function formatEventNotification(event: { type: string; payload?: Record<
       const runId = readString(payload?.runId);
       if (!status || !runId) return null;
       if (!["failed", "timed_out", "cancelled"].includes(status)) return null;
+      if (shouldSuppressRunFailure(payload ?? {})) return null;
       const emoji = getRunStatusEmoji(status);
       const runLabel = runId.slice(0, 8);
       return formatError(`${emoji} Run *${runLabel}* — ${formatStatus(status)}`);
@@ -522,25 +426,6 @@ export function formatEventNotification(event: { type: string; payload?: Record<
 
     default:
       return null;
-  }
-}
-
-function getRunStatusEmoji(status: string): string {
-  switch (status) {
-    case "queued":
-      return "\u23F3"; // hourglass
-    case "running":
-      return "\u{1F3D7}"; // building worker
-    case "succeeded":
-      return "\u2705"; // check mark
-    case "failed":
-      return "\u274C"; // cross
-    case "cancelled":
-      return "\u{1F6AB}"; // no entry
-    case "timed_out":
-      return "\u23F1"; // timer
-    default:
-      return "\u2753"; // question mark
   }
 }
 
