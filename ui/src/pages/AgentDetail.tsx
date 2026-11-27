@@ -100,7 +100,7 @@ export function AgentDetail() {
     tab?: string;
     runId?: string;
   }>();
-  const { companies, selectedCompanyId, setSelectedCompanyId } = useCompany();
+  const { companies, selectedCompanyId, setSelectedCompanyId, canWrite = true, canAdmin = true } = useCompany();
   const { closePanel } = usePanel();
   const { openNewIssue } = useDialog();
   const { setBreadcrumbs } = useBreadcrumbs();
@@ -386,7 +386,9 @@ export function AgentDetail() {
     return <Navigate to={`/agents/${canonicalAgentRef}/dashboard`} replace />;
   }
   const isPendingApproval = agent.status === "pending_approval";
-  const showConfigActionBar = (activeView === "configuration" || activeView === "instructions") && (configDirty || configSaving);
+  // [RBAC] invoke/pause/resume·아이콘·세션 리셋·설정 저장은 쓰기 권한, terminate는 관리자 권한 필요.
+  const agentWriteRequiredTitle = "Member, admin, or owner role required to modify agents";
+  const showConfigActionBar = canWrite && (activeView === "configuration" || activeView === "instructions") && (configDirty || configSaving);
   const metricLabel = "text-[10px] uppercase tracking-[0.08em]";
   // Visible (non-subscription) cost of the loaded run page; dashboard-only queries render "—" until loaded.
   const runsCost = (runPage?.items ?? []).reduce((sum, run) => sum + runMetrics(run).cost, 0);
@@ -402,11 +404,17 @@ export function AgentDetail() {
           <span aria-hidden className="hidden shrink-0 text-[#4a5670] sm:inline">/</span>
           <span className="shrink-0 font-mono tabular-nums">{agent.id.slice(0, 8)}</span>
         </nav>
-        <AgentIconPicker value={agent.icon} onChange={(icon) => updateIcon.mutate(icon)}>
-          <button type="button" title="Change agent icon" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 dark:bg-[#090c12] transition-colors hover:bg-slate-100 dark:hover:bg-white/[0.08]">
+        {canWrite ? (
+          <AgentIconPicker value={agent.icon} onChange={(icon) => updateIcon.mutate(icon)}>
+            <button type="button" title="Change agent icon" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 dark:bg-[#090c12] transition-colors hover:bg-slate-100 dark:hover:bg-white/[0.08]">
+              <AgentIcon icon={agent.icon} className="h-5 w-5" />
+            </button>
+          </AgentIconPicker>
+        ) : (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 dark:bg-[#090c12]">
             <AgentIcon icon={agent.icon} className="h-5 w-5" />
-          </button>
-        </AgentIconPicker>
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-sm font-semibold leading-tight text-slate-950 dark:text-[#eef2f8]">{agent.name}</h2>
           <p className="truncate text-[11px] leading-tight text-slate-500 dark:text-[#8f9db3]">
@@ -431,17 +439,21 @@ export function AgentDetail() {
             <Plus className="h-3.5 w-3.5 sm:mr-1" />
             <span className="hidden sm:inline">Assign Work</span>
           </Button>
-          <RunButton
-            onClick={() => agentAction.mutate("invoke")}
-            disabled={agentAction.isPending || isPendingApproval}
-            label="Run Heartbeat"
-          />
-          <PauseResumeButton
-            isPaused={agent.status === "paused"}
-            onPause={() => agentAction.mutate("pause")}
-            onResume={() => agentAction.mutate("resume")}
-            disabled={agentAction.isPending || isPendingApproval}
-          />
+          <span title={!canWrite ? agentWriteRequiredTitle : undefined} className="flex shrink-0">
+            <RunButton
+              onClick={() => agentAction.mutate("invoke")}
+              disabled={agentAction.isPending || isPendingApproval || !canWrite}
+              label="Run Heartbeat"
+            />
+          </span>
+          <span title={!canWrite ? agentWriteRequiredTitle : undefined} className="flex shrink-0">
+            <PauseResumeButton
+              isPaused={agent.status === "paused"}
+              onPause={() => agentAction.mutate("pause")}
+              onResume={() => agentAction.mutate("resume")}
+              disabled={agentAction.isPending || isPendingApproval || !canWrite}
+            />
+          </span>
           {/* Overflow menu */}
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
@@ -453,16 +465,20 @@ export function AgentDetail() {
                 <Copy className="h-3 w-3" />
                 Copy Agent ID
               </button>
-              <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50"
-                onClick={() => { resetTaskSession.mutate(null); setMoreOpen(false); }}>
-                <RotateCcw className="h-3 w-3" />
-                Reset Sessions
-              </button>
-              <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-destructive hover:bg-accent/50"
-                onClick={() => { agentAction.mutate("terminate"); setMoreOpen(false); }}>
-                <Trash2 className="h-3 w-3" />
-                Terminate
-              </button>
+              {canWrite && (
+                <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50"
+                  onClick={() => { resetTaskSession.mutate(null); setMoreOpen(false); }}>
+                  <RotateCcw className="h-3 w-3" />
+                  Reset Sessions
+                </button>
+              )}
+              {canAdmin && (
+                <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-destructive hover:bg-accent/50"
+                  onClick={() => { agentAction.mutate("terminate"); setMoreOpen(false); }}>
+                  <Trash2 className="h-3 w-3" />
+                  Terminate
+                </button>
+              )}
             </PopoverContent>
           </Popover>
         </div>
@@ -627,7 +643,7 @@ export function AgentDetail() {
           <BudgetPolicyCard
             summary={agentBudgetSummary}
             isSaving={budgetMutation.isPending}
-            onSave={(amount) => budgetMutation.mutate(amount)}
+            onSave={canWrite ? (amount) => budgetMutation.mutate(amount) : undefined}
             variant="plain"
           />
         </div>

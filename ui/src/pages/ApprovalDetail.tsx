@@ -59,7 +59,7 @@ const formatDateTime = (value: Date | null) => (value ? value.toLocaleString(und
 export function ApprovalDetail() {
   const lang = useCompanyLanguage();
   const { approvalId } = useParams<{ approvalId: string }>();
-  const { selectedCompanyId, setSelectedCompanyId } = useCompany();
+  const { selectedCompanyId, setSelectedCompanyId, canAdmin = true } = useCompany();
   const { setBreadcrumbs } = useBreadcrumbs();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -74,6 +74,8 @@ export function ApprovalDetail() {
     enabled: !!approvalId,
   });
   const resolvedCompanyId = approval?.companyId ?? selectedCompanyId;
+  // [RBAC] 승인 결정 계열(approve/reject/수정요청/재제출/에이전트 삭제)은 관리자 이상만 가능 — 목록(Approvals)과 동일 기준.
+  const adminRequiredTitle = L(lang, { en: "Admin or owner role required to decide approvals", ko: "승인 결정은 관리자 이상 권한이 필요합니다." });
 
   const { data: comments } = useQuery({
     queryKey: queryKeys.approvals.comments(approvalId!), queryFn: () => approvalsApi.listComments(approvalId!), enabled: !!approvalId,
@@ -261,12 +263,12 @@ export function ApprovalDetail() {
             <>
               <Button
                 size="sm" className={CTA_PRIMARY} onClick={() => approveMutation.mutate()}
-                disabled={approveMutation.isPending || !reviewPacket || (approval.type === "workflow_replacement" && approval.status !== "pending")}
-                title={!reviewPacket ? L(lang, { en: "Review information and source locations are required before approval.", ko: "판단 정보와 원본 위치를 보완해야 승인할 수 있습니다." }) : undefined}
+                disabled={!canAdmin || approveMutation.isPending || !reviewPacket || (approval.type === "workflow_replacement" && approval.status !== "pending")}
+                title={!canAdmin ? adminRequiredTitle : !reviewPacket ? L(lang, { en: "Review information and source locations are required before approval.", ko: "판단 정보와 원본 위치를 보완해야 승인할 수 있습니다." }) : undefined}
               >
                 {L(lang, { en: "Approve", ko: "승인" })}
               </Button>
-              <Button variant="outline" size="sm" className={CTA_DANGER} onClick={() => rejectMutation.mutate()} disabled={rejectMutation.isPending}>
+              <Button variant="outline" size="sm" className={CTA_DANGER} onClick={() => rejectMutation.mutate()} disabled={!canAdmin || rejectMutation.isPending} title={!canAdmin ? adminRequiredTitle : undefined}>
                 {L(lang, { en: "Reject", ko: "거절" })}
               </Button>
             </>
@@ -277,12 +279,12 @@ export function ApprovalDetail() {
             </p>
           )}
           {approval.status === "pending" && (
-            <Button size="sm" variant="outline" className={CTA_GHOST} onClick={() => revisionMutation.mutate()} disabled={revisionMutation.isPending}>
+            <Button size="sm" variant="outline" className={CTA_GHOST} onClick={() => revisionMutation.mutate()} disabled={!canAdmin || revisionMutation.isPending} title={!canAdmin ? adminRequiredTitle : undefined}>
               {L(lang, { en: "Request revision", ko: "수정 요청" })}
             </Button>
           )}
           {approval.status === "revision_requested" && (
-            <Button size="sm" variant="outline" className={CTA_GHOST} onClick={() => resubmitMutation.mutate()} disabled={resubmitMutation.isPending}>
+            <Button size="sm" variant="outline" className={CTA_GHOST} onClick={() => resubmitMutation.mutate()} disabled={!canAdmin || resubmitMutation.isPending} title={!canAdmin ? adminRequiredTitle : undefined}>
               {L(lang, { en: "Mark resubmitted", ko: "재제출로 표시" })}
             </Button>
           )}
@@ -290,10 +292,12 @@ export function ApprovalDetail() {
             <Button
               size="sm" variant="outline" className={CTA_DANGER}
               onClick={() => {
+                if (!canAdmin) return;
                 if (!window.confirm(L(lang, { en: "Delete this disapproved agent? This cannot be undone.", ko: "거절된 에이전트를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다." }))) return;
                 deleteAgentMutation.mutate(linkedAgentId);
               }}
-              disabled={deleteAgentMutation.isPending}
+              disabled={!canAdmin || deleteAgentMutation.isPending}
+              title={!canAdmin ? adminRequiredTitle : undefined}
             >
               {L(lang, { en: "Delete disapproved agent", ko: "거절된 에이전트 삭제" })}
             </Button>
