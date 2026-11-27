@@ -5,6 +5,7 @@ import { readRunToolContract } from "./run-tool-contract.js";
 import { buildIssueExecutionCardBriefLines, buildRuntimeReadBriefLine } from "./runtime-brief-card-section.js";
 import { buildWorkflowReworkContractBriefLines, buildWorkflowReworkTaskHeader } from "./runtime-brief-rework-section.js";
 import { buildQaCapAcceptanceBriefLines } from "./runtime-brief-qa-cap-section.js";
+import { buildQaRecheckFindingsBriefLines } from "./runtime-brief-recheck-findings-section.js";
 import { buildMissionWorkingNoteBriefLines } from "./runtime-brief-working-note.js";
 import { buildPrehydratedBundleBriefLines } from "./runtime-brief-prehydrate.js";
 
@@ -547,6 +548,9 @@ export function buildPaperclipRuntimeBrief(context: Record<string, unknown>) {
   const instructionInjection = asRecord(context.paperclipInstructionInjection);
   const workflowReworkContractLines = buildWorkflowReworkContractBriefLines(context.paperclipWorkflowReworkContract);
   const qaCapAcceptanceLines = buildQaCapAcceptanceBriefLines(context.paperclipQaCapAcceptanceContract);
+  // [validation recheck — #10 goalpost moving] 재검수 웨이크의 직전 REQUEST_CHANGES findings를
+  //   최우선 블록으로 렌더링한다(priorQaFindings 없는 일반 실행은 무증가).
+  const qaRecheckFindingsLines = buildQaRecheckFindingsBriefLines(context.priorQaFindings);
   // [QA rework] rework 선두 헤더 + rework 모드 여부. 헤더는 brief 시작에, 상세 contract 라인은 기존 위치 유지.
   const reworkHeaderLines = buildWorkflowReworkTaskHeader(context.paperclipWorkflowReworkContract);
   // [runaway recovery] 재고민 루프로 죽은 직후 재시동되는 실행에는 회복 지시를 최상단에.
@@ -792,6 +796,7 @@ export function buildPaperclipRuntimeBrief(context: Record<string, unknown>) {
     unconsumedOperatorInstructionsLine,
     // [QA rework] rework 모드면 최우선 블록을 brief 선두에 배치(긴 runtime/issue 컨텍스트보다 먼저).
     ...reworkHeaderLines,
+    ...qaRecheckFindingsLines,
     ...runawayRecoveryLines,
     // [operator decision delivery] reworkHeader/runawayRecovery 뒤 상단 우선 블록 — 오너 카드 해결 지시.
     ...buildOperatorDecisionResolutionBriefLines(context.paperclipOperatorDecisionResolution),

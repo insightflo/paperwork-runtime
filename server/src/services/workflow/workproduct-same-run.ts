@@ -1,6 +1,7 @@
 import { and, eq, ne } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import type { z } from "zod";
 import { heartbeatRuns, issueWorkProducts, workflowRuns, workflowStepRuns, type Db } from "@paperclipai/db";
 import { workProductProducerPromotionMarkerSchema, workProductProducerRebindMarkerSchema, workProductProducerSchema, type WorkProductSelectors } from "@paperclipai/shared/validators/workflow-artifact";
 import { resolveWorkProductLocalFilePath } from "../work-products.js";
@@ -47,6 +48,38 @@ function validPromotionMarker(product: typeof issueWorkProducts.$inferSelect, pr
 /** Ordinary same-run selector: cross-run approval must never weaken these checks. */
 type SameRunScope = { companyId: string; workflowRunId: string;
   stepId: string; selector: WorkProductSelectors[string]; pinnedId?: string };
+
+/**
+ * [2026-11-28 provenance_missing 재발 교정] 귀속 봉인(workflowProducer)이 없거나 스키마가
+ *   맞지 않는 로컬 산출물이라도, createdByRunId 하트비트가 “이 생산자 stepRun 의 실제
+ *   디스패치 시도”임을 DB 사슬로 증명하면 같은-런 셀렉터가 등록 시점과 동일한 검사
+ *   (registeredProducer: 회사/이슈/stepRun/현재 세대 + 시도증명)로 신원을 재도출해 소비를
+ *   통과시킨다. 이는 2026-10-17(#392) 이후에도 남은 독 기록 경로(스텝 바인딩 이슈에
+ *   런 없는 등록 — board API createdByRunId=null 은 registeredProducer null 반환)와
+ *   봉인 유실 행을 회복 불가 실패에서 구하기 위한 것이다.
+ * [정직성/보안] 파생은 기존 등록 검사와 동일한 사실만 요구하므로 외부 회사·무주·위임
+ *   (workflow.delegated-work-product-producer.v1, createdByRunId 가 언블록 이슈에 연결)
+ *   산출물은 절대 통과하지 못한다 — 위임 제품은 기존과 같이 provenance_missing 으로
+ *   펜스되고 보드 승격(promotion)만이 유일한 회복 경로다.
+ */
+async function deriveSameRunProducerFromDispatch(db: Db, product: typeof issueWorkProducts.$inferSelect,
+  run: typeof workflowRuns.$inferSelect, step: typeof workflowStepRuns.$inferSelect):
+  Promise<z.infer<typeof workProductProducerSchema>> {
+  const fenced = () => new Error("workproduct_selector_provenance_missing");
+  if (typeof product.createdByRunId !== "string") throw fenced();
+  const [heartbeat] = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, product.createdByRunId));
+  if (!heartbeat || heartbeat.companyId !== product.companyId || heartbeat.issueId !== step.issueId
+    || heartbeat.workflowStepRunId !== step.id
+    || heartbeat.workflowExecutionGeneration !== step.executionGeneration) throw fenced();
+  let attempt: { retryCount: number; iterationIndex: number };
+  try { attempt = await producerAttempt(db, heartbeat, step); }
+  catch { throw new Error("workproduct_selector_stale_producer"); }
+  return { schemaVersion: "workflow.work-product-producer.v1", companyId: product.companyId,
+    missionId: run.missionId, workflowRunId: run.id, stepRunId: step.id, stepId: step.stepId,
+    executionGeneration: heartbeat.workflowExecutionGeneration,
+    retryCount: attempt.retryCount, iterationIndex: attempt.iterationIndex,
+    heartbeatRunId: heartbeat.id };
+}
 export function selectSameRunWorkProduct(db: Db, scope: SameRunScope) {
   return withAutomaticProducerRebind(db, () => readSameRunWorkProduct(db, scope));
 }
@@ -66,14 +99,20 @@ async function readSameRunWorkProduct(db: Db, scope: SameRunScope): Promise<Corr
     return readQaCorrectionSelectedProduct(db, scope, product);
   }
   const parsed = workProductProducerSchema.safeParse(product.metadata?.workflowProducer);
-  if (!parsed.success) throw new Error("workproduct_selector_provenance_missing");
-  const p = parsed.data, s = source.step;
+  const derived = !parsed.success;
+  const p = parsed.success ? parsed.data
+    : await deriveSameRunProducerFromDispatch(db, product, source.run, source.step);
+  const s = source.step;
   const promotion = validPromotionMarker(product, p, s);
   const rebind = promotion ? null : validRebindMarker(product, p, s);
   const toleratedFields = promotion || rebind ? ["executionGeneration", "sourceExecutionGeneration"] : [];
   const mismatches = workProductProducerMismatches(p, { ...scope, run: source.run, step: s, product });
-  if (mismatches.some(field => !toleratedFields.includes(field))) {
-    if (!promotion && !rebind && mismatches.every(field => ["executionGeneration", "sourceExecutionGeneration"].includes(field))) {
+  // [파생 경로] sourceExecutionGeneration(등록 시점 봉인 흔적)은 파생 신원의 세대 출처가 아니다.
+  //   하트비트 사슬이 이미 현재 세대를 증명했으므로 이 필드 불일치만은 수선 대상이고,
+  //   파생 신원이 곧 현재 세대 귀속이므로 ProducerRebindRequired(자동 재귀속)도 필요 없다.
+  const repairedByDerivation = derived ? new Set(["sourceExecutionGeneration"]) : new Set<string>();
+  if (mismatches.some(field => !toleratedFields.includes(field) && !repairedByDerivation.has(field))) {
+    if (!promotion && !rebind && mismatches.every(field => ["executionGeneration", "sourceExecutionGeneration"].includes(field) || repairedByDerivation.has(field))) {
       throw new ProducerRebindRequired({ companyId: scope.companyId, workflowRunId: scope.workflowRunId,
         producerStepId: scope.stepId, productId: product.id, selector: scope.selector, pinnedId: scope.pinnedId });
     }

@@ -246,6 +246,9 @@ async function wakeExistingWorkflowStepIssueUnlocked(input: WakeExistingInput): 
       ...(input.forceFreshSession ? { forceFreshSession: true } : {}),
       ...(structuralReadiness.coverage.length > 0 ? { structuralGateCoverage: structuralReadiness.coverage } : {}),
       ...reworkContext,
+      // [validation recheck — #10] 런 컨텍스트(contextSnapshot)에서만 brief가 만들어지므로
+      //   직전 REQUEST_CHANGES findings를 payload와 동일하게 여기에도 실어야 한다.
+      ...priorFindingsContext,
       ...capAcceptancePayload,
       ...qaCapAcceptancePayload,
     },
