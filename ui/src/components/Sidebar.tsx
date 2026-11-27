@@ -151,12 +151,12 @@ export function Sidebar({ onToggleCompact }: SidebarProps = {}) {
                 </span>
               </div>
               <span className="truncate font-mono text-[10.5px] leading-tight text-muted-foreground">
-                {selectedCompany?.issuePrefix ? `${selectedCompany.issuePrefix} · cockpit` : "workspace"}
+                {selectedCompany?.issuePrefix ? `${selectedCompany.issuePrefix} · 워크스페이스` : "워크스페이스"}
               </span>
             </div>
             <span
-              title={liveRunCount > 0 ? `${liveRunCount} live run${liveRunCount === 1 ? "" : "s"}` : "Cockpit live"}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[#65a30d]/30 bg-[#65a30d]/10 px-1.5 py-0.5 font-mono text-[10px] font-medium tabular-nums text-[#4d7c0f] dark:border-[#a3e635]/25 dark:bg-[#a3e635]/14 dark:text-[#a3e635]"
+              title={liveRunCount > 0 ? `${liveRunCount} live run${liveRunCount === 1 ? "" : "s"}` : "운영 중"}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--pw-lime)] bg-[var(--pw-lime-soft)] px-1.5 py-0.5 font-mono text-[10px] font-medium tabular-nums text-[var(--pw-lime)]"
             >
               <span className="pw-live-dot" />
               {liveRunCount > 0 ? `${liveRunCount} LIVE` : "LIVE"}
