@@ -10,11 +10,11 @@ export type StepDraft = {
   id: string;
   title: string;
   description: string;
-  // [stage26 human_wait] Wave 2 에서 type:"human_wait" 을 6번째 유니언 멤버로 추가한다.
-  // 이번 wave 에 추가하면 이 파일 밖의 완전 맵(step-editor.tsx 의 Record<StepDraft["type"], …>
-  // 스타일 라벨/아이콘 표)이 깨져 5파일 한도를 넘긴다 — 공유 레이어는 열린 문자열 type 과
-  // resolveStepLogicalClass 로 human_wait 을 이미 수용한다(역호환 유지).
-  type: "agent" | "tool" | "if" | "complete" | "workflow";
+  // [stage26 human_wait] Wave 2 에서 6번째 유니언 멤버로 추가했다 — 사람 승인 대기 스텝.
+  // 공유 레이어는 열린 문자열 type 과 resolveStepLogicalClass 로 human_wait 을 이미 수용하며,
+  // STEP_TYPE_META 표(step-editor)와 jsonToSteps 타입 화이트리스트(serialization)도 함께
+  // 갱신했다(역호환 유지 — 기존 5멤버 draft 는 그대로 유효).
+  type: "agent" | "tool" | "if" | "complete" | "workflow" | "human_wait";
   conditionGroup: WorkflowConditionGroup;
   completionReason: string;
   toolName: string;

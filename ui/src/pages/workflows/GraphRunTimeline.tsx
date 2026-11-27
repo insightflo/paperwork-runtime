@@ -36,6 +36,38 @@ const SEGMENT_ACCENTS: Record<GraphRunTimelineSegment["kind"], { dot: string; so
   resume: { dot: "var(--pw-lime)", soft: "var(--pw-lime-soft)" },
 };
 
+// Human wait decision display state. Derived only from the read-only decision
+// overlay outcome for display; the human-wait gate remains the execution
+// authority (fail-closed server side).
+type HumanWaitDecisionState = "pending" | "approved" | "rejected" | "expired";
+
+type HumanWaitTimelineSegment = Extract<GraphRunTimelineSegment, { kind: "human_wait" }>;
+
+function humanWaitDecisionStateOf(segment: HumanWaitTimelineSegment): HumanWaitDecisionState {
+  const outcome = (segment.outcome ?? "").trim().toLowerCase();
+  if (outcome === "approved") return "approved";
+  if (outcome === "rejected") return "rejected";
+  if (outcome === "expired") return "expired";
+  return "pending";
+}
+
+const HUMAN_WAIT_STATE_ACCENTS: Record<HumanWaitDecisionState, { dot: string; soft: string; text: string; label: string }> = {
+  pending: { dot: "var(--pw-amber)", soft: "var(--pw-amber-soft)", text: "var(--pw-amber)", label: "Paused · awaiting approval" },
+  approved: { dot: "var(--pw-emerald)", soft: "var(--pw-lime-soft)", text: "var(--pw-emerald)", label: "Approved · resumed" },
+  rejected: { dot: "var(--pw-crimson)", soft: "var(--pw-crimson-soft)", text: "var(--pw-crimson)", label: "Rejected · halted" },
+  expired: { dot: "var(--pw-crimson)", soft: "var(--pw-crimson-soft)", text: "var(--pw-crimson)", label: "Expired · halted" },
+};
+
+function humanWaitIndicatorText(segment: HumanWaitTimelineSegment, state: HumanWaitDecisionState): string {
+  if (state !== "pending") return HUMAN_WAIT_STATE_ACCENTS[state].label;
+  if (segment.resolvedAt && segment.outcome) return `Resolved · ${segment.outcome}`;
+  return HUMAN_WAIT_STATE_ACCENTS.pending.label;
+}
+
+function shortDecisionId(decisionId: string): string {
+  return decisionId.length > 12 ? `${decisionId.slice(0, 12)}…` : decisionId;
+}
+
 function segmentMetaText(segment: GraphRunTimelineSegment, titleOf: (stepId: string) => string): string {
   switch (segment.kind) {
     case "parallel":
@@ -43,7 +75,7 @@ function segmentMetaText(segment: GraphRunTimelineSegment, titleOf: (stepId: str
     case "join":
       return `merges ${segment.inboundStepIds.map(titleOf).join(", ")}`;
     case "human_wait":
-      return segment.decisionId ? `decision ${segment.decisionId}` : "decision pending";
+      return segment.decisionId ? "" : "decision pending";
     case "resume":
       return `after ${titleOf(segment.afterStepId)}`;
     default:
@@ -97,6 +129,21 @@ const durationStyle: CSSProperties = {
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
 };
 
+const decisionPillStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  color: "var(--pw-muted)",
+  background: "var(--pw-panel)",
+  border: "var(--pw-hairline-width, 1px) solid var(--pw-hairline)",
+  borderRadius: "999px",
+  padding: "1px 8px",
+  fontSize: "10px",
+  fontWeight: 700,
+  lineHeight: 1.4,
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  whiteSpace: "nowrap",
+};
+
 export function GraphRunTimeline({ steps }: { steps: WorkflowGraphStep[] }): JSX.Element | null {
   const segments = useMemo(() => buildGraphRunTimelineSegments(steps), [steps]);
   const infoByStepId = useMemo(() => buildGraphRunTimelineStepInfo(steps), [steps]);
@@ -111,7 +158,9 @@ export function GraphRunTimeline({ steps }: { steps: WorkflowGraphStep[] }): JSX
       </div>
       <ol style={timelineListStyle}>
         {segments.map((segment, index) => {
-          const accent = SEGMENT_ACCENTS[segment.kind];
+          const waitState = segment.kind === "human_wait" ? humanWaitDecisionStateOf(segment) : null;
+          const waitText = waitState && segment.kind === "human_wait" ? humanWaitIndicatorText(segment, waitState) : "";
+          const accent = waitState ? HUMAN_WAIT_STATE_ACCENTS[waitState] : SEGMENT_ACCENTS[segment.kind];
           const meta = segmentMetaText(segment, titleOf);
           return (
             <li
@@ -132,7 +181,9 @@ export function GraphRunTimeline({ steps }: { steps: WorkflowGraphStep[] }): JSX
                 <div style={accent.soft ? { background: accent.soft, borderRadius: "8px", padding: "8px 10px" } : undefined}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: "8px", flexWrap: "wrap" }}>
                     <span style={segmentKindLabelStyle}>{SEGMENT_KIND_LABELS[segment.kind]}</span>
-                    {meta ? <span style={{ ...mutedTextStyle, fontSize: "11px" }}>{meta}</span> : null}
+                    {segment.kind === "human_wait" && segment.decisionId ? (
+                      <span data-decision-id-pill="true" style={decisionPillStyle}>#{shortDecisionId(segment.decisionId)}</span>
+                    ) : meta ? <span style={{ ...mutedTextStyle, fontSize: "11px" }}>{meta}</span> : null}
                   </div>
                   {segmentStepIds(segment).map((stepId) => {
                     const info = infoByStepId.get(stepId);
@@ -154,15 +205,14 @@ export function GraphRunTimeline({ steps }: { steps: WorkflowGraphStep[] }): JSX
                       </div>
                     );
                   })}
-                  {segment.kind === "human_wait" ? (
+                  {waitState ? (
                     <div style={stepRowStyle}>
                       <span
                         data-pause-indicator="true"
-                        style={{ fontSize: "11px", fontWeight: 700, color: "var(--pw-amber)" }}
+                        data-wait-state={waitState}
+                        style={{ fontSize: "11px", fontWeight: 700, color: HUMAN_WAIT_STATE_ACCENTS[waitState].text }}
                       >
-                        {segment.resolvedAt
-                          ? `Resolved${segment.outcome ? ` · ${segment.outcome}` : ""}`
-                          : "Paused · awaiting approval"}
+                        {waitText}
                       </span>
                     </div>
                   ) : null}

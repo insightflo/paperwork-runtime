@@ -43,6 +43,7 @@ import { WorkflowRunInputValidationError } from "../services/workflow/run-input-
 import { enableQaCapAcceptanceForCompany } from "../services/workflow/qa-cap-acceptance-rollout.js";
 import { parseWorkflowRunListQuery } from "../services/workflow/workflow-run-list-pagination.js";
 import { workflowService } from "../services/workflow/engine.js";
+import { attachStepRunHumanWaitDecisions } from "../services/workflow/step-run-decision-overlay.js";
 import { buildWorkflowRunHarnessSummary } from "../services/workflow/harness-summary.js";
 import {
   generateWebhookSecret,
@@ -611,7 +612,10 @@ export function workflowRoutes(db: Db) {
     }
     const stepDefinitionById = new Map((definition?.steps ?? []).map((step) => [step.id, workflowStepForUi(step, agentNameById)]));
     const approvalWait = await safeMarkerForWorkflowRun(db, run.companyId, run.id);
-    const serializedStepRuns = stepRuns.map((stepRun) => {
+    // [stage26 s26-w4] human_wait 결정 오버레이 — 읽기 전용 배치 1쿼리(0 N+1), step-run 행 비변경 복사본에
+    //   optional humanWaitDecision 을 덧입힌다. 표시/요약 전용이며 실행 권한 판정 근거로 읽히지 않는다.
+    const overlaidStepRuns = await attachStepRunHumanWaitDecisions(db, run.companyId, stepRuns);
+    const serializedStepRuns = overlaidStepRuns.map((stepRun) => {
       const stepDefinition = stepDefinitionById.get(stepRun.stepId);
       const workProducts = stepRun.issueId ? workProductsByIssueId.get(stepRun.issueId) ?? [] : [];
       return {

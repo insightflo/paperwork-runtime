@@ -2,6 +2,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { executeAgentArtifactTool } from './agent-artifact-tool.js';
+import { executeDataGraphQueryTool } from "../data-graph/data-graph-tool.js";
 import { captureToolCallProvenance, recordToolCallProvenance, type ToolCallProvenance } from "./tool-call-provenance.js";
 import { prepareQaConsumer } from "./qa-artifact-consumer.js";
 import { verifyPublicationResult } from "./publication-result.js";
@@ -115,6 +116,12 @@ export async function executeCoreWorkflowTool(input: {
   }
   if (tool.adapterType === "builtin" && adapterConfig.kind === "step-closeout") {
     return executeStepCloseoutTool(input);
+  }
+  if (tool.adapterType === "builtin" && adapterConfig.kind === "data-graph-query") {
+    // 읽기 전용 회사 스코프 탐색 — 스코프는 호출 컨텍스트 companyId뿐이며 rawArgs로 주입되지 않는다.
+    // executeDataGraphQueryTool은 검증 실패를 throw 대신 {ok:false,error}로 반환하므로 그대로 위임한다.
+    const result = await executeDataGraphQueryTool(input.db, input.companyId, input.parameters);
+    return { status: 200, body: { content: JSON.stringify(result), data: result, tool: input.toolName, source: "core" } };
   }
   if (input.heartbeatRunId && adapterConfig.artifactContract !== undefined) {
     return executeAgentArtifactTool(input, executeCoreWorkflowTool);

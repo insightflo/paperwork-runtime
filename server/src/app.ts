@@ -115,6 +115,7 @@ import { createPlanQaShadowLoop, resolvePlanQaShadowOwnership } from "./services
 import { createAgentJudgmentShadowLoop, resolveAgentShadowOwnership } from "./services/judgment/agent-judgment-shadow-loop.js";
 import { seedAgentJudgmentTool } from "./services/judgment/agent-judgment-tool.js";
 import { seedHtmlPreflightTool } from "./services/judgment/html-preflight-tool.js";
+import { seedDataGraphQueryTool } from "./services/data-graph/data-graph-tool.js";
 import type { BetterAuthSessionResult } from "./auth/better-auth.js";
 
 type UiMode = "none" | "static" | "vite-dev";
@@ -681,7 +682,7 @@ export async function createApp(
   api.use(agentWikiRoutes(db));
   api.use(knowledgePatternsRoutes(db));
   api.use(knowledgeBasesRoutes(db));
-  api.use(dataGraphRoutes());
+  api.use(dataGraphRoutes(db));
   api.use(selfImprovementAdoptionsRoutes(db));
   api.use(channelConfigRoutes(db));
   api.use(strategyPlaybookRoutes(db));
@@ -1273,6 +1274,9 @@ export async function createApp(
   if (!stopping && typeof db.select === "function" && typeof db.insert === "function") {
     trackStartup(seedHtmlPreflightTool(db).catch((err) => {
       logger.error({ err }, "Failed to seed html-preflight tool");
+    }));
+    trackStartup(seedDataGraphQueryTool(db).catch((err) => {
+      logger.error({ err }, "Failed to seed data-graph-query tool");
     }));
   }
 

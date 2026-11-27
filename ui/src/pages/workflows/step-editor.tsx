@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   GitBranch,
+  Hourglass,
   Plus,
   Trash2,
   Workflow,
@@ -55,6 +56,12 @@ const STEP_TYPE_META: Record<
     icon: CheckCircle2,
     badgeClass:
       "border-emerald-200/80 bg-emerald-50/80 text-emerald-700 dark:border-emerald-400/25 dark:bg-emerald-400/10 dark:text-emerald-300",
+  },
+  human_wait: {
+    label: "Human Wait",
+    icon: Hourglass,
+    badgeClass:
+      "border-orange-200/80 bg-orange-50/80 text-orange-700 dark:border-orange-400/25 dark:bg-orange-400/10 dark:text-orange-300",
   },
 };
 
@@ -427,7 +434,7 @@ export function StepEditor({
             </div>
             <div className={STEP_ROW_CLASS} onClick={(e) => e.stopPropagation()}>
               <div className="grid gap-1">
-                <FieldLabel help="Agent and Tool perform work. IF evaluates registered JSON output. Complete ends its selected branch successfully.">Type</FieldLabel>
+                <FieldLabel help="Agent and Tool perform work. IF evaluates registered JSON output. Complete ends its selected branch successfully. Human Wait pauses the branch until a human records a decision.">Type</FieldLabel>
                 <select
                   className={SELECT_CLASS}
                   value={step.type}
@@ -451,6 +458,7 @@ export function StepEditor({
                   <option value="workflow">Workflow (하위 워크플로 호출)</option>
                   <option value="if">IF (조건 분기)</option>
                   <option value="complete">Complete (성공 종료)</option>
+                  <option value="human_wait">Human Wait (사람 승인 대기)</option>
                 </select>
                 {availableTools.length === 0 ? (
                   <span className="text-[11px] text-slate-500 dark:text-slate-400">

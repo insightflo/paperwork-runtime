@@ -4,7 +4,9 @@ import {
   type WorkflowGraphEdgeMetadataRecord,
 } from "./workflow-graph.js";
 import type { StepDraft, WorkflowStepDraftInput } from "./step-draft-types.js";
+import type { WorkflowHumanWaitDecisionTemplate } from "@paperclipai/shared/types/workflow";
 import {
+  parseDecisionTemplateTimeoutMinutes,
   parseOptionalGraphPosition,
   parseOptionalNonNegativeInteger,
   parseOptionalPositiveInteger,
@@ -97,6 +99,38 @@ export function stepsToJson(drafts: StepDraft[]): unknown[] {
     const graphApprovalTimeoutSeconds = parseOptionalPositiveInteger(String(d.graphApprovalTimeoutSeconds ?? ""));
     if (graphApprovalTimeoutSeconds !== undefined) step.graphApprovalTimeoutSeconds = graphApprovalTimeoutSeconds;
     if (safeText(d.graphApprovalTimeoutAction)) step.graphApprovalTimeoutAction = safeText(d.graphApprovalTimeoutAction);
+    // [stage26 human_wait] 승인 카드 초안(decisionTemplate* 필드)을 공유 검증기 호환
+    // decisionTemplate 객체로 직렬화한다. 카드 편집기(step-decision-template-card)가 쓴
+    // 초안 필드가 저장 시 유실되지 않는 것이 목적이다.
+    // [게이트] 최소 한 필드가 명시적으로 설정될 때만 emission 한다 — 텍스트 5종(title,
+    // prompt, requiredRole, approvalLabel, rejectLabel)은 trim 후 비어있지 않을 때,
+    // timeoutMinutes 는 양수 파싱 성공, allowReject 는 true 일 때(false 는 emptyStep
+    // 기본값과 구분 불가)를 명시로 본다. 게이트가 닫히면 키 자체를 만들지 않아
+    // decisionTemplate 없는 기존 스텝의 저장 출력이 100% 동일하게 유지된다
+    // (빈 decisionTemplate 주입 금지).
+    // [출처 우선순위] 게이트가 열리면 초안 카드가 유일한 출처다 — 임포트 경로에서 extra
+    // 백으로 통과된 decisionTemplate 을 카드 상태로 덮어쓴다. 카드는 extra 프리필을 하지
+    // 않으므로 덮어쓰지 않으면 카드 편집이 침묵 유실된다.
+    // [allowReject] 게이트가 열리면 초안 체크박스를 boolean 으로 항상 실어 보내
+    // allowReject:false 를 포함한 왕복이 무손실로 유지된다.
+    const decisionTemplate: WorkflowHumanWaitDecisionTemplate = {};
+    const decisionTemplateTitle = safeText(d.decisionTemplateTitle);
+    if (decisionTemplateTitle) decisionTemplate.title = decisionTemplateTitle;
+    const decisionTemplatePrompt = safeText(d.decisionTemplatePrompt);
+    if (decisionTemplatePrompt) decisionTemplate.prompt = decisionTemplatePrompt;
+    const decisionTemplateRequiredRole = safeText(d.decisionTemplateRequiredRole);
+    if (decisionTemplateRequiredRole) decisionTemplate.requiredRole = decisionTemplateRequiredRole;
+    const decisionTemplateApprovalLabel = safeText(d.decisionTemplateApprovalLabel);
+    if (decisionTemplateApprovalLabel) decisionTemplate.approvalLabel = decisionTemplateApprovalLabel;
+    const decisionTemplateRejectLabel = safeText(d.decisionTemplateRejectLabel);
+    if (decisionTemplateRejectLabel) decisionTemplate.rejectLabel = decisionTemplateRejectLabel;
+    const decisionTemplateTimeoutMinutes = parseDecisionTemplateTimeoutMinutes(d.decisionTemplateTimeoutMinutes);
+    if (decisionTemplateTimeoutMinutes !== undefined) decisionTemplate.timeoutMinutes = decisionTemplateTimeoutMinutes;
+    if (d.decisionTemplateAllowReject === true) decisionTemplate.allowReject = true;
+    if (Object.keys(decisionTemplate).length > 0) {
+      decisionTemplate.allowReject = d.decisionTemplateAllowReject === true;
+      step.decisionTemplate = decisionTemplate;
+    }
     if (d.graphMockEnabled) step.graphMockEnabled = true;
     if (safeText(d.graphMockResult)) step.graphMockResult = safeText(d.graphMockResult);
     if (safeText(d.graphPinnedResultRunId)) step.graphPinnedResultRunId = safeText(d.graphPinnedResultRunId);
@@ -268,7 +302,9 @@ export function jsonToSteps(steps: WorkflowStepDraftInput): StepDraft[] {
       title: s.title,
       description: raw.description as string || "",
       // [workflow child step] type:"workflow" 도 draft 로 보존 — 저장 시 agent 로 강등되지 않는다.
-      type: s.type === "tool" || s.type === "if" || s.type === "complete" || s.type === "workflow" ? s.type : "agent",
+      // [stage26 human_wait] Wave 2 의 6번째 멤버 type:"human_wait" 도 보존한다 — 임포트→재저장
+      // 왕복에서 사람 승인 대기 타입이 agent 로 침묵 강등되지 않는다(공유 검증기가 human_wait 을 수용).
+      type: s.type === "tool" || s.type === "if" || s.type === "complete" || s.type === "workflow" || s.type === "human_wait" ? s.type : "agent",
       // [descope v1 D1] literal true 만 1급 필드로 승격한다. false/문자열 등 invalid 값은
       // 1급 승격 없이 extra 통과값으로 그대로 남겨 공유 검증기가 거부한다(침묵 강등/제거 금지).
       wait: raw.wait === true ? true : undefined,

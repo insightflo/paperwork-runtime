@@ -241,17 +241,19 @@ describe("Missions Combo 4 High-Scale Fleet Radar & Split View", () => {
     expect(container.querySelectorAll("[data-mosaic-tile]")).toHaveLength(0);
   });
 
-  it("pins attention-needed missions first in the 58/42 split list and shows permanent Live Inspector", async () => {
+  it("sorts the split list by the active sort (default updatedAt:desc, id tie-break) and shows permanent Live Inspector", async () => {
     const container = await mount();
 
+    // Fleet fixtures share identical updatedAt/createdAt, so the deterministic comparator
+    // falls back to the id tie-break: mission-1 leads. Attention-first pinning was removed
+    // by the s26-missions-sort-fix — the Sort dropdown now always controls row order.
     const rows = Array.from(container.querySelectorAll("[data-mission-row]"));
-    expect(rows[0]?.getAttribute("data-mission-row")).toBe("mission-10");
-    expect(rows[0]?.getAttribute("data-radar-bucket")).toBe("need");
+    expect(rows[0]?.getAttribute("data-mission-row")).toBe("mission-1");
+    expect(rows[0]?.getAttribute("data-radar-bucket")).toBe("run");
 
     const inspector = container.querySelector("[data-mission-preview]") as HTMLElement;
     expect(inspector).not.toBeNull();
-    expect(inspector.textContent).toContain("Mission Alpha 10");
-    expect(inspector.textContent).toContain("Approve render farm slot");
+    expect(inspector.textContent).toContain("Mission Alpha 1");
     expect(inspector.textContent).toContain("RES-101");
     expect(inspector.textContent).toContain("Open Full Mission →");
   });
@@ -303,17 +305,17 @@ describe("Missions Combo 4 High-Scale Fleet Radar & Split View", () => {
   it("supports ArrowDown/ArrowUp keyboard row selection and status toggle action in Live Inspector", async () => {
     const container = await mount();
 
-    // Initially mission-10 (pinned attention-needed) is selected
+    // Initially the first row (mission-1, deterministic id tie-break) is selected
     expect(
       container.querySelector("[data-mission-row][data-selected]")?.getAttribute("data-mission-row"),
-    ).toBe("mission-10");
+    ).toBe("mission-1");
 
     await act(async () => {
       document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
     });
     expect(
       container.querySelector("[data-mission-row][data-selected]")?.getAttribute("data-mission-row"),
-    ).toBe("mission-1");
+    ).toBe("mission-10");
 
     // Click pause action button inside Live Inspector
     const pauseBtn = Array.from(
@@ -323,6 +325,6 @@ describe("Missions Combo 4 High-Scale Fleet Radar & Split View", () => {
     await act(async () => {
       pauseBtn.click();
     });
-    expect(updateMissionMock).toHaveBeenCalledWith("mission-1", { status: "paused" });
+    expect(updateMissionMock).toHaveBeenCalledWith("mission-10", { status: "paused" });
   });
 });

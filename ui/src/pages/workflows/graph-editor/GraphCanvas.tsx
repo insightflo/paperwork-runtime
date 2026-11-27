@@ -32,7 +32,7 @@ import {
 } from "./graphUiUtils.js";
 import { GraphCanvasEditTools, GraphCanvasViewTools } from "./GraphCanvasControls.js";
 import { GraphCanvasContextMenu } from "./GraphCanvasContextMenu.js";
-import { resolveNodeLogicalClass } from "./node-logical-class.js";
+import { nodeLogicalClassBadgeLabel, nodeLogicalClassBadgeStyle, resolveNodeLogicalClass } from "./node-logical-class.js";
 import { GRAPH_CANVAS_CONNECTOR_STATES, GraphCanvasStatusStrip, type WorkflowLogicalClassCounts } from "./GraphCanvasStatusStrip.js";
 import { GraphNodeHandles } from "./GraphNodeHandles.js";
 import { GraphConnectionEffects } from "./GraphConnectionEffects.js";
@@ -429,6 +429,11 @@ export function GraphCanvas({
               const matched = matchingNodeIds.has(node.id);
               const inSelection = !selected && selectedPathNodeIds.has(node.id);
               const showNodeMetadata = selected || matched || inSelection;
+              // [목적] 노드 카드마다 논리 클래스 배지(함수/AI 에이전트/사람 대기)를 읽기 전용으로 덧그린다.
+              // human_wait(구조적 일시정지 게이트)는 data-pause-gate + title 툴팁으로 시각 구분한다.
+              // [주의] 저장된 스텝 형태는 바꾸지 않는다(graphApprovalRequired → human_wait 읽기 승격).
+              const logicalClass = resolveNodeLogicalClass(node.step);
+              const logicalPauseGate = logicalClass === "human_wait";
               const badgeSections = [
                 ["badges", node.advanced.badges, undefined], ["testing-badges", node.testing.badges, "#fbbf24"],
                 ["execution-badges", node.execution.badges, "#38bdf8"], ["data-flow-badges", node.dataFlow.badges, "#a78bfa"],
@@ -458,6 +463,12 @@ export function GraphCanvas({
                   <span key="meta-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
                     <span key="kind" style={{ fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", textTransform: "uppercase" }}>{node.kind}</span>
                     <span key="status" style={{ ...statusBadgeStyle(node.runStatus.status), fontSize: "10px" }}>{node.runStatus.status}</span>
+                  </span>
+                  <span key="logical-class" data-node-logical-class={logicalClass}
+                    data-pause-gate={logicalPauseGate ? "true" : undefined}
+                    title={logicalPauseGate ? "Structural pause gate — the run waits for a person" : undefined}
+                    style={{ ...nodeLogicalClassBadgeStyle[logicalClass], marginTop: "4px" }}>
+                    {nodeLogicalClassBadgeLabel(logicalClass)}
                   </span>
                   <span key="label" style={{ display: "block", marginTop: "6px", fontSize: "13px", fontWeight: 700, overflowWrap: "anywhere" }}>{node.label}</span>
                   <span key="location" style={{ display: "block", marginTop: "4px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", overflowWrap: "anywhere" }}>L{node.layer} · {node.id || "(no id)"}</span>

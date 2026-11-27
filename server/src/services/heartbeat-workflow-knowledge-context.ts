@@ -1,6 +1,8 @@
 import type { Db } from "@paperclipai/db";
 import { knowledgeService } from "./knowledge/base.js";
 import { buildAgentKbTocContext } from "./knowledge/kb-nodes.js";
+import { buildWorkflowStepGraphContext } from "./data-graph/workflow-context-adapter.js";
+import type { LogicalGraphNodeKind } from "./data-graph/logical-graph.js";
 
 export type WorkflowStepKnowledgeContext = {
   workflowRunId: string;
@@ -110,6 +112,41 @@ export async function resolveWorkflowStepKnowledgeContext(input: {
     knowledgeBaseIds: contract.knowledgeBaseIds,
     entries,
   };
+}
+
+export type AppendOptionalDataGraphContextOptions = {
+  companyId: string;
+  seedKind: LogicalGraphNodeKind;
+  seedId: string;
+  existingMarkdown: string;
+  /** 명시적 opt-in. false(기본)면 그래프 질의 없이 existingMarkdown을 그대로 돌려준다. */
+  enabled?: boolean;
+  maxHops?: number;
+  maxChars?: number;
+};
+
+/**
+ * 워크플로 스텝 마크다운 뒤에 데이터 그래프 관련 컨텍스트 블록을 선택적으로 덧붙인다.
+ * [계약] enabled=false(기본)는 질의 없이 existingMarkdown을 그대로 반환한다(기존 동작 보존).
+ *   opt-in이어도 그래프 fact가 0이면 블록이 비어 fail-open으로 existingMarkdown을
+ *   byte-for-byte 그대로 돌려준다(zero prompt bloat). 붙일 때는 adapter가 만든
+ *   provenance 인용 블록을 재가공 없이 "\n\n" 구분자로 덧붙이며 블록 예산(maxChars)은
+ *   adapter 계약을 따른다. 그래프 질의의 DB 오류는 삼키지 않고 전파한다.
+ */
+export async function appendOptionalDataGraphContext(
+  db: Db,
+  options: AppendOptionalDataGraphContextOptions,
+): Promise<string> {
+  if (!options.enabled) return options.existingMarkdown;
+  const graph = await buildWorkflowStepGraphContext(db, {
+    companyId: options.companyId,
+    seedKind: options.seedKind,
+    seedId: options.seedId,
+    maxHops: options.maxHops,
+    maxChars: options.maxChars,
+  });
+  if (graph.markdown.length === 0) return options.existingMarkdown;
+  return `${options.existingMarkdown}\n\n${graph.markdown}`;
 }
 
 /** Lightweight L0 Tree TOC briefing for agents with KB grants (avoids dumping full static blobs or list-all). */
