@@ -14,6 +14,10 @@ import { ApiError } from "../api/client";
 import { queryKeys } from "../lib/queryKeys";
 import type { CompanySelectionSource } from "../lib/company-selection";
 import { CompanyLanguageProvider, resolveCompanyLanguage } from "../lib/companyLanguage";
+import {
+  readMigratedStorageItem,
+  writeMigratedStorageItem,
+} from "../lib/storage-keys";
 type CompanySelectionOptions = { source?: CompanySelectionSource };
 
 export type CompanyRole = "owner" | "admin" | "member" | "viewer";
@@ -51,14 +55,17 @@ interface CompanyContextValue {
   }) => Promise<Company>;
 }
 
-const STORAGE_KEY = "paperclip.selectedCompanyId";
+const STORAGE_KEY = "paperwork.selectedCompanyId";
+const LEGACY_STORAGE_KEY = "paperclip.selectedCompanyId";
 
 export const CompanyContext = createContext<CompanyContextValue | null>(null);
 
 export function CompanyProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [selectionSource, setSelectionSource] = useState<CompanySelectionSource>("bootstrap");
-  const [selectedCompanyId, setSelectedCompanyIdState] = useState<string | null>(() => localStorage.getItem(STORAGE_KEY));
+  const [selectedCompanyId, setSelectedCompanyIdState] = useState<string | null>(() =>
+    readMigratedStorageItem(STORAGE_KEY, LEGACY_STORAGE_KEY),
+  );
 
   const { data: companies = [], isLoading, error } = useQuery({
     queryKey: queryKeys.companies.all,
@@ -84,20 +91,20 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     if (companies.length === 0) return;
 
     const selectableCompanies = sidebarCompanies.length > 0 ? sidebarCompanies : companies;
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = readMigratedStorageItem(STORAGE_KEY, LEGACY_STORAGE_KEY);
     if (stored && selectableCompanies.some((c) => c.id === stored)) return;
     if (selectedCompanyId && selectableCompanies.some((c) => c.id === selectedCompanyId)) return;
 
     const next = selectableCompanies[0]!.id;
     setSelectedCompanyIdState(next);
     setSelectionSource("bootstrap");
-    localStorage.setItem(STORAGE_KEY, next);
+    writeMigratedStorageItem(STORAGE_KEY, LEGACY_STORAGE_KEY, next);
   }, [companies, selectedCompanyId, sidebarCompanies]);
 
   const setSelectedCompanyId = useCallback((companyId: string, options?: CompanySelectionOptions) => {
     setSelectedCompanyIdState(companyId);
     setSelectionSource(options?.source ?? "manual");
-    localStorage.setItem(STORAGE_KEY, companyId);
+    writeMigratedStorageItem(STORAGE_KEY, LEGACY_STORAGE_KEY, companyId);
   }, []);
 
   const reloadCompanies = useCallback(async () => {
