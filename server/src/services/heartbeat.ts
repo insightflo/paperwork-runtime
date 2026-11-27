@@ -221,9 +221,18 @@ import {
   SHUTDOWN_INTERRUPTED_ERROR_CODE,
   buildShutdownCheckpoint,
   emptyFlushSummary,
+  isShutdownSignalExit,
   remainingMs,
+  resolveShutdownInterruptedFlushDeadlineMs,
   type ShutdownFlushSummary,
 } from "./shutdown-flush.js";
+import {
+  WORK_PRODUCT_REGISTRATION_RETRY_BUDGET,
+  WORK_PRODUCT_REGISTRATION_RETRY_REQUIRED_ACTION,
+  countPriorWorkProductRegistrationAutoBlocks,
+  flushWorkProductRegistrationRetries,
+  type WorkProductRegistrationRetryEntry,
+} from "./heartbeat-wp-registration-retry.js";
 import { operatorApprovalWaitService } from "./operator-approval-wait.js";
 import { settleHeartbeatAfterExecution } from "./heartbeat-finalization/post-execution.js";
 import { attemptFullSettlement } from "./heartbeat-finalization/settlement.js";
@@ -4432,7 +4441,29 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       }
       let outcome: "succeeded" | "failed" | "cancelled" | "timed_out";
       const latestRun = await getRun(run.id);
-      const latestTerminalRun = latestRun && isTerminalHeartbeatRunStatus(latestRun.status) ? latestRun : null;
+      let latestTerminalRun = latestRun && isTerminalHeartbeatRunStatus(latestRun.status) ? latestRun : null;
+      // [shutdown-interrupted exit] 서버 종료 비행 중 종료 신호(SIGINT/SIGTERM, shell 변환 exit 130/143)로
+      // 끝난 자식은 일반 failed/commandcode_missing_result 로 분류하지 않는다(실패 카드 스팸·에이전트 error
+      // 마킹·이슈 차단·폴백 이중 큐잉 방지). 대신 종료 플러시 계약(doc/plans/2026-09-27-checkpoint-shutdown.md)
+      // 을 그대로 적용한다:
+      //  - 아직 running 이면 markRunsShutdownInterrupted 가 CAS 마킹(failed+shutdown_interrupted, 체크포인트
+      //    첨부)과 정확히-1회 재시도/폴백/릴리즈 후처리를 수행한다. terminateDrainedChildren 의 플러시와
+      //    경합해도 expectedStatuses=["running"] CAS 로 정확히 한쪽만 마킹한다(패자는 펜스).
+      //  - 이미 종단(플러시 선승)이면 위임은 펜스 no-op — 아래 증거 백필만 남는다.
+      //  - 위임이 마킹 없이 반환(데드라인 초과/0)하면 아래 쓰기 분기가 같은 계약(failed+shutdown_interrupted)
+      //    으로 직접 마킹하고, 재시도는 기동 시 reaper 백스톱이 보충한다.
+      //  - 종료 비행이 아닌 평상시 런타임의 exit 130/143 은 기존 동작을 유지한다.
+      const runtimeShutdown = runtimeExecutionLifecycle.shutdownState();
+      const shutdownInterruptedExit = runtimeShutdown !== null
+        && isShutdownSignalExit(adapterResult.exitCode, adapterResult.signal);
+      if (shutdownInterruptedExit && !latestTerminalRun) {
+        await markRunsShutdownInterrupted([run.id], {
+          signal: runtimeShutdown.signal,
+          deadlineMs: resolveShutdownInterruptedFlushDeadlineMs(),
+        });
+        const refreshed = await getRun(run.id);
+        latestTerminalRun = refreshed && isTerminalHeartbeatRunStatus(refreshed.status) ? refreshed : null;
+      }
       if (latestTerminalRun?.status === "cancelled") {
         outcome = "cancelled";
       } else if (latestTerminalRun?.status === "timed_out") {
@@ -4449,7 +4480,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         outcome = "failed";
       }
       const codexAuthAutoBlock =
-        outcome === "failed"
+        outcome === "failed" && !shutdownInterruptedExit
           ? detectCodexAuthFailureForAutoBlock({
               adapterType: agent.adapterType,
               errorCode: adapterResult.errorCode ?? null,
@@ -4588,19 +4619,25 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
             outcome === "succeeded"
               ? null
               : redactCurrentUserText(
-                adapterResult.errorMessage ?? (outcome === "timed_out" ? "Timed out" : "Adapter failed"),
+                shutdownInterruptedExit
+                  ? `Graceful ${runtimeShutdown?.signal ?? "SIGTERM"} shutdown interrupted run; exit ${
+                    adapterResult.exitCode ?? "unknown"
+                  }${adapterResult.signal ? ` (${adapterResult.signal})` : ""}`
+                  : (adapterResult.errorMessage ?? (outcome === "timed_out" ? "Timed out" : "Adapter failed")),
                 currentUserRedactionOptions,
               ),
           errorCode:
-            outcome === "timed_out"
-              ? "timeout"
-              : outcome === "cancelled"
-                ? "cancelled"
-                : outcome === "failed"
-                  ? runLog.runawayTriggered
-                    ? "runaway_context"
-                    : (adapterResult.errorCode ?? "adapter_failed")
-                  : null,
+            shutdownInterruptedExit
+              ? SHUTDOWN_INTERRUPTED_ERROR_CODE
+              : outcome === "timed_out"
+                ? "timeout"
+                : outcome === "cancelled"
+                  ? "cancelled"
+                  : outcome === "failed"
+                    ? runLog.runawayTriggered
+                      ? "runaway_context"
+                      : (adapterResult.errorCode ?? "adapter_failed")
+                    : null,
           ...terminalEvidence,
         }, { expectedStatuses: ["running"] });
 
@@ -4614,15 +4651,19 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           await appendRunEvent(finalizedRun, seq++, {
             eventType: "lifecycle",
             stream: "system",
-            level: outcome === "succeeded" ? "info" : "error",
-            message: `run ${outcome}`,
+            level: outcome === "succeeded" ? "info" : shutdownInterruptedExit ? "warn" : "error",
+            message: shutdownInterruptedExit
+              ? `run interrupted by graceful ${runtimeShutdown?.signal ?? "SIGTERM"} shutdown (exit ${
+                adapterResult.exitCode ?? "unknown"
+              }); recovery queued for restart`
+              : `run ${outcome}`,
             payload: {
               status,
               exitCode: adapterResult.exitCode,
             },
           });
         }
-        if (missionAgentRuntimeForRun && missionId) {
+        if (missionAgentRuntimeForRun && missionId && !shutdownInterruptedExit) {
           const resultSummary = summarizeHeartbeatRunResultJson(adapterResult.resultJson ?? null);
           const summaryText =
             (typeof resultSummary?.summary === "string" ? resultSummary.summary : null) ??
@@ -4698,7 +4739,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         let transientAdapterRetryQueued = false;
         // Adapter failures can use a fallback command, but do not repeat the same
         // fallback after a deterministic provider/model configuration failure.
-        if (outcome === "failed" && finalizedRun) {
+        // [shutdown-interrupted exit] 종료 인터럽트 런의 실패 후처리(일반 transient retry·adapter fallback
+        // 큐잉)는 하지 않는다 — 위임/직접 마킹된 shutdown_interrupted 런의 재시도는 플러시 또는 기동 시
+        // reaper 백스톱이 정확히 1회 보충한다.
+        if (outcome === "failed" && finalizedRun && !shutdownInterruptedExit) {
           // [run stability] 일시 adapter_failed(실측 평균 107초)는 같은 설정으로 1회만
           //   자동 재시도한다. 재시도 우선 — fallback 명령은 재시도도 실패한 다음에 쓴다.
           const transientRetryMaxSec = resolveAdapterFailedTransientRetryMaxSec();
@@ -4783,14 +4827,18 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           }
           }
         }
-        if (!queuedAdapterFallbackRun && !transientAdapterRetryQueued) {
+        // [shutdown-interrupted exit] 이슈 처분(릴리즈/후계 이관)은 종료 플러시 계약이 소유한다 — 완료
+        // 경로가 재릴리즈하면 플러시가 큐잉한 재시도와 충돌한다.
+        if (!queuedAdapterFallbackRun && !transientAdapterRetryQueued && !shutdownInterruptedExit) {
           const releaseDisposition = await releaseFinishedRun(finalizedRun);
           // [instant-advance v1.2] 런 종결+이슈 정산 커밋 후 즉시 진행. fallback/retry 재큐 시엔 스텝이
           // 아직 미종결(재시도 런이 완료 시점에 훅 발화)이라 스킵한다.
           if (releaseDisposition.kind === "legacy") fireInstantWorkflowAdvanceForTerminalRun(finalizedRun);
         }
       }
-      await finalizeAgentStatus(agent.id, outcome);
+      // [shutdown-interrupted exit] 종료 중에는 에이전트 상태 재분류(finalizeAgentStatus)를 하지 않는다
+      // (플러시 계약 동일 — 새 실행 촉발·error 마킹 없음, 재시작 후 회수 흐름이 정산). 평상시 실패는 기존대로.
+      if (!shutdownInterruptedExit) await finalizeAgentStatus(agent.id, outcome);
     } catch (err) {
       // The transaction/guard can reject before the adapter Promise settles. Wait only for
       // the actual Promise captured at adapter.execute; an uninvoked adapter stays unknown.
@@ -5411,6 +5459,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       companyId: string; issueId: string; agentId: string; missionId: string | null;
       attempt: number; requiredAction: string;
     }> = [];
+    const postTransactionWorkProductRegistrationRetries: WorkProductRegistrationRetryEntry[] = [];
     const transactionResult = await withTxTimeout(db, async (tx) => {
       // [recovery liveness hardening] recovery lane(skipLocked=true) 에서만 행 락 대기가 lane 을
       // 막지 않도록 bounded 한다: lock_timeout/statement_timeout + FOR UPDATE SKIP LOCKED 로
@@ -5765,6 +5814,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
           allowedArtifactRoot,
         })) {
           const now = new Date();
+          const priorBlocks = await countPriorWorkProductRegistrationAutoBlocks(tx, issue.companyId, issue.id);
+          const attempt = priorBlocks + 1;
+          const withinRetryBudget = attempt <= WORK_PRODUCT_REGISTRATION_RETRY_BUDGET;
           await tx
             .update(issues)
             .set({
@@ -5800,8 +5852,21 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
               previousStatus: issue.status,
               nextStatus: "blocked",
               reason: "missing_work_product_registration",
+              attempt,
+              budget: WORK_PRODUCT_REGISTRATION_RETRY_BUDGET,
+              ...(withinRetryBudget ? { recoveryAction: "registration_retry_queued" } : {}),
             },
           });
+          if (withinRetryBudget) {
+            postTransactionWorkProductRegistrationRetries.push({
+              companyId: issue.companyId,
+              issueId: issue.id,
+              agentId: run.agentId,
+              missionId: issue.missionId ?? null,
+              attempt,
+              requiredAction: WORK_PRODUCT_REGISTRATION_RETRY_REQUIRED_ACTION,
+            });
+          }
           queuePostTransactionWorkflowIssueSync(issue.id);
           return null;
         }
@@ -6589,6 +6654,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     //   none of the required completion evidence. Within budget: re-dispatch once via enqueueWakeup
     //   when no live wake coverage exists for the issue. Beyond budget: raise ONE operator_decisions
     //   exception card (idempotent requestKey); card failure must never break closeout.
+    if (postTransactionWorkProductRegistrationRetries.length > 0) {
+      await flushWorkProductRegistrationRetries(db, enqueueWakeup, postTransactionWorkProductRegistrationRetries);
+    }
+
     if (postTransactionMissingEvidenceRedispatches.length > 0) {
       const { hasLiveWakeCoverage } = await import("./missions/qa-rework-cap-oversight-wake.js");
       for (const entry of postTransactionMissingEvidenceRedispatches) {

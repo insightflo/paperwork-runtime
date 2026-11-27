@@ -19,10 +19,10 @@ import {
 import { AccessSettingsSection } from "../components/access-settings/AccessSettingsSection";
 
 // Cockpit primitives (approved Linear + Datadog palette; mirrors .cockpit-strip/.cockpit-toolbar).
-const CARD = "rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
-const FIELD = "rounded-md border border-slate-200/90 bg-slate-50/80 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25";
+const CARD = "rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
+const FIELD = "rounded-md border border-slate-200/90 bg-slate-50/80 text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:focus:border-[var(--pw-cobalt)] dark:focus:ring-[var(--pw-cobalt)]/25";
 const LABEL = "text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad]";
-const CTA = "bg-blue-600 text-[#f8fafc] hover:bg-blue-500 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]";
+const CTA = "bg-blue-600 text-[#f8fafc] hover:bg-blue-500 dark:bg-blue-600 dark:hover:bg-[#3b82f6]";
 const LANGUAGE_LABEL: Record<CompanyDefaultLanguage, string> = { en: "English", ko: "한국어" };
 
 export function CompanySettings() {
@@ -220,7 +220,7 @@ export function CompanySettings() {
   return (
     <div className="grid max-w-none gap-3 tabular-nums xl:grid-cols-2">
       {/* 1-row 5-column cockpit strip: live company summary (reflects saved state) */}
-      <div className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-3 xl:col-span-2 xl:grid-cols-5" role="group" aria-label="Company summary">
+      <div className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-3 xl:col-span-2 xl:grid-cols-5" role="group" aria-label="Company summary">
         {strip.map((cell) => (
           <div key={cell.label} className="flex h-10 min-w-0 items-center justify-center gap-2 px-3 text-[11px] text-slate-600 dark:text-[#8b97ad]">
             <span aria-hidden style={{ backgroundColor: cell.dot }} className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.label === "Status" && !archived ? "animate-pulse" : ""}`} />
@@ -241,7 +241,7 @@ export function CompanySettings() {
             type="button"
             onClick={() => void copyChipValue("Company prefix", selectedCompany.issuePrefix)}
             title={`Click to copy prefix (${selectedCompany.issuePrefix})`}
-            className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-slate-200/90 bg-white px-2 font-mono text-[11px] font-medium text-slate-700 transition-colors hover:border-blue-500/40 hover:text-blue-700 dark:border-white/[0.09] dark:bg-[#0e131d] dark:text-[#cbd5e1] dark:hover:border-[#60a5fa]/40 dark:hover:text-[#60a5fa]"
+            className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-slate-200/90 bg-white px-2 font-mono text-[11px] font-medium text-slate-700 transition-colors hover:border-blue-500/40 hover:text-blue-700 dark:border-white/[0.09] dark:bg-card dark:text-[#cbd5e1] dark:hover:border-[var(--pw-cobalt)]/40 dark:hover:text-[var(--pw-cobalt)]"
           >
             <span>{selectedCompany.issuePrefix}</span>
             <Copy className="h-3 w-3 opacity-70" />
@@ -250,7 +250,7 @@ export function CompanySettings() {
             type="button"
             onClick={() => void copyChipValue("Company ID", selectedCompany.id)}
             title={`Click to copy Company ID (${selectedCompany.id})`}
-            className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-slate-200/90 bg-white px-2 font-mono text-[11px] text-slate-600 transition-colors hover:border-blue-500/40 hover:text-blue-700 dark:border-white/[0.09] dark:bg-[#0e131d] dark:text-[#9aa7bd] dark:hover:border-[#60a5fa]/40 dark:hover:text-[#60a5fa]"
+            className="inline-flex h-6 cursor-pointer items-center gap-1 rounded-md border border-slate-200/90 bg-white px-2 font-mono text-[11px] text-slate-600 transition-colors hover:border-blue-500/40 hover:text-blue-700 dark:border-white/[0.09] dark:bg-card dark:text-[#9aa7bd] dark:hover:border-[var(--pw-cobalt)]/40 dark:hover:text-[var(--pw-cobalt)]"
           >
             <span>ID: {selectedCompany.id.slice(0, 8)}…</span>
             <Copy className="h-3 w-3 opacity-70" />
@@ -384,14 +384,14 @@ export function CompanySettings() {
                     accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
                     disabled={!canAdmin}
                     onChange={handleLogoFileChange}
-                    className={`w-full px-2.5 py-1.5 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-blue-600 dark:file:bg-[#2563eb] file:px-2.5 file:py-1 file:text-xs file:text-white dark:file:text-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-60 ${FIELD}`}
+                    className={`w-full px-2.5 py-1.5 text-sm file:mr-4 file:rounded-md file:border-0 file:bg-blue-600 dark:file:bg-blue-600 file:px-2.5 file:py-1 file:text-xs file:text-white dark:file:text-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-60 ${FIELD}`}
                   />
                   {logoUrl && canAdmin && (
                     <div className="flex items-center gap-2">
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-7 border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] text-xs text-slate-900 dark:text-[#edf2fb] hover:bg-slate-100 dark:hover:bg-[#141b29] hover:text-slate-950 dark:hover:text-[#edf2fb]"
+                        className="h-7 border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-card text-xs text-slate-900 dark:text-[#edf2fb] hover:bg-slate-100 dark:hover:bg-[#141b29] hover:text-slate-950 dark:hover:text-[#edf2fb]"
                         onClick={handleClearLogo}
                         disabled={clearLogoMutation.isPending}
                       >
@@ -425,7 +425,7 @@ export function CompanySettings() {
                     type="color"
                     value={brandColor || "#6366f1"}
                     onChange={(e) => setBrandColor(e.target.value)}
-                    className="h-8 w-8 cursor-pointer rounded border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] p-0"
+                    className="h-8 w-8 cursor-pointer rounded border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-card p-0"
                   />
                   <input
                     type="text"

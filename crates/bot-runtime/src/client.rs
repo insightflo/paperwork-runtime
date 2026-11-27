@@ -7,7 +7,7 @@
 
 #[cfg(unix)]
 use crate::control_sock::{ControlSocketServer, DaemonTelemetry};
-use crate::state::{now_unix_secs, save_state_atomic, PersistedDaemonState};
+use crate::state::{load_state, now_unix_secs, save_state_atomic, PersistedDaemonState};
 use crate::token::redact_secrets;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -15,7 +15,7 @@ use std::env;
 use std::fmt;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -23,6 +23,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub const ENV_TERMINAL_TOKEN: &str = "PAPERWORK_TERMINAL_TOKEN";
 pub const ENV_BOT_TOKEN: &str = "PAPERWORK_BOT_TOKEN";
+/// Opt-in that lifts the loopback-only restriction for plain `http://` server URLs.
+/// Only the exact value `1` counts; any other value (or unset) keeps the restriction.
+pub const ENV_ALLOW_REMOTE_HTTP: &str = "PAPERWORK_BOT_ALLOW_REMOTE_HTTP";
 pub const PROTOCOL_VERSION: &str = "1.0";
 /// Integer sent on the wire: the server's strict telemetry schema requires `protocolVersion`
 /// to be an integer (1..=100), not the dotted string used for local display/state.
@@ -138,9 +141,7 @@ impl BackoffState {
         let delay_ms = if self.config.jitter_percent == 0 {
             base_ms
         } else {
-            let max_delta = base_ms
-                .saturating_mul(u64::from(self.config.jitter_percent))
-                / 100;
+            let max_delta = base_ms.saturating_mul(u64::from(self.config.jitter_percent)) / 100;
             if max_delta == 0 {
                 base_ms
             } else {
@@ -239,13 +240,42 @@ pub fn bot_inbound_path(bot_id: &str) -> Result<String, ClientError> {
     Ok(format!("/api/enterprise-bots/bots/{bot_id}/inbound"))
 }
 
+#[derive(Debug)]
 struct ParsedHttpUrl {
     host: String,
     port: u16,
     base_path: String,
 }
 
+/// Hosts that plain `http://` may target without the remote-HTTP opt-in.
+const LOOPBACK_HOSTS: [&str; 3] = ["localhost", "127.0.0.1", "::1"];
+
+/// True when `host` is a loopback name/literal (`localhost`, `127.0.0.1`, `::1`),
+/// compared case-insensitively. IPv6 hosts must be passed without brackets.
+fn is_loopback_host(host: &str) -> bool {
+    LOOPBACK_HOSTS
+        .iter()
+        .any(|loopback| loopback.eq_ignore_ascii_case(host))
+}
+
+/// Reads the remote plain-HTTP opt-in from the process environment.
+fn remote_plain_http_allowed() -> bool {
+    env::var(ENV_ALLOW_REMOTE_HTTP)
+        .map(|v| v.trim() == "1")
+        .unwrap_or(false)
+}
+
 fn parse_http_url(base_url: &str) -> Result<ParsedHttpUrl, ClientError> {
+    parse_http_url_with_policy(base_url, remote_plain_http_allowed())
+}
+
+/// Parses a plain `http://` server URL. Non-loopback hosts are rejected unless
+/// `allow_remote_http` is true; the policy is a parameter so tests do not race on
+/// the process environment.
+fn parse_http_url_with_policy(
+    base_url: &str,
+    allow_remote_http: bool,
+) -> Result<ParsedHttpUrl, ClientError> {
     let trimmed = base_url.trim().trim_end_matches('/');
     if trimmed.starts_with("https://") {
         return Err(ClientError::new(
@@ -291,6 +321,12 @@ fn parse_http_url(base_url: &str) -> Result<ParsedHttpUrl, ClientError> {
 
     if host.is_empty() {
         return Err(ClientError::new("server URL host is empty"));
+    }
+
+    if !is_loopback_host(&host) && !allow_remote_http {
+        return Err(ClientError::new(format!(
+            "refusing plain http:// to non-loopback host '{host}'; route through a localhost/http proxy or set {ENV_ALLOW_REMOTE_HTTP}=1 to opt in"
+        )));
     }
 
     Ok(ParsedHttpUrl {
@@ -550,6 +586,7 @@ pub struct DaemonSummary {
 
 /// Runs a terminal heartbeat loop with jittered exponential backoff, enriched telemetry,
 /// optional compatibility handshake, optional UDS control plane, and atomic `state.json` persistence.
+/// Persisted state is restored on startup (fail-open to fresh defaults when missing or unreadable).
 /// Reads the bearer token exclusively from `PAPERWORK_TERMINAL_TOKEN`.
 pub fn run_heartbeat_daemon(
     config: &HeartbeatDaemonConfig,
@@ -590,9 +627,17 @@ fn run_heartbeat_daemon_with_token(
 
     let started = Instant::now();
     let mut backoff = BackoffState::new(config.backoff);
-    let mut consecutive_failures: u32 = 0;
-    let mut last_rtt_ms: Option<u64> = None;
-    let mut last_heartbeat_at: Option<u64> = None;
+    let restored = restore_persisted_state(config.state_path.as_deref());
+    let mut consecutive_failures: u32 = restored.as_ref().map_or(0, |s| s.consecutive_failures);
+    let mut last_rtt_ms: Option<u64> = restored.as_ref().and_then(|s| s.last_rtt_ms);
+    let mut last_heartbeat_at: Option<u64> = restored.as_ref().and_then(|s| s.last_heartbeat_at);
+    #[cfg(unix)]
+    {
+        telemetry.set_consecutive_failures(consecutive_failures);
+        if let Some(rtt_ms) = last_rtt_ms {
+            telemetry.record_rtt_ms(rtt_ms);
+        }
+    }
 
     let mut summary = DaemonSummary {
         iterations: 0,
@@ -687,10 +732,29 @@ fn run_heartbeat_daemon_with_token(
     Ok(summary)
 }
 
+/// Loads the persisted `state.json` for a fail-open startup restore.
+///
+/// Returns `None` (fresh defaults) when no state path is configured, the file does not
+/// exist yet, or it cannot be read/parsed. Errors are logged as a warning and never
+/// abort the daemon.
+fn restore_persisted_state(state_path: Option<&Path>) -> Option<PersistedDaemonState> {
+    let path = state_path?;
+    match load_state(path) {
+        Ok(state) => state,
+        Err(e) => {
+            eprintln!(
+                "[paperwork-bot] warning: ignoring unreadable state file {}: {}",
+                path.display(),
+                redact_secrets(&e.to_string())
+            );
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::load_state;
     use std::net::TcpListener;
 
     fn request_json_body(req: &str) -> Value {
@@ -937,6 +1001,142 @@ mod tests {
         assert_eq!(persisted.consecutive_failures, 0);
         assert!(persisted.last_heartbeat_at.is_some());
         let _ = std::fs::remove_dir_all(&state_dir);
+    }
+
+    #[test]
+    fn daemon_startup_restores_persisted_consecutive_failures_from_state_file() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        // The single heartbeat attempt fails (HTTP 500) so the restored counter is
+        // incremented rather than reset, which distinguishes "restored" from "fresh".
+        let handle = thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let n = sock.read(&mut buf).unwrap();
+            let req = String::from_utf8_lossy(&buf[..n]).into_owned();
+            assert!(
+                req.contains("\"lastRttMs\":77"),
+                "first heartbeat must carry restored lastRttMs"
+            );
+            let resp = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            let _ = sock.write_all(resp.as_bytes());
+        });
+
+        let state_dir = std::env::temp_dir().join(format!(
+            "pwork-daemon-restore-{}-{}",
+            std::process::id(),
+            now_unix_secs()
+        ));
+        let state_path = state_dir.join("state.json");
+        let prior = PersistedDaemonState {
+            terminal_id: "t-restore".into(),
+            server_url: format!("http://{addr}"),
+            protocol_version: PROTOCOL_VERSION.to_string(),
+            last_heartbeat_at: Some(1_760_000_000),
+            last_rtt_ms: Some(77),
+            consecutive_failures: 4,
+        };
+        save_state_atomic(&state_path, &prior).unwrap();
+
+        let cfg = HeartbeatDaemonConfig {
+            base_url: format!("http://{addr}"),
+            terminal_id: "t-restore".into(),
+            payload: json!({"status": "online"}),
+            interval: Duration::from_millis(10),
+            timeout: Duration::from_secs(2),
+            backoff: BackoffConfig {
+                initial_ms: 10,
+                max_ms: 50,
+                multiplier: 2,
+                jitter_percent: 0,
+            },
+            max_iterations: Some(1),
+            state_path: Some(state_path.clone()),
+            control_socket_path: None,
+            check_compatibility_on_start: false,
+        };
+        let path = terminal_heartbeat_path(&cfg.terminal_id).unwrap();
+        let shutdown = ShutdownSignal::new();
+        let summary =
+            run_heartbeat_daemon_with_token(&cfg, &path, "pcp_term_secret", &shutdown).unwrap();
+        handle.join().unwrap();
+
+        assert_eq!(summary.iterations, 1);
+        assert_eq!(summary.failures, 1);
+
+        // Fresh defaults would persist 1 / null metadata; 5 and the prior values prove restore.
+        let persisted = load_state(&state_path).unwrap().expect("state.json saved");
+        assert_eq!(persisted.consecutive_failures, 5);
+        assert_eq!(persisted.last_rtt_ms, Some(77));
+        assert_eq!(persisted.last_heartbeat_at, Some(1_760_000_000));
+        let _ = std::fs::remove_dir_all(&state_dir);
+    }
+
+    #[test]
+    fn is_loopback_host_matches_only_loopback_names_case_insensitively() {
+        for host in ["localhost", "LocalHost", "LOCALHOST", "127.0.0.1", "::1"] {
+            assert!(is_loopback_host(host), "expected {host:?} to be loopback");
+        }
+        for host in [
+            "example.com",
+            "localhost.example.com",
+            "127.0.0.1.example.com",
+            "0.0.0.0",
+            "[::1]",
+            "",
+        ] {
+            assert!(
+                !is_loopback_host(host),
+                "expected {host:?} to be non-loopback"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_http_url_accepts_loopback_plain_http_hosts() {
+        let v4 = parse_http_url("http://127.0.0.1:3100").unwrap();
+        assert_eq!((v4.host.as_str(), v4.port), ("127.0.0.1", 3100));
+        assert_eq!(v4.base_path, "");
+
+        let name = parse_http_url("http://localhost:3100/api").unwrap();
+        assert_eq!((name.host.as_str(), name.port), ("localhost", 3100));
+        assert_eq!(name.base_path, "/api");
+
+        let v6 = parse_http_url("http://[::1]:3100").unwrap();
+        assert_eq!((v6.host.as_str(), v6.port), ("::1", 3100));
+
+        let upper = parse_http_url("http://LOCALHOST:3100").unwrap();
+        assert_eq!(upper.host, "LOCALHOST");
+    }
+
+    #[test]
+    fn parse_http_url_rejects_non_loopback_plain_http_by_default() {
+        let err = parse_http_url("http://example.com:3100").unwrap_err();
+        assert!(
+            err.message.contains("non-loopback host 'example.com'"),
+            "unexpected message: {}",
+            err.message
+        );
+        assert!(err.message.contains(ENV_ALLOW_REMOTE_HTTP));
+
+        let err = parse_http_url_with_policy("http://example.com", false).unwrap_err();
+        assert!(err.message.contains("non-loopback host 'example.com'"));
+
+        // Preceding validations keep their own messages.
+        assert!(parse_http_url("http://").is_err());
+        assert!(parse_http_url("ftp://example.com").is_err());
+    }
+
+    #[test]
+    fn parse_http_url_allows_remote_plain_http_only_with_explicit_opt_in() {
+        let parsed = parse_http_url_with_policy("http://example.com:3100/prefix", true).unwrap();
+        assert_eq!((parsed.host.as_str(), parsed.port), ("example.com", 3100));
+        assert_eq!(parsed.base_path, "/prefix");
+
+        // Loopback hosts never need the opt-in; remote hosts always need it.
+        assert!(parse_http_url_with_policy("http://localhost", false).is_ok());
+        assert!(parse_http_url_with_policy("http://10.0.0.5:3100", false).is_err());
     }
 
     #[test]

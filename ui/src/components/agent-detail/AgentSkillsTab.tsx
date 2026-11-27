@@ -260,7 +260,7 @@ export function AgentSkillsTab({
   }, [skillSnapshot?.mode]);
   const unsupportedSkillMessage = useMemo(() => {
     if (skillSnapshot?.mode !== "unsupported") return null;
-    return "Paperclip cannot manage skills for this adapter yet. Manage them in the adapter directly.";
+    return "Paperwork가 이 어댑터의 스킬을 관리할 수 없습니다. 어댑터에서 직접 관리해 주세요.";
   }, [skillSnapshot?.mode]);
   const hasUnsavedChanges = !arraysEqual(skillDraft, lastSavedSkills);
   const saveStatusLabel = syncSkills.isPending
@@ -507,7 +507,7 @@ export function AgentSkillsTab({
                   <section className="border-y border-border">
                     <div className="border-b border-border bg-muted/40 px-3 py-2">
                       <span className="text-xs font-medium text-muted-foreground">
-                        Required by Paperclip
+                        Required by Paperwork
                       </span>
                     </div>
                     {requiredSkillRows.map(renderSkillRow)}
@@ -518,7 +518,7 @@ export function AgentSkillsTab({
                   <section className="border-y border-border">
                     <div className="border-b border-border bg-muted/40 px-3 py-2">
                       <span className="text-xs font-medium text-muted-foreground">
-                        User-installed skills, not managed by Paperclip
+                        User-installed skills, not managed by Paperwork
                       </span>
                     </div>
                     {unmanagedSkillRows.map(renderSkillRow)}

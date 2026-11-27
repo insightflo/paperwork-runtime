@@ -46,11 +46,11 @@ interface WaitEntry {
 const TONE_CLASSES: Record<WaitEntry["tone"], string> = {
   question: "border-amber-500/25 bg-amber-500/10 text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]",
   approval: "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:border-rose-400/35 dark:bg-rose-500/10 dark:text-rose-300",
-  queue: "border-blue-500/25 bg-blue-500/10 text-blue-700 dark:border-[#60a5fa]/35 dark:bg-[#60a5fa]/10 dark:text-[#60a5fa]",
+  queue: "border-blue-500/25 bg-blue-500/10 text-blue-700 dark:border-[var(--pw-cobalt)]/35 dark:bg-[var(--pw-cobalt)]/10 dark:text-[var(--pw-cobalt)]",
 };
 
-const ACTION_PILL_CLASS = "inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-slate-50/85 px-2.5 py-1 text-[11px] font-medium text-slate-600 no-underline shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-colors hover:border-[#60a5fa]/45 hover:bg-white hover:text-[#2563eb] dark:border-white/[0.09] dark:bg-[#07090d] dark:text-[#8f9db3] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:hover:border-[#60a5fa]/45 dark:hover:bg-[#0b0f18] dark:hover:text-[#60a5fa]";
-const KPI_TILE_CLASS = "block rounded-[10px] border border-slate-200/90 bg-slate-50/80 px-3 py-2.5 no-underline text-inherit shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_2px_rgba(15,23,42,0.03)] transition-colors hover:border-[#60a5fa]/45 hover:bg-white dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:hover:border-[#60a5fa]/45 dark:hover:bg-[#0b0f18]";
+const ACTION_PILL_CLASS = "inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-slate-50/85 px-2.5 py-1 text-[11px] font-medium text-slate-600 no-underline shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] transition-colors hover:border-[var(--pw-cobalt)]/45 hover:bg-white hover:text-[var(--pw-cobalt)] dark:border-white/[0.09] dark:bg-background dark:text-[#8f9db3] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:hover:border-[var(--pw-cobalt)]/45 dark:hover:bg-[#0b0f18] dark:hover:text-[var(--pw-cobalt)]";
+const KPI_TILE_CLASS = "block rounded-[10px] border border-slate-200/90 bg-slate-50/80 px-3 py-2.5 no-underline text-inherit shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_1px_2px_rgba(15,23,42,0.03)] transition-colors hover:border-[var(--pw-cobalt)]/45 hover:bg-white dark:border-white/[0.07] dark:bg-background dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:hover:border-[var(--pw-cobalt)]/45 dark:hover:bg-[#0b0f18]";
 
 export function DashboardCommandHeader(props: { companyId: string; kpis?: CommandKpis }) {
   const { companyId } = props;
@@ -130,10 +130,10 @@ export function DashboardCommandHeader(props: { companyId: string; kpis?: Comman
   return (
     <section
       aria-label="명령 헤더"
-      className="tactile-card space-y-3 rounded-[12px] border border-slate-200/90 bg-white p-3.5 tabular-nums text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]"
+      className="tactile-card space-y-3 rounded-[12px] border border-slate-200/90 bg-white p-3.5 tabular-nums text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:bg-none dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-[#65a30d]/30 bg-[#65a30d]/10 px-2.5 py-1 text-[11px] font-semibold text-[#4d7c0f] dark:border-[#a3e635]/35 dark:bg-[#a3e635]/10 dark:text-[#a3e635]">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-700/30 bg-emerald-700/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:border-emerald-300/35 dark:bg-emerald-300/10 dark:text-emerald-300">
           <Rocket className="h-3.5 w-3.5" />
           실시간 운영 현황
         </span>
@@ -169,7 +169,7 @@ export function DashboardCommandHeader(props: { companyId: string; kpis?: Comman
             className={KPI_TILE_CLASS}
           >
             <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-[#8f9db3]">
-              <tile.icon className="h-3.5 w-3.5 text-[#2563eb] dark:text-[#60a5fa]" />
+              <tile.icon className="h-3.5 w-3.5 text-[var(--pw-cobalt)]" />
               {tile.label}
             </div>
             <div className="mt-1 text-lg font-semibold leading-none tabular-nums text-slate-950 dark:text-[#edf2fb]">
@@ -181,7 +181,7 @@ export function DashboardCommandHeader(props: { companyId: string; kpis?: Comman
       </div>
 
       {waits.length > 0 && (
-        <div className="flex items-center gap-2 overflow-x-auto rounded-[10px] border border-slate-200/80 bg-slate-50/75 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/[0.07] dark:bg-[#07090d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div className="flex items-center gap-2 overflow-x-auto rounded-[10px] border border-slate-200/80 bg-slate-50/75 px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-white/[0.07] dark:bg-background dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
           <span className="flex shrink-0 items-center gap-1 text-[11px] text-slate-500 dark:text-[#8f9db3]">
             <Inbox className="h-3.5 w-3.5" />
             대기열
@@ -197,7 +197,7 @@ export function DashboardCommandHeader(props: { companyId: string; kpis?: Comman
             </Link>
           ))}
           {waitCount > waits.length && (
-            <Link to="/human-operator" className="shrink-0 text-[10px] text-[#2563eb] underline underline-offset-2 transition-colors hover:text-[#4d7c0f] dark:text-[#60a5fa] dark:hover:text-[#a3e635]">
+            <Link to="/human-operator" className="shrink-0 text-[10px] text-[var(--pw-cobalt)] underline underline-offset-2 transition-colors hover:text-emerald-700 dark:text-[var(--pw-cobalt)] dark:hover:text-emerald-300">
               +{waitCount - waits.length} 더 보기
             </Link>
           )}

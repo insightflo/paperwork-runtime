@@ -49,9 +49,7 @@ fn read_stdin_to_string() -> Result<String, String> {
 }
 
 fn find_flag(args: &[String], name: &str) -> Option<String> {
-    args.windows(2)
-        .find(|w| w[0] == name)
-        .map(|w| w[1].clone())
+    args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone())
 }
 
 fn require_flag(args: &[String], name: &str) -> Result<String, String> {
@@ -81,7 +79,12 @@ fn cmd_verify_token(args: &[String]) -> Result<Value, String> {
         .ok()
         .filter(|s| !s.trim().is_empty())
         .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| read_stdin_to_string().unwrap_or_default().trim().to_string());
+        .unwrap_or_else(|| {
+            read_stdin_to_string()
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        });
 
     if raw_token.is_empty() {
         return Err(
@@ -188,8 +191,13 @@ fn cmd_inbound(args: &[String]) -> Result<Value, String> {
     let payload: Value =
         serde_json::from_str(raw.trim()).map_err(|e| format!("invalid inbound JSON: {e}"))?;
 
-    let resp = send_bot_inbound(&server, &bot_id, &payload, Duration::from_secs(timeout_secs))
-        .map_err(|e| e.to_string())?;
+    let resp = send_bot_inbound(
+        &server,
+        &bot_id,
+        &payload,
+        Duration::from_secs(timeout_secs),
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(json!({
         "ok": resp.is_success(),
@@ -292,28 +300,27 @@ fn cmd_doctor(args: &[String]) -> Result<Value, String> {
 
     // 3. /api/enterprise-bots/compatibility reachability
     let (compat_ok, compat_check) = match server.as_deref() {
-        Some(url) => match check_compatibility(
-            url,
-            raw_token.as_deref(),
-            Duration::from_secs(timeout_secs),
-        ) {
-            Ok(res) => (
-                res.reachable,
-                json!({
-                    "ok": res.reachable,
-                    "status": res.status,
-                    "protocolVersion": res.protocol_version,
-                    "daemonVersion": res.daemon_version,
-                }),
-            ),
-            Err(e) => (
-                false,
-                json!({
-                    "ok": false,
-                    "error": e.to_string(),
-                }),
-            ),
-        },
+        Some(url) => {
+            match check_compatibility(url, raw_token.as_deref(), Duration::from_secs(timeout_secs))
+            {
+                Ok(res) => (
+                    res.reachable,
+                    json!({
+                        "ok": res.reachable,
+                        "status": res.status,
+                        "protocolVersion": res.protocol_version,
+                        "daemonVersion": res.daemon_version,
+                    }),
+                ),
+                Err(e) => (
+                    false,
+                    json!({
+                        "ok": false,
+                        "error": e.to_string(),
+                    }),
+                ),
+            }
+        }
         None => (
             true,
             json!({

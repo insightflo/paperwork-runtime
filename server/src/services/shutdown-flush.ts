@@ -17,6 +17,28 @@ import { logger } from "../middleware/logger.js";
 
 export const SHUTDOWN_INTERRUPTED_ERROR_CODE = "shutdown_interrupted";
 
+/**
+ * 자식 프로세스가 종료 신호(SIGINT/SIGTERM)로 끝났는지 판정한다. shell/래퍼는 신호 종료를
+ * exit 130(SIGINT)/143(SIGTERM)로 변환하므로 두 코드도 신호 종료로 본다. 종료 비행 중 여부는
+ * 이 술어와 무관하게 호출자(runtimeExecutionLifecycle.shutdownState())가 판정한다 — 평상시
+ * 런타임의 exit 130/143 은 기존 동작을 유지한다.
+ */
+export function isShutdownSignalExit(exitCode: number | null, signal: string | null): boolean {
+  return signal === "SIGINT" || signal === "SIGTERM" || exitCode === 130 || exitCode === 143;
+}
+
+/**
+ * 완료 경로의 종료-인터럽트 위임 마킹(markRunsShutdownInterrupted) 데드라인. config.ts 의
+ * shutdownFlushTimeoutMs 와 동일한 환경변수·clamp 규칙(기본 3000, 상한 60000, 0=위임 비활성 →
+ * 완료 경로가 같은 계약으로 직접 CAS 마킹)을 따른다. heartbeat.ts 는 config 를 import 하지
+ * 않으므로 이 모듈에서 같은 규칙으로 읽는다.
+ */
+export function resolveShutdownInterruptedFlushDeadlineMs(): number {
+  const raw = process.env.PAPERCLIP_SHUTDOWN_FLUSH_TIMEOUT_MS;
+  if (raw === undefined || raw === "" || Number.isNaN(Number(raw))) return 3000;
+  return Math.max(0, Math.min(60000, Number(raw)));
+}
+
 export type ShutdownFlushInput = {
   db: Db;
   run: typeof heartbeatRuns.$inferSelect;

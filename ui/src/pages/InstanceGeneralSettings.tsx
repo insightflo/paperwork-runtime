@@ -239,7 +239,7 @@ function PiCliManagerSection({ canApplyModel, onApplyModel }: {
   return (
     <section className={cn(cockpitPanel, "p-4")}>
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className={cockpitSectionHeader}>Multi-CLI &amp; Model Runtime (OpenBot Manager)</h2>
+        <h2 className={cockpitSectionHeader}>멀티 CLI · 모델 런타임 관리</h2>
         {runtimes.length > 0 && (
           <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium tabular-nums">
             {`${installedCount} / ${runtimes.length} CLI 설치됨`}

@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, BookOpen, Moon, Settings, Sun } from "lucide-react";
+import { Activity, Moon, Settings, Sun } from "lucide-react";
 import { Link } from "@/lib/router";
 import { Button } from "@/components/ui/button";
 import { AppVersionBadge } from "./AppVersionBadge";
@@ -80,29 +80,13 @@ export function SidebarFooterBar(props: {
     >
       <div className="flex items-center justify-between gap-1.5 font-mono text-[10.5px] text-muted-foreground">
         <div className="flex min-w-0 items-center gap-1.5">
-          <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-[#4d7c0f] dark:text-[#a3e635]">
+          <span className="inline-flex items-center gap-1.5 text-[10px] font-medium text-[var(--pw-lime)]" title="운영 중">
             <span className="pw-live-dot" />
-            <span className="truncate">READY</span>
+            <span className="truncate">정상</span>
           </span>
           <AppVersionBadge version={props.healthVersion} />
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="h-6 w-6 shrink-0 rounded-md border border-transparent text-muted-foreground hover:border-border/80 hover:bg-accent/60 hover:text-foreground dark:hover:border-white/[0.08] dark:hover:bg-white/[0.05]"
-            asChild
-          >
-            <a
-              href="https://docs.paperclip.ing/"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Documentation"
-              title="Documentation"
-            >
-              <BookOpen className="h-3.5 w-3.5" />
-            </a>
-          </Button>
           <Button
             variant="ghost"
             size="icon-sm"

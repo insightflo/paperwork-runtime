@@ -1,0 +1,293 @@
+/*
+ * Paperwork Design Tokens for the Paperwork UI.
+ * Semantic --pw-token-* tokens built on the warm paper / ink / oxblood / sage
+ * palette from index.css (dark base + light override via :root:not(.dark)).
+ * Role mapping: oxblood -> accent/tool/queue/ring, sage -> success/handoff/takeover,
+ * amber -> warning/question, crimson -> danger/error/approval, umber -> model/quota/info.
+ * Do not declare new --openbot-* tokens; use --pw-token-* instead.
+ */
+:root,
+.dark {
+  --pw-token-bg-surface: #1f1b18;
+  --pw-token-bg-surface-raised: #262019;
+  --pw-token-bg-glass: rgba(31, 27, 24, 0.78);
+  --pw-token-glass-border: rgba(239, 233, 221, 0.14);
+  --pw-token-border: rgba(239, 233, 221, 0.1);
+  --pw-token-border-strong: rgba(239, 233, 221, 0.2);
+  --pw-token-text-primary: #efe9dd;
+  --pw-token-text-secondary: #d8d2c6;
+  --pw-token-text-muted: #a39b8f;
+  --pw-token-accent: #d9705f;
+  --pw-token-accent-text: #e2a091;
+  --pw-token-accent-soft: rgba(217, 112, 95, 0.14);
+  --pw-token-success: #8fbf9a;
+  --pw-token-success-soft: rgba(143, 191, 154, 0.14);
+  --pw-token-success-text: #b1ceb1;
+  --pw-token-warning: #d2a648;
+  --pw-token-warning-soft: rgba(210, 166, 72, 0.15);
+  --pw-token-warning-text: #dbba75;
+  --pw-token-danger: #e2574a;
+  --pw-token-danger-soft: rgba(226, 87, 74, 0.14);
+  --pw-token-danger-text: #e68376;
+  --pw-token-span-model: #c9a27a;
+  --pw-token-span-tool: #d9705f;
+  --pw-token-span-wait: #d2a648;
+  --pw-token-span-handoff: #8fbf9a;
+  --pw-token-span-error: #e2574a;
+  --pw-token-span-lifecycle: #a39b8f;
+  --pw-token-provider-current: currentcolor;
+  --pw-token-provider-codex: #e4e4e7;
+  --pw-token-provider-claude: #d97757;
+  --pw-token-provider-antigravity: #8e75b2;
+  --pw-token-provider-pi: #10b981;
+  --pw-token-provider-hermes: #06b6d4;
+  --pw-token-provider-gemini: #4285f4;
+  --pw-token-provider-opencode: #a3a3a3;
+  --pw-token-provider-cursor: #f4f4f5;
+
+  --pw-token-surface-25d-bg: #171412;
+  --pw-token-surface-25d-raised: #1f1b18;
+  --pw-token-surface-25d-border: rgba(239, 233, 221, 0.1);
+  --pw-token-surface-25d-highlight: rgba(255, 255, 255, 0.04);
+  --pw-token-surface-25d-shadow: 0 18px 42px -22px rgba(0, 0, 0, 0.65);
+  --pw-token-sheet-shadow-rgb: 0 0 0;
+  --pw-token-subnav-bg: rgba(23, 20, 18, 0.95);
+  --pw-token-subnav-border: rgba(239, 233, 221, 0.1);
+  --pw-token-shell-frame-bg: #12100e;
+  --pw-token-canvas-sheet-bg: #1f1b18;
+  --pw-token-canvas-sheet-border: rgba(239, 233, 221, 0.12);
+  --pw-token-nav-active-bg: rgba(217, 112, 95, 0.14);
+  --pw-token-nav-active-border: rgba(217, 112, 95, 0.4);
+  --pw-token-nav-hover-bg: rgba(239, 233, 221, 0.06);
+  --pw-token-inspector-width: 360px;
+  --pw-token-kpi-cols: 3;
+  --pw-token-density-gap: 16px;
+  --pw-token-drag-handle-bg: rgba(239, 233, 221, 0.07);
+  --pw-token-drag-handle-fg: rgba(239, 233, 221, 0.4);
+  --pw-token-drag-handle-hover: rgba(239, 233, 221, 0.16);
+  --pw-token-wait-question: #d2a648;
+  --pw-token-wait-question-soft: rgba(210, 166, 72, 0.16);
+  --pw-token-wait-approval: #e2574a;
+  --pw-token-wait-approval-soft: rgba(226, 87, 74, 0.16);
+  --pw-token-wait-takeover: #8fbf9a;
+  --pw-token-wait-takeover-soft: rgba(143, 191, 154, 0.14);
+  --pw-token-wait-quota: #c9a27a;
+  --pw-token-wait-quota-soft: rgba(201, 162, 122, 0.16);
+  --pw-token-diff-before-bg: rgba(226, 87, 74, 0.12);
+  --pw-token-diff-before-text: #e68376;
+  --pw-token-diff-after-bg: rgba(143, 191, 154, 0.12);
+  --pw-token-diff-after-text: #b1ceb1;
+  --pw-token-queue-drop: rgba(217, 112, 95, 0.25);
+  --pw-token-info-text: #c9a27a;
+  --pw-token-info-soft: rgba(201, 162, 122, 0.14);
+  --pw-token-ring-track: rgba(239, 233, 221, 0.14);
+  --pw-token-ring-fill: #d9705f;
+}
+
+:root:not(.dark),
+:root[data-openbot-color-scheme="light"] {
+  --pw-token-bg-surface: #fbf8f1;
+  --pw-token-bg-surface-raised: #fdfbf6;
+  --pw-token-bg-glass: rgba(251, 248, 241, 0.82);
+  --pw-token-glass-border: rgba(31, 27, 22, 0.12);
+  --pw-token-border: rgba(31, 27, 22, 0.12);
+  --pw-token-border-strong: rgba(31, 27, 22, 0.24);
+  --pw-token-text-primary: #1f1b16;
+  --pw-token-text-secondary: #3d3830;
+  --pw-token-text-muted: #6b6358;
+  --pw-token-accent: #9a3b2e;
+  --pw-token-accent-text: #753127;
+  --pw-token-accent-soft: rgba(154, 59, 46, 0.1);
+  --pw-token-success: #4f7d5a;
+  --pw-token-success-soft: rgba(79, 125, 90, 0.12);
+  --pw-token-success-text: #436549;
+  --pw-token-warning: #a16207;
+  --pw-token-warning-soft: rgba(161, 98, 7, 0.12);
+  --pw-token-warning-text: #80500b;
+  --pw-token-danger: #b91c1c;
+  --pw-token-danger-soft: rgba(185, 28, 28, 0.1);
+  --pw-token-danger-text: #9a1c1c;
+  --pw-token-span-model: #7c5a3a;
+  --pw-token-span-tool: #9a3b2e;
+  --pw-token-span-wait: #a16207;
+  --pw-token-span-handoff: #4f7d5a;
+  --pw-token-span-error: #b91c1c;
+  --pw-token-span-lifecycle: #6b6358;
+  --pw-token-provider-codex: #27272a;
+  --pw-token-provider-cursor: #18181b;
+  --pw-token-provider-opencode: #3f3f46;
+
+  --pw-token-surface-25d-bg: #f3eee4;
+  --pw-token-surface-25d-raised: #fbf8f1;
+  --pw-token-surface-25d-border: rgba(31, 27, 22, 0.12);
+  --pw-token-surface-25d-highlight: rgba(255, 255, 255, 0.55);
+  --pw-token-surface-25d-shadow: 0 14px 34px -20px rgba(31, 27, 22, 0.25);
+  --pw-token-sheet-shadow-rgb: 31 27 22;
+  --pw-token-subnav-bg: rgba(251, 248, 241, 0.88);
+  --pw-token-subnav-border: rgba(31, 27, 22, 0.12);
+  --pw-token-shell-frame-bg: #ebe5d8;
+  --pw-token-canvas-sheet-bg: #fbf8f1;
+  --pw-token-canvas-sheet-border: rgba(31, 27, 22, 0.14);
+  --pw-token-nav-active-bg: rgba(154, 59, 46, 0.1);
+  --pw-token-nav-active-border: rgba(154, 59, 46, 0.28);
+  --pw-token-nav-hover-bg: rgba(31, 27, 22, 0.05);
+  --pw-token-drag-handle-bg: rgba(31, 27, 22, 0.07);
+  --pw-token-drag-handle-fg: rgba(31, 27, 22, 0.38);
+  --pw-token-drag-handle-hover: rgba(31, 27, 22, 0.15);
+  --pw-token-wait-question: #a16207;
+  --pw-token-wait-question-soft: rgba(161, 98, 7, 0.14);
+  --pw-token-wait-approval: #b91c1c;
+  --pw-token-wait-approval-soft: rgba(185, 28, 28, 0.12);
+  --pw-token-wait-takeover: #4f7d5a;
+  --pw-token-wait-takeover-soft: rgba(79, 125, 90, 0.12);
+  --pw-token-wait-quota: #7c5a3a;
+  --pw-token-wait-quota-soft: rgba(124, 90, 58, 0.14);
+  --pw-token-diff-before-bg: rgba(185, 28, 28, 0.1);
+  --pw-token-diff-before-text: #9a1c1c;
+  --pw-token-diff-after-bg: rgba(79, 125, 90, 0.12);
+  --pw-token-diff-after-text: #436549;
+  --pw-token-queue-drop: rgba(154, 59, 46, 0.3);
+  --pw-token-info-text: #7c5a3a;
+  --pw-token-info-soft: rgba(124, 90, 58, 0.12);
+  --pw-token-ring-track: rgba(31, 27, 22, 0.12);
+  --pw-token-ring-fill: #9a3b2e;
+}
+
+/* Backward-compatible aliases: same declaration surfaces as the legacy file. */
+:root,
+.dark,
+[data-openbot-color-scheme="light"] {
+  --openbot-bg-surface: var(--pw-token-bg-surface);
+  --openbot-bg-surface-raised: var(--pw-token-bg-surface-raised);
+  --openbot-bg-glass: var(--pw-token-bg-glass);
+  --openbot-glass-border: var(--pw-token-glass-border);
+  --openbot-border: var(--pw-token-border);
+  --openbot-border-strong: var(--pw-token-border-strong);
+  --openbot-text-primary: var(--pw-token-text-primary);
+  --openbot-text-secondary: var(--pw-token-text-secondary);
+  --openbot-text-muted: var(--pw-token-text-muted);
+  --openbot-accent: var(--pw-token-accent);
+  --openbot-accent-text: var(--pw-token-accent-text);
+  --openbot-accent-soft: var(--pw-token-accent-soft);
+  --openbot-success: var(--pw-token-success);
+  --openbot-success-soft: var(--pw-token-success-soft);
+  --openbot-success-text: var(--pw-token-success-text);
+  --openbot-warning: var(--pw-token-warning);
+  --openbot-warning-soft: var(--pw-token-warning-soft);
+  --openbot-warning-text: var(--pw-token-warning-text);
+  --openbot-danger: var(--pw-token-danger);
+  --openbot-danger-soft: var(--pw-token-danger-soft);
+  --openbot-danger-text: var(--pw-token-danger-text);
+  --openbot-span-model: var(--pw-token-span-model);
+  --openbot-span-tool: var(--pw-token-span-tool);
+  --openbot-span-wait: var(--pw-token-span-wait);
+  --openbot-span-handoff: var(--pw-token-span-handoff);
+  --openbot-span-error: var(--pw-token-span-error);
+  --openbot-span-lifecycle: var(--pw-token-span-lifecycle);
+  --openbot-provider-current: var(--pw-token-provider-current);
+  --openbot-provider-codex: var(--pw-token-provider-codex);
+  --openbot-provider-claude: var(--pw-token-provider-claude);
+  --openbot-provider-antigravity: var(--pw-token-provider-antigravity);
+  --openbot-provider-pi: var(--pw-token-provider-pi);
+  --openbot-provider-hermes: var(--pw-token-provider-hermes);
+  --openbot-provider-gemini: var(--pw-token-provider-gemini);
+  --openbot-provider-opencode: var(--pw-token-provider-opencode);
+  --openbot-provider-cursor: var(--pw-token-provider-cursor);
+  --openbot-surface-25d-bg: var(--pw-token-surface-25d-bg);
+  --openbot-surface-25d-raised: var(--pw-token-surface-25d-raised);
+  --openbot-surface-25d-border: var(--pw-token-surface-25d-border);
+  --openbot-surface-25d-highlight: var(--pw-token-surface-25d-highlight);
+  --openbot-surface-25d-shadow: var(--pw-token-surface-25d-shadow);
+  --openbot-sheet-shadow-rgb: var(--pw-token-sheet-shadow-rgb);
+  --openbot-subnav-bg: var(--pw-token-subnav-bg);
+  --openbot-subnav-border: var(--pw-token-subnav-border);
+  --openbot-shell-frame-bg: var(--pw-token-shell-frame-bg);
+  --openbot-canvas-sheet-bg: var(--pw-token-canvas-sheet-bg);
+  --openbot-canvas-sheet-border: var(--pw-token-canvas-sheet-border);
+  --openbot-nav-active-bg: var(--pw-token-nav-active-bg);
+  --openbot-nav-active-border: var(--pw-token-nav-active-border);
+  --openbot-nav-hover-bg: var(--pw-token-nav-hover-bg);
+  --openbot-inspector-width: var(--pw-token-inspector-width);
+  --openbot-kpi-cols: var(--pw-token-kpi-cols);
+  --openbot-density-gap: var(--pw-token-density-gap);
+  --openbot-drag-handle-bg: var(--pw-token-drag-handle-bg);
+  --openbot-drag-handle-fg: var(--pw-token-drag-handle-fg);
+  --openbot-drag-handle-hover: var(--pw-token-drag-handle-hover);
+  --openbot-wait-question: var(--pw-token-wait-question);
+  --openbot-wait-question-soft: var(--pw-token-wait-question-soft);
+  --openbot-wait-approval: var(--pw-token-wait-approval);
+  --openbot-wait-approval-soft: var(--pw-token-wait-approval-soft);
+  --openbot-wait-takeover: var(--pw-token-wait-takeover);
+  --openbot-wait-takeover-soft: var(--pw-token-wait-takeover-soft);
+  --openbot-wait-quota: var(--pw-token-wait-quota);
+  --openbot-wait-quota-soft: var(--pw-token-wait-quota-soft);
+  --openbot-diff-before-bg: var(--pw-token-diff-before-bg);
+  --openbot-diff-before-text: var(--pw-token-diff-before-text);
+  --openbot-diff-after-bg: var(--pw-token-diff-after-bg);
+  --openbot-diff-after-text: var(--pw-token-diff-after-text);
+  --openbot-queue-drop: var(--pw-token-queue-drop);
+  --openbot-info-text: var(--pw-token-info-text);
+  --openbot-info-soft: var(--pw-token-info-soft);
+  --openbot-ring-track: var(--pw-token-ring-track);
+  --openbot-ring-fill: var(--pw-token-ring-fill);
+}
+
+/* ---- 2.5D adaptive shell layout helpers ---- */
+.openbot-kpi-grid {
+  display: grid;
+  gap: var(--pw-token-density-gap, 16px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (min-width: 768px) {
+  .openbot-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 1280px) {
+  .openbot-kpi-grid { grid-template-columns: repeat(var(--pw-token-kpi-cols, 5), minmax(0, 1fr)); }
+}
+
+[data-provider] {
+  --openbot-provider-current: currentcolor;
+}
+[data-provider="codex"], [data-provider="codex_local"], [data-provider="openai"] {
+  --openbot-provider-current: var(--pw-token-provider-codex);
+}
+[data-provider="claude"], [data-provider="claude_local"], [data-provider="anthropic"] {
+  --openbot-provider-current: var(--pw-token-provider-claude);
+}
+[data-provider="antigravity"], [data-provider="antigravity_local"] {
+  --openbot-provider-current: var(--pw-token-provider-antigravity);
+}
+[data-provider="pi"], [data-provider="pi_local"] {
+  --openbot-provider-current: var(--pw-token-provider-pi);
+}
+[data-provider="hermes"], [data-provider="hermes_local"] {
+  --openbot-provider-current: var(--pw-token-provider-hermes);
+}
+[data-provider="gemini"], [data-provider="google"] {
+  --openbot-provider-current: var(--pw-token-provider-gemini);
+}
+[data-provider="opencode"], [data-provider="opencode_local"] {
+  --openbot-provider-current: var(--pw-token-provider-opencode);
+}
+[data-provider="cursor"], [data-provider="cursor_local"] {
+  --openbot-provider-current: var(--pw-token-provider-cursor);
+}
+
+/* ---- 2.5D floating workspace sheet & compact icon mini-sidebar ---- */
+.openbot-canvas-sheet {
+  background-color: var(--pw-token-canvas-sheet-bg);
+  border-top: 1px solid var(--pw-token-canvas-sheet-border);
+  border-left: 1px solid var(--pw-token-canvas-sheet-border);
+  border-top-left-radius: 16px;
+}
+
+[aria-label="명령 헤더"] {
+  border-radius: 14px;
+}
+[aria-label="명령 헤더"] .openbot-kpi-grid > a {
+  border-radius: 10px;
+}
+
+[data-compact-nav="true"] .openbot-compact-section > div > div:first-child {
+  display: none;
+}

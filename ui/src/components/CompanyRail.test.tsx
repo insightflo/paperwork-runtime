@@ -118,15 +118,17 @@ afterEach(async () => {
 });
 
 describe("CompanyRail", () => {
-  it("renders companies in the slim 52px workspace rail with Combo 1 obsidian chrome and active indicator", async () => {
+  it("renders companies in the slim 52px workspace rail with Paperwork chrome and active indicator", async () => {
     await renderRail();
 
     const rail = host.firstElementChild as HTMLElement;
     expect(rail.className).toContain("w-[52px]");
     expect(rail.className).not.toContain("w-[72px]");
-    expect(rail.className).toContain("dark:bg-[#090c12]");
+    // Rail surface and borders are driven by the Paperwork semantic tokens, not hard-coded hex.
+    expect(rail.className).toContain("bg-[var(--pw-rail)]");
     expect(rail.className).toContain("border-r");
-    expect(rail.className).toContain("dark:border-white/[0.065]");
+    expect(rail.className).toContain("border-border");
+    expect(rail.className).not.toContain("#090c12");
     // Legacy semantic rail tokens must not leak back into the cockpit shell.
     expect(rail.className).not.toContain("bg-sidebar");
     expect(rail.className).not.toContain("border-sidebar-border");
@@ -139,18 +141,21 @@ describe("CompanyRail", () => {
     expect(inactiveItem.dataset.active).toBeUndefined();
 
     // The rail owns the active indicator bar through arbitrary-variant overrides on the item link.
+    // Selection is expressed through the semantic `primary` token for both light and dark themes.
     expect(activeItem.className).toContain("[&_a>div:first-child]:left-0");
     expect(activeItem.className).toContain("[&_a>div:first-child]:w-[3px]");
     expect(activeItem.className).toContain("[&_a>div:first-child]:h-5");
-    expect(activeItem.className).toContain("dark:[&_a>div:first-child]:bg-[#a3e635]");
-    expect(activeItem.className).not.toContain("bg-primary");
+    expect(activeItem.className).toContain("[&_a>div:first-child]:bg-primary");
+    expect(activeItem.className).not.toContain("#2563eb");
+    expect(activeItem.className).not.toContain("#a3e635");
 
     expect(inactiveItem.className).toContain("[&_a>div:first-child]:left-0");
     expect(inactiveItem.className).toContain("[&_a>div:first-child]:w-[3px]");
     expect(inactiveItem.className).toContain("[&_a>div:first-child]:h-0");
     expect(inactiveItem.className).toContain("[&:hover_a>div:first-child]:h-2");
-    expect(inactiveItem.className).toContain("dark:[&:hover_a>div:first-child]:bg-[#60a5fa]/65");
-    expect(inactiveItem.className).not.toContain("bg-primary");
+    expect(inactiveItem.className).toContain("[&:hover_a>div:first-child]:bg-primary/60");
+    expect(inactiveItem.className).not.toContain("#2563eb");
+    expect(inactiveItem.className).not.toContain("#60a5fa");
 
     const activeLink = activeItem.querySelector("a");
     const inactiveLink = inactiveItem.querySelector("a");
@@ -171,8 +176,10 @@ describe("CompanyRail", () => {
     expect(divider).not.toBeNull();
 
     const addButton = host.querySelector<HTMLButtonElement>('button[aria-label="Add company"]');
-    expect(addButton?.className).toContain("dark:hover:text-[#a3e635]");
-    expect(addButton?.className).toContain("dark:hover:border-[#a3e635]/60");
+    expect(addButton?.className).toContain("hover:text-primary");
+    expect(addButton?.className).toContain("hover:border-primary/70");
+    expect(addButton?.className).not.toContain("#a3e635");
+    expect(addButton?.className).not.toContain("#2563eb");
   });
 
   it("keeps high-density spacing and the add-company control intact", async () => {

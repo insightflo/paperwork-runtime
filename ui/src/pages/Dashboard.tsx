@@ -234,7 +234,7 @@ export function Dashboard() {
             <div
               role="tablist"
               aria-label="실시간 모니터링 탭"
-              className="tactile-card inline-flex items-center gap-1 rounded-[10px] border border-slate-200/90 bg-slate-100/80 p-1 dark:border-white/[0.08] dark:bg-[#07090d] dark:bg-none"
+              className="tactile-card inline-flex items-center gap-1 rounded-[10px] border border-slate-200/90 bg-slate-100/80 p-1 dark:border-white/[0.08] dark:bg-background dark:bg-none"
             >
               <button
                 type="button"
@@ -260,7 +260,7 @@ export function Dashboard() {
                 onClick={() => setBottomTab("dgate")}
                 className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                   bottomTab === "dgate"
-                    ? "bg-white text-slate-950 shadow-sm ring-1 ring-[#60a5fa]/45 dark:bg-[#151d2e] dark:text-[#eef2f8]"
+                    ? "bg-white text-slate-950 shadow-sm ring-1 ring-[var(--pw-cobalt)]/45 dark:bg-[#151d2e] dark:text-[#eef2f8]"
                     : "text-slate-600 hover:text-slate-950 dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]"
                 }`}
               >
@@ -272,7 +272,7 @@ export function Dashboard() {
                   }`}
                 />
                 <span>내부 통제 · 실행 관제</span>
-                <span className="rounded-full border border-slate-200/90 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600 tabular-nums dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-[#9aa7bd]">
+                <span className="rounded-full border border-slate-200/90 bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600 tabular-nums dark:border-white/[0.08] dark:bg-card dark:text-[#9aa7bd]">
                   {controlPlanePendingGates > 0
                     ? `${controlPlaneActiveWorkers} active · ${controlPlanePendingGates} gate`
                     : `${controlPlaneActiveWorkers} active`}
@@ -307,7 +307,7 @@ export function Dashboard() {
                 <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#9aa7bd] mb-3">
                   Recent Missions
                 </h3>
-                <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white text-slate-950 divide-y divide-slate-200/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#eef2f8] dark:divide-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
+                <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white text-slate-950 divide-y divide-slate-200/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:bg-none dark:text-[#eef2f8] dark:divide-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
                   {[...missions]
                     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                     .slice(0, 5)
@@ -333,11 +333,11 @@ export function Dashboard() {
                   Recent Work
               </h3>
               {recentIssues.length === 0 ? (
-                <div className="tactile-card rounded-[12px] border border-slate-200/90 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
+                <div className="tactile-card rounded-[12px] border border-slate-200/90 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
                   <p className="text-sm text-slate-500 dark:text-[#9aa7bd]">No work yet.</p>
                 </div>
               ) : (
-                <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white text-slate-950 divide-y divide-slate-200/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:text-[#eef2f8] dark:divide-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
+                <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white text-slate-950 divide-y divide-slate-200/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:bg-none dark:text-[#eef2f8] dark:divide-white/[0.06] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_6px_24px_-10px_rgba(0,0,0,0.65)]">
                   {recentIssues.slice(0, 10).map((issue) => (
                     <Link
                       key={issue.id}

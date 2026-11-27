@@ -200,10 +200,7 @@ mod tests {
         save_state_atomic(&path, &updated).unwrap();
         assert_eq!(load_state(&path).unwrap(), Some(updated));
 
-        let entries: Vec<_> = fs::read_dir(&dir)
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .collect();
+        let entries: Vec<_> = fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()).collect();
         assert_eq!(entries.len(), 1, "no temporary files should remain");
 
         let _ = fs::remove_dir_all(&dir);

@@ -285,7 +285,10 @@ fn validate_bot(bot: &BotDescriptor) -> Result<(), GovernanceDecision> {
 }
 
 /// Core fail-closed eligibility check shared by dispatch, capability scope, and channel invoke.
-fn check_bot_base_access(actor: &ActorContext, bot: &BotDescriptor) -> Result<(), GovernanceDecision> {
+fn check_bot_base_access(
+    actor: &ActorContext,
+    bot: &BotDescriptor,
+) -> Result<(), GovernanceDecision> {
     validate_actor(actor)?;
     validate_bot(bot)?;
 
@@ -683,16 +686,10 @@ pub fn evaluate_channel_invoke(req: &ChannelInvokeRequest) -> GovernanceDecision
 
     match req.bot.status {
         BotStatus::Revoked => {
-            return GovernanceDecision::deny(
-                "bot_revoked",
-                "revoked bots cannot be dispatched",
-            );
+            return GovernanceDecision::deny("bot_revoked", "revoked bots cannot be dispatched");
         }
         BotStatus::Paused => {
-            return GovernanceDecision::deny(
-                "bot_paused",
-                "paused bots cannot be dispatched",
-            );
+            return GovernanceDecision::deny("bot_paused", "paused bots cannot be dispatched");
         }
         BotStatus::Active => {}
     }
@@ -1041,21 +1038,22 @@ mod tests {
 
     #[test]
     fn personal_terminal_denies_admin_exec_allows_admin_stop_revoke_and_owner_bot() {
-        let base_personal = |a: ActorContext, action: TerminalAction, bot_actor: Option<BotActorContext>| {
-            TerminalCommandRequest {
-                actor: a,
-                terminal_company_id: "co-1".into(),
-                terminal_owner_user_id: "u-owner".into(),
-                terminal_team_id: Some("team-a".into()),
-                terminal_active: true,
-                command: "ls -la".into(),
-                requires_approval: false,
-                dangerous: false,
-                terminal_kind: TerminalKind::PersonalTerminal,
-                action,
-                bot_actor,
-            }
-        };
+        let base_personal =
+            |a: ActorContext, action: TerminalAction, bot_actor: Option<BotActorContext>| {
+                TerminalCommandRequest {
+                    actor: a,
+                    terminal_company_id: "co-1".into(),
+                    terminal_owner_user_id: "u-owner".into(),
+                    terminal_team_id: Some("team-a".into()),
+                    terminal_active: true,
+                    command: "ls -la".into(),
+                    requires_approval: false,
+                    dangerous: false,
+                    terminal_kind: TerminalKind::PersonalTerminal,
+                    action,
+                    bot_actor,
+                }
+            };
 
         // Admin cannot exec on another user's personal terminal
         let admin_exec = evaluate_terminal_command(&base_personal(
@@ -1076,26 +1074,32 @@ mod tests {
         assert_eq!(owner_exec.reason_code, "personal_terminal_exec_denied");
 
         // Admin/owner MAY stop or revoke another user's personal terminal
-        assert!(evaluate_terminal_command(&base_personal(
-            actor(ActorRole::Admin, "u-admin", Some("team-a")),
-            TerminalAction::Stop,
-            None,
-        ))
-        .allowed);
-        assert!(evaluate_terminal_command(&base_personal(
-            actor(ActorRole::Owner, "u-co-owner", Some("team-a")),
-            TerminalAction::Revoke,
-            None,
-        ))
-        .allowed);
+        assert!(
+            evaluate_terminal_command(&base_personal(
+                actor(ActorRole::Admin, "u-admin", Some("team-a")),
+                TerminalAction::Stop,
+                None,
+            ))
+            .allowed
+        );
+        assert!(
+            evaluate_terminal_command(&base_personal(
+                actor(ActorRole::Owner, "u-co-owner", Some("team-a")),
+                TerminalAction::Revoke,
+                None,
+            ))
+            .allowed
+        );
 
         // Terminal owner may exec
-        assert!(evaluate_terminal_command(&base_personal(
-            actor(ActorRole::Member, "u-owner", Some("team-a")),
-            TerminalAction::Exec,
-            None,
-        ))
-        .allowed);
+        assert!(
+            evaluate_terminal_command(&base_personal(
+                actor(ActorRole::Member, "u-owner", Some("team-a")),
+                TerminalAction::Exec,
+                None,
+            ))
+            .allowed
+        );
 
         // Personal bot with explicit_owner_context == true matching owner may exec
         let bot_ok = evaluate_terminal_command(&base_personal(
@@ -1131,19 +1135,20 @@ mod tests {
 
     #[test]
     fn worker_node_enforces_viewer_team_matching_and_approved_bots() {
-        let worker_req = |a: ActorContext, bot_actor: Option<BotActorContext>| TerminalCommandRequest {
-            actor: a,
-            terminal_company_id: "co-1".into(),
-            terminal_owner_user_id: "u-owner".into(),
-            terminal_team_id: Some("team-a".into()),
-            terminal_active: true,
-            command: "uname -a".into(),
-            requires_approval: false,
-            dangerous: false,
-            terminal_kind: TerminalKind::WorkerNode,
-            action: TerminalAction::Exec,
-            bot_actor,
-        };
+        let worker_req =
+            |a: ActorContext, bot_actor: Option<BotActorContext>| TerminalCommandRequest {
+                actor: a,
+                terminal_company_id: "co-1".into(),
+                terminal_owner_user_id: "u-owner".into(),
+                terminal_team_id: Some("team-a".into()),
+                terminal_active: true,
+                command: "uname -a".into(),
+                requires_approval: false,
+                dangerous: false,
+                terminal_kind: TerminalKind::WorkerNode,
+                action: TerminalAction::Exec,
+                bot_actor,
+            };
 
         // Viewer denied
         let viewer = evaluate_terminal_command(&worker_req(
@@ -1161,25 +1166,29 @@ mod tests {
         assert!(!admin_wrong_team.allowed);
         assert_eq!(admin_wrong_team.reason_code, "worker_node_access_denied");
 
-        assert!(evaluate_terminal_command(&worker_req(
-            actor(ActorRole::Owner, "u-owner2", Some("team-b")),
-            None,
-        ))
-        .allowed);
+        assert!(
+            evaluate_terminal_command(&worker_req(
+                actor(ActorRole::Owner, "u-owner2", Some("team-b")),
+                None,
+            ))
+            .allowed
+        );
 
         // Approved team bot matching team allowed; unapproved denied
-        assert!(evaluate_terminal_command(&worker_req(
-            actor(ActorRole::Member, "u-m", Some("team-b")),
-            Some(BotActorContext {
-                bot_kind: BotKind::Team,
-                bot_company_id: "co-1".into(),
-                bot_owner_user_id: None,
-                bot_team_id: Some("team-a".into()),
-                bot_approved: true,
-                explicit_owner_context: false,
-            }),
-        ))
-        .allowed);
+        assert!(
+            evaluate_terminal_command(&worker_req(
+                actor(ActorRole::Member, "u-m", Some("team-b")),
+                Some(BotActorContext {
+                    bot_kind: BotKind::Team,
+                    bot_company_id: "co-1".into(),
+                    bot_owner_user_id: None,
+                    bot_team_id: Some("team-a".into()),
+                    bot_approved: true,
+                    explicit_owner_context: false,
+                }),
+            ))
+            .allowed
+        );
 
         let unapproved_bot = evaluate_terminal_command(&worker_req(
             actor(ActorRole::Member, "u-m", Some("team-a")),
@@ -1196,18 +1205,20 @@ mod tests {
         assert_eq!(unapproved_bot.reason_code, "worker_node_access_denied");
 
         // Approved company bot allowed
-        assert!(evaluate_terminal_command(&worker_req(
-            actor(ActorRole::Member, "u-m", Some("team-a")),
-            Some(BotActorContext {
-                bot_kind: BotKind::Company,
-                bot_company_id: "co-1".into(),
-                bot_owner_user_id: None,
-                bot_team_id: None,
-                bot_approved: true,
-                explicit_owner_context: false,
-            }),
-        ))
-        .allowed);
+        assert!(
+            evaluate_terminal_command(&worker_req(
+                actor(ActorRole::Member, "u-m", Some("team-a")),
+                Some(BotActorContext {
+                    bot_kind: BotKind::Company,
+                    bot_company_id: "co-1".into(),
+                    bot_owner_user_id: None,
+                    bot_team_id: None,
+                    bot_approved: true,
+                    explicit_owner_context: false,
+                }),
+            ))
+            .allowed
+        );
     }
 
     #[test]

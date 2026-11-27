@@ -4,7 +4,7 @@
 //! - [`governance`]: Fail-closed multi-company bot, data-scope, terminal, and channel policy evaluation.
 //! - [`token`]: Constant-time SHA-256 token verification and secret redaction.
 //! - [`client`]: Lightweight stdlib HTTP client, compatibility handshake, and jittered heartbeat daemon.
-//! - [`control_sock`]: OpenBot-style UDS local control plane (`status`, `drain`, `shutdown`).
+//! - [`control_sock`]: Local UDS control plane for the Paperwork bot heartbeat daemon (`status`, `drain`, `shutdown`).
 //! - [`state`]: Atomic `0600` `state.json` persistence (never stores raw tokens).
 //! - [`executor`]: Confined `-pgid` command execution with isolated env scrubbing and streaming redaction.
 

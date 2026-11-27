@@ -1,4 +1,4 @@
-//! OpenBot-style Unix Domain Socket (UDS) local control plane.
+//! Local Unix Domain Socket (UDS) control plane for the Paperwork bot heartbeat daemon.
 //!
 //! Security invariants:
 //! - Control socket directory is preflight-validated with
@@ -204,7 +204,9 @@ fn validate_terminal_segment(terminal_id: &str) -> Result<(), ControlSockError> 
         || trimmed.contains('/')
         || trimmed.contains('\\')
         || trimmed.contains("..")
-        || trimmed.bytes().any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
+        || trimmed
+            .bytes()
+            .any(|b| b.is_ascii_control() || b.is_ascii_whitespace())
     {
         return Err(ControlSockError::Invalid(
             "terminal_id must be a single safe path segment".into(),
@@ -464,17 +466,27 @@ mod tests {
         telemetry.record_rtt_ms(19);
         telemetry.set_backoff_attempts(2);
         telemetry.set_consecutive_failures(1);
-        telemetry.active_children_counter().store(3, Ordering::Relaxed);
+        telemetry
+            .active_children_counter()
+            .store(3, Ordering::Relaxed);
 
         let shutdown = ShutdownSignal::new();
-        let server = ControlSocketServer::start(&sock, telemetry.clone(), shutdown.clone()).unwrap();
+        let server =
+            ControlSocketServer::start(&sock, telemetry.clone(), shutdown.clone()).unwrap();
 
-        let sock_mode = fs::metadata(server.socket_path()).unwrap().permissions().mode() & 0o777;
+        let sock_mode = fs::metadata(server.socket_path())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
         assert_eq!(sock_mode, 0o600, "control.sock must be 0600");
 
-        let status_resp =
-            send_control_command(server.socket_path(), ControlCommand::Status, Duration::from_secs(2))
-                .unwrap();
+        let status_resp = send_control_command(
+            server.socket_path(),
+            ControlCommand::Status,
+            Duration::from_secs(2),
+        )
+        .unwrap();
         assert!(status_resp.ok);
         let snap = status_resp.status.expect("status snapshot");
         assert_eq!(snap.pid, std::process::id());
@@ -485,9 +497,12 @@ mod tests {
         assert_eq!(snap.active_children, 3);
         assert!(!snap.draining);
 
-        let drain_resp =
-            send_control_command(server.socket_path(), ControlCommand::Drain, Duration::from_secs(2))
-                .unwrap();
+        let drain_resp = send_control_command(
+            server.socket_path(),
+            ControlCommand::Drain,
+            Duration::from_secs(2),
+        )
+        .unwrap();
         assert!(drain_resp.ok);
         assert!(telemetry.is_draining());
         assert!(!shutdown.is_triggered());

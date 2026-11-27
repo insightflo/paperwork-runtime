@@ -226,7 +226,7 @@ export function buildControlPlaneSnapshotFromRows(input: {
         queued24h += count;
         break;
       default:
-        break;
+        continue; // unknown status: keep sum(byAdapter) === total
     }
     const adapterKey = row.adapterType?.trim() || "process";
     byAdapter[adapterKey] = (byAdapter[adapterKey] ?? 0) + count;

@@ -28,14 +28,14 @@ interface AgentEntry {
 }
 
 const STATUS_DOT: Record<PinnedActivity, { color: string; glow: string; label: string }> = {
-  running: { color: "var(--pw-lime, #a3e635)", glow: "var(--pw-lime-glow, rgba(163,230,53,0.42))", label: "Running" },
+  running: { color: "var(--pw-lime)", glow: "var(--pw-lime-glow)", label: "Running" },
   attention: { color: "var(--pw-amber, #f59e0b)", glow: "rgba(245,158,11,0.35)", label: "Needs attention" },
 };
 /** Compact right-aligned mono pill: never shrinks or wraps. */
 const COUNT_PILL =
   "inline-flex h-[16px] shrink-0 tabular-nums items-center gap-1 whitespace-nowrap rounded-[5px] px-1.5 font-mono text-[9.5px] font-medium leading-none";
 const AMBER_PILL = "bg-amber-500/15 text-amber-700 dark:text-[var(--pw-amber)]";
-const LIVE_PILL = "bg-[#65a30d]/12 text-[#4d7c0f] dark:bg-[#a3e635]/14 dark:text-[#a3e635]";
+const LIVE_PILL = "bg-[var(--pw-lime-soft)] text-[var(--pw-lime)]";
 const IDLE_TOGGLE =
   "mt-1 flex w-full items-center rounded-[7px] font-mono text-[10.5px] text-muted-foreground transition-colors hover:bg-slate-200/50 hover:text-foreground dark:hover:bg-white/[0.04] dark:hover:text-[#eef2f8]";
 
@@ -268,7 +268,7 @@ export function SidebarAgents() {
           <div className="flex items-center gap-1.5">
             <span
               title={`${pinned.length} active agent${pinned.length === 1 ? "" : "s"}`}
-              className="font-mono text-[10px] font-medium tabular-nums text-[#4d7c0f] dark:text-[#a3e635]"
+              className="font-mono text-[10px] font-medium tabular-nums text-[var(--pw-lime)]"
             >
               ● {pinned.length}
             </span>

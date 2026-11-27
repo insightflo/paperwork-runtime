@@ -55,7 +55,7 @@ import { CompanyContext } from "../context/CompanyContext";
 import { useToast } from "../context/ToastContext";
 import { queryKeys } from "../lib/queryKeys";
 
-/* ── Enterprise Bot Cockpit: OpenBots, client terminals, channels & @mentions ──
+/* ── 커넥터 · 런타임 허브: connectors, runtime nodes, channels & @mentions ──
  * Supports both live API mode (via CompanyContext + TanStack Query) and pure
  * injected `initialData` mode for deterministic unit tests without providers. */
 
@@ -236,9 +236,9 @@ const DEMO: EnterpriseBotsData = {
 };
 
 const TABS = [
-  { key: "bots", label: "Bots & Capabilities", icon: Bot, empty: "No bots registered." },
-  { key: "terminals", label: "Client Terminals", icon: Monitor, empty: "No terminals registered." },
-  { key: "channels", label: "Channels & @mentions", icon: Hash, empty: "No shared channels yet." },
+  { key: "bots", label: "커넥터 · 권한", icon: Bot, empty: "No bots registered." },
+  { key: "terminals", label: "런타임 노드", icon: Monitor, empty: "No terminals registered." },
+  { key: "channels", label: "채널 · 멘션", icon: Hash, empty: "No shared channels yet." },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 
@@ -298,15 +298,15 @@ const TAB_CLASS =
 const PANEL =
   "tactile-card rounded-xl border border-slate-200/90 bg-white dark:bg-none dark:border-white/[0.08] dark:bg-[#0e131d]";
 const ACTION =
-  "inline-flex h-7.5 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs font-medium text-slate-800 transition-colors hover:border-blue-500/40 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[0.1] dark:bg-[#090d14] dark:text-[#edf2fb] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#141b29]";
+  "inline-flex h-7.5 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs font-medium text-slate-800 transition-colors hover:border-primary/40 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[0.1] dark:bg-[#090d14] dark:text-[#edf2fb] dark:hover:border-primary/40 dark:hover:bg-[#141b29]";
 const DANGER_ACTION =
   "inline-flex h-7.5 cursor-pointer items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 text-xs font-medium text-rose-700 transition-colors hover:border-rose-500/50 hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300 dark:hover:bg-rose-500/20";
 const INPUT_CLASS =
-  "h-8 w-full rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.09] dark:bg-[#090d14] dark:text-[#edf2fb] dark:placeholder:text-[#8b97ad] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25";
+  "h-8 w-full rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs text-slate-900 outline-none placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-white/[0.09] dark:bg-[#090d14] dark:text-[#edf2fb] dark:placeholder:text-[#8b97ad]";
 const STATUS_DOT: Record<TerminalStatus | BotStatus, string> = {
-  online: "bg-lime-500 shadow-[0_0_8px_rgba(163,230,53,0.7)] animate-pulse dark:bg-[#a3e635]",
+  online: "bg-emerald-600 animate-pulse dark:bg-emerald-400",
   offline: "bg-slate-400 dark:bg-[#64748b]",
-  active: "bg-lime-500 shadow-[0_0_8px_rgba(163,230,53,0.7)] animate-pulse dark:bg-[#a3e635]",
+  active: "bg-emerald-600 animate-pulse dark:bg-emerald-400",
   paused: "bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.55)] dark:bg-[#f59e0b]",
   revoked: "bg-slate-400 dark:bg-[#64748b]",
 };
@@ -323,7 +323,7 @@ function since(iso: string | null, now: number): string {
 function Pill({ children, dot, tone = "neutral" }: { children: ReactNode; dot: string; tone?: "live" | "warn" | "neutral" }) {
   const toneClass =
     tone === "live"
-      ? "border-lime-500/30 bg-lime-500/10 text-lime-800 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/10 dark:text-[#d9f99d]"
+      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-300"
       : tone === "warn"
         ? "border-amber-500/35 bg-amber-500/10 text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#fcd34d]"
         : "border-slate-200/90 bg-slate-100/80 text-slate-700 dark:border-white/[0.08] dark:bg-[#090d14] dark:text-[#cbd5e1]";
@@ -347,7 +347,7 @@ export function SecurityBadge({ callableBy, dataScope }: { callableBy: CallableB
     <span
       data-security-badge
       title={`Callable by ${callableBy} · data scope ${dataScope}`}
-      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-blue-500/25 bg-blue-500/10 px-1.5 py-0.5 font-mono text-[11px] text-blue-700 dark:border-[#60a5fa]/30 dark:bg-[#60a5fa]/10 dark:text-[#93c5fd]"
+      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] text-primary"
     >
       <Lock className="h-3 w-3" aria-hidden />
       {callableBy} × {dataScope}
@@ -496,7 +496,7 @@ function LiveEnterpriseBots({
     });
     await invalidateSnapshot();
     pushToast({
-      title: `OpenBot "${result.bot.name}" attached`,
+      title: `커넥터 "${result.bot.name}" 연결됨`,
       body: result.inboundToken ? "Copy the one-time inbound token now." : undefined,
       tone: "success",
     });
@@ -726,7 +726,7 @@ function EnterpriseBotsCockpit({
   const strip = [
     { label: "Active Bots", value: data.bots.filter((b) => b.status === "active").length, dot: STATUS_DOT.active, tab: "bots" as Tab, openApprovals: false },
     { label: "Online Terminals", value: data.terminals.filter((t) => t.status === "online").length, dot: STATUS_DOT.online, tab: "terminals" as Tab, openApprovals: false },
-    { label: "Shared Channels", value: data.channels.length, dot: "bg-blue-500 dark:bg-[#60a5fa]", tab: "channels" as Tab, openApprovals: false },
+    { label: "Shared Channels", value: data.channels.length, dot: "bg-primary", tab: "channels" as Tab, openApprovals: false },
     { label: "Pending Owner Approvals", value: data.pendingApprovals.length, dot: data.pendingApprovals.length ? STATUS_DOT.paused : STATUS_DOT.offline, tab: null, openApprovals: true },
   ] as const;
 
@@ -770,7 +770,7 @@ function EnterpriseBotsCockpit({
               onClick={() => (cell.openApprovals ? setApprovalDrawerOpen(true) : setTab(cell.tab))}
               className={`cockpit-cell flex-1 min-w-0 cursor-pointer justify-center px-3 transition-colors ${
                 isActive
-                  ? "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_#2563eb] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_#60a5fa]"
+                  ? "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_var(--primary)] dark:bg-[#151d2b] dark:text-[#edf2fb]"
                   : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]"
               }`}
             >
@@ -801,18 +801,18 @@ function EnterpriseBotsCockpit({
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={`Search ${meta.label.toLowerCase()}...`}
+            placeholder={`Search ${meta.key}...`}
             aria-label="Search enterprise bots"
-            className="h-7 w-full rounded-lg border border-slate-200/90 bg-slate-50/70 pl-8 pr-3 text-xs text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 dark:border-white/[0.09] dark:bg-[#090d14] dark:text-[#edf2fb] dark:placeholder:text-[#8b97ad] dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/25"
+            className="h-7 w-full rounded-lg border border-slate-200/90 bg-slate-50/70 pl-8 pr-3 text-xs text-slate-900 outline-none placeholder:text-slate-400 focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/20 dark:border-white/[0.09] dark:bg-[#090d14] dark:text-[#edf2fb] dark:placeholder:text-[#8b97ad]"
           />
         </div>
         <button
           type="button"
           onClick={() => setAttachOpen(true)}
-          className="inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-blue-500 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]"
+          className="inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-2.5 text-xs font-semibold text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-primary/90"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
-          Attach OpenBot
+          커넥터 연결
         </button>
         <button
           type="button"
@@ -820,14 +820,14 @@ function EnterpriseBotsCockpit({
             onRegisterTerminal?.();
             setRegisterTerminalOpen(true);
           }}
-          className="inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs font-medium text-slate-800 transition-colors hover:border-blue-500/40 hover:bg-slate-50 dark:border-white/[0.1] dark:bg-[#090d14] dark:text-[#edf2fb] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#141b29]"
+          className="inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-2.5 text-xs font-medium text-slate-800 transition-colors hover:border-primary/40 hover:bg-slate-50 dark:border-white/[0.1] dark:bg-[#090d14] dark:text-[#edf2fb] dark:hover:border-primary/40 dark:hover:bg-[#141b29]"
         >
           <Monitor className="h-3.5 w-3.5" aria-hidden />
           Register Terminal
         </button>
       </div>
 
-      {/* OpenBot-style terminal pairing banner (env-var daemon & doctor commands + live heartbeat) */}
+      {/* Terminal pairing banner (env-var daemon & doctor commands + live heartbeat) */}
       {pairingBanner && (
         <TerminalPairingBanner
           terminalId={pairingBanner.terminalId}
@@ -854,14 +854,14 @@ function EnterpriseBotsCockpit({
             <p className="text-[11px] text-amber-800/90 dark:text-[#cbd5e1]">{issuedToken.hint}</p>
             <code
               data-issued-token
-              className="block truncate rounded-md border border-amber-500/30 bg-white/90 px-2.5 py-1 font-mono text-[11px] text-slate-950 select-all dark:border-white/[0.08] dark:bg-[#07090d] dark:text-[#d9f99d]"
+              className="block truncate rounded-md border border-amber-500/30 bg-white/90 px-2.5 py-1 font-mono text-[11px] text-slate-950 select-all dark:border-white/[0.08] dark:bg-[#07090d] dark:text-emerald-300"
             >
               {issuedToken.token}
             </code>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             <button type="button" onClick={() => void handleCopyToken()} className={ACTION}>
-              {tokenCopied ? <Check className="h-3.5 w-3.5 text-lime-600 dark:text-[#a3e635]" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
+              {tokenCopied ? <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden /> : <Copy className="h-3.5 w-3.5" aria-hidden />}
               {tokenCopied ? "Copied" : "Copy token"}
             </button>
             <button
@@ -916,7 +916,7 @@ function EnterpriseBotsCockpit({
                     onKeyDown={(e) => e.key === "Enter" && pick(item.id)}
                     className={`flex min-w-0 cursor-pointer flex-col gap-2.5 rounded-xl border p-3 text-xs transition-all ${
                       active
-                        ? "border-blue-500/50 bg-blue-50/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_0_0_1px_rgba(37,99,235,0.2)] dark:border-[#60a5fa]/50 dark:bg-[#131c2e] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_0_1px_rgba(96,165,250,0.2)]"
+                        ? "border-primary/50 bg-primary/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-[#131c2e] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
                         : "border-slate-200/80 bg-slate-50/60 hover:border-slate-300 hover:bg-white dark:border-white/[0.07] dark:bg-[#090d14] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:hover:border-white/[0.14] dark:hover:bg-[#121826]"
                     }`}
                   >
@@ -924,7 +924,7 @@ function EnterpriseBotsCockpit({
                       <>
                         <div className="flex min-w-0 items-center justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-2">
-                            <Bot className="h-4 w-4 shrink-0 text-blue-600 dark:text-[#60a5fa]" />
+                            <Bot className="h-4 w-4 shrink-0 text-primary" />
                             <span className="min-w-0 truncate text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">{item.name}</span>
                           </div>
                           <Pill dot={STATUS_DOT[item.status]} tone={statusTone(item.status)}>{item.status}</Pill>
@@ -943,7 +943,7 @@ function EnterpriseBotsCockpit({
                       <>
                         <div className="flex min-w-0 items-center justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-2">
-                            <Monitor className="h-4 w-4 shrink-0 text-blue-600 dark:text-[#60a5fa]" />
+                            <Monitor className="h-4 w-4 shrink-0 text-primary" />
                             <span className="min-w-0 truncate text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">{item.name}</span>
                           </div>
                           <Pill dot={STATUS_DOT[item.status]} tone={statusTone(item.status)}>{item.status}</Pill>
@@ -961,7 +961,7 @@ function EnterpriseBotsCockpit({
                       <>
                         <div className="flex min-w-0 items-center justify-between gap-2">
                           <div className="flex min-w-0 items-center gap-2">
-                            <Hash className="h-4 w-4 shrink-0 text-blue-600 dark:text-[#60a5fa]" />
+                            <Hash className="h-4 w-4 shrink-0 text-primary" />
                             <span className="min-w-0 truncate text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">{item.name}</span>
                           </div>
                           {data.pendingApprovals.filter((p) => p.channelId === item.id).length > 0 && (
@@ -1100,12 +1100,12 @@ function EnterpriseBotsCockpit({
       />
 
       {attachOpen && (
-        <AttachOpenBotModal
+        <AttachConnectorModal
           secrets={secrets}
           busy={busyAction === "create-bot"}
           onClose={() => setAttachOpen(false)}
           onSubmit={async (payload) => {
-            const res = await runAction("create-bot", "Failed to attach OpenBot", () => onCreateBot?.(payload));
+            const res = await runAction("create-bot", "커넥터 연결 실패", () => onCreateBot?.(payload));
             const created = res as CreateBotResponse | undefined;
             if (created?.inboundToken) {
               setIssuedToken({
@@ -1182,14 +1182,14 @@ function BotDetail({
   return (
     <div className="space-y-3.5">
       <div className="flex items-start gap-2.5 border-b border-slate-200/80 pb-3 dark:border-white/[0.06]">
-        <Bot className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-[#60a5fa]" />
+        <Bot className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">{bot.name}</h2>
         <Pill dot={STATUS_DOT[bot.status]} tone={statusTone(bot.status)}>{bot.status}</Pill>
       </div>
       <Fields rows={rows} />
       <p className="rounded-lg border border-slate-200/80 bg-slate-50/80 px-3 py-2 text-[11px] leading-4 text-slate-600 dark:border-white/[0.06] dark:bg-[#090d14] dark:text-[#8b97ad]">
-        Callable by <span className="font-medium text-blue-700 dark:text-[#60a5fa]">{bot.callableBy}</span>; reads and writes{" "}
-        <span className="font-medium text-blue-700 dark:text-[#60a5fa]">{bot.dataScope}</span> data only.
+        Callable by <span className="font-medium text-primary">{bot.callableBy}</span>; reads and writes{" "}
+        <span className="font-medium text-primary">{bot.dataScope}</span> data only.
       </p>
       <div className="flex flex-wrap items-center gap-2" aria-label="Bot actions">
         <button
@@ -1226,7 +1226,7 @@ function BotDetail({
           data-ping-result
           className={`rounded-lg border px-3 py-2 font-mono text-[11px] ${
             pingResult.ok
-              ? "border-lime-500/30 bg-lime-500/10 text-lime-800 dark:border-[#a3e635]/30 dark:text-[#d9f99d]"
+              ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:border-emerald-400/30 dark:text-emerald-300"
               : "border-rose-500/30 bg-rose-500/10 text-rose-700 dark:text-rose-300"
           }`}
         >
@@ -1267,7 +1267,7 @@ function TerminalDetail({
   return (
     <div className="space-y-3.5">
       <div className="flex items-start gap-2.5 border-b border-slate-200/80 pb-3 dark:border-white/[0.06]">
-        <Monitor className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-[#60a5fa]" />
+        <Monitor className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">{terminal.name}</h2>
         <Pill dot={STATUS_DOT[terminal.status]} tone={statusTone(terminal.status)}>{terminal.status}</Pill>
       </div>
@@ -1361,7 +1361,7 @@ function ChannelDetail({
   return (
     <div className="space-y-3.5">
       <div className="flex items-start gap-2.5 border-b border-slate-200/80 pb-3 dark:border-white/[0.06]">
-        <Hash className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-[#60a5fa]" />
+        <Hash className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
         <h2 className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">{channel?.name ?? "All channels"}</h2>
       </div>
       {channel ? (
@@ -1399,13 +1399,13 @@ function ChannelDetail({
               className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-50/60 p-3 text-xs dark:border-[#f59e0b]/25 dark:bg-[#090d14] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
             >
               <div className="flex items-center gap-1.5 text-slate-950 dark:text-[#edf2fb]">
-                <Bot className="h-3.5 w-3.5 text-blue-600 dark:text-[#60a5fa]" aria-hidden />
+                <Bot className="h-3.5 w-3.5 text-primary" aria-hidden />
                 <span className="min-w-0 flex-1 truncate font-semibold">{p.botName}</span>
                 <KindTag>personal</KindTag>
               </div>
               <p className="text-slate-600 dark:text-[#8b97ad]">
                 <span className="font-medium text-slate-900 dark:text-[#edf2fb]">{p.fromUserName}</span> asks to {p.action} on{" "}
-                <span className="font-medium text-blue-700 dark:text-[#60a5fa]">{p.toTerminalName}</span> ({p.toOwnerName})
+                <span className="font-medium text-primary">{p.toTerminalName}</span> ({p.toOwnerName})
               </p>
               <p className="flex items-center gap-1 font-mono text-[11px] text-slate-500 dark:text-[#8b97ad]">
                 <Clock className="h-3 w-3" aria-hidden />
@@ -1416,7 +1416,7 @@ function ChannelDetail({
                   type="button"
                   disabled={busyAction !== null}
                   onClick={() => onDecision?.(p.id, "approve")}
-                  className="inline-flex h-7.5 cursor-pointer items-center gap-1 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-blue-500 disabled:opacity-50 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]"
+                  className="inline-flex h-7.5 cursor-pointer items-center gap-1 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-primary/90 disabled:opacity-50"
                 >
                   Approve
                 </button>
@@ -1432,7 +1432,7 @@ function ChannelDetail({
   );
 }
 
-function AttachOpenBotModal({
+function AttachConnectorModal({
   secrets,
   busy,
   onClose,
@@ -1479,15 +1479,15 @@ function AttachOpenBotModal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Attach OpenBot"
+        aria-label="커넥터 연결"
         className={`${PANEL} w-full max-w-lg space-y-4 p-5`}
       >
         <div className="flex items-center justify-between border-b border-slate-200/80 pb-3 dark:border-white/[0.06]">
           <div className="flex items-center gap-2">
-            <Bot className="h-4 w-4 text-blue-600 dark:text-[#60a5fa]" aria-hidden />
-            <h2 className="text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">Attach OpenBot</h2>
+            <Bot className="h-4 w-4 text-primary" aria-hidden />
+            <h2 className="text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">커넥터 연결</h2>
           </div>
-          <button type="button" aria-label="Close Attach OpenBot dialog" onClick={onClose} className={ACTION}>
+          <button type="button" aria-label="커넥터 연결 대화상자 닫기" onClick={onClose} className={ACTION}>
             <X className="h-3.5 w-3.5" aria-hidden />
           </button>
         </div>
@@ -1588,7 +1588,7 @@ function AttachOpenBotModal({
                 <input
                   value={newSecretName}
                   onChange={(e) => setNewSecretName(e.target.value)}
-                  placeholder="Secret name (e.g. OPENBOT_KEY)"
+                  placeholder="시크릿 이름 (예: PAPERWORK_CONNECTOR_KEY)"
                   aria-label="New Secret Name"
                   className={INPUT_CLASS}
                 />
@@ -1622,10 +1622,10 @@ function AttachOpenBotModal({
             <button
               type="submit"
               disabled={busy || !name.trim()}
-              className="inline-flex h-7.5 cursor-pointer items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-blue-500 disabled:opacity-50 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]"
+              className="inline-flex h-7.5 cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-primary/90 disabled:opacity-50"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden />
-              {busy ? "Attaching..." : "Attach Bot"}
+              {busy ? "연결 중..." : "연결"}
             </button>
           </div>
         </form>
@@ -1663,7 +1663,7 @@ function RegisterTerminalModal({
       >
         <div className="flex items-center justify-between border-b border-slate-200/80 pb-3 dark:border-white/[0.06]">
           <div className="flex items-center gap-2">
-            <Monitor className="h-4 w-4 text-blue-600 dark:text-[#60a5fa]" aria-hidden />
+            <Monitor className="h-4 w-4 text-primary" aria-hidden />
             <h2 className="text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">Register Terminal</h2>
           </div>
           <button type="button" aria-label="Close Register Terminal dialog" onClick={onClose} className={ACTION}>
@@ -1718,7 +1718,7 @@ function RegisterTerminalModal({
             <button
               type="submit"
               disabled={busy || !name.trim()}
-              className="inline-flex h-7.5 cursor-pointer items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-blue-500 disabled:opacity-50 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]"
+              className="inline-flex h-7.5 cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-primary/90 disabled:opacity-50"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden />
               {busy ? "Registering..." : "Create Terminal"}
