@@ -352,7 +352,7 @@ function sanitizePingError(err: unknown, secretValue: string | null): string {
 }
 
 const AUDIT_SENSITIVE_KEY_PATTERN = /token|secret|password|authorization|apikey|api_key|credential/i;
-const RAW_TOKEN_VALUE_PATTERN = /\b(?:pcp_term_|pcp_bot_)[0-9a-zA-Z_-]+/g;
+const RAW_TOKEN_VALUE_PATTERN = /\bpcp_(?:(?:term_|bot_)[0-9a-zA-Z_-]+|[0-9a-zA-Z_-]{16,})/g; // bare legacy pcp_<16+ chars> too; short ids like pcp_id pass
 
 function sanitizeAuditValue(value: unknown, depth = 0): unknown {
   if (depth > 6 || value === null || value === undefined) return value;

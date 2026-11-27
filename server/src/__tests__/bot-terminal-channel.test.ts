@@ -7,7 +7,7 @@ import { createEnterpriseBotsRouter } from "../routes/enterprise-bots.js";
 import {
   BOT_CHANNEL_OWNER_APPROVAL_TYPE,
   HEALTH_HISTORY_MAX,
-  createBotTerminalChannelService, createTerminalToken, hashTerminalToken,
+  createBotTerminalChannelService, createTerminalToken, hashTerminalToken, sanitizeAuditDetails,
   type BotActor, type BotAuditEventRecord, type BotCapabilityRecord, type BotPendingApprovalRecord, type BotTerminalRecord,
   type BotTerminalChannelServiceOptions, type EnterpriseBotRecord, type EnterpriseBotStore,
   type NewBotTerminal,
@@ -776,5 +776,41 @@ describe("enterprise-bots router", () => {
       .get(`/api/companies/${COMPANY}/audit?limit=0`)
       .set("x-actor", SALES)
       .expect(400);
+  });
+});
+
+describe("sanitizeAuditDetails raw token redaction", () => {
+  const HEX32 = "0123456789abcdef0123456789abcdef";
+
+  it("redacts bare legacy pcp_<32-hex> tokens in strings, arrays and nested objects", () => {
+    expect(sanitizeAuditDetails({
+      note: `leaked pcp_${HEX32} in text`,
+      list: [`pcp_${HEX32.toUpperCase()}`, "pcp_abcdefghijklmnop"],
+      nested: { deep: [`token=pcp_${"a".repeat(64)};end`] },
+    })).toEqual({
+      note: "leaked [REDACTED] in text",
+      list: ["[REDACTED]", "[REDACTED]"],
+      nested: { deep: ["token=[REDACTED];end"] },
+    });
+  });
+
+  it("leaves short pcp_ identifiers untouched", () => {
+    const details = {
+      key: "pcp_id",
+      env: "pcp_test",
+      bare: "pcp_",
+      short: "pcp_123456789012345",
+      text: "prefix pcp_id and pcp_test remain",
+    };
+    expect(sanitizeAuditDetails(details)).toEqual(details);
+  });
+
+  it("still redacts short prefixed pcp_term_/pcp_bot_ values and sensitive keys", () => {
+    expect(sanitizeAuditDetails({ a: "pcp_bot_x", b: "pcp_term_y", token: `pcp_${HEX32}` })).toEqual({
+      a: "[REDACTED]",
+      b: "[REDACTED]",
+      token: "[REDACTED]",
+    });
+    expect(sanitizeAuditDetails(null)).toBeNull();
   });
 });
