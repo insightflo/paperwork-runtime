@@ -20,11 +20,11 @@ export interface CapabilityMatrixProps {
 const CALLABLE_OPTIONS: EnterpriseBotCallableBy[] = ["self_only", "team", "company"];
 const SCOPE_OPTIONS: BotCapabilityDataScope[] = ["self", "team", "company"];
 const SELECT_CLASS =
-  "h-7 rounded-md border border-slate-200/90 bg-white px-2 font-mono text-[11px] text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-55 dark:border-white/[0.09] dark:bg-[#090d14] dark:text-[#edf2fb] dark:focus:border-[#60a5fa]";
-const APPROVAL_ON =
-  "border-amber-500/40 bg-amber-500/15 text-amber-800 dark:border-[#f59e0b]/40 dark:bg-[#f59e0b]/15 dark:text-[#fcd34d]";
-const APPROVAL_OFF =
-  "border-slate-200/90 bg-slate-100/80 text-slate-600 dark:border-white/[0.08] dark:bg-[#090d14] dark:text-[#8b97ad]";
+  "h-7 rounded-md border border-border bg-card px-2 font-mono text-[11px] text-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-55";
+const WARN_TONE =
+  "border-amber-500/40 bg-amber-500/15 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-300";
+const APPROVAL_ON = WARN_TONE;
+const APPROVAL_OFF = "border-border bg-muted text-muted-foreground";
 
 export function countCapabilityDiffs(baseline: BotCapabilityRule[], draft: BotCapabilityRule[]): number {
   const baseMap = new Map(baseline.map((r) => [r.capabilityKey, r]));
@@ -94,23 +94,18 @@ export function CapabilityMatrix({
   return (
     <div
       data-capability-matrix
-      className={`tactile-card space-y-3 rounded-xl border border-slate-200/90 bg-white p-3 text-xs tabular-nums dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] ${className}`.trim()}
+      className={`tactile-card space-y-3 rounded-xl border border-border bg-card p-3 text-xs tabular-nums ${className}`.trim()}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
-          <ShieldCheck className="h-3.5 w-3.5 text-blue-600 dark:text-[#60a5fa]" aria-hidden />
-          <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]">
+          <ShieldCheck className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400" aria-hidden />
+          <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Capability Matrix ({draft.length})
           </h3>
           {isDirty && (
             <span
               data-dirty-badge
-              className="rounded-full border px-2 py-0.5 font-mono text-[10.5px] font-medium"
-              style={{
-                borderColor: "var(--openbot-warning)",
-                backgroundColor: "var(--openbot-warning-soft)",
-                color: "var(--openbot-warning-text)",
-              }}
+              className={`rounded-full border px-2 py-0.5 font-mono text-[10.5px] font-medium ${WARN_TONE}`}
             >
               {dirtyCount} unsaved {dirtyCount === 1 ? "change" : "changes"}
             </span>
@@ -119,7 +114,7 @@ export function CapabilityMatrix({
 
         <div className="flex items-center gap-1.5">
           {!canAdmin && (
-            <span data-readonly-hint className="inline-flex items-center gap-1 text-[11px] text-slate-500 dark:text-[#8b97ad]">
+            <span data-readonly-hint className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
               <Lock className="h-3 w-3" aria-hidden />
               Admin only
             </span>
@@ -132,7 +127,7 @@ export function CapabilityMatrix({
                 setDraft(capabilities);
                 setAddError(null);
               }}
-              className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-slate-200/90 bg-white px-2 text-[11px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-white/[0.1] dark:bg-[#090d14] dark:text-[#cbd5e1]"
+              className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-border bg-card px-2 text-[11px] font-medium text-foreground hover:bg-accent disabled:opacity-50"
             >
               <RotateCcw className="h-3 w-3" aria-hidden />
               Reset
@@ -143,7 +138,7 @@ export function CapabilityMatrix({
             data-save-matrix
             disabled={!canAdmin || !isDirty || saving}
             onClick={() => void onSave(draft)}
-            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 text-[11px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]"
+            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Save className="h-3 w-3" aria-hidden />
             {saving ? "Saving..." : "Save Matrix"}
@@ -154,7 +149,7 @@ export function CapabilityMatrix({
       <div className="overflow-x-auto">
         <table className="w-full border-collapse text-left text-[11px]">
           <thead>
-            <tr className="border-b border-slate-200/80 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500 dark:border-white/[0.06] dark:text-[#8b97ad]">
+            <tr className="border-b border-border text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               <th className="py-1.5 pr-2">Capability</th>
               <th className="py-1.5 pr-2">Callable By</th>
               <th className="py-1.5 pr-2">Data Scope</th>
@@ -162,17 +157,17 @@ export function CapabilityMatrix({
               <th className="w-7 py-1.5 text-right"><span className="sr-only">Remove</span></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.05]">
+          <tbody className="divide-y divide-border">
             {draft.length === 0 ? (
               <tr>
-                <td colSpan={5} className="py-3 text-center text-slate-500 dark:text-[#8b97ad]">
+                <td colSpan={5} className="py-3 text-center text-muted-foreground">
                   No capabilities configured yet.
                 </td>
               </tr>
             ) : (
               draft.map((row) => (
                 <tr key={row.capabilityKey} data-capability-row={row.capabilityKey}>
-                  <td className="py-1.5 pr-2 font-mono font-medium text-slate-900 dark:text-[#edf2fb]">{row.capabilityKey}</td>
+                  <td className="py-1.5 pr-2 font-mono font-medium text-foreground">{row.capabilityKey}</td>
                   <td className="py-1.5 pr-2">
                     <select
                       aria-label={`Callable by for ${row.capabilityKey}`}
@@ -214,7 +209,7 @@ export function CapabilityMatrix({
                       aria-label={`Remove ${row.capabilityKey}`}
                       disabled={readOnly}
                       onClick={() => removeRow(row.capabilityKey)}
-                      className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-rose-500/10 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:text-rose-300"
+                      className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden />
                     </button>
@@ -226,14 +221,14 @@ export function CapabilityMatrix({
         </table>
       </div>
 
-      <form onSubmit={handleAdd} className="flex flex-wrap items-center gap-1.5 border-t border-slate-200/70 pt-2.5 dark:border-white/[0.06]">
+      <form onSubmit={handleAdd} className="flex flex-wrap items-center gap-1.5 border-t border-border pt-2.5">
         <input
           value={newKey}
           onChange={(e) => { setNewKey(e.target.value); if (addError) setAddError(null); }}
           disabled={readOnly}
           placeholder="Add capability (e.g. docs.search)"
           aria-label="New capability key"
-          className="h-7 min-w-[140px] flex-1 rounded-md border border-slate-200/90 bg-slate-50/70 px-2 font-mono text-[11px] text-slate-900 outline-none placeholder:text-slate-400 focus:border-blue-500 focus:bg-white disabled:cursor-not-allowed disabled:opacity-55 dark:border-white/[0.09] dark:bg-[#090d14] dark:text-[#edf2fb] dark:placeholder:text-[#8b97ad]"
+          className="h-7 min-w-[140px] flex-1 rounded-md border border-border bg-muted/60 px-2 font-mono text-[11px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:bg-card disabled:cursor-not-allowed disabled:opacity-55"
         />
         <select
           aria-label="New capability callable by"
@@ -267,14 +262,14 @@ export function CapabilityMatrix({
         <button
           type="submit"
           disabled={readOnly || !newKey.trim()}
-          className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-slate-200/90 bg-white px-2 text-[11px] font-medium text-slate-800 hover:border-blue-500/40 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/[0.1] dark:bg-[#090d14] dark:text-[#edf2fb]"
+          className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border bg-card px-2 text-[11px] font-medium text-foreground hover:border-primary/40 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="h-3.5 w-3.5" aria-hidden />
           Add
         </button>
       </form>
 
-      {addError && <p role="alert" className="text-[11px] text-rose-600 dark:text-rose-300">{addError}</p>}
+      {addError && <p role="alert" className="text-[11px] text-destructive">{addError}</p>}
     </div>
   );
 }
