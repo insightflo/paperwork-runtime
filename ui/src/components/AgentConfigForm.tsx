@@ -16,6 +16,7 @@ import { FolderOpen, Heart } from "lucide-react";
 import { cn } from "../lib/utils";
 import { queryKeys } from "../lib/queryKeys";
 import { useCompany } from "../context/CompanyContext";
+import { parseAgentSettingDeepLink, type AgentSettingTab } from "@/lib/setting-reveal";
 import {
   Field,
   ToggleField,
@@ -76,6 +77,8 @@ type AgentConfigFormProps = {
   hideInstructionsFile?: boolean;
   /** Hide the prompt template field from the Identity section (used when it's shown in a separate Prompts tab). */
   hidePromptTemplate?: boolean;
+  /** Initial tab override; otherwise seeded from the ?tab=&focus= deep link (stage31 W-C). */
+  initialTab?: AgentSettingTab;
   /** "cards" renders each section as heading + bordered card (for settings pages). Default: "inline" (border-b dividers). */
   sectionLayout?: "inline" | "cards";
 } & (
@@ -362,31 +365,40 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   // Section toggle state — advanced always starts collapsed
   const [runPolicyAdvancedOpen, setRunPolicyAdvancedOpen] = useState(false);
   // [stage30-w5] 4-tab progressive disclosure. All form state stays in this component,
-  // so switching tabs never loses in-progress changes.
-  const [activeTab, setActiveTab] = useState<"basic" | "permissions" | "behavior" | "advanced">("basic");
-  // [stage30-w5] Bot policy (OpenBot botPolicy) — stored in adapterConfig.botPolicy.
-  // CreateConfigValues has no botPolicy slot, so create mode keeps it in local state
-  // (not persisted on create yet); edit mode persists via the adapterConfig overlay.
-  const [createBotPolicy, setCreateBotPolicy] = useState<AgentBotPolicy>({});
-  const currentBotPolicy = isCreate
-    ? createBotPolicy
-    : normalizeBotPolicy(eff("adapterConfig", "botPolicy", config.botPolicy));
-  function updateBotPolicy(next: AgentBotPolicy) {
-    if (isCreate) {
-      setCreateBotPolicy(next);
-      return;
-    }
-    mark("adapterConfig", "botPolicy", Object.keys(next).length > 0 ? next : undefined);
-  }
-  // Popover states
-  const [modelOpen, setModelOpen] = useState(false);
-  const [thinkingEffortOpen, setThinkingEffortOpen] = useState(false);
-
-  // Create mode helpers
+  // so switching tabs never loses in-progress changes. [stage31-wC] the initial tab is
+  // seeded from the initialTab prop or an agent-setting deep link (?tab=&focus=),
+  // parsed fail-closed per field by parseAgentSettingDeepLink.
+  const [activeTab, setActiveTab] = useState<AgentSettingTab>(() => {
+    if (props.initialTab) return props.initialTab;
+    const search = typeof window !== "undefined" && typeof window.location !== "undefined"
+      ? window.location.search
+      : "";
+    return parseAgentSettingDeepLink(search).tab ?? "basic";
+  });
+  // Create mode helpers (hoisted above the botPolicy wiring below, which reads val)
   const val = isCreate ? props.values : null;
   const set = isCreate
     ? (patch: Partial<CreateConfigValues>) => props.onChange(patch)
     : null;
+  // [stage30-w5] Bot policy (OpenBot botPolicy) — edit mode stores it in the
+  // adapterConfig overlay; [stage31-wC] create mode persists it through the
+  // values.botPolicy slot (CreateConfigValues) instead of throwaway local state,
+  // so folder grants, permissions and behavior settings reach the create flow.
+  const currentBotPolicy = isCreate
+    ? normalizeBotPolicy(val!.botPolicy)
+    : normalizeBotPolicy(eff("adapterConfig", "botPolicy", config.botPolicy));
+  function updateBotPolicy(next: AgentBotPolicy) {
+    // Spread keeps an index-signature-compatible object for CreateConfigValues.botPolicy.
+    const stored = Object.keys(next).length > 0 ? { ...next } : undefined;
+    if (isCreate) {
+      set!({ botPolicy: stored });
+      return;
+    }
+    mark("adapterConfig", "botPolicy", stored);
+  }
+  // Popover states
+  const [modelOpen, setModelOpen] = useState(false);
+  const [thinkingEffortOpen, setThinkingEffortOpen] = useState(false);
 
   function buildAdapterConfigForTest(): Record<string, unknown> {
     if (isCreate) {
