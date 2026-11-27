@@ -40,6 +40,7 @@ import { stepRunNeedsWorkflowResume } from "./dag-rework-observation.js";
 import { reloadWorkflowStepRunsForSameRun } from "./workproduct-dependency-gate.js";
 import { isStructuralGateStep } from "./control-flow/structural-gate.js";
 import { executeWorkflowControlNode, isWorkflowControlNode, resetStaleIfControlNodesForResume } from "./control-flow/control-node-executor.js";
+import { executeHumanWaitNode, isExplicitHumanWaitNode } from "./control-flow/human-wait-node-executor.js";
 import { readWorkflowRetryMetadata } from "./retry-policy.js";
 import { markIssueLessRetryDispatchingFromProof } from "./retry-launch-dispatch.js";
 import { applyWorkflowStepRetryPass } from "./workflow-step-retry-pass.js";
@@ -486,6 +487,9 @@ async function syncWorkflowRunStateCore(
 
       let failedIssueLessToolStep = false;
       let executedControlNode = false;
+      // [stage26 s26-w3] set only when a human_wait node reached a terminal transition;
+      // a paused (hold_waiting_approval) node must never continue the loop or it would spin.
+      let continuedAfterHumanWaitNode = false;
       const initialControlNodeStepIds = new Set<string>();
       for (const step of runnableSteps) {
         const stepRun = stepRunMap.get(step.id);
@@ -496,6 +500,18 @@ async function syncWorkflowRunStateCore(
           await executeWorkflowControlNode({ db, context, step, stepRun });
           executedControlNode = true;
           if (!reevaluation) initialControlNodeStepIds.add(step.id);
+          continue;
+        }
+
+        // [stage26 s26-w3] explicit human_wait node — issue-less structured operator gate.
+        // Never creates an issue or dispatches: pending decision pauses (no write, the gate
+        // card is idempotent), approval completes the step so the same sync continues
+        // downstream, rejection/expiry fails the step. Legacy non-human_wait steps keep
+        // their exact existing dispatch paths below (explicit type check only).
+        if (isExplicitHumanWaitNode(step)) {
+          const humanWaitAction = await executeHumanWaitNode({ db, context, step, stepRun });
+          continuedAfterHumanWaitNode = continuedAfterHumanWaitNode
+            || humanWaitAction !== "hold_waiting_approval";
           continue;
         }
 
@@ -631,7 +647,7 @@ async function syncWorkflowRunStateCore(
           }
         }
       }
-      shouldContinue = failedIssueLessToolStep || executedControlNode;
+      shouldContinue = failedIssueLessToolStep || executedControlNode || continuedAfterHumanWaitNode;
     }
   }
 
