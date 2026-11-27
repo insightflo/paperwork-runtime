@@ -60,6 +60,7 @@ import { sidebarBadgeRoutes } from "./routes/sidebar-badges.js";
 import { instanceSettingsRoutes } from "./routes/instance-settings.js";
 import { llmRoutes } from "./routes/llms.js";
 import { assetRoutes } from "./routes/assets.js";
+import { dataGraphRoutes } from "./routes/data-graph.js";
 import { accessRoutes } from "./routes/access.js";
 import { assertCompanyAccess } from "./routes/authz.js";
 import { pluginToolExecuteRoutes } from "./routes/plugin-tool-execute.js";
@@ -680,6 +681,7 @@ export async function createApp(
   api.use(agentWikiRoutes(db));
   api.use(knowledgePatternsRoutes(db));
   api.use(knowledgeBasesRoutes(db));
+  api.use(dataGraphRoutes());
   api.use(selfImprovementAdoptionsRoutes(db));
   api.use(channelConfigRoutes(db));
   api.use(strategyPlaybookRoutes(db));
