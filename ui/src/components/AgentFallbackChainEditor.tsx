@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowLeftRight, ChevronDown, ChevronUp, Plus, Trash2, type LucideIcon } from "lucide-react";
 import type { AdapterFallbackChainEntry } from "@paperclipai/adapter-utils/types";
+import type { UsageLimitGateSnapshot } from "../api/instanceSettings";
 import { Field, ToggleField } from "./agent-config-primitives";
 
 export const MAX_FALLBACK_ENTRIES = 8;
@@ -84,10 +85,53 @@ export interface AgentFallbackChainEditorProps {
   primaryModels: ReadonlyArray<{ id: string; label: string }>;
   /** Optional resolver for models of a chosen adapterType (falls back to free-text model input if empty). */
   getModelsForAdapter?: (adapterType: string) => ReadonlyArray<{ id: string; label: string }>;
+  /** [stage28-w2] Live usage-limit gate snapshot; when present, each backup row shows a gate badge. */
+  gateSnapshot?: UsageLimitGateSnapshot | null;
   onChangeAutomatic: (automatic: boolean) => void;
   onChangeOrder: (order: AdapterFallbackChainEntry[]) => void;
   onChangeLegacyCommand: (command: string) => void;
   disabled?: boolean;
+}
+
+export type BackupGateState = "ready" | "limit" | "cooldown";
+
+const normalizePart = (value: string | null | undefined): string =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+/**
+ * [stage28-w2] 백업 엔트리가 현재 사용량 제한(쿼터) 또는 실패 쿨다운 홀드에 걸렸는지 판정.
+ * 스냅샷의 null 필드는 와일드카드이고, 나머지 필드는 trim·대소문자 무시로 정확히 일치해야 한다.
+ * adapterType 미지정 엔트리는 기본 어댑터(primaryAdapterType)로 실행되므로 이를 상속해 비교한다.
+ */
+export function resolveBackupEntryGateState(
+  entry: EntryIdentity,
+  primaryAdapterType: string,
+  gateSnapshot?: UsageLimitGateSnapshot | null,
+): BackupGateState {
+  if (!gateSnapshot) return "ready";
+  const adapter = normalizePart(entry.adapterType) || normalizePart(primaryAdapterType);
+  const provider = normalizePart(entry.provider);
+  const model = normalizePart(entry.model);
+  const matches = (candidate: { adapterType: string | null; provider: string | null; model: string | null }): boolean =>
+    (candidate.adapterType === null || normalizePart(candidate.adapterType) === adapter) &&
+    (candidate.provider === null || normalizePart(candidate.provider) === provider) &&
+    (candidate.model === null || normalizePart(candidate.model) === model);
+  if (gateSnapshot.limitedModels.some(matches)) return "limit";
+  if (gateSnapshot.failedModels.some(matches)) return "cooldown";
+  return "ready";
+}
+
+const GATE_BADGE_LABEL: Record<BackupGateState, string> = { limit: "쿼터 제한", cooldown: "쿨다운", ready: "대기" };
+const GATE_BADGE_CLASS: Record<BackupGateState, string> = {
+  limit: "rounded border border-amber-500/40 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-400/40 dark:bg-amber-400/10 dark:text-amber-300",
+  cooldown: badgeClass,
+  ready: badgeClass,
+};
+
+function GateBadge({ state }: { state: BackupGateState }) {
+  return (
+    <span data-gate-state={state} className={GATE_BADGE_CLASS[state]}>{GATE_BADGE_LABEL[state]}</span>
+  );
 }
 
 function RowIconButton({ label, icon: Icon, onClick, disabled }: { label: string; icon: LucideIcon; onClick: () => void; disabled?: boolean }) {
@@ -99,7 +143,7 @@ function RowIconButton({ label, icon: Icon, onClick, disabled }: { label: string
 }
 
 export function AgentFallbackChainEditor(props: AgentFallbackChainEditorProps) {
-  const { primaryAdapterType, primaryModel, automatic, order, legacyFallbackCommand, availableAdapters, getModelsForAdapter, onChangeAutomatic, onChangeOrder, onChangeLegacyCommand, disabled = false } = props;
+  const { primaryAdapterType, primaryModel, automatic, order, legacyFallbackCommand, availableAdapters, getModelsForAdapter, gateSnapshot, onChangeAutomatic, onChangeOrder, onChangeLegacyCommand, disabled = false } = props;
   const [draftAdapterType, setDraftAdapterType] = useState(primaryAdapterType);
   const [draftProvider, setDraftProvider] = useState("");
   const [draftModel, setDraftModel] = useState("");
@@ -146,6 +190,7 @@ export function AgentFallbackChainEditor(props: AgentFallbackChainEditorProps) {
             )}
             <span className="min-w-0 flex-1 truncate font-mono text-xs text-slate-800 dark:text-[#eef2f8]">{entry.model}</span>
             {entry.thinking && <span className={badgeClass}>{entry.thinking}</span>}
+            {gateSnapshot && <GateBadge state={resolveBackupEntryGateState(entry, primaryAdapterType, gateSnapshot)} />}
             <span className="flex shrink-0 items-center gap-1">
               <RowIconButton label="Move up" icon={ChevronUp} disabled={disabled || index === 0} onClick={() => onChangeOrder(moveFallbackEntry(order, index, -1))} />
               <RowIconButton label="Move down" icon={ChevronDown} disabled={disabled || index === order.length - 1} onClick={() => onChangeOrder(moveFallbackEntry(order, index, 1))} />

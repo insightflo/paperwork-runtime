@@ -4,6 +4,7 @@ import type { Agent, EnvBinding } from "@paperclipai/shared";
 import { AGENT_ADAPTER_TYPES } from "@paperclipai/shared";
 import type { AdapterModel } from "../api/agents";
 import { agentsApi } from "../api/agents";
+import { instanceSettingsApi } from "../api/instanceSettings";
 import { secretsApi } from "../api/secrets";
 import { assetsApi } from "../api/assets";
 import {
@@ -309,6 +310,15 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     adapterType === "codex_local" ||
     adapterType === "commandcode_local" ||
     adapterType === "pi_local";
+  // [stage28-w2] 라이브 쿼터 제한/쿨다운 스냅샷 — 폴백 체인 각 행에 게이트 배지로 표시.
+  // 조회 실패 시 배지 없이 조용히 폴백(데이터 null)하므로 편집 흐름을 막지 않는다.
+  const usageLimitGateQuery = useQuery({
+    queryKey: ["instance", "usage-limit-gate"] as const,
+    queryFn: () => instanceSettingsApi.getUsageLimitGate(),
+    enabled: supportsAdapterFallback,
+    retry: false,
+    staleTime: 30_000,
+  });
   const showLegacyWorkingDirectoryField =
     isLocal && shouldShowLegacyWorkingDirectoryField({ isCreate, adapterConfig: config });
   const uiAdapter = useMemo(() => getUIAdapter(adapterType), [adapterType]);
@@ -765,6 +775,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   availableAdapters={fallbackAvailableAdapters}
                   primaryModels={models}
                   getModelsForAdapter={(type) => (type === adapterType ? models : [])}
+                  gateSnapshot={usageLimitGateQuery.data ?? null}
                   onChangeAutomatic={(automatic) =>
                     isCreate
                       ? set!({ fallbackAutomatic: automatic === true ? undefined : false })
