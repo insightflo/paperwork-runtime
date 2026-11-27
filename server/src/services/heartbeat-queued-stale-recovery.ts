@@ -3,6 +3,7 @@ import type { Db } from "@paperclipai/db";
 import { agents, agentWakeupRequests, heartbeatRuns, withTxTimeout } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
 import { lifecycleActiveClause } from "./heartbeat-finalization/lifecycle-active.js";
+import { createQueuedStalePromotionFirst } from "./heartbeat-queued-stale-promotion.js";
 import { operatorApprovalWaitService } from "./operator-approval-wait.js";
 
 type Run = typeof heartbeatRuns.$inferSelect;
@@ -11,6 +12,7 @@ type QueueEvent = {
   companyId: string;
   issueId?: string | null;
   wakeupRequestId?: string | null;
+  heartbeatRunId?: string | null;
   eventType: string;
   layer: string;
   decision?: string | null;
@@ -182,11 +184,20 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
     }));
   }
 
-  return async function recoverQueuedStaleWork(thresholdMs: number) {
+  return {
+    /** stale queued run/orphan 실패 전환 스윕. 결과는 재ap된 heartbeatRunId 목록. */
+    recover: async function recoverQueuedStaleWork(thresholdMs: number) {
     const reapedRunIds: string[] = [];
     const orphanReapedIds: string[] = [];
     const queueStartAttempted = new Set<string>();
     const queueStartFailed = new Set<string>();
+    const promoteStaleQueuedRunBeforeFailure = createQueuedStalePromotionFirst({
+      db: deps.db,
+      startNextQueuedRunForAgent: deps.startNextQueuedRunForAgent,
+      countActiveRunsForAgent: deps.countActiveRunsForAgent,
+      maxConcurrentRuns: deps.maxConcurrentRuns,
+      getRun: async (runId) => await deps.getRun(runId),
+    });
     if (thresholdMs <= 0) return { reapedRunIds };
     const queuedSnapshots = await deps.db.select().from(heartbeatRuns).where(eq(heartbeatRuns.status, "queued"));
     const orphanSnapshots = await deps.db.select().from(agentWakeupRequests).where(and(
@@ -198,6 +209,12 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
 
     for (const snapshot of staleRuns) {
       try {
+        // [promote-first] capacity 가 비어 있으면 실패 전환 전에 승격을 먼저 시도한다(lock 밖).
+        // promoter 가 실제로 run 을 시작하면 여기서 종료하고, 못 시작했으면 그 이유를 outcome 으로
+        // 받아 아래 구조화 이벤트에 기록한다. agent-start-lock 내부에서 promoter 를 부르면
+        // deadlock 위험이 있으므로 반드시 failStaleRun 이전 lock 밖에서 실행한다.
+        const promoteFirst = await promoteStaleQueuedRunBeforeFailure(snapshot, queueStartAttempted);
+        if (promoteFirst.outcome === "promoted_started") continue;
         const failedRun = await failStaleRun(snapshot, thresholdMs);
         if (!failedRun) continue;
         reapedRunIds.push(failedRun.id);
@@ -215,7 +232,22 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
         }
         await deps.appendRunEvent(failedRun, await deps.nextRunEventSeq(failedRun.id), {
           eventType: "lifecycle", stream: "system", level: "error", message,
-          payload: { queuedStaleThresholdMs: thresholdMs },
+          payload: { queuedStaleThresholdMs: thresholdMs, promoteFirst: promoteFirst.outcome },
+        });
+        // [structured metadata] 승격 우선 시도 결과를 포함한 queue 전이 기록. 자연어 파싱 없이
+        // 구조화 payload 로만 남긴다(재발 탐지/운영 관측용; 실행 권한은 이 이벤트에 없다).
+        await deps.recordQueueTransitionEvent({
+          companyId: failedRun.companyId,
+          issueId: failedRun.issueId,
+          wakeupRequestId: failedRun.wakeupRequestId,
+          heartbeatRunId: failedRun.id,
+          eventType: "run_stale_queued",
+          layer: "heartbeat",
+          decision: "failed",
+          reason: "stale_queued",
+          reasonCode: "stale_queued",
+          idempotencyKey: `run-stale-queued:${failedRun.id}`,
+          payload: { queuedStaleThresholdMs: thresholdMs, promoteFirst },
         });
         try {
           await deps.releaseIssueExecutionAndPromote(failedRun, { skipLocked: true });
@@ -262,5 +294,6 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
 
     if (orphanReapedIds.length) logger.warn({ orphanWakeupCount: orphanReapedIds.length, wakeupIds: orphanReapedIds }, "reaped stale queued wakeup requests without a heartbeat run");
     return { reapedRunIds };
+    },
   };
 }
