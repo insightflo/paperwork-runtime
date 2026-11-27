@@ -27,10 +27,10 @@ import {
   getMissionRadarBucket,
   getMissionWorkflowTag,
   matchesMissionRadarFilters,
-  sortMissionsByAttentionPriority,
   type MissionRadarBucket,
   type RadarStatusBucket,
 } from "../components/missions/MissionFleetRadar";
+import { sortMissions } from "../lib/mission-sort";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { normalizeQueueItems, queueItemLabel } from "../components/QueuePanel";
@@ -49,7 +49,9 @@ import {
 const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 const SORT_OPTIONS = [
   { value: "updatedAt:desc", label: "Recently updated" },
+  { value: "updatedAt:asc", label: "Oldest updated" },
   { value: "createdAt:desc", label: "Recently created" },
+  { value: "createdAt:asc", label: "Oldest created" },
   { value: "title:asc", label: "Title A-Z" },
   { value: "title:desc", label: "Title Z-A" },
   { value: "status:asc", label: "Status" },
@@ -361,7 +363,8 @@ export function Missions() {
     (Boolean(searchParams.get("from")) && from !== getDefaultCreatedFrom());
   const hasAnyFilter = hasClientRadarFilter || hasUrlFilter;
 
-  // When a client-side radar filter/search is active, filter across the full fleet and paginate cleanly.
+  // [수정 주의] 레이더 필터 여부와 무관하게 URL sortBy/sortOrder로 항상 재정렬한다.
+  // 필터 활성 시 소스가 서버 미정렬 fleetMissions로 바뀌어도 기본값(updatedAt:desc)이 유지된다.
   const filteredClientMissions = useMemo(() => {
     const source = hasClientRadarFilter ? fleetMissions : (missions ?? []);
     const matched = hasClientRadarFilter
@@ -375,7 +378,7 @@ export function Missions() {
           ),
         )
       : source;
-    return sortMissionsByAttentionPriority(matched, attentionMissionIds);
+    return sortMissions(matched, sortBy, sortOrder);
   }, [
     hasClientRadarFilter,
     fleetMissions,
@@ -386,6 +389,8 @@ export function Missions() {
     workflowFilter,
     attentionMissionIds,
     agentMap,
+    sortBy,
+    sortOrder,
   ]);
 
   const activePage = hasClientRadarFilter ? localPage : page;
@@ -690,6 +695,8 @@ export function Missions() {
             value={currentSortValue}
             onChange={(e) => {
               const [nextSortBy, nextSortOrder] = e.target.value.split(":");
+              // [수정 주의] 레이더 필터 활성 시 페이지는 localPage 상태를 쓰므로 URL resetPage만으로는 리셋되지 않는다.
+              setLocalPage(1);
               updateSearchParams({ sortBy: nextSortBy, sortOrder: nextSortOrder }, { resetPage: true });
             }}
             className={`${CONTROL_CLASS} w-36 shrink-0`}
