@@ -194,4 +194,81 @@ describe("endpoint bot HTTP routes", () => {
     expect(response.status).toBe(500);
     expect(JSON.stringify(response.body)).not.toContain("secret-token-leak");
   });
+
+  it("rejects unauthenticated and out-of-company access to the endpoint audit feed", async () => {
+    const none = await client({ type: "none" }).get("/api/companies/acme/endpoints/audit");
+    const missing = await client(null).get("/api/companies/acme/endpoints/audit");
+    const other = await client({ type: "agent", companyId: "other" })
+      .get("/api/companies/acme/endpoints/audit");
+    expect(none.status).toBe(401);
+    expect(missing.status).toBe(401);
+    expect(other.status).toBe(403);
+  });
+
+  it("records enqueued and completed audit events with company-scoped stats", async () => {
+    const api = client();
+    const paired = await pair(api);
+    const queued = await api.post(`/api/companies/acme/endpoints/${paired.body.deviceId}/tasks`)
+      .send({ kind: "read_file", targetPath: "/workspace/a.txt" });
+    await device(api, paired.body.deviceToken)
+      .post(`/api/endpoints/${paired.body.deviceId}/tasks/${queued.body.taskId}/ack`)
+      .send({ ok: true, output: "contents" });
+    const audit = await api.get("/api/companies/acme/endpoints/audit");
+    expect(audit.status).toBe(200);
+    expect(audit.body.items).toHaveLength(2);
+    expect(audit.body.items[0]).toMatchObject({
+      companyId: "acme", deviceId: paired.body.deviceId, botName: "worker",
+      taskId: queued.body.taskId, kind: "read_file", outcome: "completed",
+    });
+    expect(audit.body.items[1]).toMatchObject({ outcome: "enqueued", targetPath: "/workspace/a.txt" });
+    expect(audit.body.stats).toEqual({ total: 2, enqueued: 1, completed: 1, failed: 0, denied: 0 });
+  });
+
+  it("redacts bearer and sk- secrets carried in audited ack output", async () => {
+    const api = client();
+    const paired = await pair(api);
+    const queued = await api.post(`/api/companies/acme/endpoints/${paired.body.deviceId}/tasks`)
+      .send({ kind: "read_file", targetPath: "/workspace/a.txt" });
+    await device(api, paired.body.deviceToken)
+      .post(`/api/endpoints/${paired.body.deviceId}/tasks/${queued.body.taskId}/ack`)
+      .send({ ok: false, output: "failed with Bearer supersecret123 and sk-proj-abcdef123456", error: "boom" });
+    const audit = await api.get("/api/companies/acme/endpoints/audit");
+    const json = JSON.stringify(audit.body);
+    expect(json).not.toContain("supersecret123");
+    expect(json).not.toContain("sk-proj-abcdef123456");
+    expect(audit.body.items[0].summary).toContain("[REDACTED]");
+    expect(audit.body.items[0]).toMatchObject({ outcome: "failed" });
+  });
+
+  it("records a denied audit event when folder policy rejects a task", async () => {
+    const api = client();
+    const code = (await api.post("/api/companies/acme/endpoints/pairing-codes")
+      .send({ botName: "reader", requestedFolders: [{ path: "/readonly", mode: "ro" }] })).body.code;
+    const paired = await pair(api, code);
+    const denied = await api.post(`/api/companies/acme/endpoints/${paired.body.deviceId}/tasks`)
+      .send({ kind: "write_file", targetPath: "/readonly/file" });
+    expect(denied.status).toBe(403);
+    const audit = await api.get("/api/companies/acme/endpoints/audit");
+    expect(audit.body.items[0]).toMatchObject({ outcome: "denied", kind: "write_file", botName: "reader" });
+    expect(audit.body.stats.denied).toBe(1);
+  });
+
+  it("filters the audit feed by device and limit", async () => {
+    const api = client();
+    const first = await pair(api);
+    const second = await pair(api);
+    await api.post(`/api/companies/acme/endpoints/${first.body.deviceId}/tasks`)
+      .send({ kind: "read_file", targetPath: "/workspace/a.txt" });
+    await api.post(`/api/companies/acme/endpoints/${second.body.deviceId}/tasks`)
+      .send({ kind: "list_dir", targetPath: "/workspace" });
+    const filtered = await api.get(`/api/companies/acme/endpoints/audit?deviceId=${second.body.deviceId}`);
+    expect(filtered.body.items).toHaveLength(1);
+    expect(filtered.body.items[0].deviceId).toBe(second.body.deviceId);
+    const limited = await api.get("/api/companies/acme/endpoints/audit?limit=1");
+    expect(limited.body.items).toHaveLength(1);
+    expect(limited.body.items[0].kind).toBe("list_dir");
+    expect(limited.body.stats.total).toBe(2);
+    const invalid = await api.get("/api/companies/acme/endpoints/audit?limit=zero");
+    expect(invalid.status).toBe(400);
+  });
 });

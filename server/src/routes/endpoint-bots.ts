@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { badRequest, forbidden, HttpError, notFound, unauthorized } from "../errors.js";
@@ -6,6 +7,9 @@ import {
   createEndpointBotPairingService, globalEndpointBotPairingStore,
   type EndpointBotPairingService, type EndpointBotPairingStore,
 } from "../services/endpoint-bot-pairing.js";
+import {
+  createEndpointAuditStore, type EndpointAuditOutcome, type EndpointAuditStore,
+} from "../services/endpoint-task-audit.js";
 
 const folder = z.object({ path: z.string().min(1), mode: z.enum(["ro", "rw"]) }).strict();
 const cli = z.union([
@@ -29,6 +33,8 @@ const taskInput = z.object({
   kind: z.enum(["read_file", "write_file", "list_dir", "shell_exec"]), targetPath: z.string().min(1),
   command: z.string().min(1).optional(), args: z.array(z.string()).optional(),
 }).strict();
+const auditQuery = z.object({ deviceId: z.string().min(1).optional(),
+  limit: z.coerce.number().int().positive().optional() }).strict();
 
 function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.infer<T> {
   const result = schema.safeParse(value);
@@ -97,6 +103,15 @@ function requireDevice(req: Request, service: EndpointBotPairingService, deviceI
   return companyId;
 }
 
+function queryParam(req: Request, name: string): string | undefined {
+  const value = req.query[name];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function auditActorId(req: Request): string | undefined {
+  return req.actor.type === "agent" ? req.actor.agentId : req.actor.userId;
+}
+
 type EndpointView = ReturnType<EndpointBotPairingService["listEndpoints"]>[number];
 function publicEndpoint(endpoint: EndpointView) {
   return {
@@ -107,8 +122,21 @@ function publicEndpoint(endpoint: EndpointView) {
   };
 }
 
-export function endpointBotRoutes(store?: EndpointBotPairingStore) {
+export function endpointBotRoutes(store?: EndpointBotPairingStore, auditStore?: EndpointAuditStore) {
   const service = store ? createEndpointBotPairingService(store) : globalEndpointBotPairingStore;
+  const audit = auditStore ?? createEndpointAuditStore();
+
+  // 감사 이벤트를 마스킹 스토어에 기록한다. botName은 페어링 레코드에서 표시용으로만 조회한다.
+  function auditTask(companyId: string, deviceId: string, outcome: EndpointAuditOutcome,
+    task: { taskId?: string; kind?: string; targetPath?: string }, summary: string, actorId?: string) {
+    const bot = serviceCall(() => service.listEndpoints(companyId)).find((e) => e.deviceId === deviceId)?.botName;
+    audit.record({
+      id: randomUUID(), companyId, deviceId, botName: bot ?? "unknown",
+      taskId: task.taskId ?? "", kind: task.kind ?? "unknown", targetPath: task.targetPath ?? "",
+      outcome, actorId, summary, createdAtMs: Date.now(),
+    });
+  }
+
   const router = Router();
 
   router.get("/companies/:companyId/endpoints", run((req, res) => {
@@ -130,9 +158,20 @@ export function endpointBotRoutes(store?: EndpointBotPairingStore) {
     const companyId = param(req, "companyId"), deviceId = param(req, "deviceId");
     requireCompanyActor(req, companyId);
     const body = parse(taskInput, req.body);
-    res.status(201).json(serviceCall(() => service.enqueueLocalTask({
-      companyId, deviceId, kind: body.kind, targetPath: body.targetPath, command: body.command, args: body.args,
-    })));
+    try {
+      const task = serviceCall(() => service.enqueueLocalTask({
+        companyId, deviceId, kind: body.kind, targetPath: body.targetPath, command: body.command, args: body.args,
+      }));
+      auditTask(companyId, deviceId, "enqueued", task,
+        `enqueued ${body.kind} ${body.targetPath}${body.command ? ` via ${body.command}` : ""}`, auditActorId(req));
+      res.status(201).json(task);
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 403) {
+        auditTask(companyId, deviceId, "denied", body,
+          `denied ${body.kind} ${body.targetPath} (folder policy)`, auditActorId(req));
+      }
+      throw error;
+    }
   }));
 
   router.post("/endpoints/pair", run((req, res) => {
@@ -159,9 +198,22 @@ export function endpointBotRoutes(store?: EndpointBotPairingStore) {
   router.post("/endpoints/:deviceId/tasks/:taskId/ack", run((req, res) => {
     const deviceId = param(req, "deviceId"), taskId = param(req, "taskId");
     const companyId = requireDevice(req, service, deviceId), body = parse(ackInput, req.body);
-    res.json(serviceCall(() => service.ackTaskResult({
+    const result = serviceCall(() => service.ackTaskResult({
       companyId, deviceId, taskId, ok: body.ok, output: body.output, error: body.error,
-    })));
+    }));
+    auditTask(companyId, deviceId, body.ok ? "completed" : "failed", result,
+      `${body.ok ? "completed" : "failed"} ${result.kind} ${result.targetPath}`
+        + (body.output ? ` output: ${body.output}` : "") + (body.error ? ` error: ${body.error}` : ""));
+    res.json(result);
+  }));
+
+  router.get("/companies/:companyId/endpoints/audit", run((req, res) => {
+    const companyId = param(req, "companyId");
+    requireCompanyActor(req, companyId);
+    const query = parse(auditQuery, {
+      deviceId: queryParam(req, "deviceId"), limit: queryParam(req, "limit"),
+    });
+    res.json({ items: audit.list(companyId, { deviceId: query.deviceId, limit: query.limit }), stats: audit.stats(companyId) });
   }));
 
   return router;
