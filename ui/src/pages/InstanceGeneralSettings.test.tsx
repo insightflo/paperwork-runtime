@@ -260,8 +260,8 @@ describe("InstanceGeneralSettings Multi-CLI manager section", () => {
     });
     const html = renderToStaticMarkup(<InstanceGeneralSettings />);
 
-    expect(html).toContain("Multi-CLI &amp; Model Runtime (OpenBot Manager)");
-    expect(html.indexOf("OpenBot Manager")).toBeGreaterThan(html.indexOf("Structured LLM connection"));
+    expect(html).toContain("멀티 CLI · 모델 런타임 관리");
+    expect(html.indexOf("멀티 CLI · 모델 런타임 관리")).toBeGreaterThan(html.indexOf("Structured LLM connection"));
     expect(html).toContain("1 / 2 CLI 설치됨");
     expect(html).toContain("Installed Coding Agent CLIs");
     expect(html).toContain("OpenAI Codex");

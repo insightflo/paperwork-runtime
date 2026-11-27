@@ -52,7 +52,7 @@ const roleLabels = AGENT_ROLE_LABELS as Record<string, string>;
 type ViewMode = "cards" | "list" | "org";
 
 const CONTROL =
-  "h-8 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground outline-none transition-colors focus:border-primary placeholder:text-muted-foreground dark:border-white/[0.09] dark:bg-[#07090d] dark:text-[#eef2f8] dark:focus:border-[#60a5fa] dark:placeholder:text-[#627089]";
+  "h-8 rounded-lg border border-border bg-background px-2.5 text-xs text-foreground outline-none transition-colors focus:border-primary placeholder:text-muted-foreground dark:border-white/[0.09] dark:bg-background dark:text-[#eef2f8] dark:focus:border-primary dark:placeholder:text-[#627089]";
 
 const STATUS_ROUTES: Partial<Record<TelemetryStatusFilter, string>> = {
   all: "/agents/all",
@@ -369,12 +369,12 @@ export function Agents() {
       {/* 1-row 4-column fleet telemetry strip */}
       <section
         aria-label="Fleet telemetry"
-        className="tactile-card grid grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-[12px] border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] lg:grid-cols-4 dark:divide-white/[0.07] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_10px_28px_-18px_rgba(0,0,0,0.85)]"
+        className="tactile-card grid grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-[12px] border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] lg:grid-cols-4 dark:divide-white/[0.07] dark:border-white/[0.08] dark:bg-card dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_10px_28px_-18px_rgba(0,0,0,0.85)]"
       >
         <FleetCell
           label="전체 에이전트"
           value={fleet.total}
-          dot="bg-blue-500 dark:bg-[#60a5fa]"
+          dot="bg-blue-500 dark:bg-primary"
           sub={`라이브 ${fleet.live} · 일시정지 ${fleet.paused}`}
           active={statusFilter === "all"}
           onClick={() => handleStatusSelect("all")}
@@ -383,7 +383,7 @@ export function Agents() {
           label="실행 중 / 활성"
           value={fleet.active}
           dot={cn(
-            "bg-lime-500 dark:bg-[#a3e635]",
+            "bg-emerald-700 dark:bg-emerald-300",
             (fleet.running > 0 || fleet.live > 0) && "animate-pulse",
           )}
           sub={`실행 ${fleet.running} · 준비 ${Math.max(0, fleet.active - fleet.running)}`}
@@ -415,7 +415,7 @@ export function Agents() {
       </section>
 
       {/* Widescreen primary toolbar: search + adapter/role filters + view toggle + new agent */}
-      <div className="tactile-card flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-slate-200/90 bg-white px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_6px_20px_-12px_rgba(0,0,0,0.7)]">
+      <div className="tactile-card flex flex-wrap items-center justify-between gap-2 rounded-[12px] border border-slate-200/90 bg-white px-2.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_6px_20px_-12px_rgba(0,0,0,0.7)]">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {/* Search input */}
           <label className="relative flex min-w-[180px] flex-1 max-w-xs items-center">
@@ -468,7 +468,7 @@ export function Agents() {
             <button
               type="button"
               onClick={resetAllFilters}
-              className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-500/15 dark:border-[#60a5fa]/35 dark:bg-[#2563eb]/15 dark:text-[#60a5fa] dark:hover:bg-[#2563eb]/25"
+              className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-500/15 dark:border-primary/35 dark:bg-primary/15 dark:text-primary dark:hover:bg-primary/25"
             >
               <X className="h-3 w-3" />
               필터 초기화
@@ -490,7 +490,7 @@ export function Agents() {
             <button
               type="button"
               className={cn(
-                "flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs transition-colors dark:border-white/[0.09] dark:bg-[#07090d]",
+                "flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs transition-colors dark:border-white/[0.09] dark:bg-background",
                 filtersOpen || activeExtraFilterCount > 0
                   ? "text-foreground dark:bg-[#151d2e] dark:text-[#eef2f8]"
                   : "text-muted-foreground hover:text-foreground dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]",
@@ -501,7 +501,7 @@ export function Agents() {
               <SlidersHorizontal className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">옵션</span>
               {activeExtraFilterCount > 0 && (
-                <span className="rounded bg-blue-500/15 px-1 font-mono text-[10px] tabular-nums text-blue-600 dark:bg-[#60a5fa]/20 dark:text-[#60a5fa]">
+                <span className="rounded bg-blue-500/15 px-1 font-mono text-[10px] tabular-nums text-blue-600 dark:bg-primary/20 dark:text-primary">
                   {activeExtraFilterCount}
                 </span>
               )}
@@ -516,11 +516,11 @@ export function Agents() {
                   <span
                     className={cn(
                       "flex h-3.5 w-3.5 items-center justify-center rounded-sm border border-border dark:border-white/20",
-                      showTerminated && "bg-foreground dark:bg-[#a3e635] dark:border-[#a3e635]",
+                      showTerminated && "bg-foreground dark:bg-emerald-300 dark:border-emerald-300",
                     )}
                   >
                     {showTerminated && (
-                      <span className="text-[10px] leading-none text-background dark:text-[#07090d]">
+                      <span className="text-[10px] leading-none text-background">
                         &#10003;
                       </span>
                     )}
@@ -549,7 +549,7 @@ export function Agents() {
           <div
             role="group"
             aria-label="보기 전환"
-            className="flex items-center overflow-hidden rounded-lg border border-border bg-muted/40 p-0.5 dark:border-white/[0.08] dark:bg-[#07090d]"
+            className="flex items-center overflow-hidden rounded-lg border border-border bg-muted/40 p-0.5 dark:border-white/[0.08] dark:bg-background"
           >
             <button
               type="button"
@@ -558,7 +558,7 @@ export function Agents() {
               className={cn(
                 "inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium transition-colors",
                 effectiveView === "cards"
-                  ? "bg-background text-foreground shadow-xs dark:bg-[#151d2e] dark:text-[#a3e635]"
+                  ? "bg-background text-foreground shadow-xs dark:bg-[#151d2e] dark:text-emerald-300"
                   : "text-muted-foreground hover:text-foreground dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]",
               )}
               onClick={() => setView("cards")}
@@ -609,7 +609,7 @@ export function Agents() {
               if (!canAdmin) return;
               openNewAgent();
             }}
-            className="h-8 border-transparent bg-[#2563eb] px-3 text-xs font-semibold text-[#f8fafc] hover:bg-[#1d4fd8] disabled:cursor-not-allowed disabled:opacity-50"
+            className="h-8 border-transparent bg-primary px-3 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Plus className="h-3.5 w-3.5" />
             New Agent
@@ -664,14 +664,14 @@ export function Agents() {
       )}
 
       {effectiveView === "cards" && agents && agents.length > 0 && filtered.length === 0 && (
-        <div className="tactile-card rounded-[12px] border border-dashed border-slate-300/90 bg-white/80 py-10 text-center text-sm text-slate-500 dark:border-white/[0.12] dark:bg-[#0e131d] dark:bg-none dark:text-[#9aa7bd]">
+        <div className="tactile-card rounded-[12px] border border-dashed border-slate-300/90 bg-white/80 py-10 text-center text-sm text-slate-500 dark:border-white/[0.12] dark:bg-card dark:bg-none dark:text-[#9aa7bd]">
           선택한 필터에 해당하는 에이전트가 없습니다.
         </div>
       )}
 
       {/* Compact List view */}
       {effectiveView === "list" && filtered.length > 0 && (
-        <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white divide-y divide-slate-200/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:divide-white/[0.065] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_-18px_rgba(0,0,0,0.85)]">
+        <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white divide-y divide-slate-200/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:bg-none dark:divide-white/[0.065] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_-18px_rgba(0,0,0,0.85)]">
           {filtered.map((agent) => (
             <AgentRow
               key={agent.id}
@@ -697,7 +697,7 @@ export function Agents() {
 
       {/* Org chart view */}
       {effectiveView === "org" && filteredOrg.length > 0 && (
-        <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white divide-y divide-slate-200/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:bg-none dark:divide-white/[0.065] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_-18px_rgba(0,0,0,0.85)]">
+        <div className="tactile-card overflow-hidden rounded-[12px] border border-slate-200/90 bg-white divide-y divide-slate-200/75 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:bg-none dark:divide-white/[0.065] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_10px_28px_-18px_rgba(0,0,0,0.85)]">
           {filteredOrg.map((node) => (
             <OrgTreeNode
               key={node.id}
@@ -848,12 +848,12 @@ function LiveRunIndicator({
   return (
     <Link
       to={`/agents/${agentRef}/runs/${runId}`}
-      className="flex items-center gap-1.5 rounded-full bg-lime-500/12 px-2 py-0.5 text-[11px] font-medium text-lime-700 no-underline transition-colors hover:bg-lime-500/20 dark:bg-[#a3e635]/15 dark:text-[#a3e635]"
+      className="flex items-center gap-1.5 rounded-full bg-emerald-700/12 px-2 py-0.5 text-[11px] font-medium text-emerald-700 no-underline transition-colors hover:bg-emerald-700/20 dark:bg-emerald-300/15 dark:text-emerald-300"
       onClick={(e) => e.stopPropagation()}
     >
       <span className="relative flex h-2 w-2">
-        <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-lime-400 opacity-75 dark:bg-[#a3e635]" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-lime-500 dark:bg-[#a3e635]" />
+        <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-emerald-700 opacity-75 dark:bg-emerald-300" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-700 dark:bg-emerald-300" />
       </span>
       Live{liveCount > 1 ? ` (${liveCount})` : ""}
     </Link>

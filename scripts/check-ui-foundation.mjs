@@ -3,9 +3,9 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 const ROOT = process.cwd();
-const TOKENS_CSS = "ui/src/styles/openbot-tokens.css";
+const TOKENS_CSS = "ui/src/styles/paperwork-tokens.css";
 const TARGET_FILES = [
-  "ui/src/styles/openbot-tokens.css",
+  "ui/src/styles/paperwork-tokens.css",
   "ui/src/components/ErrorReferenceChip.tsx",
   "ui/src/components/ProviderUsageRings.tsx",
   "ui/src/components/CompanyRailItem.tsx",

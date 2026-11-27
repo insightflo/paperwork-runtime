@@ -68,21 +68,21 @@ export function PropertiesPanel({ controller }: { controller: InspectorControlle
   if (!controller.isExpanded) {
     return (
       <aside
-        className="hidden md:flex w-11 shrink-0 border-l border-border/80 bg-background/95 flex-col items-center tabular-nums shadow-[inset_1px_0_0_rgba(255,255,255,0.65)] dark:border-white/[0.065] dark:bg-[#090c12]/95 dark:shadow-[inset_1px_0_0_rgba(255,255,255,0.055)]"
+        className="hidden md:flex w-11 shrink-0 border-l border-border/80 bg-background/95 flex-col items-center tabular-nums shadow-[inset_1px_0_0_rgba(255,255,255,0.65)] dark:border-white/[0.065] dark:bg-card/95 dark:shadow-[inset_1px_0_0_rgba(255,255,255,0.055)]"
       >
         <button
           type="button"
-          className="flex h-full w-11 cursor-pointer flex-col items-center gap-2.5 px-1.5 py-3 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground dark:hover:bg-[#0e131d] dark:hover:text-[#eef2f8]"
+          className="flex h-full w-11 cursor-pointer flex-col items-center gap-2.5 px-1.5 py-3 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground dark:hover:bg-card"
           onClick={() => controller.setExpanded(true)}
           aria-label="인스펙터 열기"
           title="인스펙터 열기"
         >
           <span
-            className="tactile-card flex h-7 w-7 items-center justify-center rounded-[10px] border border-border/70 bg-background/80 text-blue-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-[#60a5fa]/25 dark:bg-[#0e131d] dark:text-[#60a5fa] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]"
+            className="tactile-card flex h-7 w-7 items-center justify-center rounded-[10px] border border-border/70 bg-background/80 text-blue-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)] dark:border-primary/25 dark:bg-card dark:text-primary dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]"
           >
             <PanelRightOpen className="h-4 w-4 shrink-0" />
           </span>
-          <span className="text-[10px] font-mono font-semibold uppercase tracking-[0.22em] text-muted-foreground [writing-mode:vertical-rl] dark:text-[#9aa7bd]">
+          <span className="text-[10px] font-mono font-semibold uppercase tracking-[0.22em] text-muted-foreground [writing-mode:vertical-rl]">
             Inspector
           </span>
         </button>
@@ -92,7 +92,7 @@ export function PropertiesPanel({ controller }: { controller: InspectorControlle
 
   return (
     <aside
-      className="hidden md:flex shrink-0 flex-col overflow-hidden tabular-nums border-l border-border/80 bg-background/95 text-foreground shadow-[-12px_0_32px_rgba(15,23,42,0.05)] transition-[width,opacity] duration-200 ease-in-out dark:border-white/[0.065] dark:bg-[#090c12] dark:text-[#eef2f8] dark:shadow-[-18px_0_44px_rgba(0,0,0,0.34)]"
+      className="hidden md:flex shrink-0 flex-col overflow-hidden tabular-nums border-l border-border/80 bg-background/95 text-foreground shadow-[-12px_0_32px_rgba(15,23,42,0.05)] transition-[width,opacity] duration-200 ease-in-out dark:border-white/[0.065] dark:bg-card dark:shadow-[-18px_0_44px_rgba(0,0,0,0.34)]"
       style={{ width: "var(--openbot-inspector-width)" }}
     >
       <InspectorSidePanel

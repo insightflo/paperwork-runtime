@@ -2,13 +2,14 @@
   "id": "/",
   "name": "Paperwork",
   "short_name": "Paperwork",
-  "description": "Agent-company control plane for Paperwork",
+  "lang": "ko",
+  "description": "Paperwork — 에이전트 기업 운영 워크스페이스",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "theme_color": "#0b0e14",
-  "background_color": "#0b0e14",
+  "theme_color": "#f3eee4",
+  "background_color": "#171412",
   "icons": [
     {
       "src": "/android-chrome-192x192.png",

@@ -27,7 +27,7 @@ import { CircleDot, Lock } from "lucide-react";
 /* ── Cockpit telemetry strip ──
  * One row, four columns. Each cell is both a count and a status-group filter
  * shortcut. `cancelled` is intentionally not surfaced. Dot colors follow the
- * Combo 1 tactile telemetry palette (slate / cobalt #60a5fa / amber #f59e0b / lime #a3e635). */
+ * Paperwork telemetry palette (slate / cobalt via --pw-cobalt / amber / calm sage emerald). */
 type StatusGroup = "open" | "in_progress" | "blocked" | "completed";
 
 const STATUS_GROUPS: {
@@ -48,8 +48,8 @@ const STATUS_GROUPS: {
     key: "in_progress",
     label: "In Progress",
     statuses: ["in_progress", "in_review"],
-    dot: "bg-blue-500 dark:bg-[#60a5fa] shadow-[0_0_6px_rgba(96,165,250,0.45)]",
-    activeAccent: "shadow-[inset_0_-2px_0_#2563eb] dark:shadow-[inset_0_-2px_0_#60a5fa]",
+    dot: "bg-blue-500 dark:bg-[var(--pw-cobalt)] shadow-[0_0_6px_rgba(96,165,250,0.45)]",
+    activeAccent: "shadow-[inset_0_-2px_0_var(--pw-cobalt)]",
   },
   {
     key: "blocked",
@@ -62,8 +62,8 @@ const STATUS_GROUPS: {
     key: "completed",
     label: "Completed",
     statuses: ["done"],
-    dot: "bg-lime-500 dark:bg-[#a3e635] shadow-[0_0_6px_rgba(163,230,53,0.45)]",
-    activeAccent: "shadow-[inset_0_-2px_0_#65a30d] dark:shadow-[inset_0_-2px_0_#a3e635]",
+    dot: "bg-emerald-700 dark:bg-emerald-300",
+    activeAccent: "shadow-[inset_0_-2px_0_var(--color-emerald-700)] dark:shadow-[inset_0_-2px_0_var(--color-emerald-300)]",
   },
 ];
 
@@ -319,7 +319,7 @@ export function Issues() {
     <div ref={pageRef} className="scroll-mt-16 space-y-3 tabular-nums">
       {/* 1-row 4-column Combo 1 tactile telemetry strip: counts double as status-group shortcuts */}
       <div
-        className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-4"
+        className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-4"
         role="group"
         aria-label="Work items by status"
       >
@@ -349,8 +349,8 @@ export function Issues() {
                 {groupCount(group.key)}
               </b>
               {isLivePulse && (
-                <span className="hidden items-center gap-1 rounded-full border border-lime-500/30 bg-lime-500/10 px-1.5 py-px text-[10px] font-semibold text-lime-700 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/10 dark:text-[#a3e635] md:inline-flex">
-                  <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-lime-500 animate-pulse dark:bg-[#a3e635]" />
+                <span className="hidden items-center gap-1 rounded-full border border-emerald-700/30 bg-emerald-700/10 px-1.5 py-px text-[10px] font-semibold text-emerald-700 dark:border-emerald-300/30 dark:bg-emerald-300/10 dark:text-emerald-300 md:inline-flex">
+                  <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-emerald-700 animate-pulse dark:bg-emerald-300" />
                   {liveIssueIds.size} live
                 </span>
               )}
@@ -385,7 +385,7 @@ export function Issues() {
             event.stopPropagation();
           }
         }}
-        className={`${ISSUES_TOOLBAR_CLASS} overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-opacity dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] ${listBusy ? "opacity-60" : ""} ${!canWrite ? "[&>div>div:first-child>div:first-child>button:first-child]:cursor-not-allowed [&>div>div:first-child>div:first-child>button:first-child]:opacity-50" : ""}`}
+        className={`${ISSUES_TOOLBAR_CLASS} overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-opacity dark:border-white/[0.08] dark:bg-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] ${listBusy ? "opacity-60" : ""} ${!canWrite ? "[&>div>div:first-child>div:first-child>button:first-child]:cursor-not-allowed [&>div>div:first-child>div:first-child>button:first-child]:opacity-50" : ""}`}
         aria-busy={listBusy}
       >
         <IssuesList
@@ -408,7 +408,7 @@ export function Issues() {
         />
       </div>
       {paged && (visibleIssues.length > 0 || paging.page > 1) && (
-        <div className="rounded-xl border border-slate-200/90 bg-slate-50/90 px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090d14] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+        <div className="rounded-xl border border-slate-200/90 bg-slate-50/90 px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-background dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
           <IssuesPagination
             page={paging.page}
             rowCount={visibleIssues.length}

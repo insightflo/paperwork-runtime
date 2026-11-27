@@ -1,4 +1,4 @@
-const CACHE_NAME = "paperclip-v3";
+const CACHE_NAME = "paperwork-v4";
 
 function isHtmlResponse(response) {
   return (response.headers.get("content-type") || "").includes("text/html");

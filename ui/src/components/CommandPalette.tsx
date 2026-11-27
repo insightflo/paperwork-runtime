@@ -124,7 +124,7 @@ export function CommandPalette() {
       }}
       title="Paperwork command palette"
       description="Search Paperwork missions, work, agents, and work contexts"
-      className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white/95 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_50px_rgba(15,23,42,0.18)] backdrop-blur-md dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_50px_rgba(0,0,0,0.48)] [&>div:first-child]:bg-transparent [&_[data-slot=command-input-wrapper]]:h-12 [&_[data-slot=command-input-wrapper]]:border-[var(--pw-hairline)] [&_[data-slot=command-input-wrapper]]:bg-slate-50/75 dark:[&_[data-slot=command-input-wrapper]]:bg-[#07090d] [&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.18em] [&_[cmdk-group-heading]]:text-slate-500 dark:[&_[cmdk-group-heading]]:text-slate-400 [&_[data-slot=command-item]]:rounded-[10px] [&_[data-slot=command-item]]:tabular-nums [&_[data-slot=command-item][data-selected=true]]:bg-[var(--pw-cobalt-soft)] [&_[data-slot=command-item][data-selected=true]]:text-slate-950 dark:[&_[data-slot=command-item][data-selected=true]]:text-slate-50"
+      className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white/95 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_50px_rgba(15,23,42,0.18)] backdrop-blur-md dark:border-white/10 dark:bg-card dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_50px_rgba(0,0,0,0.48)] [&>div:first-child]:bg-transparent [&_[data-slot=command-input-wrapper]]:h-12 [&_[data-slot=command-input-wrapper]]:border-[var(--pw-hairline)] [&_[data-slot=command-input-wrapper]]:bg-slate-50/75 dark:[&_[data-slot=command-input-wrapper]]:bg-background [&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-[0.18em] [&_[cmdk-group-heading]]:text-slate-500 dark:[&_[cmdk-group-heading]]:text-slate-400 [&_[data-slot=command-item]]:rounded-[10px] [&_[data-slot=command-item]]:tabular-nums [&_[data-slot=command-item][data-selected=true]]:bg-[var(--pw-cobalt-soft)] [&_[data-slot=command-item][data-selected=true]]:text-slate-950 dark:[&_[data-slot=command-item][data-selected=true]]:text-slate-50"
     >
       <CommandInput
         placeholder="Search missions, work, agents, work contexts..."
@@ -144,7 +144,7 @@ export function CommandPalette() {
                   openNewMission();
                 }}
               >
-                <Rocket className="mr-2 h-4 w-4 text-[#2563eb] dark:text-[#60a5fa]" />
+                <Rocket className="mr-2 h-4 w-4 text-primary" />
                 Create new mission
               </CommandItem>
               <CommandItem
@@ -153,9 +153,9 @@ export function CommandPalette() {
                   openNewIssue();
                 }}
               >
-                <SquarePen className="mr-2 h-4 w-4 text-[#4d7c0f] dark:text-[#a3e635]" />
+                <SquarePen className="mr-2 h-4 w-4 text-emerald-700 dark:text-emerald-300" />
                 Create new work item
-                <kbd className="ml-auto rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[11px] leading-none text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] tabular-nums dark:border-white/10 dark:bg-[#07090d] dark:text-[#60a5fa] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                <kbd className="ml-auto rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[11px] leading-none text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] tabular-nums dark:border-white/10 dark:bg-background dark:text-primary dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
                   C
                 </kbd>
               </CommandItem>
@@ -165,7 +165,7 @@ export function CommandPalette() {
                   openNewAgent();
                 }}
               >
-                <Plus className="mr-2 h-4 w-4 text-[#2563eb] dark:text-[#60a5fa]" />
+                <Plus className="mr-2 h-4 w-4 text-primary" />
                 Create new agent
               </CommandItem>
               <CommandItem
@@ -174,7 +174,7 @@ export function CommandPalette() {
                   openNewProject();
                 }}
               >
-                <Plus className="mr-2 h-4 w-4 text-[#2563eb] dark:text-[#60a5fa]" />
+                <Plus className="mr-2 h-4 w-4 text-primary" />
                 Create new work context
               </CommandItem>
             </CommandGroup>
@@ -260,7 +260,7 @@ export function CommandPalette() {
                   value={`${mission.title} ${mission.status} ${mission.id}`}
                   onSelect={() => go(`/missions/${mission.id}`)}
                 >
-                  <Rocket className="mr-2 h-4 w-4 text-[#2563eb] dark:text-[#60a5fa]" />
+                  <Rocket className="mr-2 h-4 w-4 text-primary" />
                   <span className="flex-1 truncate">{mission.title}</span>
                   <span className="ml-2 font-mono text-[10px] uppercase text-slate-500 tabular-nums dark:text-slate-400">
                     {mission.status}

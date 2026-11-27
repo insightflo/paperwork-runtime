@@ -23,20 +23,20 @@ type StatusFilter = "pending" | "all";
  * filters (pending queue vs. full history) and use micro status dots like the Work page. */
 const STATUS_GROUPS: { status: ApprovalStatus; label: { en: string; ko: string }; dot: string; to: StatusFilter }[] = [
   { status: "pending", label: { en: "Pending", ko: "대기" }, dot: "bg-amber-500 dark:bg-[#f59e0b]", to: "pending" },
-  { status: "revision_requested", label: { en: "Revision", ko: "수정 요청" }, dot: "bg-blue-500 dark:bg-[#60a5fa]", to: "pending" },
-  { status: "approved", label: { en: "Approved", ko: "승인됨" }, dot: "bg-lime-500 dark:bg-[#a3e635]", to: "all" },
+  { status: "revision_requested", label: { en: "Revision", ko: "수정 요청" }, dot: "bg-blue-500 dark:bg-primary", to: "pending" },
+  { status: "approved", label: { en: "Approved", ko: "승인됨" }, dot: "bg-emerald-700 dark:bg-emerald-300", to: "all" },
   { status: "rejected", label: { en: "Rejected", ko: "거절됨" }, dot: "bg-rose-500 dark:bg-[#f87171]", to: "all" },
   { status: "cancelled", label: { en: "Cancelled", ko: "취소됨" }, dot: "bg-slate-400 dark:bg-[#8b97ad]", to: "all" },
 ];
 
 const STRIP_CELL_CLASS =
   "flex h-10 min-w-0 items-center justify-center gap-2 px-3 text-[11px] transition-colors text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-[#8b97ad] dark:hover:bg-[#141b29] dark:hover:text-[#edf2fb]";
-const STRIP_CELL_ACTIVE_CLASS = "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_#65a30d] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_#a3e635]";
+const STRIP_CELL_ACTIVE_CLASS = "bg-slate-100/90 text-slate-950 shadow-[inset_0_-2px_0_var(--color-emerald-700)] dark:bg-[#151d2b] dark:text-[#edf2fb] dark:shadow-[inset_0_-2px_0_var(--color-emerald-300)]";
 /** Semantic left rail per status so a long queue scans instantly without reading labels. */
 const STATUS_RAIL: Record<ApprovalStatus, string> = {
   pending: "border-l-amber-500 dark:border-l-[#f59e0b]",
-  revision_requested: "border-l-blue-500 dark:border-l-[#60a5fa]",
-  approved: "border-l-lime-500 dark:border-l-[#a3e635]",
+  revision_requested: "border-l-blue-500 dark:border-l-primary",
+  approved: "border-l-emerald-700 dark:border-l-emerald-300",
   rejected: "border-l-rose-500 dark:border-l-[#f87171]",
   cancelled: "border-l-slate-400 dark:border-l-[#8b97ad]",
 };
@@ -168,7 +168,7 @@ export function Approvals() {
           : undefined
       }
       className={cn(
-        "border-l-2 bg-white dark:bg-[#0e131d] px-3 py-2 transition-colors hover:bg-slate-50 dark:hover:bg-[#141b29]",
+        "border-l-2 bg-white dark:bg-card px-3 py-2 transition-colors hover:bg-slate-50 dark:hover:bg-[#141b29]",
         "[&>div]:rounded-none [&>div]:border-0 [&>div]:bg-transparent [&>div]:p-0 [&>div]:shadow-none",
         STATUS_RAIL[approval.status as ApprovalStatus] ?? "border-l-slate-400 dark:border-l-[#8b97ad]",
       )}
@@ -201,7 +201,7 @@ export function Approvals() {
   return (
     <div className="space-y-2 tabular-nums">
       {/* 1-row 6-cell cockpit strip: status counts double as route-backed filter shortcuts */}
-      <div className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-3 xl:grid-cols-6" role="group" aria-label={L(lang, { en: "Approvals by status", ko: "상태별 승인" })}>
+      <div className="grid w-full grid-cols-2 divide-x divide-slate-200/80 overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:divide-white/[0.06] dark:border-white/[0.08] dark:bg-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)] sm:grid-cols-3 xl:grid-cols-6" role="group" aria-label={L(lang, { en: "Approvals by status", ko: "상태별 승인" })}>
         {STATUS_GROUPS.map((group) => {
           const active = group.to === statusFilter;
           return (
@@ -269,7 +269,7 @@ export function Approvals() {
         count={rows.length}
         hasMore={hasMore}
         loading={isFetching}
-        onPageChange={setPage} className="rounded-xl border-slate-200/90 bg-slate-50/95 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] [&_button]:text-slate-600 dark:[&_button]:text-[#cbd5e1] [&_button:hover]:bg-white dark:[&_button:hover]:bg-[#141b29] [&_span]:text-slate-600 dark:[&_span]:text-[#8b97ad] [&_b]:text-slate-950 dark:[&_b]:text-[#edf2fb] [&_svg]:text-blue-600 dark:[&_svg]:text-[#60a5fa]"
+        onPageChange={setPage} className="rounded-xl border-slate-200/90 bg-slate-50/95 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] [&_button]:text-slate-600 dark:[&_button]:text-[#cbd5e1] [&_button:hover]:bg-white dark:[&_button:hover]:bg-[#141b29] [&_span]:text-slate-600 dark:[&_span]:text-[#8b97ad] [&_b]:text-slate-950 dark:[&_b]:text-[#edf2fb] [&_svg]:text-blue-600 dark:[&_svg]:text-primary"
         labels={{
           list: t("Approvals pagination", "승인 목록 페이징"),
           prev: t("Prev", "이전"),
@@ -281,8 +281,8 @@ export function Approvals() {
       />
 
       {rows.length === 0 && revisionQueue.length === 0 && !isFetching && (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-slate-200/90 bg-white py-14 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] text-center">
-          <ShieldCheck className="h-7 w-7 text-lime-700 dark:text-[#a3e635] mb-3" />
+        <div className="flex flex-col items-center justify-center rounded-xl border border-slate-200/90 bg-white py-14 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] text-center">
+          <ShieldCheck className="h-7 w-7 text-emerald-700 dark:text-emerald-300 mb-3" />
           <p className="text-xs text-slate-500 dark:text-[#8b97ad]">
             {statusFilter === "pending" ? L(lang, { en: "No pending approvals.", ko: "대기 중인 승인이 없습니다." }) : L(lang, { en: "No approvals yet.", ko: "아직 승인 요청이 없습니다." })}
           </p>
@@ -294,7 +294,7 @@ export function Approvals() {
           ref={listRef}
           aria-busy={isFetching}
           className={cn(
-            "divide-y divide-slate-200/75 dark:divide-white/[0.06] overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-opacity dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
+            "divide-y divide-slate-200/75 dark:divide-white/[0.06] overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-opacity dark:border-white/[0.08] dark:bg-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]",
             ROW_EVIDENCE_CLASS,
             isFetching && "opacity-70",
           )}
@@ -302,9 +302,9 @@ export function Approvals() {
           {revisionQueue.length > 0 && (
             <section aria-label={t("Revision requested", "수정 요청")}>
               <header className="flex items-center gap-2 bg-slate-100 dark:bg-[#090c12] px-3 py-1.5 text-[11px] uppercase tracking-wide text-slate-500 dark:text-[#8b97ad]">
-                <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 dark:bg-[#60a5fa]" />
+                <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 dark:bg-primary" />
                 <span className="truncate">{t("Revision requested", "수정 요청")}</span>
-                <b className="ml-1 font-mono text-blue-600 dark:text-[#60a5fa]">
+                <b className="ml-1 font-mono text-blue-600 dark:text-primary">
                   {revisionQueue.length}
                   {(revisionData?.length ?? 0) > PAGE_SIZE && "+"}
                 </b>

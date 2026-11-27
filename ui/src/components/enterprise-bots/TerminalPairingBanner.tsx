@@ -42,8 +42,15 @@ export function buildDoctorSnippet(serverUrl: string, terminalId: string): strin
 }
 
 const ACTION_BTN =
-  "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200/90 bg-white px-2.5 text-[11px] font-medium text-slate-800 transition-colors hover:border-blue-500/40 hover:bg-slate-50 dark:border-white/[0.1] dark:bg-[#090d14] dark:text-[#edf2fb] dark:hover:border-[#60a5fa]/40 dark:hover:bg-[#141b29]";
+  "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-[11px] font-medium text-foreground transition-colors hover:border-primary/40 hover:bg-accent";
+const PRIMARY_BTN =
+  "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-lg bg-primary px-2.5 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90";
+const CODE_BLOCK =
+  "overflow-x-auto rounded-lg border border-border bg-muted/40 px-3 py-2 font-mono text-[11px] leading-5 text-foreground select-all";
+const STEP_INDEX =
+  "mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border bg-card text-[11px] font-semibold text-muted-foreground";
 
+/** Numbered connection sheet: 1. 토큰 복사 → 2. 노드에서 실행 → 3. 신호 확인 */
 export function TerminalPairingBanner({
   terminalId,
   terminalName,
@@ -82,112 +89,124 @@ export function TerminalPairingBanner({
       role="status"
       data-terminal-pairing-banner
       data-pairing-status={connected ? "connected" : "waiting"}
-      className={`tactile-card space-y-2.5 rounded-xl border px-3.5 py-3 text-xs tabular-nums ${
-        connected
-          ? "border-emerald-500/35 bg-emerald-50/70 dark:border-[#22c55e]/35 dark:bg-none dark:bg-[#0e131d]"
-          : "border-amber-500/40 bg-amber-50/75 dark:border-[#f59e0b]/40 dark:bg-none dark:bg-[#0e131d]"
+      className={`tactile-card space-y-3 rounded-xl border bg-card p-4 text-xs tabular-nums ${
+        connected ? "border-emerald-500/35" : "border-amber-500/40"
       } ${className}`.trim()}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <KeyRound
-            className="h-3.5 w-3.5 shrink-0"
-            style={{ color: connected ? "var(--openbot-success-text)" : "var(--openbot-warning-text)" }}
-            aria-hidden
-          />
-          <span className="truncate font-semibold text-slate-950 dark:text-[#edf2fb]">
-            Pair terminal <span className="font-mono">{terminalName}</span>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <KeyRound className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+          <span className="truncate text-sm font-semibold text-foreground">
+            노드 연결 <span className="font-mono text-xs">{terminalName}</span>
           </span>
           <span
             data-heartbeat-indicator
-            title={connected ? `Connected · last seen ${lastSeenAt}` : "Listening for initial terminal heartbeat"}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium"
-            style={
+            title={connected ? `연결됨 · 마지막 신호 ${lastSeenAt}` : "노드의 첫 하트비트를 기다리는 중"}
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
               connected
-                ? {
-                    borderColor: "var(--openbot-success)",
-                    backgroundColor: "var(--openbot-success-soft)",
-                    color: "var(--openbot-success-text)",
-                  }
-                : {
-                    borderColor: "var(--openbot-warning)",
-                    backgroundColor: "var(--openbot-warning-soft)",
-                    color: "var(--openbot-warning-text)",
-                  }
-            }
+                ? "border-emerald-500/40 bg-emerald-50 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-400/10 dark:text-emerald-300"
+                : "border-amber-500/40 bg-amber-50 text-amber-800 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300"
+            }`}
           >
             <span
               aria-hidden
-              className={`h-1.5 w-1.5 rounded-full ${connected ? "" : "animate-pulse"}`}
-              style={{ backgroundColor: connected ? "var(--openbot-success)" : "var(--openbot-warning)" }}
+              className={`h-1.5 w-1.5 rounded-full ${
+                connected ? "bg-emerald-600 dark:bg-emerald-400" : "animate-pulse bg-amber-600 dark:bg-amber-400"
+              }`}
             />
-            {connected ? "Connected" : "Waiting for first heartbeat..."}
+            {connected ? "연결됨" : "첫 신호 대기 중…"}
           </span>
         </div>
 
-        <button
-          type="button"
-          aria-label="Dismiss pairing banner"
-          onClick={onDismiss}
-          className={ACTION_BTN}
-        >
+        <button type="button" aria-label="연결 안내 닫기" onClick={onDismiss} className={ACTION_BTN}>
           <X className="h-3.5 w-3.5" aria-hidden />
-          Dismiss
+          닫기
         </button>
       </div>
 
-      <p className="text-[11px] text-slate-600 dark:text-[#9ca3af]">
-        One-time token is injected via <code className="font-mono">PAPERWORK_TERMINAL_TOKEN</code> (never passed in CLI
-        arguments) and will not be shown again after dismissal.
-      </p>
+      <ol className="space-y-3" aria-label="노드 연결 절차">
+        <li data-pairing-step="1" className="flex gap-3">
+          <span className={STEP_INDEX} aria-hidden>
+            1
+          </span>
+          <div className="min-w-0 flex-1 space-y-2">
+            <p className="font-semibold text-foreground">토큰 복사</p>
+            <p className="text-[11px] leading-4 text-muted-foreground">
+              아래 명령을 복사하세요. 토큰은 <code className="font-mono">PAPERWORK_TERMINAL_TOKEN</code> 환경 변수로만
+              전달되며 CLI 인자에는 노출되지 않습니다. 이 안내를 닫은 뒤에는 다시 표시되지 않습니다.
+            </p>
+            <pre data-pairing-snippet className={CODE_BLOCK}>
+              <code>{daemonSnippet}</code>
+            </pre>
+            <button
+              type="button"
+              data-copy-daemon
+              onClick={() => void copySnippet("daemon", daemonSnippet)}
+              className={PRIMARY_BTN}
+            >
+              {copiedTarget === "daemon" ? (
+                <Check className="h-3.5 w-3.5" aria-hidden />
+              ) : (
+                <Terminal className="h-3.5 w-3.5" aria-hidden />
+              )}
+              {copiedTarget === "daemon" ? "복사됨" : "연결 명령 복사"}
+            </button>
+          </div>
+        </li>
 
-      <pre
-        data-pairing-snippet
-        className="overflow-x-auto rounded-lg border border-slate-200/90 bg-slate-950 px-3 py-2 font-mono text-[11px] leading-5 text-slate-100 select-all dark:border-white/[0.08] dark:bg-[#07090d]"
-      >
-        <code>{daemonSnippet}</code>
-      </pre>
+        <li data-pairing-step="2" className="flex gap-3">
+          <span className={STEP_INDEX} aria-hidden>
+            2
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-foreground">노드에서 실행</p>
+            <p className="text-[11px] leading-4 text-muted-foreground">
+              연결할 노드의 터미널에 붙여넣어 실행하세요. 데몬이 이 서버에 접속해 대기합니다.
+            </p>
+          </div>
+        </li>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            data-copy-daemon
-            onClick={() => void copySnippet("daemon", daemonSnippet)}
-            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 text-[11px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-blue-500 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]"
+        <li data-pairing-step="3" className="flex gap-3">
+          <span
+            className={`${STEP_INDEX} ${
+              connected ? "border-emerald-500/40 text-emerald-700 dark:text-emerald-300" : ""
+            }`.trim()}
+            aria-hidden
           >
-            {copiedTarget === "daemon" ? (
-              <Check className="h-3.5 w-3.5" aria-hidden />
-            ) : (
-              <Terminal className="h-3.5 w-3.5" aria-hidden />
-            )}
-            {copiedTarget === "daemon" ? "Copied daemon command" : "Copy daemon command"}
-          </button>
-
-          <button
-            type="button"
-            data-copy-doctor
-            onClick={() => void copySnippet("doctor", doctorSnippet)}
-            className={ACTION_BTN}
-          >
-            {copiedTarget === "doctor" ? (
-              <Check className="h-3.5 w-3.5" style={{ color: "var(--openbot-success)" }} aria-hidden />
-            ) : (
-              <Stethoscope className="h-3.5 w-3.5" aria-hidden />
-            )}
-            {copiedTarget === "doctor" ? "Copied doctor check" : "Copy doctor command"}
-          </button>
-        </div>
-
-        <code
-          data-doctor-snippet
-          className="hidden truncate font-mono text-[10.5px] text-slate-500 sm:inline dark:text-[#8b97ad]"
-          title={doctorSnippet}
-        >
-          <Copy className="mr-1 inline h-3 w-3 align-[-2px]" aria-hidden />
-          {doctorSnippet}
-        </code>
-      </div>
+            {connected ? <Check className="h-3 w-3" /> : "3"}
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-foreground">신호 확인</p>
+            <p className="text-[11px] leading-4 text-muted-foreground">
+              첫 하트비트가 도착하면 위 상태가 <span className="font-medium text-foreground">연결됨</span>으로 바뀝니다.
+              접속이 지연되면 진단 명령으로 경로를 확인하세요.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                data-copy-doctor
+                onClick={() => void copySnippet("doctor", doctorSnippet)}
+                className={ACTION_BTN}
+              >
+                {copiedTarget === "doctor" ? (
+                  <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                ) : (
+                  <Stethoscope className="h-3.5 w-3.5" aria-hidden />
+                )}
+                {copiedTarget === "doctor" ? "복사됨" : "진단 명령 복사"}
+              </button>
+              <code
+                data-doctor-snippet
+                className="min-w-0 truncate font-mono text-[10.5px] text-muted-foreground"
+                title={doctorSnippet}
+              >
+                <Copy className="mr-1 inline h-3 w-3 align-[-2px]" aria-hidden />
+                {doctorSnippet}
+              </code>
+            </div>
+          </div>
+        </li>
+      </ol>
     </div>
   );
 }

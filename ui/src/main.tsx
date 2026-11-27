@@ -15,7 +15,7 @@ import { ThemeProvider } from "./context/ThemeContext";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "@mdxeditor/editor/style.css";
 import "./index.css";
-import "./styles/openbot-tokens.css";
+import "./styles/paperwork-tokens.css";
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
