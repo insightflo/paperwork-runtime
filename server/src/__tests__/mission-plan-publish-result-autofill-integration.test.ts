@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
-  agentToolGrants, agents, activityLog, companies, createDb, issues, missions, toolDefinitions,
+  agentToolGrants, agents, activityLog, companies, createDb, issues, missions, toolDefinitions, workflowDefinitions,
 } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
@@ -192,6 +192,27 @@ describeEP("mission.plan.autofilled — authoritative path integration", () => {
     const events = await db.select().from(activityLog).where(eq(activityLog.companyId, companyId));
     expect(events.some(event => event.action === "mission.plan.rejected")).toBe(true);
     expect(events.some(event => event.action === "mission.plan.autofilled")).toBe(false);
+  });
+
+  it("rejects receipt-requiring publication with LLM-only QA before materialization", async () => {
+    const { companyId, ownerAgentId, missionId, planningIssueId } = await seed();
+    await db.update(toolDefinitions).set({ adapterConfig: { artifactContract: {
+      ...publicationContract("publication"), consumerParams: { receipt: "qaReceipt" },
+    } } }).where(and(eq(toolDefinitions.companyId, companyId), eq(toolDefinitions.name, "alpha")));
+    await db.insert(toolDefinitions).values({ companyId, name: "mechanical-qa", description: "",
+      adapterType: "builtin", adapterConfig: { artifactContract: publicationContract("qa") }, enabled: true });
+    const decision = decisionWithMissingPublishResultPath(ownerAgentId, missionId);
+    const result = await recordLatestAuthorizedMissionOwnerPlanDecision({ db, companyId, missionId,
+      preParsedDecision: { decision, planningIssueId, commentId: "missing-mechanical-qa" } });
+    expect(result).toMatchObject({ status: "invalid", reason: "plan_intent_coverage_failed",
+      diagnostics: expect.arrayContaining([expect.objectContaining({ code: "missing_publication_qa_receipt_tool" })]) });
+    const events = await db.select().from(activityLog).where(eq(activityLog.companyId, companyId));
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({
+      action: "mission.plan.rejected", details: expect.objectContaining({
+        diagnostics: expect.arrayContaining([expect.objectContaining({ code: "missing_publication_qa_receipt_tool" })]),
+      }),
+    })]));
+    expect(await db.select().from(workflowDefinitions).where(eq(workflowDefinitions.companyId, companyId))).toEqual([]);
   });
 
   it("does not borrow contracts from another company with the same tool names", async () => {
