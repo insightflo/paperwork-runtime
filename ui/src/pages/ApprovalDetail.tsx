@@ -149,7 +149,7 @@ export function ApprovalDetail() {
   });
 
   if (isLoading) return <PageSkeleton variant="detail" />;
-  if (!approval) return <p className="text-sm text-muted-foreground">{L(lang, { en: "Approval not found.", ko: "승인 요청을 찾을 수 없습니다." })}</p>;
+  if (!approval) return <p role="alert" className="text-sm text-muted-foreground">{L(lang, { en: "Approval not found.", ko: "승인 요청을 찾을 수 없습니다." })}</p>;
 
   const payload = approval.payload as Record<string, unknown>;
   const reviewPacket = approvalHumanReview(approval);
@@ -181,7 +181,7 @@ export function ApprovalDetail() {
   return (
     <div className={cn("mx-auto w-full max-w-[1120px] space-y-3 tabular-nums", HAIRLINE_DESCENDANTS)}>
       {showApprovedBanner && (
-        <div className="flex items-center justify-between gap-3 rounded-[12px] border border-lime-600/30 bg-lime-600/10 px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] animate-in fade-in zoom-in-95 duration-300 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+        <div aria-live="polite" className="flex items-center justify-between gap-3 rounded-[12px] border border-lime-600/30 bg-lime-600/10 px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] animate-in fade-in zoom-in-95 duration-300 dark:border-[#a3e635]/35 dark:bg-[#a3e635]/10 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
           <div className="flex min-w-0 items-start gap-2">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-lime-600 dark:text-[#a3e635]" />
             <div className="min-w-0">
@@ -191,7 +191,7 @@ export function ApprovalDetail() {
               </p>
             </div>
           </div>
-          <Button size="sm" variant="outline" className={CTA_GHOST} onClick={() => navigate(resolvedCta.to)}>{resolvedCta.label}</Button>
+          <Button type="button" size="sm" variant="outline" className={CTA_GHOST} onClick={() => navigate(resolvedCta.to)}>{resolvedCta.label}</Button>
         </div>
       )}
       {/* 1-row 5-cell cockpit strip: status · requester · type · linked work · timeline */}
@@ -210,7 +210,7 @@ export function ApprovalDetail() {
           <h2 className="min-w-0 truncate text-sm font-semibold text-slate-900 dark:text-[#edf2fb]">{approvalLabel(approval.type, approval.payload as Record<string, unknown> | null, lang)}</h2>
           <span className="min-w-0 shrink-0 truncate font-mono text-[11px] text-slate-500 dark:text-[#8b97ad]">{approval.id}</span>
         </div>
-        <span title={approval.status} className={cn("inline-flex h-6 shrink-0 items-center rounded-full border px-2 text-[11px] font-semibold uppercase tracking-[0.18em]", STATUS_PILL[approval.status] ?? "border-slate-200/90 bg-slate-100 text-slate-500 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#8b97ad]")}>
+        <span aria-live="polite" title={approval.status} className={cn("inline-flex h-6 shrink-0 items-center rounded-full border px-2 text-[11px] font-semibold uppercase tracking-[0.18em]", STATUS_PILL[approval.status] ?? "border-slate-200/90 bg-slate-100 text-slate-500 dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#8b97ad]")}>
           {humanLabel(lang, "approvalStatus", approval.status).label}
         </span>
       </div>
@@ -225,7 +225,7 @@ export function ApprovalDetail() {
           <ApprovalPayloadRenderer type={approval.type} payload={payload} />
           <HumanReviewPacket packet={reviewPacket} />
           <button
-            type="button"
+            type="button" aria-expanded={showRawPayload}
             className="mt-2 flex items-center gap-1 text-xs text-slate-500 transition-colors hover:text-slate-900 dark:text-[#8b97ad] dark:hover:text-[#edf2fb]"
             onClick={() => setShowRawPayload((v) => !v)}
           >
@@ -261,14 +261,14 @@ export function ApprovalDetail() {
         <div className="flex flex-wrap items-center gap-2">
           {isActionable && !isBudgetApproval && (
             <>
-              <Button
+              <Button type="button"
                 size="sm" className={CTA_PRIMARY} onClick={() => approveMutation.mutate()}
                 disabled={!canAdmin || approveMutation.isPending || !reviewPacket || (approval.type === "workflow_replacement" && approval.status !== "pending")}
                 title={!canAdmin ? adminRequiredTitle : !reviewPacket ? L(lang, { en: "Review information and source locations are required before approval.", ko: "판단 정보와 원본 위치를 보완해야 승인할 수 있습니다." }) : undefined}
               >
                 {L(lang, { en: "Approve", ko: "승인" })}
               </Button>
-              <Button variant="outline" size="sm" className={CTA_DANGER} onClick={() => rejectMutation.mutate()} disabled={!canAdmin || rejectMutation.isPending} title={!canAdmin ? adminRequiredTitle : undefined}>
+              <Button type="button" variant="outline" size="sm" className={CTA_DANGER} onClick={() => rejectMutation.mutate()} disabled={!canAdmin || rejectMutation.isPending} title={!canAdmin ? adminRequiredTitle : undefined}>
                 {L(lang, { en: "Reject", ko: "거절" })}
               </Button>
             </>
@@ -279,17 +279,17 @@ export function ApprovalDetail() {
             </p>
           )}
           {approval.status === "pending" && (
-            <Button size="sm" variant="outline" className={CTA_GHOST} onClick={() => revisionMutation.mutate()} disabled={!canAdmin || revisionMutation.isPending} title={!canAdmin ? adminRequiredTitle : undefined}>
+            <Button type="button" size="sm" variant="outline" className={CTA_GHOST} onClick={() => revisionMutation.mutate()} disabled={!canAdmin || revisionMutation.isPending} title={!canAdmin ? adminRequiredTitle : undefined}>
               {L(lang, { en: "Request revision", ko: "수정 요청" })}
             </Button>
           )}
           {approval.status === "revision_requested" && (
-            <Button size="sm" variant="outline" className={CTA_GHOST} onClick={() => resubmitMutation.mutate()} disabled={!canAdmin || resubmitMutation.isPending} title={!canAdmin ? adminRequiredTitle : undefined}>
+            <Button type="button" size="sm" variant="outline" className={CTA_GHOST} onClick={() => resubmitMutation.mutate()} disabled={!canAdmin || resubmitMutation.isPending} title={!canAdmin ? adminRequiredTitle : undefined}>
               {L(lang, { en: "Mark resubmitted", ko: "재제출로 표시" })}
             </Button>
           )}
           {approval.status === "rejected" && approval.type === "hire_agent" && linkedAgentId && (
-            <Button
+            <Button type="button"
               size="sm" variant="outline" className={CTA_DANGER}
               onClick={() => {
                 if (!canAdmin) return;

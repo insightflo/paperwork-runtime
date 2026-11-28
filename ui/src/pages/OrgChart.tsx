@@ -280,24 +280,24 @@ export function OrgChart() {
           <div className="border-b border-slate-200/90 px-1 py-1 text-center text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:border-white/[0.08] dark:text-[#8b97ad]">
             Zoom
           </div>
-          <button
+          <button type="button"
             className="flex h-7 w-full items-center justify-center text-sm text-slate-900 transition-colors hover:bg-slate-100 dark:text-[#edf2fb] dark:hover:bg-[#141b29]"
             onClick={() => applyCenterZoom(Math.min(zoom * 1.2, 2))}
             aria-label="Zoom in"
           >
             +
           </button>
-          <button
+          <button type="button"
             className="flex h-7 w-full items-center justify-center border-t border-slate-200/90 text-sm text-slate-900 transition-colors hover:bg-slate-100 dark:border-white/[0.08] dark:text-[#edf2fb] dark:hover:bg-[#141b29]"
             onClick={() => applyCenterZoom(Math.max(zoom * 0.8, 0.2))}
             aria-label="Zoom out"
           >
             &minus;
           </button>
-          <div className="border-t border-slate-200/90 px-1 py-1 text-center font-mono text-[10px] text-slate-500 tabular-nums dark:border-white/[0.08] dark:text-[#8b97ad]">
+          <div aria-live="polite" aria-atomic="true" className="border-t border-slate-200/90 px-1 py-1 text-center font-mono text-[10px] text-slate-500 tabular-nums dark:border-white/[0.08] dark:text-[#8b97ad]">
             {Math.round(zoom * 100)}%
           </div>
-          <button
+          <button type="button"
             className="flex h-7 w-full items-center justify-center border-t border-slate-200/90 bg-blue-600 text-[10px] font-semibold uppercase tracking-wider text-white transition-colors hover:bg-blue-500 dark:border-white/[0.08] dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]"
             onClick={fitChartToScreen}
             title="Fit to screen"
@@ -340,7 +340,7 @@ export function OrgChart() {
             return (
               <div
                 key={node.id}
-                data-org-card
+                data-org-card role="link" tabIndex={0} aria-label={`Open agent ${node.name}`} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.click(); } }}
                 className="tactile-card absolute cursor-pointer select-none rounded-[12px] border-slate-200/90 bg-white/95 transition-colors duration-150 hover:border-blue-500/60 dark:border-white/[0.08] dark:bg-[#0e131d] dark:hover:border-[#60a5fa]/70"
                 style={{ left: node.x, top: node.y, width: CARD_W, minHeight: CARD_H }}
                 onClick={() => navigate(agent ? agentUrl(agent) : `/agents/${node.id}`)}
