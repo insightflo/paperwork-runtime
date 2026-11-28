@@ -195,12 +195,13 @@ export function WorkflowDefinitionEditorShell({
           <div key="workflow-main" style={workflowSelectedIdentityStyle}>
             <div key="name-field" style={workflowCreateFieldStyle}>
               <FieldLabel help="Name shown in workflow lists, run history, and generated run labels.">Workflow name</FieldLabel>
-              <input style={inputStyle} value={editingName} onChange={(event) => onEditingNameChange(event.target.value)} required />
+              <input style={inputStyle} aria-label="Workflow name" value={editingName} onChange={(event) => onEditingNameChange(event.target.value)} required />
             </div>
             <div key="description-field" style={workflowCreateFieldStyle}>
               <FieldLabel help="Short operator-facing summary of what this workflow does.">Description</FieldLabel>
               <textarea
                 style={{ ...textareaStyle, minHeight: "38px" }}
+                aria-label="Description"
                 value={editingDescription}
                 onChange={(event) => onEditingDescriptionChange(event.target.value)}
                 rows={2}
@@ -210,7 +211,7 @@ export function WorkflowDefinitionEditorShell({
           <div key="workflow-setup-strip" style={workflowSelectedSetupStripStyle}>
             <div key="status-field" style={workflowCreateFieldStyle}>
               <FieldLabel help="Workflow availability. Active can run, paused stays saved, archived is hidden from active operation.">Status</FieldLabel>
-              <select style={selectStyle} value={editingStatus} onChange={(event) => onEditingStatusChange(event.target.value)}>
+              <select style={selectStyle} aria-label="Status" value={editingStatus} onChange={(event) => onEditingStatusChange(event.target.value)}>
                 <option value="active">active</option>
                 <option value="paused">paused</option>
                 <option value="archived">archived</option>
@@ -218,26 +219,26 @@ export function WorkflowDefinitionEditorShell({
             </div>
             <div key="schedule-field" style={workflowCreateFieldStyle}>
               <FieldLabel help="Cron expression for scheduled runs. Leave blank for manual or label-triggered runs only.">Schedule (cron)</FieldLabel>
-              <input style={inputStyle} value={editingSchedule} onChange={(event) => onEditingScheduleChange(event.target.value)} placeholder="0 9 * * *" />
+              <input style={inputStyle} aria-label="Schedule (cron)" value={editingSchedule} onChange={(event) => onEditingScheduleChange(event.target.value)} placeholder="0 9 * * *" />
             </div>
             <div key="timezone-field" style={workflowCreateFieldStyle}>
               <FieldLabel help="Timezone used to interpret the cron schedule.">Timezone</FieldLabel>
-              <input style={inputStyle} value={editingTimezone} onChange={(event) => onEditingTimezoneChange(event.target.value)} placeholder="Asia/Seoul" />
+              <input style={inputStyle} aria-label="Timezone" value={editingTimezone} onChange={(event) => onEditingTimezoneChange(event.target.value)} placeholder="Asia/Seoul" />
             </div>
             <div key="project-field" style={workflowCreateFieldStyle}>
               <FieldLabel help="Optional project that generated issues and runs should be associated with.">Project</FieldLabel>
-              <select style={selectStyle} value={editingProjectId} onChange={(event) => onEditingProjectIdChange(event.target.value)}>
+              <select style={selectStyle} aria-label="Project" value={editingProjectId} onChange={(event) => onEditingProjectIdChange(event.target.value)}>
                 <option value="">— none —</option>
                 {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
               </select>
             </div>
             <div key="max-daily-runs-field" style={workflowCreateFieldStyle}>
               <FieldLabel help="Daily run cap for scheduled or label-triggered execution. Blank uses the default limit.">Max Daily Runs</FieldLabel>
-              <input style={inputStyle} type="number" min={0} step={1} value={editingMaxDailyRuns} onChange={(event) => onEditingMaxDailyRunsChange(event.target.value)} placeholder="blank=1/day" />
+              <input style={inputStyle} type="number" min={0} step={1} aria-label="Max Daily Runs" value={editingMaxDailyRuns} onChange={(event) => onEditingMaxDailyRunsChange(event.target.value)} placeholder="blank=1/day" />
             </div>
             <div key="trigger-labels-field" style={workflowCreateFieldStyle}>
               <FieldLabel help="Comma-separated issue labels that can trigger this workflow.">Trigger Labels</FieldLabel>
-              <input style={inputStyle} value={editingTriggerLabels} onChange={(event) => onEditingTriggerLabelsChange(event.target.value)} placeholder="daily-tech-research" />
+              <input style={inputStyle} aria-label="Trigger Labels" value={editingTriggerLabels} onChange={(event) => onEditingTriggerLabelsChange(event.target.value)} placeholder="daily-tech-research" />
             </div>
           </div>
           {/* [B1] 패널 수명을 워크플로 신원에 묶는다 — 신원 변경 시 상태/시크릿 재마운트 초기화. */}
