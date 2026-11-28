@@ -39,6 +39,7 @@ const RETAINED_ADAPTERS = [
   "claude_local",
   "codex_local",
   "pi_local",
+  "devin_local",
   "commandcode_local",
 ] as const;
 
