@@ -12,7 +12,7 @@
 // [수정시 주의] 마커/claim 키는 (company, owner-action, 결정종류, 대상) 조합으로만 구성 — 특정
 //   이슈 하드코딩 금지. 살아있는 대상 재시도·owner 수동 결정 자유·감시 주기는 이 모듈이 바꾸지 않는다.
 import { createHash } from "node:crypto";
-import { and, desc, eq, gt, inArray, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, like, ne, or, sql } from "drizzle-orm";
 import {
   issues,
   operatorDecisions,
@@ -106,6 +106,35 @@ export async function countOwnerDecisionNotApplied(db: Db, input: {
       )),
     ));
   return row?.count ?? 0;
+}
+
+export async function hasNewerActiveMissionWorkflowRun(db: Db, input: {
+  readonly companyId: string;
+  readonly missionId: string;
+  readonly workflowRunId: string;
+}): Promise<boolean> {
+  const [target] = await db
+    .select({ createdAt: workflowRuns.createdAt })
+    .from(workflowRuns)
+    .where(and(
+      eq(workflowRuns.id, input.workflowRunId),
+      eq(workflowRuns.companyId, input.companyId),
+      eq(workflowRuns.missionId, input.missionId),
+    ))
+    .limit(1);
+  if (!target) return false;
+  const [newerActive] = await db
+    .select({ id: workflowRuns.id })
+    .from(workflowRuns)
+    .where(and(
+      ne(workflowRuns.id, input.workflowRunId),
+      eq(workflowRuns.companyId, input.companyId),
+      eq(workflowRuns.missionId, input.missionId),
+      inArray(workflowRuns.status, ["running", "queued"]),
+      gte(workflowRuns.createdAt, target.createdAt),
+    ))
+    .limit(1);
+  return Boolean(newerActive);
 }
 
 // 표시용 다음 행동. 실행 선택지는 아래의 구조화 binding 조회 결과에서만 만든다.
@@ -318,6 +347,13 @@ export async function ensureDeadTargetHumanEscalation(db: Db, input: {
     }
   }
   try {
+    if (cardContext.workflowRunId && input.missionId && await hasNewerActiveMissionWorkflowRun(db, {
+      companyId: input.companyId,
+      missionId: input.missionId,
+      workflowRunId: cardContext.workflowRunId,
+    })) {
+      return { ensured: false, reason: "superseded-by-newer-active-run" };
+    }
     await createMissionOwnerHumanInputDecisionCard(db, {
       companyId: input.companyId,
       missionId: input.missionId,
