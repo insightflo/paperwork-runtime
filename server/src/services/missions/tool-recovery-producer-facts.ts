@@ -19,9 +19,16 @@ export async function loadToolRecoveryProducerFacts(db: Db, run: typeof workflow
     const [pin] = await db.select().from(workflowStepOutputBindings).where(and(
       eq(workflowStepOutputBindings.companyId, run.companyId), eq(workflowStepOutputBindings.workflowRunId, run.id),
       eq(workflowStepOutputBindings.consumerStepRunId, stepRunId), eq(workflowStepOutputBindings.referencedStepId, stepId))).limit(1);
-    const products = await db.select().from(issueWorkProducts).where(and(eq(issueWorkProducts.companyId, run.companyId),
-      eq(issueWorkProducts.issueId, source.issueId), eq(issueWorkProducts.type, selector.type), eq(issueWorkProducts.title, selector.title),
-      ...(pin ? [eq(issueWorkProducts.id, pin.workProductId)] : [ne(issueWorkProducts.status, "archived")]))).limit(2);
+    const baseConds = [
+      eq(issueWorkProducts.companyId, run.companyId), eq(issueWorkProducts.issueId, source.issueId),
+      eq(issueWorkProducts.title, selector.title),
+      ...(pin ? [eq(issueWorkProducts.id, pin.workProductId)] : [ne(issueWorkProducts.status, "archived")]),
+    ];
+    let products = await db.select().from(issueWorkProducts).where(and(...baseConds, eq(issueWorkProducts.type, selector.type))).limit(2);
+    const fallbackType = products.length === 0 ? ({ document: "artifact", artifact: "document" } as Record<string, string>)[selector.type] : undefined;
+    if (fallbackType) {
+      products = await db.select().from(issueWorkProducts).where(and(...baseConds, eq(issueWorkProducts.type, fallbackType))).limit(2);
+    }
     if (products.length !== 1) { facts.push({ stepId, status: "workproduct_selector_not_exactly_one" }); continue; }
     const product = products[0];
     const parsed = workProductProducerSchema.safeParse(product.metadata?.workflowProducer);
