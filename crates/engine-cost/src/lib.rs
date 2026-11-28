@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod anomaly;
 mod queries;
 
 use chrono::{DateTime, Utc};

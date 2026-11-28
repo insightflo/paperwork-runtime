@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod burn_guard;
 mod queries;
 
 use chrono::{DateTime, Datelike, TimeZone, Utc};
