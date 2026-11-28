@@ -62,7 +62,8 @@ function normalizeApiBase(apiBase: string): string {
 
 export function resolveBoardAuthStorePath(overridePath?: string): string {
   if (overridePath?.trim()) return path.resolve(overridePath.trim());
-  if (process.env.PAPERCLIP_AUTH_STORE?.trim()) return path.resolve(process.env.PAPERCLIP_AUTH_STORE.trim());
+  const envStorePath = process.env.PAPERWORK_AUTH_STORE?.trim() || process.env.PAPERCLIP_AUTH_STORE?.trim();
+  if (envStorePath) return path.resolve(envStorePath);
   return resolveDefaultCliAuthPath();
 }
 
@@ -207,7 +208,7 @@ export async function loginBoardCli(params: {
     method: "POST",
     body: JSON.stringify({
       command,
-      clientName: params.clientName?.trim() || "paperclipai cli",
+      clientName: params.clientName?.trim() || "Paperwork CLI",
       requestedAccess: params.requestedAccess,
       requestedCompanyId: params.requestedCompanyId?.trim() || null,
     }),
