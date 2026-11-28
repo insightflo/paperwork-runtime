@@ -295,3 +295,9 @@ mod tests {
         assert!(validate_optional_object_field("quality_binding", Some(&serde_json::json!({}))).is_ok());
     }
 }
+
+pub mod advisor_verdict;
+
+pub mod huddle_escalation;
+
+pub mod human_card_dedup;

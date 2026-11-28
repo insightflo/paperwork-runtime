@@ -188,3 +188,5 @@ mod tests {
         assert!(converted.to_string().starts_with("postgres error"));
     }
 }
+
+pub mod dgate_savings;
