@@ -22,13 +22,13 @@ export function createQueueTelemetryRouter(deps: QueueTelemetryRouteDeps): Route
   const router = Router();
 
   router.get("/companies/:companyId/queue-telemetry", forwardErrors(async (req, res) => {
-    const companyId = req.params.companyId;
+    const companyId = String(req.params.companyId);
     deps.assertCompanyAccess(req, companyId);
     res.status(200).json(await deps.getFleetTelemetry(companyId));
   }));
 
   router.get("/companies/:companyId/queue-telemetry/export.csv", forwardErrors(async (req, res) => {
-    const companyId = req.params.companyId;
+    const companyId = String(req.params.companyId);
     deps.assertCompanyAccess(req, companyId);
     if (!deps.exportFleetTelemetryCsv) {
       res.status(501).json({ error: "CSV export not configured" });
