@@ -920,7 +920,7 @@ export function IssueDetail() {
                     src={attachment.contentPath}
                     alt={attachment.originalFilename ?? "attachment"}
                     className="mt-2 max-h-56 rounded border border-border object-contain bg-accent/10 outline -outline-offset-1 outline-black/10 dark:outline-white/10"
-                    loading="lazy"
+                    loading="lazy" decoding="async"
                   />
                 </a>
               )}
