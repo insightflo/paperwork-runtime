@@ -38,6 +38,7 @@ import {
   findWorkflowDefinitionStepWarningsWithNodeFallback,
   summarizeDefinitionStepWarningsWithNodeFallback,
 } from "../services/workflow/workflow-core-client-s8c.js";
+import { lintWorkflowDefinitionSelectors } from "../services/workflow/workflow-definition-selector-lint.js";
 import { PRODUCER_REBIND_ELIGIBLE_DISPATCH_ERRORS, consumerDependsOnProducer, rebindOrPromoteProducerProvenance } from "../services/workflow/producer-provenance-rebind.js";
 import { WorkflowRunInputValidationError } from "../services/workflow/run-input-normalization.js";
 import { enableQaCapAcceptanceForCompany } from "../services/workflow/qa-cap-acceptance-rollout.js";
@@ -444,7 +445,14 @@ export function workflowRoutes(db: Db) {
       entityId: definition.id,
       details: { name: definition.name, ...(warnings.length ? { definitionWarnings: await summarizeDefinitionStepWarningsWithNodeFallback(warnings) } : {}) },
     });
-    res.status(201).json({ ...serializeDefinition(definition), warnings });
+    // [산출물 소비 하드닝] 저장된 steps 대상 셀렉터 참조 lint(warn-only). 경고가 있을 때만
+    // additive 필드를 노출해 기존 엄격 응답 스냅샷 계약을 보존한다.
+    const selectorLintWarnings = lintWorkflowDefinitionSelectors(definition.steps);
+    res.status(201).json({
+      ...serializeDefinition(definition),
+      warnings,
+      ...(selectorLintWarnings.length > 0 ? { selectorLintWarnings } : {}),
+    });
   });
 
   router.get("/workflows/:workflowId", async (req, res) => {
@@ -487,7 +495,12 @@ export function workflowRoutes(db: Db) {
         ...(warnings?.length ? { definitionWarnings: await summarizeDefinitionStepWarningsWithNodeFallback(warnings) } : {}),
       },
     });
-    res.json(warnings === undefined ? serializeDefinition(definition) : { ...serializeDefinition(definition), warnings });
+    const selectorLintWarnings = warnings !== undefined ? lintWorkflowDefinitionSelectors(definition.steps) : [];
+    res.json(warnings === undefined ? serializeDefinition(definition) : {
+      ...serializeDefinition(definition),
+      warnings,
+      ...(selectorLintWarnings.length > 0 ? { selectorLintWarnings } : {}),
+    });
   });
 
   router.delete("/workflows/:workflowId", async (req, res) => {
