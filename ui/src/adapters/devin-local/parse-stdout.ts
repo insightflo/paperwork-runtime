@@ -1,5 +1,11 @@
 import type { TranscriptEntry } from "../types";
 
+const ANSI_CSI_RE = /(?:\u001B\[|\u009B)[0-?]*[ -/]*[@-~]/g;
+
+function stripAnsi(value: string): string {
+  return value.replace(ANSI_CSI_RE, "");
+}
+
 function safeJsonParse(text: string): unknown {
   try {
     return JSON.parse(text);
@@ -22,39 +28,39 @@ function asNumber(value: unknown, fallback = 0): number {
 }
 
 function errorText(value: unknown): string {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return stripAnsi(value);
   const rec = asRecord(value);
   if (!rec) return "";
   const message =
     asString(rec.message) ||
     asString(rec.error) ||
     asString(rec.code);
-  if (message) return message;
+  if (message) return stripAnsi(message);
   try {
-    return JSON.stringify(rec);
+    return stripAnsi(JSON.stringify(rec));
   } catch {
     return "";
   }
 }
 
 function extractTextContent(value: unknown): string {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return stripAnsi(value);
   if (!Array.isArray(value)) return "";
   return value
     .map((part) => asRecord(part))
     .filter((part): part is Record<string, unknown> => Boolean(part))
-    .map((part) => asString(part.text) || asString(part.content))
+    .map((part) => extractTextContent(part.text) || extractTextContent(part.content))
     .filter(Boolean)
     .join("");
 }
 
 function stringifyUnknown(value: unknown): string {
-  if (typeof value === "string") return value;
+  if (typeof value === "string") return stripAnsi(value);
   if (value === null || value === undefined) return "";
   try {
-    return JSON.stringify(value);
+    return stripAnsi(JSON.stringify(value));
   } catch {
-    return String(value);
+    return stripAnsi(String(value));
   }
 }
 
@@ -67,13 +73,99 @@ function readUsageNumbers(usage: unknown) {
   };
 }
 
+function readToolUseId(record: Record<string, unknown>): string {
+  return asString(record.toolUseId ?? record.toolCallId ?? record.tool_use_id ?? record.id);
+}
+
+function toolCallEntry(record: Record<string, unknown>, ts: string): TranscriptEntry {
+  return {
+    kind: "tool_call",
+    ts,
+    name: asString(record.name ?? record.toolName ?? record.tool_name, "unknown"),
+    input: record.input ?? record.args ?? record.arguments ?? {},
+    toolUseId: readToolUseId(record) || undefined,
+  };
+}
+
+function toolResultEntry(record: Record<string, unknown>, ts: string, forceError = false): TranscriptEntry {
+  const payload = record.content ?? record.result ?? record.output;
+  return {
+    kind: "tool_result",
+    ts,
+    toolUseId: readToolUseId(record) || "unknown",
+    toolName: asString(record.toolName ?? record.tool_name ?? record.name) || undefined,
+    content: extractTextContent(payload) || stringifyUnknown(payload),
+    isError: record.isError === true || record.is_error === true || forceError,
+  };
+}
+
+function contentBlocks(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((part) => asRecord(part))
+    .filter((part): part is Record<string, unknown> => Boolean(part));
+}
+
+function blockType(block: Record<string, unknown>): string {
+  return asString(block.type).toLowerCase();
+}
+
+function blockText(block: Record<string, unknown>): string {
+  return extractTextContent(block.text) || extractTextContent(block.content);
+}
+
+function parseAssistantContent(content: unknown, ts: string): TranscriptEntry[] {
+  const blocks = contentBlocks(content);
+  if (blocks.length === 0) return [];
+
+  const text = blocks
+    .filter((block) => !["tool_use", "tool_call", "thinking", "reasoning"].includes(blockType(block)))
+    .map(blockText)
+    .filter(Boolean)
+    .join("");
+  const entries: TranscriptEntry[] = text ? [{ kind: "assistant", ts, text }] : [];
+
+  for (const block of blocks) {
+    const type = blockType(block);
+    if (type === "thinking" || type === "reasoning") {
+      const thinking = extractTextContent(block.thinking) || blockText(block);
+      if (thinking) entries.push({ kind: "thinking", ts, text: thinking });
+    } else if (type === "tool_use" || type === "tool_call") {
+      entries.push(toolCallEntry(block, ts));
+    }
+  }
+
+  return entries;
+}
+
+function parseUserContent(content: unknown, ts: string): TranscriptEntry[] {
+  const blocks = contentBlocks(content);
+  if (blocks.length === 0) return [];
+
+  const text = blocks
+    .filter((block) => blockType(block) !== "tool_result")
+    .map(blockText)
+    .filter(Boolean)
+    .join("");
+  const entries: TranscriptEntry[] = text ? [{ kind: "user", ts, text }] : [];
+
+  for (const block of blocks) {
+    if (blockType(block) === "tool_result") {
+      entries.push(toolResultEntry(block, ts));
+    }
+  }
+
+  return entries;
+}
+
 export function parseDevinStdoutLine(line: string, ts: string): TranscriptEntry[] {
-  const trimmed = line.trim();
+  const cleanLine = stripAnsi(line);
+  const trimmed = cleanLine.trim();
   if (!trimmed) return [];
 
   const parsed = asRecord(safeJsonParse(trimmed));
   if (!parsed) {
-    return [{ kind: "stdout", ts, text: line }];
+    return [{ kind: "stdout", ts, text: cleanLine }];
   }
 
   const type = asString(parsed.type).toLowerCase();
@@ -94,13 +186,16 @@ export function parseDevinStdoutLine(line: string, ts: string): TranscriptEntry[
   }
 
   if (type === "text_delta" || type === "assistant_delta") {
-    const delta = asString(parsed.delta ?? parsed.text);
+    const delta = extractTextContent(parsed.delta ?? parsed.text);
     return delta ? [{ kind: "assistant", ts, text: delta, delta: true }] : [];
   }
 
   if (type === "assistant" || type === "assistant_message") {
     const message = asRecord(parsed.message);
-    const text = extractTextContent(parsed.text ?? parsed.content ?? message?.content);
+    const content = parsed.text ?? parsed.content ?? message?.content;
+    const entries = parseAssistantContent(content, ts);
+    if (entries.length > 0) return entries;
+    const text = extractTextContent(content);
     return text ? [{ kind: "assistant", ts, text }] : [];
   }
 
@@ -111,31 +206,19 @@ export function parseDevinStdoutLine(line: string, ts: string): TranscriptEntry[
 
   if (type === "user") {
     const message = asRecord(parsed.message);
-    const text = extractTextContent(parsed.text ?? parsed.content ?? message?.content);
+    const content = parsed.text ?? parsed.content ?? message?.content;
+    const entries = parseUserContent(content, ts);
+    if (entries.length > 0) return entries;
+    const text = extractTextContent(content);
     return text ? [{ kind: "user", ts, text }] : [];
   }
 
   if (type === "tool_call" || type === "tool_use" || type === "tool_execution_start") {
-    const name = asString(parsed.name ?? parsed.toolName ?? parsed.tool_name, "unknown");
-    return [{
-      kind: "tool_call",
-      ts,
-      name,
-      input: parsed.input ?? parsed.args ?? parsed.arguments ?? {},
-      toolUseId: asString(parsed.toolUseId ?? parsed.toolCallId ?? parsed.tool_use_id ?? parsed.id) || undefined,
-    }];
+    return [toolCallEntry(parsed, ts)];
   }
 
   if (type === "tool_result" || type === "tool_execution_end" || type === "tool_errored") {
-    const payload = parsed.content ?? parsed.result ?? parsed.output;
-    return [{
-      kind: "tool_result",
-      ts,
-      toolUseId: asString(parsed.toolUseId ?? parsed.toolCallId ?? parsed.tool_use_id ?? parsed.id, "unknown"),
-      toolName: asString(parsed.toolName ?? parsed.tool_name ?? parsed.name) || undefined,
-      content: extractTextContent(payload) || stringifyUnknown(payload),
-      isError: parsed.isError === true || parsed.is_error === true || type === "tool_errored",
-    }];
+    return [toolResultEntry(parsed, ts, type === "tool_errored")];
   }
 
   if (type === "result" || type === "final" || type === "completed") {
@@ -150,7 +233,7 @@ export function parseDevinStdoutLine(line: string, ts: string): TranscriptEntry[
     return [{
       kind: "result",
       ts,
-      text: asString(parsed.text ?? parsed.finalText ?? parsed.result ?? parsed.summary),
+      text: extractTextContent(parsed.text ?? parsed.finalText ?? parsed.result ?? parsed.summary),
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       cachedTokens: usage.cachedTokens,
@@ -165,5 +248,5 @@ export function parseDevinStdoutLine(line: string, ts: string): TranscriptEntry[
     return [{ kind: "stderr", ts, text: errorText(parsed.error ?? parsed.message ?? parsed) || "Devin error" }];
   }
 
-  return [{ kind: "stdout", ts, text: line }];
+  return [{ kind: "stdout", ts, text: cleanLine }];
 }
