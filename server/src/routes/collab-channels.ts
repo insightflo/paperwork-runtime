@@ -4,9 +4,17 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
 import { collabChannels, collabMessages, collabThreads, type Db } from "@paperclipai/db";
+import { exceptionHuddleDecisionSchema } from "@paperclipai/shared/validators/exception-huddle";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
+import { forbidden } from "../errors.js";
 import { logActivity } from "../services/index.js";
 import { collabChannelsService } from "../services/collab-channels.js";
+import {
+  conveneExceptionHuddle,
+  decideExceptionHuddle,
+  getExceptionHuddle,
+  postExceptionHuddleTurn,
+} from "../services/missions/exception-huddle-service.js";
 
 type ChannelRow = typeof collabChannels.$inferSelect;
 type ThreadRow = typeof collabThreads.$inferSelect;
@@ -51,6 +59,34 @@ const postMessageSchema = z.object({
   targetAgentId: z.string().uuid().nullable().optional(),
 });
 
+const uuid = z.string().uuid();
+const conveneHuddleSchema = z.object({
+  missionId: uuid,
+  workflowRunId: uuid,
+  sourceStepId: z.string().trim().min(1),
+  sourceIssueId: uuid.nullish(),
+  ownerAgentId: uuid,
+  producerAgentId: uuid,
+  validatorAgentId: uuid,
+  workProductLinks: z.array(z.string().min(1)).default([]),
+  failureSummary: z.string().trim().min(1),
+  errorCode: z.string().nullish(),
+  errorSummary: z.string().nullish(),
+  verdict: z.string().nullish(),
+  stepRole: z.string().nullish(),
+  failureKind: z.string().nullish(),
+  qaFailureCount: z.number().int().nullish(),
+}).strict();
+const huddleTurnSchema = z.object({
+  actorAgentId: uuid.optional(),
+  body: z.string().trim().min(1),
+}).strict();
+const huddleDecisionSchema = z.object({
+  actorAgentId: uuid.optional(),
+  decision: exceptionHuddleDecisionSchema,
+}).strict();
+const serializeHuddleMessage = (row: MessageRow) => ({ ...serializeMessage(row), metadata: row.metadata ?? null });
+
 export function collabChannelsRoutes(db: Db) {
   const router = Router();
   const svc = collabChannelsService(db);
@@ -63,6 +99,17 @@ export function collabChannelsRoutes(db: Db) {
       actorType: actor.actorType, actorId: actor.actorId, agentId: actor.agentId,
       action, entityType, entityId, details,
     });
+  }
+
+  function resolveHuddleActor(req: Request, requestedAgentId: string | undefined) {
+    const actor = getActorInfo(req);
+    if (actor.actorType === "agent") {
+      if (requestedAgentId && requestedAgentId !== actor.agentId) {
+        throw forbidden("Agent cannot act as another agent");
+      }
+      return actor.agentId;
+    }
+    return requestedAgentId ?? null;
   }
 
   router.get("/companies/:companyId/collab-channels", async (req, res) => {
@@ -145,6 +192,84 @@ export function collabChannelsRoutes(db: Db) {
     const thread = await svc.resumeThread(companyId, channelId, threadId, actor.actorType === "user" ? actor.actorId : null);
     await logMutation(req, "collab.thread.resumed", "collab_thread", thread.id, { channelId });
     res.json(serializeThread(thread));
+  });
+
+  router.post("/companies/:companyId/collab-channels/huddles", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const parsed = conveneHuddleSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Validation error", details: parsed.error.errors });
+      return;
+    }
+    const result = await conveneExceptionHuddle(db, { ...parsed.data, companyId });
+    if (!result.convened) {
+      res.status(200).json(result);
+      return;
+    }
+    await logMutation(req, "collab.huddle.convened", "collab_thread", result.threadId, {
+      channelId: result.channelId, missionId: parsed.data.missionId, sourceStepId: parsed.data.sourceStepId,
+    });
+    res.status(201).json(result);
+  });
+
+  router.get("/companies/:companyId/collab-channels/huddles/:threadId", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const result = await getExceptionHuddle(db, companyId, req.params.threadId as string);
+    if (!result) {
+      res.status(404).json({ error: "Huddle not found" });
+      return;
+    }
+    res.json({
+      thread: serializeThread(result.thread),
+      huddle: result.huddle,
+      messages: result.messages.map(serializeHuddleMessage),
+    });
+  });
+
+  router.post("/companies/:companyId/collab-channels/huddles/:threadId/turns", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const threadId = req.params.threadId as string;
+    assertCompanyAccess(req, companyId);
+    const parsed = huddleTurnSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Validation error", details: parsed.error.errors });
+      return;
+    }
+    const actorAgentId = resolveHuddleActor(req, parsed.data.actorAgentId);
+    if (!actorAgentId) {
+      res.status(400).json({ error: "actorAgentId is required" });
+      return;
+    }
+    const result = await postExceptionHuddleTurn(db, {
+      companyId, threadId, actorAgentId, body: parsed.data.body,
+    });
+    await logMutation(req, "collab.huddle.turn_posted", "collab_thread", threadId, { actorAgentId });
+    res.status(201).json({ ...result, message: serializeMessage(result.message) });
+  });
+
+  router.post("/companies/:companyId/collab-channels/huddles/:threadId/decide", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    const threadId = req.params.threadId as string;
+    assertCompanyAccess(req, companyId);
+    const parsed = huddleDecisionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Validation error", details: parsed.error.errors });
+      return;
+    }
+    const actorAgentId = resolveHuddleActor(req, parsed.data.actorAgentId);
+    if (!actorAgentId) {
+      res.status(400).json({ error: "actorAgentId is required" });
+      return;
+    }
+    const result = await decideExceptionHuddle(db, {
+      companyId, threadId, actorAgentId, decision: parsed.data.decision,
+    });
+    await logMutation(req, "collab.huddle.decided", "collab_thread", threadId, {
+      actorAgentId, decisionKind: result.nextAction,
+    });
+    res.json(result);
   });
 
   return router;
