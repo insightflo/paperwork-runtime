@@ -16,6 +16,7 @@ import {
   postExceptionHuddleTurn,
 } from "../services/missions/exception-huddle-service.js";
 import { listMissionExceptionHuddles } from "../services/missions/exception-huddle-queries.js";
+import { getExceptionHuddleTelemetrySummary } from "../services/missions/exception-huddle-summary-service.js";
 
 type ChannelRow = typeof collabChannels.$inferSelect;
 type ThreadRow = typeof collabThreads.$inferSelect;
@@ -232,6 +233,23 @@ export function collabChannelsRoutes(db: Db) {
       channelId: result.channelId, missionId: parsed.data.missionId, sourceStepId: parsed.data.sourceStepId,
     });
     res.status(201).json(result);
+  });
+
+  router.get("/companies/:companyId/collab-channels/huddles/telemetry", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const rawMissionId = req.query.missionId;
+    if (rawMissionId !== undefined && typeof rawMissionId !== "string") {
+      res.status(400).json({ error: "missionId must be a string" });
+      return;
+    }
+    const trimmedMissionId = typeof rawMissionId === "string" ? rawMissionId.trim() : "";
+    const missionId = trimmedMissionId.length > 0 ? trimmedMissionId : undefined;
+    const summary = await getExceptionHuddleTelemetrySummary(db, {
+      companyId,
+      ...(missionId ? { missionId } : {}),
+    });
+    res.json({ companyId, missionId: missionId ?? null, summary });
   });
 
   router.get("/companies/:companyId/collab-channels/huddles/:threadId", async (req, res) => {
