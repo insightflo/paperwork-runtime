@@ -634,8 +634,8 @@ export function IssueDetail() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Loading...</p>;
-  if (error) return <p className="text-sm text-destructive">{error.message}</p>;
+  if (isLoading) return <p aria-live="polite" className="text-sm text-muted-foreground">Loading...</p>;
+  if (error) return <p role="alert" className="text-sm text-destructive">{error.message}</p>;
   if (!issue) return null;
 
   // Ancestors are returned oldest-first from the server (root at end, immediate parent at start)
@@ -665,7 +665,7 @@ export function IssueDetail() {
     <>
       <input
         ref={fileInputRef}
-        type="file"
+        type="file" aria-label="Upload attachments"
         accept="image/*,application/pdf,text/plain,text/markdown,application/json,text/csv,text/html,.md,.markdown"
         className="hidden"
         onChange={handleFilePicked}
@@ -715,7 +715,7 @@ export function IssueDetail() {
         </div>
         <StatusPill status={issue.status} />
         {hasLiveRuns && (
-          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-lime-500/30 dark:border-[#a3e635]/30 bg-lime-500/10 dark:bg-[#a3e635]/10 px-2 py-0.5 text-[10px] font-semibold text-lime-700 dark:text-[#a3e635]">
+          <span aria-live="polite" className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-lime-500/30 dark:border-[#a3e635]/30 bg-lime-500/10 dark:bg-[#a3e635]/10 px-2 py-0.5 text-[10px] font-semibold text-lime-700 dark:text-[#a3e635]">
             <span className="relative flex h-1.5 w-1.5">
               <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-lime-500 opacity-75 dark:bg-[#a3e635]" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-lime-500 dark:bg-[#a3e635]" />
@@ -725,27 +725,27 @@ export function IssueDetail() {
         )}
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {/* Single deep-cobalt primary for this screen; reuses the existing new-issue dialog with this item as parent. */}
-          <Button size="sm" className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs font-semibold text-[#f8fafc] hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-50"
+          <Button type="button" aria-label="Sub-item" size="sm" className="h-7 shrink-0 bg-[#2563eb] px-2.5 text-xs font-semibold text-[#f8fafc] hover:bg-[#1d4ed8] disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => openNewIssue({ parentId: issue.id, projectId: issue.projectId ?? undefined })}
             disabled={!canWrite}
             title={!canWrite ? "Member, admin, or owner role required to create work items" : undefined}>
             <Plus className="h-3.5 w-3.5 sm:mr-1" />
             <span className="hidden sm:inline">Sub-item</span>
           </Button>
-          <Button variant="ghost" size="icon-xs" onClick={copyIssueToClipboard} title="Copy work item as markdown">
+          <Button type="button" aria-label="Copy work item as markdown" variant="ghost" size="icon-xs" onClick={copyIssueToClipboard} title="Copy work item as markdown">
             {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
           </Button>
-          <Button variant="ghost" size="icon-xs" className="md:hidden" onClick={() => setMobilePropsOpen(true)} title="Properties">
+          <Button type="button" aria-label="Properties" variant="ghost" size="icon-xs" className="md:hidden" onClick={() => setMobilePropsOpen(true)} title="Properties">
             <SlidersHorizontal className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-xs"
+          <Button type="button" aria-label="Show properties" tabIndex={panelVisible ? -1 : undefined} variant="ghost" size="icon-xs"
             className={cn("hidden shrink-0 transition-opacity duration-200 md:inline-flex", panelVisible ? "pointer-events-none w-0 overflow-hidden opacity-0" : "opacity-100")}
             onClick={() => setPanelVisible(true)} title="Show properties">
             <SlidersHorizontal className="h-4 w-4" />
           </Button>
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon-xs" className="hidden shrink-0 md:inline-flex"><MoreHorizontal className="h-4 w-4" /></Button>
+              <Button type="button" aria-label="More work item actions" variant="ghost" size="icon-xs" className="hidden shrink-0 md:inline-flex"><MoreHorizontal className="h-4 w-4" /></Button>
             </PopoverTrigger>
             <PopoverContent className="w-44 p-1" align="end">
               <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs text-destructive hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -761,7 +761,7 @@ export function IssueDetail() {
       </header>
 
       {issue.hiddenAt && (
-        <div className="flex items-center gap-2 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-3 py-2 text-sm text-rose-600 dark:text-[#fb7185]">
+        <div aria-live="polite" className="flex items-center gap-2 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-3 py-2 text-sm text-rose-600 dark:text-[#fb7185]">
           <EyeOff className="h-4 w-4 shrink-0" />
           This work item is hidden
         </div>
@@ -885,7 +885,7 @@ export function IssueDetail() {
         </div>
 
         {attachmentError && (
-          <p className="whitespace-pre-wrap font-mono text-xs text-destructive">{attachmentError}</p>
+          <p role="alert" className="whitespace-pre-wrap font-mono text-xs text-destructive">{attachmentError}</p>
         )}
 
         <div className="space-y-2">
@@ -902,7 +902,7 @@ export function IssueDetail() {
                   {attachment.originalFilename ?? attachment.id}
                 </a>
                 <button
-                  type="button"
+                  type="button" aria-label={`Delete attachment: ${attachment.originalFilename ?? attachment.id}`}
                   className="text-muted-foreground hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
                   onClick={() => deleteAttachment.mutate(attachment.id)}
                   disabled={!canWrite || deleteAttachment.isPending}
@@ -984,11 +984,11 @@ export function IssueDetail() {
 
         <TabsContent value="subissues">
           {allIssuesError ? (
-            <p className="text-xs text-destructive">{allIssuesError.message}</p>
+            <p role="alert" className="text-xs text-destructive">{allIssuesError.message}</p>
           ) : !allIssues ? (
-            <p className="text-xs text-muted-foreground">Loading sub-items…</p>
+            <p aria-live="polite" className="text-xs text-muted-foreground">Loading sub-items…</p>
           ) : childIssues.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No sub-items.</p>
+            <p aria-live="polite" className="text-xs text-muted-foreground">No sub-items.</p>
           ) : (
             <div className="overflow-hidden tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] divide-y divide-slate-200/80 dark:divide-white/[0.07]">
               {childIssues.map((child) => (
@@ -1044,7 +1044,7 @@ export function IssueDetail() {
             </div>
           )}
           {!activity || activity.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No activity yet.</p>
+            <p aria-live="polite" className="text-xs text-muted-foreground">No activity yet.</p>
           ) : (
             <div className="space-y-1.5">
               {activity.slice(0, 20).map((evt) => (

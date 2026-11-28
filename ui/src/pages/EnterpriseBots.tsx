@@ -869,7 +869,7 @@ function EnterpriseBotsCockpit({
       {/* One-time bot inbound bearer token banner (pcp_bot_...) */}
       {issuedToken && (
         <div
-          role="status"
+          role="status" aria-live="polite"
           data-issued-token-banner
           className="tactile-card flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-50/80 px-3.5 py-2.5 text-xs dark:border-[#f59e0b]/40 dark:bg-none dark:bg-[#0e131d]"
         >
@@ -909,7 +909,7 @@ function EnterpriseBotsCockpit({
 
       {/* Load error state */}
       {loadError && (
-        <div className={`${PANEL} flex items-center justify-between gap-3 px-4 py-3 text-xs text-rose-700 dark:text-rose-300`}>
+        <div role="alert" className={`${PANEL} flex items-center justify-between gap-3 px-4 py-3 text-xs text-rose-700 dark:text-rose-300`}>
           <span>엔터프라이즈 봇 로드 실패: {loadError}</span>
           {onRetry && (
             <button type="button" onClick={onRetry} className={ACTION}>
@@ -922,7 +922,7 @@ function EnterpriseBotsCockpit({
 
       {/* Balanced widescreen 58/42 master-detail split with 2-3 col tactile card grid */}
       <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,58%)_minmax(0,42%)] xl:items-start">
-        <div className={`${PANEL} min-w-0 p-3`}>
+        <div aria-live="polite" className={`${PANEL} min-w-0 p-3`}>
           {isLoading ? (
             <div className="flex items-center justify-center py-12 text-xs text-slate-500 dark:text-[#8b97ad]">
               엔터프라이즈 봇 로드 중...
@@ -940,7 +940,7 @@ function EnterpriseBotsCockpit({
                     onClick={() => pick(item.id)}
                     role="button"
                     tabIndex={0}
-                    onKeyDown={(e) => e.key === "Enter" && pick(item.id)}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(item.id); } }}
                     className={`flex min-w-0 cursor-pointer flex-col gap-2.5 rounded-xl border p-3 text-xs transition-all ${
                       active
                         ? "border-primary/50 bg-primary/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:bg-[#131c2e] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
@@ -1252,7 +1252,7 @@ function BotDetail({
       </div>
       {pingResult && (
         <div
-          data-ping-result
+          data-ping-result aria-live="polite"
           className={`rounded-lg border px-3 py-2 font-mono text-[11px] ${
             pingResult.ok
               ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:border-emerald-400/30 dark:text-emerald-300"
@@ -1764,11 +1764,11 @@ function RegisterTerminalModal({
                 ))}
               </select>
               {teamsLoadError ? (
-                <span role="note" data-teams-error="true" className="text-[11px] text-rose-600 dark:text-rose-400">
+                <span role="note" aria-live="polite" data-teams-error="true" className="text-[11px] text-rose-600 dark:text-rose-400">
                   Failed to load teams: {teamsLoadError}
                 </span>
               ) : teams.length === 0 ? (
-                <span role="note" data-teams-empty="true" className="text-[11px] text-amber-600 dark:text-amber-400">
+                <span role="note" aria-live="polite" data-teams-empty="true" className="text-[11px] text-amber-600 dark:text-amber-400">
                   No teams found for this company. Create a team first.
                 </span>
               ) : null}
