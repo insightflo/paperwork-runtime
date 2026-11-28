@@ -268,7 +268,7 @@ export function CompanySettings() {
         {canAdmin && generalDirty && (
           <div className="ml-auto flex shrink-0 items-center gap-2">
             {generalMutation.isError && (
-              <span className="text-xs text-destructive">
+              <span role="alert" className="text-xs text-destructive">
                 {generalMutation.error instanceof Error
                   ? generalMutation.error.message
                   : "Failed to save"}
@@ -302,8 +302,8 @@ export function CompanySettings() {
         <div className={`space-y-3 px-4 py-4 ${CARD}`}>
           <Field label="Company name" hint="The display name for your company.">
             <input
+              type="text" aria-label="Company name"
               className={`w-full px-2.5 py-1.5 text-sm ${FIELD}`}
-              type="text"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
             />
@@ -313,8 +313,8 @@ export function CompanySettings() {
             hint="Optional description shown in the company profile."
           >
             <input
+              type="text" aria-label="Company description"
               className={`w-full px-2.5 py-1.5 text-sm ${FIELD}`}
-              type="text"
               value={description}
               placeholder="Optional company description"
               onChange={(e) => setDescription(e.target.value)}
@@ -325,8 +325,8 @@ export function CompanySettings() {
             hint="IANA timezone for this company (e.g. Asia/Seoul, America/New_York). Used by workflows unless overridden. Leave empty for system default."
           >
             <input
+              type="text" aria-label="Timezone"
               className={`w-full px-2.5 py-1.5 text-sm ${FIELD}`}
-              type="text"
               value={timezone}
               placeholder="e.g. Asia/Seoul"
               onChange={(e) => setTimezone(e.target.value)}
@@ -337,7 +337,7 @@ export function CompanySettings() {
             hint="Agent-written descriptions, comments, and operator summaries use this language. Tools, code, IDs, JSON, and other internal execution data stay in English."
           >
             <select
-              className={`w-full px-2.5 py-1.5 text-sm ${FIELD}`}
+              className={`w-full px-2.5 py-1.5 text-sm ${FIELD}`} aria-label="Default user-facing language"
               value={defaultLanguage}
               onChange={(event) => setDefaultLanguage(event.target.value as CompanyDefaultLanguage)}
             >
@@ -350,8 +350,8 @@ export function CompanySettings() {
             hint="Private folder on the Paperwork server where agents and workflows create and validate files first. It is not shared with n8n. Leave empty to use the project default."
           >
             <input
+              type="text" aria-label="Paperwork local work folder"
               className={`w-full px-2.5 py-1.5 text-sm ${FIELD}`}
-              type="text"
               value={workProductRoot}
               placeholder="e.g. /srv/papercompany/projects/research-company/produced_work"
               onChange={(e) => setWorkProductRoot(e.target.value)}
@@ -380,7 +380,7 @@ export function CompanySettings() {
               >
                 <div className="space-y-2">
                   <input
-                    type="file"
+                    type="file" aria-label="Company logo"
                     accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
                     disabled={!canAdmin}
                     onChange={handleLogoFileChange}
@@ -400,19 +400,19 @@ export function CompanySettings() {
                     </div>
                   )}
                   {logoUploadMutation.isError && (
-                    <span className="text-xs text-destructive">
+                    <span role="alert" className="text-xs text-destructive">
                       {logoUploadMutation.error instanceof Error
                         ? logoUploadMutation.error.message
                         : "Logo upload failed"}
                     </span>
                   )}
                   {clearLogoMutation.isError && (
-                    <span className="text-xs text-destructive">
+                    <span role="alert" className="text-xs text-destructive">
                       {clearLogoMutation.error.message}
                     </span>
                   )}
                   {logoUploadMutation.isPending && (
-                    <span className="text-xs text-slate-500 dark:text-[#8b97ad]">Uploading logo...</span>
+                    <span role="status" className="text-xs text-slate-500 dark:text-[#8b97ad]">Uploading logo...</span>
                   )}
                 </div>
               </Field>
@@ -422,13 +422,13 @@ export function CompanySettings() {
               >
                 <div className="flex items-center gap-2">
                   <input
-                    type="color"
+                    type="color" aria-label="Brand color"
                     value={brandColor || "#6366f1"}
                     onChange={(e) => setBrandColor(e.target.value)}
                     className="h-8 w-8 cursor-pointer rounded border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-card p-0"
                   />
                   <input
-                    type="text"
+                    type="text" aria-label="Brand color hex value"
                     value={brandColor}
                     onChange={(e) => {
                       const v = e.target.value;
@@ -522,7 +522,7 @@ export function CompanySettings() {
                 : "Archive company"}
             </Button>
             {archiveMutation.isError && (
-              <span className="text-xs text-destructive">
+              <span role="alert" className="text-xs text-destructive">
                 {archiveMutation.error instanceof Error
                   ? archiveMutation.error.message
                   : "Failed to archive company"}
