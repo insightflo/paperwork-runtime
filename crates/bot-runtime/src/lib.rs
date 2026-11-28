@@ -23,6 +23,7 @@ pub mod endpoint_doctor;
 pub mod endpoint_http;
 pub mod endpoint_pairing;
 pub mod endpoint_protocol;
+pub mod endpoint_runner;
 pub mod endpoint_sync;
 pub mod endpoint_watch;
 #[cfg(unix)]
