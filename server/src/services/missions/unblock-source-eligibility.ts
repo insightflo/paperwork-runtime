@@ -7,7 +7,9 @@ import { alias } from "drizzle-orm/pg-core";
 export const MAX_SOURCE_ANCHORS = 5;
 
 export function isIneligibleUnblockSourceIssue(issue: { originKind: string | null; title?: string | null }) {
-  return ["mission_main_executor_unblock", "mission_main_executor_plan", "mission_main_executor_oversight"]
+  // Note: mission_main_executor_oversight is intentionally preserved as the
+  // canonical synthetic anchor source for issue-less tool-step recovery.
+  return ["mission_main_executor_unblock", "mission_main_executor_plan"]
     .includes(issue.originKind ?? "") || /^\s*\[(unblock|plan)\]/i.test(issue.title ?? "");
 }
 

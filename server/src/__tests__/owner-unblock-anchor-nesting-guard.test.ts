@@ -27,7 +27,7 @@ describe("unblock source guards across both producers", () => {
   it.each([
     ["manual", "[Unblock] QA source"], ["manual", "  [uNbLoCk] QA source"],
     ["manual", " [pLaN] QA source"], ["mission_main_executor_plan", "QA source"],
-    ["mission_main_executor_unblock", "QA source"], ["mission_main_executor_oversight", "QA source"],
+    ["mission_main_executor_unblock", "QA source"],
   ])("blocks origin=%s title=%s without writes or wakes", async (originKind, title) => {
     const w = await unblockWorld(db, { originKind, title }), wake = vi.fn(async () => {});
     expect(isIneligibleUnblockSourceIssue(w.source)).toBe(true);
