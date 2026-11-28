@@ -18,7 +18,7 @@ import { logger } from "../../middleware/logger.js";
 import { loadToolRecoveryBriefFacts } from "./tool-recovery-brief-facts.js";
 
 /** Hard runaway cap on recovery issues minted for a single (run.id, stepRun.id). */
-export const MAX_TOOL_RECOVERY_ANCHORS_PER_STEP_RUN = 5;
+export const MAX_TOOL_RECOVERY_ANCHORS_PER_STEP_RUN = 3;
 
 function nonhumanDecisionMatchesFailure(
   decision: MissionOwnerDecisionRecord,
