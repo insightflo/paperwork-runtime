@@ -24,7 +24,7 @@ import {
   reviewArtifactWorkProductMarkers,
 } from "./mission-plan-artifact-contract.js";
 import { buildDependencyIndex, unitDependsOn } from "./mission-plan-unit-dependencies.js";
-import { reviewPublicationVerificationTopology, type PlanningArtifactTool } from "./mission-plan-publication-contract.js";
+import { reviewPublicationQaReceiptTopology, reviewPublicationVerificationTopology, type PlanningArtifactTool } from "./mission-plan-publication-contract.js";
 import { extractUnitRoles, hasPostDeliveryReadbackQa, type PlanQaUnitRole } from "./mission-plan-unit-roles.js";
 import { reviewPlanAgainstIntentViaRust } from "./mission-core-client-s9.js";
 
@@ -35,6 +35,7 @@ export type PlanQaDiagnosticCode =
   | "missing_publish_unit"
   | "missing_publish_readback_qa"
   | "missing_publication_verify_tool"
+  | "missing_publication_qa_receipt_tool"
   | "missing_artifact_qa_before_delivery"
   | "invalid_artifact_qa_delivery_order"
   | "invalid_artifact_workproduct_marker"
@@ -128,6 +129,7 @@ export function reviewPlanAgainstIntent(input: {
     ...reviewArtifactWorkProductMarkers(selectedExecutionUnits, tools),
     ...reviewDeliveryToolPreflightMarkers(selectedExecutionUnits),
     ...reviewPublicationVerificationTopology(selectedExecutionUnits, tools),
+    ...reviewPublicationQaReceiptTopology(selectedExecutionUnits, tools),
   ];
   if (!intent.publish && !intent.audienceSplit && !intent.scenario) {
     return diagnostics;

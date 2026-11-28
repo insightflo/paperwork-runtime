@@ -224,7 +224,7 @@ export function IssuesList({
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2 rounded-[10px] border border-slate-200/90 bg-white/95 px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:h-10 sm:gap-3 sm:py-0">
         <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-          <Button size="sm" variant="outline" className="h-8 rounded-md border-blue-600/20 bg-blue-600 font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] hover:bg-blue-500 dark:border-[#60a5fa]/50 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]" onClick={() => openNewIssue(newIssueDefaults())}>
+          <Button type="button" aria-label="New Work Item" size="sm" variant="outline" className="h-8 rounded-md border-blue-600/20 bg-blue-600 font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] hover:bg-blue-500 dark:border-[#60a5fa]/50 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]" onClick={() => openNewIssue(newIssueDefaults())}>
             <Plus className="h-4 w-4 sm:mr-1" />
             <span className="hidden sm:inline">New Work Item</span>
           </Button>
@@ -249,14 +249,14 @@ export function IssuesList({
             <button
               className={`p-1.5 transition-colors ${viewState.viewMode === "list" ? "bg-white text-slate-950 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.08),inset_0_-2px_0_#2563eb] dark:bg-[#151d2b] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-2px_0_#60a5fa]" : "text-slate-500 hover:text-slate-950 dark:text-[#8f9db3] dark:hover:text-[#eef2f8]"}`}
               onClick={() => updateView({ viewMode: "list" })}
-              title="List view"
+              title="List view" aria-label="List view" type="button" aria-pressed={viewState.viewMode === "list"}
             >
               <List className="h-3.5 w-3.5" />
             </button>
             <button
               className={`p-1.5 transition-colors ${viewState.viewMode === "board" ? "bg-white text-slate-950 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.08),inset_0_-2px_0_#2563eb] dark:bg-[#151d2b] dark:text-[#eef2f8] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-2px_0_#60a5fa]" : "text-slate-500 hover:text-slate-950 dark:text-[#8f9db3] dark:hover:text-[#eef2f8]"}`}
               onClick={() => updateView({ viewMode: "board" })}
-              title="Board view"
+              title="Board view" aria-label="Board view" type="button" aria-pressed={viewState.viewMode === "board"}
             >
               <Columns3 className="h-3.5 w-3.5" />
             </button>
@@ -265,7 +265,7 @@ export function IssuesList({
           {/* Filter */}
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="sm" className={`h-8 rounded-md px-2 text-xs hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-[#151d2b] dark:hover:text-[#eef2f8] ${activeFilterCount > 0 ? "text-blue-700 dark:text-[#60a5fa]" : "text-slate-600 dark:text-[#8f9db3]"}`}>
+              <Button type="button" aria-label={activeFilterCount > 0 ? `Filters: ${activeFilterCount}` : "Filter"} variant="ghost" size="sm" className={`h-8 rounded-md px-2 text-xs hover:bg-slate-100 hover:text-slate-950 dark:hover:bg-[#151d2b] dark:hover:text-[#eef2f8] ${activeFilterCount > 0 ? "text-blue-700 dark:text-[#60a5fa]" : "text-slate-600 dark:text-[#8f9db3]"}`}>
                 <Filter className="h-3.5 w-3.5 sm:h-3 sm:w-3 sm:mr-1" />
                 <span className="hidden sm:inline">{activeFilterCount > 0 ? `Filters: ${activeFilterCount}` : "Filter"}</span>
                 {activeFilterCount > 0 && (
@@ -329,7 +329,7 @@ export function IssuesList({
                     <div className="space-y-0.5">
                       {statusOrder.map((s) => (
                         <label key={s} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-slate-100 dark:hover:bg-[#151d2b] cursor-pointer">
-                          <Checkbox
+                          <Checkbox aria-label={`Status: ${statusLabel(s)}`}
                             checked={viewState.statuses.includes(s)}
                             onCheckedChange={() => updateView({ statuses: toggleInArray(viewState.statuses, s) })}
                           />
@@ -348,7 +348,7 @@ export function IssuesList({
                       <div className="space-y-0.5">
                         {priorityOrder.map((p) => (
                           <label key={p} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-slate-100 dark:hover:bg-[#151d2b] cursor-pointer">
-                            <Checkbox
+                            <Checkbox aria-label={`Priority: ${statusLabel(p)}`}
                               checked={viewState.priorities.includes(p)}
                               onCheckedChange={() => updateView({ priorities: toggleInArray(viewState.priorities, p) })}
                             />
@@ -364,7 +364,7 @@ export function IssuesList({
                       <span className="text-xs text-muted-foreground">Assignee</span>
                       <div className="space-y-0.5 max-h-32 overflow-y-auto">
                         <label className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-slate-100 dark:hover:bg-[#151d2b] cursor-pointer">
-                          <Checkbox
+                          <Checkbox aria-label="Assignee: No assignee"
                             checked={viewState.assignees.includes("__unassigned")}
                             onCheckedChange={() => updateView({ assignees: toggleInArray(viewState.assignees, "__unassigned") })}
                           />
@@ -372,7 +372,7 @@ export function IssuesList({
                         </label>
                         {currentUserId && (
                           <label className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-slate-100 dark:hover:bg-[#151d2b] cursor-pointer">
-                            <Checkbox
+                            <Checkbox aria-label="Assignee: Me"
                               checked={viewState.assignees.includes("__me")}
                               onCheckedChange={() => updateView({ assignees: toggleInArray(viewState.assignees, "__me") })}
                             />
@@ -382,7 +382,7 @@ export function IssuesList({
                         )}
                         {(agents ?? []).map((agent) => (
                           <label key={agent.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-slate-100 dark:hover:bg-[#151d2b] cursor-pointer">
-                            <Checkbox
+                            <Checkbox aria-label={`Assignee: ${agent.name}`}
                               checked={viewState.assignees.includes(agent.id)}
                               onCheckedChange={() => updateView({ assignees: toggleInArray(viewState.assignees, agent.id) })}
                             />
@@ -398,7 +398,7 @@ export function IssuesList({
                         <div className="space-y-0.5 max-h-32 overflow-y-auto">
                           {labels.map((label) => (
                             <label key={label.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-slate-100 dark:hover:bg-[#151d2b] cursor-pointer">
-                              <Checkbox
+                              <Checkbox aria-label={`Label: ${label.name}`}
                                 checked={viewState.labels.includes(label.id)}
                                 onCheckedChange={() => updateView({ labels: toggleInArray(viewState.labels, label.id) })}
                               />
@@ -416,7 +416,7 @@ export function IssuesList({
                         <div className="space-y-0.5 max-h-32 overflow-y-auto">
                           {projects.map((project) => (
                             <label key={project.id} className="flex items-center gap-2 px-2 py-1 rounded-sm hover:bg-slate-100 dark:hover:bg-[#151d2b] cursor-pointer">
-                              <Checkbox
+                              <Checkbox aria-label={`Work Context: ${project.name}`}
                                 checked={viewState.projects.includes(project.id)}
                                 onCheckedChange={() => updateView({ projects: toggleInArray(viewState.projects, project.id) })}
                               />
@@ -436,7 +436,7 @@ export function IssuesList({
           {viewState.viewMode === "list" && (
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 rounded-md px-2 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-[#8f9db3] dark:hover:bg-[#151d2b] dark:hover:text-[#eef2f8]">
+                <Button type="button" aria-label="Sort" variant="ghost" size="sm" className="h-8 rounded-md px-2 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-[#8f9db3] dark:hover:bg-[#151d2b] dark:hover:text-[#eef2f8]">
                   <ArrowUpDown className="h-3.5 w-3.5 sm:h-3 sm:w-3 sm:mr-1" />
                   <span className="hidden sm:inline">Sort</span>
                 </Button>
@@ -480,7 +480,7 @@ export function IssuesList({
           {viewState.viewMode === "list" && (
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-8 rounded-md px-2 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-[#8f9db3] dark:hover:bg-[#151d2b] dark:hover:text-[#eef2f8]">
+                <Button type="button" aria-label="Group" variant="ghost" size="sm" className="h-8 rounded-md px-2 text-xs text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-[#8f9db3] dark:hover:bg-[#151d2b] dark:hover:text-[#eef2f8]">
                   <Layers className="h-3.5 w-3.5 sm:h-3 sm:w-3 sm:mr-1" />
                   <span className="hidden sm:inline">Group</span>
                 </Button>
@@ -511,16 +511,16 @@ export function IssuesList({
         </div>
       </div>
 
-      {isLoading && <PageSkeleton variant="issues-list" />}
-      {error && <p className="text-sm text-destructive">{error.message}</p>}
+      {isLoading && <div role="status" aria-live="polite" aria-label="Loading work items"><PageSkeleton variant="issues-list" /></div>}
+      {error && <p role="alert" className="text-sm text-destructive">{error.message}</p>}
 
       {!isLoading && filtered.length === 0 && viewState.viewMode === "list" && (
-        <EmptyState
+        <div aria-live="polite"><EmptyState
           icon={CircleDot}
           message="No work items match the current filters or search."
           action="Create Work Item"
           onAction={() => openNewIssue(newIssueDefaults())}
-        />
+        /></div>
       )}
 
       {viewState.viewMode === "board" ? (
@@ -551,7 +551,7 @@ export function IssuesList({
                     {group.label}
                   </span>
                 </CollapsibleTrigger>
-                <Button
+                <Button type="button" aria-label={`New Work Item in ${group.label}`}
                   variant="ghost"
                   size="icon-xs"
                   className="ml-auto text-muted-foreground"
@@ -647,10 +647,9 @@ export function IssuesList({
                         }}
                       >
                         <PopoverTrigger asChild>
-                          <button
+                          <button type="button"
                             className="flex w-[180px] shrink-0 items-center rounded-md px-2 py-1 text-slate-700 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 dark:text-[#b6c2d6] dark:hover:bg-[#151d2b] dark:focus-visible:ring-[#60a5fa]/35"
                             onClick={(e) => {
-                              e.preventDefault();
                               e.stopPropagation();
                             }}
                           >
@@ -681,7 +680,7 @@ export function IssuesList({
                         >
                           <input
                             className="mb-1 w-full border-b border-slate-200/90 bg-transparent px-2 py-1.5 text-xs text-slate-900 outline-none placeholder:text-slate-400 dark:border-white/[0.08] dark:text-[#eef2f8] dark:placeholder:text-[#627089]"
-                            placeholder="Search assignees..."
+                            placeholder="Search assignees..." aria-label="Search assignees"
                             value={assigneeSearch}
                             onChange={(e) => setAssigneeSearch(e.target.value)}
                             autoFocus

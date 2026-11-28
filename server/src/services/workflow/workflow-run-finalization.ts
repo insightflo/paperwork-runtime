@@ -41,14 +41,15 @@ export async function finalizeWorkflowRunState(
   hooks: WorkflowRunFinalizationHooks,
 ): Promise<typeof workflowRuns.$inferSelect> {
   const { normalizeRecord, getDynamicLaunchStepIds, buildWorkflowDefinitionExecutionShape } = hooks;
-  // [run-terminal-boundary v1] failureCascadeSkipped 는 reconciler cascade 로 죽은 관측이다 —
-  //   완료 스텝이 하나도 없는 런이 completed 로 재수렴하는 것을 항상 차단한다(플래그 무관).
-  //   완료 스텝이 하나라도 있으면 실제 산출이 존재하므로 기존 수렴을 유지한다
-  //   (workflow-failure-cascade-skip-sticky 계약 — sentinel 스텝은 종말 정산을 방해하지 않는다).
-  //   아래 cancelled 분기 우선순위는 그대로 유지된다.
+  // Recorded cascades must be revived before completion, even with completed predecessors.
+  // Legacy boolean-only sentinels keep their existing convergence contract.
   const hasCascadeKill = stepRuns.some((stepRun) => normalizeRecord(stepRun.metadata).failureCascadeSkipped === true);
   const hasCompletedStep = stepRuns.some((stepRun) => stepRun.status === "completed");
+  const hasUnrevivedCascade = stepRuns.some((stepRun) => stepRun.status === "skipped"
+    && normalizeRecord(stepRun.metadata).failureCascadeSkipped === true
+    && Object.prototype.hasOwnProperty.call(normalizeRecord(stepRun.metadata), "failureCascadeProvenance"));
   const hasFailedStep = stepRuns.some((stepRun) => stepRun.status === "failed")
+    || hasUnrevivedCascade
     || (hasCascadeKill && !hasCompletedStep);
   const hasCancelledStep = stepRuns.some((stepRun) => stepRun.status === "cancelled");
   const hasActiveStep = stepRuns.some((stepRun) => !WORKFLOW_STEP_TERMINAL_STATUSES.has(stepRun.status));

@@ -197,7 +197,7 @@ export function MissionResumeDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="tactile-card max-h-[85dvh] overflow-y-auto overscroll-contain rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_50px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_18px_50px_rgba(0,0,0,0.48)] sm:max-w-xl">
+      <DialogContent aria-modal="true" className="tactile-card max-h-[85dvh] overflow-y-auto overscroll-contain rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 tabular-nums shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_50px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_18px_50px_rgba(0,0,0,0.48)] sm:max-w-xl">
         <DialogHeader className="border-b border-slate-200/80 pb-3 dark:border-white/[0.07]">
           <DialogTitle className="text-slate-950 dark:text-slate-50">이 실행 이어서 진행</DialogTitle>
           <DialogDescription className="text-slate-600 dark:text-slate-400">
@@ -294,7 +294,7 @@ export function MissionResumeDialog({
 
           <div className="flex justify-end">
             {requestDelivered ? (
-              <Button type="button" variant="outline" className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:bg-[#111827]" onClick={() => onOpenChange(false)}>
+              <Button type="button" aria-label="닫기" variant="outline" className="border-slate-200/90 bg-white text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] hover:bg-slate-50 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:bg-[#111827]" onClick={() => onOpenChange(false)}>
                 닫기
               </Button>
             ) : (

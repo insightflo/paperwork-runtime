@@ -204,7 +204,7 @@ export function HumanReviewEvidenceChips({ packet }: { packet: HumanReviewPacket
 export function HumanReviewPacket({ packet, variant = "full" }: { packet: HumanReviewPacketValue | null; variant?: "full" | "compact" }) {
   const lang = useCompanyLanguage();
   if (!packet) return (
-    <section className="mt-3 rounded-[12px] border border-amber-300/80 bg-amber-50/90 p-4 text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_1px_2px_rgba(15,23,42,0.04)] dark:border-[#f59e0b]/40 dark:bg-[#f59e0b]/10 dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]" data-testid="human-review-incomplete">
+    <section role="alert" className="mt-3 rounded-[12px] border border-amber-300/80 bg-amber-50/90 p-4 text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_1px_2px_rgba(15,23,42,0.04)] dark:border-[#f59e0b]/40 dark:bg-[#f59e0b]/10 dark:text-[#edf2fb] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]" data-testid="human-review-incomplete">
       <div className="flex gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-[#f59e0b]" /><div>
         <h3 className="text-sm font-semibold text-slate-950 dark:text-[#edf2fb]">{L(lang, { en: "Insufficient review information to approve", ko: "판단 정보가 부족해 승인할 수 없습니다" })}</h3>
         <p className="mt-1 text-sm text-amber-900/80 dark:text-[#d6c7a8]">{L(lang, { en: "Ask the requester to provide the decision subject, exact source locations, interpretation, approval/rejection/error impacts and next steps.", ko: "판단 주제, 근거 원본의 정확한 위치, 해석, 승인·거절·오판 영향과 다음 단계를 요청자에게 보완받아야 합니다." })}</p>

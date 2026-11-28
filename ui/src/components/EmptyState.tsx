@@ -19,6 +19,7 @@ export function EmptyState({ icon: Icon, message, action, onAction }: EmptyState
       <p className="max-w-md text-sm font-medium leading-6 text-foreground/90 dark:text-[#eef2f8]">{message}</p>
       {action && onAction && (
         <Button
+          type="button"
           className="mt-4 border border-blue-600/20 bg-blue-600 text-white hover:bg-blue-500 dark:border-[#a3e635]/45 dark:bg-[#a3e635] dark:text-[#0b0f05] dark:hover:bg-[#bef264]"
           size="sm"
           onClick={onAction}

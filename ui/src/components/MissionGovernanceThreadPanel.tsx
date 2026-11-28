@@ -79,7 +79,7 @@ function EventList({ title, events, emptyText }: { title: string; events: Missio
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-muted-foreground">{emptyText}</p>
+        <p className="text-sm text-muted-foreground" aria-live="polite">{emptyText}</p>
       )}
     </section>
   );
@@ -100,7 +100,7 @@ export function MissionGovernanceThreadPanel({ missionId }: MissionGovernanceThr
           <History className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-medium">Governance Thread</h3>
         </div>
-        <p className="mt-3 text-sm text-muted-foreground">Loading governance thread…</p>
+        <p className="mt-3 text-sm text-muted-foreground" aria-live="polite">Loading governance thread…</p>
       </section>
     );
   }
@@ -112,7 +112,7 @@ export function MissionGovernanceThreadPanel({ missionId }: MissionGovernanceThr
           <AlertTriangle className="h-4 w-4 text-destructive" />
           <h3 className="text-sm font-medium">Governance Thread</h3>
         </div>
-        <p className="mt-3 text-sm text-destructive">
+        <p className="mt-3 text-sm text-destructive" role="alert">
           {error instanceof Error ? error.message : "Failed to load governance thread."}
         </p>
       </section>
@@ -144,7 +144,7 @@ export function MissionGovernanceThreadPanel({ missionId }: MissionGovernanceThr
       </div>
 
       {!hasEvents ? (
-        <p className="rounded border border-border/70 p-3 text-sm text-muted-foreground">No governance events observed yet.</p>
+        <p className="rounded border border-border/70 p-3 text-sm text-muted-foreground" aria-live="polite">No governance events observed yet.</p>
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           <EventList title="Latest events" events={latestEvents} emptyText="No latest governance events summarized yet." />

@@ -97,7 +97,7 @@ export function CapabilityMatrix({
       className={`tactile-card space-y-3 rounded-xl border border-border bg-card p-3 text-xs tabular-nums ${className}`.trim()}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5" aria-live="polite" aria-atomic="true">
           <ShieldCheck className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-400" aria-hidden />
           <h3 className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             Capability Matrix ({draft.length})

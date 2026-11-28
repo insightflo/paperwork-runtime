@@ -82,7 +82,7 @@ export function ApprovalCard({
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider tabular-nums", statusPillClass(approval.status))}>
+          <span aria-live="polite" className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider tabular-nums", statusPillClass(approval.status))}>
             {statusIcon(approval.status)}
             <span title={approval.status}>{humanLabel(lang, "approvalStatus", approval.status).label}</span>
           </span>
@@ -108,6 +108,8 @@ export function ApprovalCard({
       {showResolutionButtons && (
         <div className="flex gap-2 mt-4 pt-3 border-t border-border/70 dark:border-white/[0.07]">
           <Button
+            type="button"
+            aria-label={L(lang, { en: "Approve", ko: "승인" })}
             size="sm"
             className="border border-lime-700/25 bg-lime-700 text-white hover:bg-lime-600 dark:border-[#a3e635]/50 dark:bg-[#a3e635] dark:text-[#0b0f05] dark:hover:bg-[#bef264]"
             onClick={onApprove}
@@ -117,6 +119,8 @@ export function ApprovalCard({
             {L(lang, { en: "Approve", ko: "승인" })}
           </Button>
           <Button
+            type="button"
+            aria-label={L(lang, { en: "Reject", ko: "거절" })}
             variant="destructive"
             size="sm"
             onClick={onReject}
@@ -132,7 +136,7 @@ export function ApprovalCard({
             <Link to={detailLink}>{L(lang, { en: "View details", ko: "자세히 보기" })}</Link>
           </Button>
         ) : (
-          <Button variant="ghost" size="sm" className="text-xs px-0 dark:text-[#60a5fa] dark:hover:text-[#a3e635]" onClick={onOpen}>
+          <Button type="button" aria-label={L(lang, { en: "View details", ko: "자세히 보기" })} variant="ghost" size="sm" className="text-xs px-0 dark:text-[#60a5fa] dark:hover:text-[#a3e635]" onClick={onOpen}>
             {L(lang, { en: "View details", ko: "자세히 보기" })}
           </Button>
         )}

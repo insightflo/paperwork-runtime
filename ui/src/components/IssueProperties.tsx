@@ -101,7 +101,7 @@ function PropertyPicker({
     return (
       <div>
         <PropertyRow label={label}>
-          <button className={btnCn} onClick={() => onOpenChange(!open)}>
+          <button type="button" aria-expanded={open} className={btnCn} onClick={() => onOpenChange(!open)}>
             {triggerContent}
           </button>
           {extra}
@@ -119,7 +119,7 @@ function PropertyPicker({
     <PropertyRow label={label}>
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>
-          <button className={btnCn}>{triggerContent}</button>
+          <button type="button" aria-expanded={open} className={btnCn}>{triggerContent}</button>
         </PopoverTrigger>
         <PopoverContent className={cn("tactile-card dark:bg-[#0e131d] p-1", popoverClassName)} align={popoverAlign} collisionPadding={16}>
           {children}
@@ -165,7 +165,7 @@ function CopyableValue({ value, label, mono, className }: { value: string; label
         type="button"
         className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-colors hover:bg-accent/60 hover:text-foreground focus:opacity-100 group-hover:opacity-100 dark:hover:bg-white/[0.06]"
         onClick={handleCopy}
-        title={copied ? "Copied!" : "Copy to clipboard"}
+        title={copied ? "Copied!" : "Copy to clipboard"} aria-label={copied ? "Copied!" : "Copy to clipboard"} aria-live="polite"
       >
         {copied ? <Check className="h-3 w-3 text-lime-600 dark:text-[#a3e635]" /> : <Copy className="h-3 w-3" />}
       </button>
@@ -350,7 +350,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     <>
       <input
         className="mb-1 w-full border-b border-border/70 bg-transparent px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-blue-500 dark:border-white/[0.08] dark:text-[#eef2f8] dark:focus:border-[#60a5fa]"
-        placeholder="Search labels..."
+        placeholder="Search labels..." aria-label="Search labels"
         value={labelSearch}
         onChange={(e) => setLabelSearch(e.target.value)}
         autoFocus={!inline}
@@ -365,7 +365,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             const selected = (issue.labelIds ?? []).includes(label.id);
             return (
               <div key={label.id} className="flex items-center gap-1">
-                <button
+                <button type="button"
                   className={cn(
                     "flex items-center gap-2 flex-1 px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06] text-left",
                     selected && "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]"
@@ -379,7 +379,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
                   type="button"
                   className="p-1 text-muted-foreground hover:text-destructive rounded"
                   onClick={() => deleteLabel.mutate(label.id)}
-                  title={`Delete ${label.name}`}
+                  title={`Delete ${label.name}`} aria-label={`Delete ${label.name}`}
                 >
                   <Trash2 className="h-3 w-3" />
                 </button>
@@ -391,20 +391,20 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         <div className="flex items-center gap-1">
           <input
             className="h-7 w-7 p-0 rounded bg-transparent"
-            type="color"
+            type="color" aria-label="New label color"
             value={newLabelColor}
             onChange={(e) => setNewLabelColor(e.target.value)}
           />
           <input
             className="flex-1 px-2 py-1.5 text-xs bg-transparent outline-none rounded placeholder:text-muted-foreground/50"
-            placeholder="New label"
+            placeholder="New label" aria-label="New label name"
             value={newLabelName}
             onChange={(e) => setNewLabelName(e.target.value)}
           />
         </div>
-        <button
+        <button type="button"
           className="flex items-center justify-center gap-1.5 w-full px-2 py-1.5 text-xs rounded border border-border hover:bg-accent/60 dark:hover:bg-white/[0.06] disabled:opacity-50"
-          disabled={!newLabelName.trim() || createLabel.isPending}
+          disabled={!newLabelName.trim() || createLabel.isPending} aria-live="polite"
           onClick={() =>
             createLabel.mutate({
               name: newLabelName.trim(),
@@ -437,13 +437,13 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     <>
       <input
         className="mb-1 w-full border-b border-border/70 bg-transparent px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-blue-500 dark:border-white/[0.08] dark:text-[#eef2f8] dark:focus:border-[#60a5fa]"
-        placeholder="Search assignees..."
+        placeholder="Search assignees..." aria-label="Search assignees"
         value={assigneeSearch}
         onChange={(e) => setAssigneeSearch(e.target.value)}
         autoFocus={!inline}
       />
       <div className="max-h-48 overflow-y-auto overscroll-contain">
-        <button
+        <button type="button"
           className={cn(
             "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06]",
             !issue.assigneeAgentId && !issue.assigneeUserId && "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]"
@@ -453,7 +453,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           No assignee
         </button>
         {currentUserId && (
-          <button
+          <button type="button"
             className={cn(
               "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06]",
               issue.assigneeUserId === currentUserId && "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]",
@@ -468,7 +468,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
           </button>
         )}
         {issue.createdByUserId && issue.createdByUserId !== currentUserId && (
-          <button
+          <button type="button"
             className={cn(
               "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06]",
               issue.assigneeUserId === issue.createdByUserId && "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]",
@@ -489,7 +489,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             return a.name.toLowerCase().includes(q);
           })
           .map((a) => (
-          <button
+          <button type="button"
             key={a.id}
             className={cn(
               "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06]",
@@ -524,13 +524,13 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
     <>
       <input
         className="mb-1 w-full border-b border-border/70 bg-transparent px-2 py-1.5 text-xs outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-blue-500 dark:border-white/[0.08] dark:text-[#eef2f8] dark:focus:border-[#60a5fa]"
-        placeholder="Search work contexts..."
+        placeholder="Search work contexts..." aria-label="Search work contexts"
         value={projectSearch}
         onChange={(e) => setProjectSearch(e.target.value)}
         autoFocus={!inline}
       />
       <div className="max-h-48 overflow-y-auto overscroll-contain">
-        <button
+        <button type="button"
           className={cn(
             "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06] whitespace-nowrap",
             !issue.projectId && "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]"
@@ -555,7 +555,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
             return p.name.toLowerCase().includes(q);
           })
           .map((p) => (
-          <button
+          <button type="button"
             key={p.id}
             className={cn(
               "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded hover:bg-accent/60 dark:hover:bg-white/[0.06] whitespace-nowrap",
@@ -661,7 +661,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
         {currentProjectSupportsExecutionWorkspace && (
           <PropertyRow label="Execution Context">
             <div className="w-full space-y-2">
-              <select
+              <select aria-label="Execution context mode"
                 className="w-full rounded-md border border-border/80 bg-background/70 px-2 py-1.5 text-xs outline-none transition-colors focus:border-blue-500 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:border-[#60a5fa]"
                 value={currentExecutionWorkspaceSelection}
                 onChange={(e) => {
@@ -686,7 +686,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               </select>
 
               {currentExecutionWorkspaceSelection === "reuse_existing" && (
-                <select
+                <select aria-label="Existing execution context"
                   className="w-full rounded-md border border-border/80 bg-background/70 px-2 py-1.5 text-xs outline-none transition-colors focus:border-blue-500 dark:border-white/[0.09] dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:border-[#60a5fa]"
                   value={issue.executionWorkspaceId ?? ""}
                   onChange={(e) => {
@@ -713,7 +713,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
               )}
 
               {issue.currentExecutionWorkspace && (
-                <div className="space-y-0.5 border-l-2 border-l-amber-500 pl-2 text-[11px] text-muted-foreground dark:border-l-[#f59e0b] dark:text-[#9aa7bd]">
+                <div aria-live="polite" className="space-y-0.5 border-l-2 border-l-amber-500 pl-2 text-[11px] text-muted-foreground dark:border-l-[#f59e0b] dark:text-[#9aa7bd]">
                   <div style={{ overflowWrap: "anywhere" }}>
                     Current:{" "}
                     <Link

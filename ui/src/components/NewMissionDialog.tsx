@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { missionsApi, type CreateMissionInput, type MissionStatus } from "../api/missions";
 import { agentsApi } from "../api/agents";
@@ -28,6 +28,7 @@ const statusOptions: { value: MissionStatus; label: string }[] = [
 ];
 
 export function NewMissionDialog() {
+  const titleId = useId();
   const { newMissionOpen, closeNewMission, newMissionDefaults } = useDialog();
   const { selectedCompanyId, selectedCompany } = useCompany();
   const queryClient = useQueryClient();
@@ -36,7 +37,6 @@ export function NewMissionDialog() {
   const [status, setStatus] = useState<MissionStatus>("planning");
   const [ownerAgentId, setOwnerAgentId] = useState("");
   const [expanded, setExpanded] = useState(false);
-
   const [statusOpen, setStatusOpen] = useState(false);
   const [ownerOpen, setOwnerOpen] = useState(false);
   // [목적] new mission의 project 선택. optional → 빈 문자열 = 미지정.
@@ -124,7 +124,7 @@ export function NewMissionDialog() {
       }}
     >
       <DialogContent
-        showCloseButton={false}
+        showCloseButton={false} aria-modal="true" aria-labelledby={titleId} aria-describedby={undefined}
         className={cn(
           "tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_18px_50px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_50px_rgba(0,0,0,0.48)] p-0 gap-0 flex flex-col max-h-[calc(100dvh-2rem)] overflow-hidden",
           expanded ? "sm:max-w-2xl h-[calc(100dvh-2rem)]" : "sm:max-w-lg"
@@ -140,11 +140,11 @@ export function NewMissionDialog() {
               </span>
             )}
             <span className="text-muted-foreground/60">&rsaquo;</span>
-            <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">New Mission</span>
+            <span id={titleId} className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">New Mission</span>
           </div>
           <div className="flex items-center gap-1">
             <Button
-              variant="ghost"
+              type="button" aria-label={expanded ? "Collapse dialog" : "Expand dialog"} variant="ghost"
               size="icon-xs"
               className="text-slate-500 hover:text-[#2563eb] dark:text-slate-400 dark:hover:text-[#60a5fa]"
               onClick={() => setExpanded(!expanded)}
@@ -152,7 +152,7 @@ export function NewMissionDialog() {
               {expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </Button>
             <Button
-              variant="ghost"
+              type="button" aria-label="Close dialog" variant="ghost"
               size="icon-xs"
               className="text-slate-500 hover:text-[#2563eb] dark:text-slate-400 dark:hover:text-[#60a5fa]"
               onClick={() => { reset(); closeNewMission(); }}
@@ -166,7 +166,7 @@ export function NewMissionDialog() {
         <div className="px-4 pt-4 pb-2 shrink-0">
           <input
             className="w-full text-lg font-semibold bg-transparent text-slate-950 caret-[#65a30d] outline-none placeholder:text-slate-400 dark:text-slate-50 dark:caret-[#a3e635] dark:placeholder:text-slate-500"
-            placeholder="Mission title"
+            aria-label="Mission title" placeholder="Mission title"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onKeyDown={(e) => {
@@ -285,7 +285,7 @@ export function NewMissionDialog() {
         {/* Footer */}
         <div className="flex items-center justify-end px-4 py-2.5 border-t border-slate-200/80 bg-slate-50/50 dark:border-white/10 dark:bg-[#07090d]">
           <Button
-            size="sm" className="bg-[#4d7c0f] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:bg-[#3f6212] dark:bg-[#a3e635] dark:text-[#07090d] dark:hover:bg-[#bef264] tabular-nums"
+            type="button" size="sm" className="bg-[#4d7c0f] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:bg-[#3f6212] dark:bg-[#a3e635] dark:text-[#07090d] dark:hover:bg-[#bef264] tabular-nums"
             disabled={!title.trim() || createMission.isPending || (agents ?? []).length === 0}
             onClick={handleSubmit}
           >

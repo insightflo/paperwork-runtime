@@ -33,6 +33,8 @@ export function InlineEditor({
   const [multilineFocused, setMultilineFocused] = useState(false);
   const [draft, setDraft] = useState(value);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const displayRef = useRef<HTMLSpanElement>(null);
+  const restoreFocusRef = useRef(false);
   const markdownRef = useRef<MarkdownEditorRef>(null);
   const autosaveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
@@ -62,6 +64,10 @@ export function InlineEditor({
   }, []);
 
   useEffect(() => {
+    if (!editing && restoreFocusRef.current) {
+      restoreFocusRef.current = false;
+      displayRef.current?.focus();
+    }
     if (editing && inputRef.current) {
       inputRef.current.focus();
       inputRef.current.select();
@@ -94,9 +100,11 @@ export function InlineEditor({
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !multiline) {
       e.preventDefault();
+      restoreFocusRef.current = true;
       void commit();
     }
     if (e.key === "Escape") {
+      restoreFocusRef.current = !multiline;
       if (autosaveDebounceRef.current) {
         clearTimeout(autosaveDebounceRef.current);
       }
@@ -185,6 +193,7 @@ export function InlineEditor({
         />
         <div className="flex min-h-4 items-center justify-end pr-1">
           <span
+            aria-live="polite"
             className={cn(
               "text-[11px] transition-opacity duration-150",
               autosaveState === "error" ? "text-destructive" : "text-muted-foreground",
@@ -208,6 +217,7 @@ export function InlineEditor({
 
     return (
       <textarea
+        aria-label={placeholder}
         ref={inputRef}
         value={draft}
         rows={1}
@@ -242,7 +252,19 @@ export function InlineEditor({
       )}
       onClick={() => setEditing(true)}
     >
-      {value || placeholder}
+      <span
+        ref={displayRef}
+        role="button"
+        tabIndex={0}
+        aria-label={`Edit ${value || placeholder}`}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          setEditing(true);
+        }}
+      >
+        {value || placeholder}
+      </span>
     </DisplayTag>
   );
 }
