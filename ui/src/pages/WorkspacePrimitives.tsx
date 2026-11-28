@@ -89,7 +89,7 @@ export function WorkspacePrimitives() {
         <p className="text-sm text-muted-foreground">요청 상태와 에이전트가 함께 쓰는 표를 확인합니다.</p>
       </header>
       {!companyId ? (
-        <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+        <p role="status" aria-live="polite" className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
           회사를 선택하면 작업 공간을 볼 수 있습니다.
         </p>
       ) : (
@@ -100,14 +100,15 @@ export function WorkspacePrimitives() {
             <p role="alert" className="text-sm text-destructive">대기 요청을 해결하지 못했습니다. 다시 시도해 주세요.</p>
           )}
           {loading ? (
-            <div role="status" aria-label="작업 공간 불러오는 중" className="space-y-4">
+            <div role="status" aria-live="polite" aria-label="작업 공간 불러오는 중" className="space-y-4">
               <Skeleton className="h-24 w-full" /><Skeleton className="h-56 w-full" />
             </div>
           ) : (
-            <>
-              <AgentOpenWaitsBanner waits={waits} onResolve={resolveWait} resolvingId={resolvingId} />
+            <section aria-label="공유 작업 정보" className="space-y-4">
+              <h2 className="sr-only">공유 작업 정보</h2>
+              <div aria-live="polite"><AgentOpenWaitsBanner waits={waits} onResolve={resolveWait} resolvingId={resolvingId} /></div>
               <AgentSharedTablesPanel tables={tables} onCreateTable={createTable} creating={createMutation.isPending} />
-            </>
+            </section>
           )}
         </>
       )}

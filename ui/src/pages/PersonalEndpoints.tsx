@@ -154,17 +154,19 @@ export function PersonalEndpoints({ companyId: companyIdProp }: PersonalEndpoint
           >
             {pairingMutation.isPending ? "발급 중…" : "6자리 페어링 코드 발급"}
           </button>
-          {pairingMutation.data && (
-            <div data-pairing-code className="flex flex-wrap items-baseline gap-2">
-              <code className="text-2xl font-bold tracking-[0.3em]">{pairingMutation.data.code}</code>
-              <span className="text-xs text-muted-foreground">
-                <time dateTime={new Date(pairingMutation.data.expiresAtMs).toISOString()}>
-                  {new Date(pairingMutation.data.expiresAtMs).toLocaleString("ko-KR")}
-                </time>{" "}
-                까지 사용 가능
-              </span>
-            </div>
-          )}
+          <div aria-live="polite" aria-atomic="true">
+            {pairingMutation.data && (
+              <div data-pairing-code className="flex flex-wrap items-baseline gap-2">
+                <code className="text-2xl font-bold tracking-[0.3em]">{pairingMutation.data.code}</code>
+                <span className="text-xs text-muted-foreground">
+                  <time dateTime={new Date(pairingMutation.data.expiresAtMs).toISOString()}>
+                    {new Date(pairingMutation.data.expiresAtMs).toLocaleString("ko-KR")}
+                  </time>{" "}
+                  까지 사용 가능
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {pairingMutation.error && (
@@ -176,7 +178,7 @@ export function PersonalEndpoints({ companyId: companyIdProp }: PersonalEndpoint
 
       <section aria-label="연결된 단말 봇" className="space-y-3">
         <h2 className="text-base font-semibold">연결 상태</h2>
-        {endpointsQuery.isLoading && <PageSkeleton />}
+        {endpointsQuery.isLoading && <div role="status" aria-live="polite" aria-label="단말 봇 불러오는 중"><PageSkeleton /></div>}
         {endpointsQuery.error && (
           <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
             단말 봇 목록을 불러오지 못했습니다: {errorMessage(endpointsQuery.error)}
@@ -196,7 +198,7 @@ export function PersonalEndpoints({ companyId: companyIdProp }: PersonalEndpoint
       </section>
       <section aria-label="최근 로컬 작업 기록" className="space-y-3">
         <h2 className="text-base font-semibold">최근 로컬 작업 기록</h2>
-        {auditQuery.isLoading && <p role="status" className="text-sm text-muted-foreground">기록을 불러오는 중…</p>}
+        {auditQuery.isLoading && <p role="status" aria-live="polite" className="text-sm text-muted-foreground">기록을 불러오는 중…</p>}
         {auditQuery.error && (
           <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-sm text-destructive">
             로컬 작업 기록을 불러오지 못했습니다: {errorMessage(auditQuery.error)}
