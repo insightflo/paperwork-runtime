@@ -53,6 +53,12 @@ describe("stale_queued run failure suppression", () => {
     expect(composeRunFailureNotification(input)).toContain("런 실패");
   });
 
+  it("suppresses heartbeat_workflow_identity_mismatch guard cancellations", () => {
+    const input = { status: "cancelled", runId: base.runId, errorCode: "heartbeat_workflow_identity_mismatch" };
+    expect(shouldSuppressRunFailure(input)).toBe(true);
+    expect(composeRunFailureNotification(input)).toBeNull();
+  });
+
   it("keeps genuine failure alerts when only an unrelated code is present", () => {
     const input = { ...base, errorCode: "adapter_failed" };
     expect(shouldSuppressRunFailure(input)).toBe(false);

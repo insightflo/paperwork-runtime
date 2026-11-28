@@ -9,6 +9,7 @@ import type { PublicSocialAuthProvider } from "./auth/social-providers.js";
 import type { StorageService } from "./storage/types.js";
 import { httpLogger, errorHandler } from "./middleware/index.js";
 import { runtimeHttpMetrics } from "./middleware/runtime-http-metrics.js";
+import { securityHeadersMiddleware } from "./middleware/security-headers.js";
 import { actorMiddleware } from "./middleware/auth.js";
 import { createAuthRateLimiter } from "./middleware/auth-rate-limit.js";
 import { boardMutationGuard } from "./middleware/board-mutation-guard.js";
@@ -433,6 +434,7 @@ export async function createApp(
   // 가장 앞에 마운트해 body 파싱 실패 응답까지 포함하고, 수집 실패가 요청
   // 처리를 막지 않는다(계약은 middleware/runtime-http-metrics.ts 참조).
   app.use(runtimeHttpMetrics());
+  app.use(securityHeadersMiddleware());
 
   // Workflow public webhook: raw-body parser MUST run before the global 10MB
   // json parser so the 64KiB limit is enforced first (design review change 4).
