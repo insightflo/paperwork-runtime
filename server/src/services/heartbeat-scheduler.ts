@@ -29,6 +29,11 @@ export type HeartbeatSchedulerOptions = {
   recoveryIntervalMs?: number;
   recoveryStaleThresholdMs?: number;
   queuedStaleThresholdMs?: number;
+  sweepTimedOutExceptionHuddles?: (now: Date) => Promise<{
+    scanned?: number;
+    timedOut?: number;
+    wokeChair?: number;
+  }>;
 };
 
 export type HeartbeatScheduler = {
@@ -178,9 +183,20 @@ export function createHeartbeatScheduler(opts: HeartbeatSchedulerOptions): Heart
   };
 
   const tickTimers = async () => {
-    const result = await opts.heartbeat.tickTimers(new Date());
+    const now = new Date();
+    const result = await opts.heartbeat.tickTimers(now);
     if ((result.enqueued ?? 0) > 0) {
       opts.logger.info({ ...result }, "heartbeat timer tick enqueued runs");
+    }
+    if (opts.sweepTimedOutExceptionHuddles) {
+      try {
+        const sweepResult = await opts.sweepTimedOutExceptionHuddles(now);
+        if ((sweepResult?.timedOut ?? 0) > 0) {
+          opts.logger.info({ ...sweepResult }, "swept timed-out exception huddles");
+        }
+      } catch (err) {
+        opts.logger.error({ err }, "exception huddle timeout sweep failed; continuing timer tick");
+      }
     }
   };
 
