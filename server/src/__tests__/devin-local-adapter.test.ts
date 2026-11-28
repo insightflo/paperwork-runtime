@@ -74,6 +74,110 @@ describe("buildDevinLocalArgs", () => {
       "continue",
     ]);
   });
+
+  it("strips separate-form reserved flag overrides while preserving benign args", () => {
+    expect(
+      buildDevinLocalArgs({
+        model: "swe-2-1-max",
+        permissionMode: "dangerous",
+        extraArgs: [
+          "--verbose",
+          "--respect-workspace-trust",
+          "true",
+          "--process-model",
+          "out-of-process",
+          "-p",
+          "evil prompt",
+          "-r",
+          "evil-session",
+          "--prompt",
+          "evil prompt 2",
+          "--resume",
+          "evil-session-2",
+          "--model",
+          "evil-model",
+          "--permission-mode",
+          "never",
+          "--max-turns",
+          "10",
+        ],
+        prompt: "run the task",
+      }),
+    ).toEqual([
+      "--model",
+      "swe-2-1-max",
+      "--process-model",
+      "in-process",
+      "--permission-mode",
+      "dangerous",
+      "--respect-workspace-trust",
+      "false",
+      "--verbose",
+      "--max-turns",
+      "10",
+      "-p",
+      "run the task",
+    ]);
+  });
+
+  it("strips equals-form reserved flag overrides and the argument terminator", () => {
+    expect(
+      buildDevinLocalArgs({
+        model: "swe-2-1-max",
+        permissionMode: "dangerous",
+        extraArgs: [
+          "--process-model=out-of-process",
+          "--respect-workspace-trust=true",
+          "-p=evil prompt",
+          "-r=evil-session",
+          "--prompt=evil prompt",
+          "--resume=evil-session",
+          "--model=evil-model",
+          "--permission-mode=never",
+          "--",
+          "--verbose",
+        ],
+        prompt: "run the task",
+      }),
+    ).toEqual([
+      "--model",
+      "swe-2-1-max",
+      "--process-model",
+      "in-process",
+      "--permission-mode",
+      "dangerous",
+      "--respect-workspace-trust",
+      "false",
+      "--verbose",
+      "-p",
+      "run the task",
+    ]);
+  });
+
+  it("drops empty, whitespace-only, and NUL-containing tokens", () => {
+    expect(
+      buildDevinLocalArgs({
+        model: "swe-2-1-max",
+        permissionMode: "dangerous",
+        extraArgs: ["", "   ", "--verbose", "bad\0token", "--max-turns", "10", "\t"],
+        prompt: "run the task",
+      }),
+    ).toEqual([
+      "--model",
+      "swe-2-1-max",
+      "--process-model",
+      "in-process",
+      "--permission-mode",
+      "dangerous",
+      "--respect-workspace-trust",
+      "false",
+      "--verbose",
+      "--max-turns",
+      "10",
+      "-p",
+      "run the task",
+    ]);
+  });
 });
 
 describe("devinLocalSessionCodec", () => {
