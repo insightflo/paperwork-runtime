@@ -3,6 +3,7 @@ import {
   Inbox, CircleDot, LayoutDashboard, DollarSign, History, Network, BookOpen, BookOpenCheck,
   Brain, Boxes, Settings, Rocket, CalendarClock, MessageSquare, ShieldCheck, GitPullRequest,
   Workflow, ListChecks, UserRoundCheck, PanelLeftOpen, ChevronRight, FolderKanban, Bot,
+  Laptop, Table2,
   type LucideIcon,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -32,6 +33,8 @@ const ADMIN_NAV_ITEMS: Array<{ to: string; label: string; icon: LucideIcon }> = 
   { to: "/issues", label: "Work", icon: CircleDot }, { to: "/bots", label: "Bots", icon: Bot },
   { to: "/quality", label: "Quality", icon: ListChecks }, { to: "/org", label: "Org", icon: Network },
   { to: "/skills", label: "Skills", icon: Boxes }, { to: "/learning-review", label: "Learning", icon: BookOpenCheck },
+  { to: "/personal-endpoints", label: "개인 단말 봇", icon: Laptop },
+  { to: "/workspace-primitives", label: "공유 표 · 대기", icon: Table2 },
   { to: "/instructions", label: "Instructions", icon: BookOpen }, { to: "/agent-wiki", label: "Wiki", icon: Brain },
   { to: "/costs", label: "Costs", icon: DollarSign }, { to: "/activity", label: "Activity", icon: History },
   { to: "/channel-config", label: "Channel", icon: MessageSquare },
