@@ -12,7 +12,7 @@ import {
   type ChannelRoutingMember,
   type ChannelThreadStatus,
 } from "./collab-channel-state.js";
-import { dispatchChannelMessageToEndpoint } from "./endpoint-channel-dispatch.js";
+import { dispatchChannelMessageToEndpoint, dispatchChannelMessageToEndpointDb } from "./endpoint-channel-dispatch.js";
 import { globalEndpointBotPairingStore, type EndpointBotPairingService } from "./endpoint-bot-pairing.js";
 
 export type CollabThreadAuthorType = Exclude<ChannelAuthorType, "system">;
@@ -70,10 +70,10 @@ function requestedByActorType(authorType: ChannelAuthorType): "user" | "agent" {
   return authorType === "user" ? "user" : "agent";
 }
 
-/** endpointStore 주입은 테스트 격리용이며, 기본값은 endpointBotRoutes() 와 같은 전역 페어링 상태를 공유한다. */
+/** 명시적 endpointStore는 테스트 격리용이며, 운영 기본 경로는 DB의 페어링·작업 상태를 사용한다. */
 export function collabChannelsService(
   db: Db,
-  endpointStore: Pick<EndpointBotPairingService, "listEndpoints" | "enqueueLocalTask"> = globalEndpointBotPairingStore,
+  endpointStore?: Pick<EndpointBotPairingService, "listEndpoints" | "enqueueLocalTask">,
 ) {
   async function loadChannel(companyId: string, channelId: string) {
     const [channel] = await db.select().from(collabChannels).where(and(
@@ -226,9 +226,11 @@ export function collabChannelsService(
     //   폴더 스코프 로컬 작업을 큐잉하고, 결과 설명을 같은 스레드의 시스템 답글로 남긴다.
     //   matched:false 는 기존 동작과 100% 동일하며, 에이전트 @mention wakeup 흐름을 건드리지 않는다.
     //   시스템 답글은 직접 insert 되므로 상태머신 카운터나 재디스패치를 유발하지 않는다.
-    const endpointDispatch = dispatchChannelMessageToEndpoint({
-      companyId, messageText: input.body, store: endpointStore,
-    });
+    const endpointDispatch = endpointStore !== undefined || !db
+      ? dispatchChannelMessageToEndpoint({
+        companyId, messageText: input.body, store: endpointStore ?? globalEndpointBotPairingStore,
+      })
+      : await dispatchChannelMessageToEndpointDb(db, { companyId, messageText: input.body });
     if (endpointDispatch.matched) {
       await db.insert(collabMessages).values({
         companyId, channelId, threadId: thread.id, authorType: "system",
