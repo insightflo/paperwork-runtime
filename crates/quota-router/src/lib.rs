@@ -266,3 +266,11 @@ mod tests {
         assert_eq!(out.reason, "below_threshold"); // exhausted: last verdict survives
     }
 }
+
+pub mod backprop_score;
+
+pub mod fallback_telemetry;
+
+pub mod huddle_model;
+
+pub mod step_routing;

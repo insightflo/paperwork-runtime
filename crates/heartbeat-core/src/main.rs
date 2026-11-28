@@ -274,3 +274,6 @@ fn main() {
         process::exit(1);
     }
 }
+
+#[allow(dead_code)]
+mod watchdog_eval;

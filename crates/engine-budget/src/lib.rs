@@ -297,3 +297,9 @@ mod tests {
         assert_eq!((kept.get::<_, String>(0).as_str(), kept.get::<_, i32>(1)), ("resolved", 150));
     }
 }
+
+pub mod dgate_roi;
+
+pub mod tier_cap;
+
+pub mod token_cap;

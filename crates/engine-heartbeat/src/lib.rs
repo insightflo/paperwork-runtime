@@ -272,3 +272,13 @@ mod tests {
         assert!(Running.is_running() && !Running.is_terminal() && Cancelled.is_terminal());
     }
 }
+
+pub mod dgate_dispatch_policy;
+
+pub mod oversight_gate;
+
+pub mod slot_affinity;
+
+pub mod stall_recovery;
+
+pub mod zero_token_watchdog;
