@@ -151,13 +151,13 @@ function PredicateFormBuilder({ clauses, onChange, canAdmin }: PredicateFormBuil
         <div key={i} className="flex items-center gap-2">
           <Input
             className="h-7 text-xs w-32 shrink-0"
-            placeholder="field"
+            aria-label={`Condition ${i + 1} field`} placeholder="field"
             value={clause.field}
             disabled={!canAdmin}
             onChange={(e) => update(i, { field: e.target.value })}
           />
           <Select value={clause.operator} onValueChange={(v) => update(i, { operator: v as PredicateOperator })}>
-            <SelectTrigger className="h-7 text-xs w-32 shrink-0" disabled={!canAdmin}>
+            <SelectTrigger aria-label={`Condition ${i + 1} operator`} className="h-7 text-xs w-32 shrink-0" disabled={!canAdmin}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -173,7 +173,7 @@ function PredicateFormBuilder({ clauses, onChange, canAdmin }: PredicateFormBuil
                 ? "val1, val2, ..."
                 : "value"
             }
-            value={clause.value}
+            aria-label={`Condition ${i + 1} value`} value={clause.value}
             disabled={!canAdmin}
             onChange={(e) => update(i, { value: e.target.value })}
           />
@@ -182,7 +182,7 @@ function PredicateFormBuilder({ clauses, onChange, canAdmin }: PredicateFormBuil
             variant="ghost"
             size="icon-sm"
             className="shrink-0 text-muted-foreground hover:text-destructive"
-            onClick={() => removeClause(i)}
+            aria-label={`Remove condition ${i + 1}`} onClick={() => removeClause(i)}
             disabled={!canAdmin}
           >
             <Trash2 className="h-3 w-3" />
@@ -311,7 +311,7 @@ function RuleForm({ initial, canAdmin, onSubmit, onCancel, isPending, error }: R
       <div className="flex items-center justify-between gap-3">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-[#8b97ad]">{initial ? "Edit Rule" : "New Rule"}</p>
         <div className="flex shrink-0 gap-2">
-          <Button type="submit" size="sm" variant="outline" className="h-7 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]" disabled={isPending || !canAdmin} title={!canAdmin ? "Admin role required to save rules" : undefined}>
+          <Button type="submit" aria-live="polite" size="sm" variant="outline" className="h-7 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]" disabled={isPending || !canAdmin} title={!canAdmin ? "Admin role required to save rules" : undefined}>
             {isPending ? "Saving..." : initial ? "Save" : "Create"}
           </Button>
           <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={onCancel}>
@@ -324,7 +324,7 @@ function RuleForm({ initial, canAdmin, onSubmit, onCancel, isPending, error }: R
         <label className="text-xs text-slate-500 dark:text-[#8b97ad]">Name</label>
         <Input
           className="h-8 text-sm"
-          value={values.name}
+          aria-label="Name" value={values.name}
           disabled={!canAdmin}
           onChange={(e) => set("name", e.target.value)}
           placeholder="e.g. Block file writes outside workspace"
@@ -336,7 +336,7 @@ function RuleForm({ initial, canAdmin, onSubmit, onCancel, isPending, error }: R
         <div className="space-y-1.5 w-32 shrink-0">
           <label className="text-xs text-slate-500 dark:text-[#8b97ad]">Severity</label>
           <Select value={values.severity} onValueChange={(v) => set("severity", v as RuleSeverity)}>
-            <SelectTrigger className="h-8 text-sm" disabled={!canAdmin}>
+            <SelectTrigger aria-label="Severity" className="h-8 text-sm" disabled={!canAdmin}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -349,7 +349,7 @@ function RuleForm({ initial, canAdmin, onSubmit, onCancel, isPending, error }: R
         <div className="space-y-1.5 flex-1">
           <label className="text-xs text-slate-500 dark:text-[#8b97ad]">Action</label>
           <Select value={values.action} onValueChange={(v) => set("action", v)}>
-            <SelectTrigger className="h-8 text-sm" disabled={!canAdmin}>
+            <SelectTrigger aria-label="Action" className="h-8 text-sm" disabled={!canAdmin}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -360,7 +360,7 @@ function RuleForm({ initial, canAdmin, onSubmit, onCancel, isPending, error }: R
             </SelectContent>
           </Select>
           {values.action === "__custom__" && (
-            <Input className="h-8 text-sm mt-1" placeholder="custom action name" disabled={!canAdmin} onChange={(e) => set("action", e.target.value)} />
+            <Input aria-label="Custom action name" className="h-8 text-sm mt-1" placeholder="custom action name" disabled={!canAdmin} onChange={(e) => set("action", e.target.value)} />
           )}
         </div>
       </div>
@@ -369,7 +369,7 @@ function RuleForm({ initial, canAdmin, onSubmit, onCancel, isPending, error }: R
         <label className="text-xs text-slate-500 dark:text-[#8b97ad]">Violation message</label>
         <Input
           className="h-8 text-sm"
-          value={values.message}
+          aria-label="Violation message" value={values.message}
           disabled={!canAdmin}
           onChange={(e) => set("message", e.target.value)}
           placeholder="e.g. File writes outside workspace are not allowed"
@@ -395,7 +395,7 @@ function RuleForm({ initial, canAdmin, onSubmit, onCancel, isPending, error }: R
         {values.useRawJson ? (
           <textarea
             className={cn("h-32 w-full resize-y rounded-md border bg-white px-3 py-2 font-mono text-xs text-slate-900 whitespace-pre-wrap focus:outline-none focus:ring-1 focus:ring-blue-500 dark:bg-[#090c12] dark:text-[#eef2f8] dark:focus:ring-[#60a5fa]", jsonError ? "border-destructive" : "border-slate-200/90 dark:border-white/[0.1]")}
-            value={values.predicateJson}
+            aria-label="Predicate JSON" value={values.predicateJson}
             onChange={(e) => { set("predicateJson", e.target.value); setJsonError(null); }}
             disabled={!canAdmin}
             spellCheck={false}
@@ -403,7 +403,7 @@ function RuleForm({ initial, canAdmin, onSubmit, onCancel, isPending, error }: R
         ) : (
           <PredicateFormBuilder clauses={values.clauses} canAdmin={canAdmin} onChange={(c) => set("clauses", c)} />
         )}
-        {jsonError && <p className="text-xs text-destructive">{jsonError}</p>}
+        {jsonError && <p role="alert" className="text-xs text-destructive">{jsonError}</p>}
         <p className="text-xs text-slate-500 dark:text-[#8b97ad]">
           Operators: $eq $ne $contains $startsWith $endsWith $in $notIn $matches $gt $lt
         </p>
@@ -417,7 +417,7 @@ function RuleForm({ initial, canAdmin, onSubmit, onCancel, isPending, error }: R
           className={cn(values.enabled ? "text-lime-700 dark:text-[#a3e635]" : "text-slate-500 dark:text-[#8b97ad]")}
           onClick={() => { if (!canAdmin) return; set("enabled", !values.enabled); }}
           disabled={!canAdmin}
-          title={values.enabled ? "Enabled — click to disable" : "Disabled — click to enable"}
+          aria-label="Rule enabled" aria-pressed={values.enabled} title={values.enabled ? "Enabled — click to disable" : "Disabled — click to enable"}
         >
           {values.enabled
             ? <ToggleRight className="h-4 w-4" />
@@ -425,7 +425,7 @@ function RuleForm({ initial, canAdmin, onSubmit, onCancel, isPending, error }: R
         </Button>
         <span className="text-xs text-slate-500 dark:text-[#8b97ad]">{values.enabled ? "Enabled" : "Disabled"}</span>
       </div>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
     </form>
   );
 }
@@ -484,7 +484,7 @@ function RuleRow({ rule, companyId, canAdmin }: RuleRowProps) {
           <button
             className="shrink-0 p-0.5 text-slate-500 dark:text-[#8b97ad] hover:text-slate-900 dark:hover:text-[#eef2f8]"
             onClick={() => setExpanded((v) => !v)}
-            aria-label={expanded ? "Collapse rule" : "Expand rule"}
+            type="button" aria-expanded={expanded} aria-label={expanded ? "Collapse rule" : "Expand rule"}
           >
             {expanded
               ? <ChevronDown className="h-3.5 w-3.5" />
@@ -504,7 +504,7 @@ function RuleRow({ rule, companyId, canAdmin }: RuleRowProps) {
             onClick={() => { if (!canAdmin) return; toggleMutation.mutate(!rule.enabled); }}
             disabled={toggleMutation.isPending || !canAdmin}
             title={!canAdmin ? "Admin role required to change rules" : rule.enabled ? "Disable" : "Enable"}
-            aria-label={rule.enabled ? "Disable rule" : "Enable rule"}
+            type="button" aria-label={rule.enabled ? "Disable rule" : "Enable rule"}
           >
             {rule.enabled
               ? <ToggleRight className="h-4 w-4" />
@@ -514,7 +514,7 @@ function RuleRow({ rule, companyId, canAdmin }: RuleRowProps) {
             variant="ghost"
             size="sm"
             className="h-6 text-xs text-slate-500 dark:text-[#8b97ad] hover:text-slate-900 dark:hover:text-[#eef2f8]"
-            onClick={() => { if (!canAdmin) return; setEditing(true); }}
+            type="button" onClick={() => { if (!canAdmin) return; setEditing(true); }}
             disabled={!canAdmin}
             title={!canAdmin ? "Admin role required to edit rules" : undefined}
           >
@@ -527,7 +527,7 @@ function RuleRow({ rule, companyId, canAdmin }: RuleRowProps) {
             onClick={() => { if (!canAdmin) return; deleteMutation.mutate(); }}
             disabled={deleteMutation.isPending || !canAdmin}
             title={!canAdmin ? "Admin role required to delete rules" : undefined}
-            aria-label="Delete rule"
+            type="button" aria-label="Delete rule"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -638,7 +638,7 @@ export function WorktreeRules() {
 
   return (
     <div className="space-y-2 tabular-nums">
-      {error && <p className="text-sm text-destructive">{error instanceof Error ? error.message : String(error)}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error instanceof Error ? error.message : String(error)}</p>}
 
       {/* 1-row cockpit strip: rule counts double as severity-filter shortcuts */}
       <div className="cockpit-strip h-10 w-full gap-0 overflow-hidden rounded-xl border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)]" role="group" aria-label="Approval gates by severity">
@@ -685,7 +685,7 @@ export function WorktreeRules() {
                 <Segment key={s} pressed={severityFilter === s} onClick={() => setSeverityFilter(s)}>{s === "all" ? "All" : s}</Segment>
               ))}
             </div>
-            <span className="ml-auto hidden shrink-0 text-[11px] text-slate-500 dark:text-[#8b97ad] sm:block">
+            <span aria-live="polite" className="ml-auto hidden shrink-0 text-[11px] text-slate-500 dark:text-[#8b97ad] sm:block">
               <span className="font-mono text-slate-950 dark:text-[#eef2f8]">{filtered.length}</span> of {all.length}
             </span>
             {!canAdmin && (
@@ -699,7 +699,7 @@ export function WorktreeRules() {
             <Button
               size="sm"
               variant="outline"
-              aria-pressed={showCreateForm}
+              type="button" aria-pressed={showCreateForm}
               className="h-7 shrink-0 rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-500 dark:bg-[#2563eb] dark:text-[#f8fafc] dark:hover:bg-[#3b82f6]"
               onClick={() => { if (!canAdmin) return; setShowCreateForm((v) => !v); setCreateError(null); }}
               disabled={!canAdmin}

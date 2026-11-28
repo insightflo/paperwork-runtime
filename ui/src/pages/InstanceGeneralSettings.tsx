@@ -107,12 +107,12 @@ export function InstanceGeneralSettings() {
     setSearchParams(tab === "general" ? {} : { tab }, { replace: true });
 
   if (generalQuery.isLoading) {
-    return <div className="text-sm text-muted-foreground">Loading general settings...</div>;
+    return <div aria-live="polite" className="text-sm text-muted-foreground">Loading general settings...</div>;
   }
 
   if (generalQuery.error) {
     return (
-      <div className="text-sm text-destructive">
+      <div role="alert" className="text-sm text-destructive">
         {generalQuery.error instanceof Error
           ? generalQuery.error.message
           : "Failed to load general settings."}
@@ -170,7 +170,7 @@ export function InstanceGeneralSettings() {
               </div>
               <button
                 type="button"
-                aria-label="Toggle username log censoring"
+                aria-label="Toggle username log censoring" aria-pressed={censorUsernameInLogs}
                 disabled={toggleMutation.isPending}
                 className={cn(
                   "relative inline-flex h-5 w-9 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60",
@@ -216,7 +216,7 @@ export function InstanceGeneralSettings() {
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <label htmlFor="judgment-api-key" className="text-sm font-medium">API Key</label>
-                  <span className={judgmentKeyConfigured ? PILL_OK : PILL_WARN}>{judgmentKeyConfigured ? "키 등록됨" : "서버 환경 키"}</span>
+                  <span aria-live="polite" className={judgmentKeyConfigured ? PILL_OK : PILL_WARN}>{judgmentKeyConfigured ? "키 등록됨" : "서버 환경 키"}</span>
                 </div>
                 <Input id="judgment-api-key" type="password" value={judgmentDraft.judgmentApiKey} autoComplete="new-password"
                   disabled={judgmentDraft.clearJudgmentApiKey} className={cn(INPUT, "font-mono")}
@@ -224,7 +224,7 @@ export function InstanceGeneralSettings() {
                   onChange={(event) => setJudgmentDraft((draft) => ({ ...draft, judgmentApiKey: event.target.value }))} />
                 {judgmentKeyConfigured && (
                   <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <input type="checkbox" checked={judgmentDraft.clearJudgmentApiKey}
+                    <input aria-label="Clear key" type="checkbox" checked={judgmentDraft.clearJudgmentApiKey}
                       onChange={(event) => setJudgmentDraft((draft) => ({
                         ...draft, clearJudgmentApiKey: event.target.checked, judgmentApiKey: "",
                       }))} /> Clear key

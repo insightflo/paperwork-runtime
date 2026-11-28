@@ -72,7 +72,7 @@ export function AgentWiki() {
 
   if (!selectedCompanyId) {
     return (
-      <p className="text-sm text-slate-500 tabular-nums dark:text-[#8b97ad]">
+      <p aria-live="polite" className="text-sm text-slate-500 tabular-nums dark:text-[#8b97ad]">
         {L(lang, { en: "Select a company to view its wiki.", ko: "회사를 선택하세요." })}
       </p>
     );
@@ -139,7 +139,7 @@ export function AgentWiki() {
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400 dark:text-[#8b97ad]" />
               <Input
-                value={q}
+                aria-label={L(lang, { en: "Search title, symptoms, tags", ko: "제목·증상·태그 검색" })} value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder={L(lang, { en: "Search title, symptoms, tags", ko: "제목·증상·태그 검색" })}
                 className={cn(TOOLBAR_INPUT, "w-56 pl-8")}
@@ -167,10 +167,10 @@ export function AgentWiki() {
         <div className="min-w-0">
           {(() => {
             if (tab === "kb") return <KbTreePanel key={selectedCompanyId} companyId={selectedCompanyId} />;
-            if (isLoading) return <p className={cn(TACTILE_CARD, "px-4 py-3 font-mono text-xs text-slate-500 dark:text-[#8b97ad]")}>{L(lang, { en: "Loading…", ko: "불러오는 중…" })}</p>;
+            if (isLoading) return <p aria-live="polite" className={cn(TACTILE_CARD, "px-4 py-3 font-mono text-xs text-slate-500 dark:text-[#8b97ad]")}>{L(lang, { en: "Loading…", ko: "불러오는 중…" })}</p>;
             if (isError) {
               return (
-                <p className={cn(TACTILE_CARD, "whitespace-pre-wrap px-4 py-3 font-mono text-xs text-rose-700 dark:text-[#f87171]")}>
+                <p role="alert" className={cn(TACTILE_CARD, "whitespace-pre-wrap px-4 py-3 font-mono text-xs text-rose-700 dark:text-[#f87171]")}>
                   {L(lang, { en: "Failed to load", ko: "조회 실패" })}: {(error as Error)?.message ?? "unknown"}
                 </p>
               );
