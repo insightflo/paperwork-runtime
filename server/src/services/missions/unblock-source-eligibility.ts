@@ -3,8 +3,8 @@ import { and, eq, exists, gt, inArray, ne, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 // Shared circuit breaker for the card runaway: one anchor per human decision
-// round, at most five visible anchors even if every previous round is terminal.
-export const MAX_SOURCE_ANCHORS = 5;
+// round, at most three visible anchors even if every previous round is terminal.
+export const MAX_SOURCE_ANCHORS = 3;
 
 export function isIneligibleUnblockSourceIssue(issue: { originKind: string | null; title?: string | null }) {
   // Note: mission_main_executor_oversight is intentionally preserved as the
