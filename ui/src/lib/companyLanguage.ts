@@ -14,7 +14,14 @@ export function CompanyLanguageProvider({ language, children }: { language: Comp
 
 export function useCompanyLanguage(): CompanyDefaultLanguage {
   const language = useContext(CompanyLanguageContext);
-  const company = useContext(CompanyContext);
+  // Guard against partial test mocks of CompanyContext that only mock useCompany().
+  let ctx: typeof CompanyContext | undefined;
+  try {
+    ctx = CompanyContext;
+  } catch {
+    ctx = undefined;
+  }
+  const company = ctx ? useContext(ctx) : null;
   return language ?? resolveCompanyLanguage(company?.selectedCompany);
 }
 
