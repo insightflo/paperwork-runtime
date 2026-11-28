@@ -3,6 +3,7 @@ import { Navigate, Outlet, Route, Routes, useLocation, useParams } from "@/lib/r
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "./components/Layout";
+import { ErrorBoundaryWithNavigation } from "./components/ErrorBoundary";
 import { authApi } from "./api/auth";
 import { healthApi } from "./api/health";
 import { AuthPage } from "./pages/Auth";
@@ -420,7 +421,7 @@ export function App() {
   );
 
   return (
-    <>
+    <ErrorBoundaryWithNavigation>
       <Routes>
         <Route path="auth" element={<AuthPage />} />
         <Route path="board-claim/:token" element={<BoardClaimPage />} />
@@ -480,6 +481,6 @@ export function App() {
         </Route>
       </Routes>
       <OnboardingWizardMount />
-    </>
+    </ErrorBoundaryWithNavigation>
   );
 }
