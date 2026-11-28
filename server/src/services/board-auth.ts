@@ -27,11 +27,11 @@ export function tokenHashesMatch(left: string, right: string) {
 }
 
 export function createBoardApiToken() {
-  return `pcp_board_${randomBytes(24).toString("hex")}`;
+  return `pwk_board_${randomBytes(24).toString("hex")}`;
 }
 
 export function createCliAuthSecret() {
-  return `pcp_cli_auth_${randomBytes(24).toString("hex")}`;
+  return `pwk_cli_auth_${randomBytes(24).toString("hex")}`;
 }
 
 export function boardApiKeyExpiresAt(nowMs: number = Date.now()) {

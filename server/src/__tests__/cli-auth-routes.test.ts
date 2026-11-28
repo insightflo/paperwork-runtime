@@ -70,8 +70,8 @@ describe("cli auth routes", () => {
         id: "challenge-1",
         expiresAt: new Date("2026-03-23T13:00:00.000Z"),
       },
-      challengeSecret: "pcp_cli_auth_secret",
-      pendingBoardToken: "pcp_board_token",
+      challengeSecret: "pwk_cli_auth_secret",
+      pendingBoardToken: "pwk_board_token",
     });
 
     const app = await createApp({ type: "none", source: "none" });
@@ -86,13 +86,13 @@ describe("cli auth routes", () => {
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({
       id: "challenge-1",
-      token: "pcp_cli_auth_secret",
-      boardApiToken: "pcp_board_token",
-      approvalPath: "/cli-auth/challenge-1?token=pcp_cli_auth_secret",
+      token: "pwk_cli_auth_secret",
+      boardApiToken: "pwk_board_token",
+      approvalPath: "/cli-auth/challenge-1?token=pwk_cli_auth_secret",
       pollPath: "/cli-auth/challenges/challenge-1",
       expiresAt: "2026-03-23T13:00:00.000Z",
     });
-    expect(res.body.approvalUrl).toContain("/cli-auth/challenge-1?token=pcp_cli_auth_secret");
+    expect(res.body.approvalUrl).toContain("/cli-auth/challenge-1?token=pwk_cli_auth_secret");
   }, 15_000);
 
   it("marks challenge status as requiring sign-in for anonymous viewers", async () => {
@@ -111,7 +111,7 @@ describe("cli auth routes", () => {
     });
 
     const app = await createApp({ type: "none", source: "none" });
-    const res = await request(app).get("/api/cli-auth/challenges/challenge-1?token=pcp_cli_auth_secret");
+    const res = await request(app).get("/api/cli-auth/challenges/challenge-1?token=pwk_cli_auth_secret");
 
     expect(res.status).toBe(200);
     expect(res.body.requiresSignIn).toBe(true);
@@ -145,7 +145,7 @@ describe("cli auth routes", () => {
     });
     const res = await request(app)
       .post("/api/cli-auth/challenges/challenge-1/approve")
-      .send({ token: "pcp_cli_auth_secret", reviewAcknowledged: true });
+      .send({ token: "pwk_cli_auth_secret", reviewAcknowledged: true });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -167,7 +167,7 @@ describe("cli auth routes", () => {
 
   it("blocks CLI approval when the operator has not acknowledged the source and impact", async () => {
     const app = await createApp({ type: "board", userId: "user-1", source: "session", isInstanceAdmin: false, companyIds: ["company-1"] });
-    const res = await request(app).post("/api/cli-auth/challenges/challenge-1/approve").send({ token: "pcp_cli_auth_secret" });
+    const res = await request(app).post("/api/cli-auth/challenges/challenge-1/approve").send({ token: "pwk_cli_auth_secret" });
     expect(res.status).toBe(400);
     expect(mockBoardAuthService.approveCliAuthChallenge).not.toHaveBeenCalled();
   });
@@ -194,7 +194,7 @@ describe("cli auth routes", () => {
     });
     const res = await request(app)
       .post("/api/cli-auth/challenges/challenge-2/approve")
-      .send({ token: "pcp_cli_auth_secret", reviewAcknowledged: true });
+      .send({ token: "pwk_cli_auth_secret", reviewAcknowledged: true });
 
     expect(res.status).toBe(200);
     expect(mockBoardAuthService.resolveBoardActivityCompanyIds).toHaveBeenCalledWith({
