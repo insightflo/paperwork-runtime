@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BreadcrumbBar } from "../BreadcrumbBar";
 import { MobileBottomNav } from "../MobileBottomNav";
 import { CommandPalette } from "../CommandPalette";
+import { Sidebar } from "../Sidebar";
 
 const hoisted = vi.hoisted(() => ({
   crumbs: [] as Array<{ label: string; href?: string }>,
@@ -37,6 +38,9 @@ vi.mock("../../context/SidebarContext", () => ({
 vi.mock("../../hooks/useInboxBadge", () => ({
   useInboxBadge: () => ({ inbox: 0 }),
 }));
+
+vi.mock("../SidebarAgents", () => ({ SidebarAgents: () => null }));
+vi.mock("../SidebarProjects", () => ({ SidebarProjects: () => null }));
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -151,6 +155,29 @@ describe("NavComponentsA11y", () => {
     const current = host.querySelector('a[aria-current="page"]');
     expect(current).not.toBeNull();
     expect(current!.textContent).toContain("Missions");
+  });
+
+  it("Sidebar labels collaboration threads separately from channel configuration", async () => {
+    await renderWith(
+      <QueryClientProvider client={makeQueryClient()}>
+        <Sidebar />
+      </QueryClientProvider>,
+    );
+
+    const threads = host.querySelector<HTMLAnchorElement>('a[href="/channels"]');
+    expect(threads).not.toBeNull();
+    expect(threads!.textContent).toBe("Threads");
+
+    const toggle = host.querySelector<HTMLButtonElement>('button[aria-label="운영 · 관리 도구"]');
+    expect(toggle).not.toBeNull();
+    await act(async () => {
+      toggle!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const channelConfig = host.querySelector<HTMLAnchorElement>('a[href="/channel-config"]');
+    expect(channelConfig).not.toBeNull();
+    expect(channelConfig!.textContent).toBe("Channel");
+    expect(threads!.textContent).not.toBe(channelConfig!.textContent);
   });
 
   it("CommandPalette dialog has an accessible name and a labelled search input", async () => {

@@ -1056,7 +1056,7 @@ export function CompanySkills() {
             <a
               href="https://skills.sh"
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="flex items-start justify-between px-3 py-3 text-slate-900 dark:text-[#edf2fb] no-underline transition-colors hover:bg-slate-100 dark:hover:bg-[#141b29] border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] rounded-md"
             >
               <span className="min-w-0">
@@ -1070,7 +1070,7 @@ export function CompanySkills() {
             <a
               href="https://github.com/search?q=SKILL.md&type=code"
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="flex items-start justify-between px-3 py-3 text-slate-900 dark:text-[#edf2fb] no-underline transition-colors hover:bg-slate-100 dark:hover:bg-[#141b29] border border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] rounded-md"
             >
               <span className="min-w-0">

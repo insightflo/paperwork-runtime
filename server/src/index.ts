@@ -30,6 +30,7 @@ import { logger } from "./middleware/logger.js";
 import { setupLiveEventsWebSocketServer } from "./realtime/live-events-ws.js";
 import { heartbeatService, reconcilePersistedAgentStatusOnStartup, reconcilePersistedRuntimeServicesOnStartup } from "./services/index.js";
 import { createHeartbeatScheduler } from "./services/heartbeat-scheduler.js";
+import { runExceptionHuddleTimeoutSweep } from "./services/missions/exception-huddle-timeout-db.js";
 import { closeSharedPaperworkEngineClient, runOrderedShutdownSteps } from "./services/paperwork-engine-runtime.js";
 import { createStorageServiceFromConfig } from "./storage/index.js";
 import { printStartupBanner } from "./startup-banner.js";
@@ -849,6 +850,7 @@ async function startServerWithRuntime(context: ServerShutdownContext): Promise<S
       heartbeat,
       logger,
       timerIntervalMs: config.heartbeatSchedulerIntervalMs,
+      sweepTimedOutExceptionHuddles: (now) => runExceptionHuddleTimeoutSweep(db, { now }),
     });
     context.heartbeatScheduler.start();
   }

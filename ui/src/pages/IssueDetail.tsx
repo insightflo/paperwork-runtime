@@ -895,7 +895,7 @@ export function IssueDetail() {
                 <a
                   href={attachment.contentPath}
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="text-xs hover:underline truncate"
                   title={attachment.originalFilename ?? attachment.id}
                 >
@@ -915,7 +915,7 @@ export function IssueDetail() {
                 {attachment.contentType} · {(attachment.byteSize / 1024).toFixed(1)} KB
               </p>
               {isImageAttachment(attachment) && (
-                <a href={attachment.contentPath} target="_blank" rel="noreferrer">
+                <a href={attachment.contentPath} target="_blank" rel="noopener noreferrer">
                   <img
                     src={attachment.contentPath}
                     alt={attachment.originalFilename ?? "attachment"}

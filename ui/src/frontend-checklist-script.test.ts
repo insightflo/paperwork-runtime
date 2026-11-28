@@ -75,6 +75,22 @@ describe("frontend checklist command", () => {
     expect(result.output).toContain("security/ext-links");
   });
 
+  it("rejects target blank links that use noreferrer without noopener", () => {
+    const uiDir = fixture();
+    writeFileSync(join(uiDir, "src/example.tsx"), '<a target="_blank" rel="noreferrer">example</a>');
+    const result = audit(["--strict"], uiDir);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("security/ext-links");
+    expect(result.output).toContain("without a rel containing noopener");
+  });
+
+  it("accepts target blank links whose rel contains noopener", () => {
+    const uiDir = fixture();
+    writeFileSync(join(uiDir, "src/example.tsx"), '<a target="_blank" rel="noopener noreferrer">example</a>');
+    const result = audit(["--strict"], uiDir);
+    expect(result.status, result.output).toBe(0);
+  });
+
   it("accepts all three CSS rules when explicitly enabled", () => {
     const result = audit(["--strict", "--with-css"], fixture());
     expect(result.status, result.output).toBe(0);

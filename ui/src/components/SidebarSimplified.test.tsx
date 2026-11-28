@@ -111,10 +111,12 @@ describe("SidebarSimplified (Stage 31B W2)", () => {
     const destinations = [
       ["/personal-endpoints", "개인 단말 봇"],
       ["/workspace-primitives", "공유 표 · 대기"],
+      ["/channel-config", "Channel"],
     ] as const;
     for (const [href] of destinations) expect(link(href)).toBeNull();
+    expect(link("/channels")?.textContent).toBe("Threads");
     expect(Array.from(host.querySelectorAll('nav[aria-label="워크스페이스"] a'), (item) => item.textContent))
-      .toEqual(["Channels", "Missions", "Agents", "Inbox", "Settings"]);
+      .toEqual(["Threads", "Missions", "Agents", "Inbox", "Settings"]);
 
     await act(async () => {
       toolsToggle().dispatchEvent(new MouseEvent("click", { bubbles: true }));

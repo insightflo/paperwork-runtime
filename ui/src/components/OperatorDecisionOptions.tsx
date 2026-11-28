@@ -83,7 +83,7 @@ export function OperatorDecisionOptions({
         </span>
         <OperatorDecisionFacts facts={uniqueDecisionFacts(option.facts, commonFacts)} />
         {option.evidenceRefs.map((ref) => (
-          <a key={ref.href} className="mt-2 block text-xs" href={ref.href} target="_blank" rel="noreferrer">
+          <a key={ref.href} className="mt-2 block text-xs" href={ref.href} target="_blank" rel="noopener noreferrer">
             {ref.label}
           </a>
         ))}

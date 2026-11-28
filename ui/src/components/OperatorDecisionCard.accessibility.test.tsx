@@ -117,7 +117,7 @@ describe("OperatorDecisionCard accessibility", () => {
     expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
     expect(html).not.toContain("<img");
     expect(html).toContain('target="_blank"');
-    expect(html).toContain('rel="noreferrer"');
+    expect(html).toContain('rel="noopener noreferrer"');
   });
 
   it("uses checkboxes for multi-select and no options for action cards", () => {

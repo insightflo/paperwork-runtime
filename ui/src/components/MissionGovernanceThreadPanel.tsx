@@ -3,9 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, History, ShieldCheck } from "lucide-react";
 import { missionsApi, type MissionGovernanceThreadEvent } from "../api/missions";
 import { queryKeys } from "../lib/queryKeys";
+import { ExceptionHuddleBadge, type ExceptionHuddleBadgeProps } from "./ExceptionHuddleBadge";
 
 interface MissionGovernanceThreadPanelProps {
   missionId: string;
+  activeHuddle?: Omit<ExceptionHuddleBadgeProps, "className"> | null;
 }
 
 function formatThreadDate(value: string | null | undefined) {
@@ -85,7 +87,7 @@ function EventList({ title, events, emptyText }: { title: string; events: Missio
   );
 }
 
-export function MissionGovernanceThreadPanel({ missionId }: MissionGovernanceThreadPanelProps) {
+export function MissionGovernanceThreadPanel({ missionId, activeHuddle }: MissionGovernanceThreadPanelProps) {
   const lang = useCompanyLanguage();
   const { data: thread, isLoading, error } = useQuery({
     queryKey: queryKeys.missions.governanceThread(missionId),
@@ -123,6 +125,9 @@ export function MissionGovernanceThreadPanel({ missionId }: MissionGovernanceThr
   const latestEvents = thread?.summary.latestEvents ?? [];
   const openDecisions = thread?.summary.openDecisions ?? [];
   const hasEvents = totalEventCount > 0 || latestEvents.length > 0 || openDecisions.length > 0;
+  const readOnlyBadge = (
+    <span className="rounded-full border border-border px-2 py-1 text-xs text-muted-foreground">read-only</span>
+  );
 
   return (
     <section className="rounded-md border border-border p-4 space-y-4" aria-label="Governance Thread">
@@ -134,7 +139,12 @@ export function MissionGovernanceThreadPanel({ missionId }: MissionGovernanceThr
             <p className="text-xs text-muted-foreground">{L(lang, { en: "Diagnostic evidence and decision history only", ko: "진단 근거와 결정 이력만 표시합니다" })}</p>
           </div>
         </div>
-        <span className="rounded-full border border-border px-2 py-1 text-xs text-muted-foreground">read-only</span>
+        {activeHuddle ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <ExceptionHuddleBadge {...activeHuddle} />
+            {readOnlyBadge}
+          </div>
+        ) : readOnlyBadge}
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">

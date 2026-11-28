@@ -15,7 +15,7 @@ const INSET_PANEL_CLASS =
 function SourceLink({ href, children }: { href: string; children: React.ReactNode }) {
   return href.startsWith("/")
     ? <Link to={href} className="inline-flex items-center gap-1 font-medium text-blue-700 transition-colors hover:text-blue-900 dark:text-[#60a5fa] dark:hover:text-[#93c5fd]">{children}<ArrowUpRight className="h-3 w-3" /></Link>
-    : <a href={href} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-blue-700 transition-colors hover:text-blue-900 dark:text-[#60a5fa] dark:hover:text-[#93c5fd]">{children}<ArrowUpRight className="h-3 w-3" /></a>;
+    : <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-blue-700 transition-colors hover:text-blue-900 dark:text-[#60a5fa] dark:hover:text-[#93c5fd]">{children}<ArrowUpRight className="h-3 w-3" /></a>;
 }
 
 /**

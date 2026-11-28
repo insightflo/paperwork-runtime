@@ -366,7 +366,7 @@ export function OperatorDecisionCard({ decision, onResolve }: OperatorDecisionCa
           ref.uri.startsWith("http:") || ref.uri.startsWith("https:") || ref.uri.startsWith("/")
             ? (ref.uri.startsWith("/")
                 ? <Link key={ref.uri} to={ref.uri}>{ref.label}</Link>
-                : <a key={ref.uri} href={ref.uri} target="_blank" rel="noreferrer">{ref.label}</a>)
+                : <a key={ref.uri} href={ref.uri} target="_blank" rel="noopener noreferrer">{ref.label}</a>)
             : <span key={ref.uri}>{ref.label}</span>
         ))}
       </div>

@@ -113,7 +113,7 @@ export function RunSessionAndIssues({ run, adapterType }: { run: HeartbeatRun; a
                 className="underline underline-offset-2 ml-1 break-all"
                 style={{ color: "var(--openbot-accent-text)" }}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
               >
                 {claudeLoginResult.loginUrl}
               </a>

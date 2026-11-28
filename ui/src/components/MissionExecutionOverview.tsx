@@ -456,7 +456,7 @@ export function MissionExecutionOverview({ missionId, mission }: MissionExecutio
                                       <a
                                         href={product.url}
                                         target="_blank"
-                                        rel="noreferrer"
+                                        rel="noopener noreferrer"
                                         className="text-xs font-medium text-blue-400 hover:underline break-words"
                                       >
                                         {product.title}

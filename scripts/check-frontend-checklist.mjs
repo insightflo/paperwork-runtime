@@ -10,7 +10,7 @@
 //   SEO/Static: ui/public/robots.txt exists and is non-empty; ui/public/site.webmanifest
 //     is valid JSON with a non-empty "name" and a non-empty "icons" array.
 //   Security: ui/src/**/*.{ts,tsx} (excluding *.test.*) — every <a target="_blank"> must
-//     carry a rel attribute containing noopener or noreferrer.
+//     carry a rel attribute containing noopener.
 //   Accessibility: same file set — every <img> must carry an alt attribute (alt="" is
 //     allowed for decorative images).
 //   CSS (opt-in): ui/src/index.css must include reduced-motion, print, and
@@ -127,9 +127,9 @@ function checkSrc() {
       const target = attrValue(raw, "target");
       if (target === null || !target.includes("_blank")) continue;
       const rel = attrValue(raw, "rel");
-      if (rel === null || !/\b(?:noopener|noreferrer)\b/.test(rel)) {
+      if (rel === null || !/\bnoopener\b/.test(rel)) {
         add("error", displayPath, lineOf(source, index), "security/ext-links",
-          '<a target="_blank"> without a rel containing noopener or noreferrer',
+          '<a target="_blank"> without a rel containing noopener',
           'add rel="noopener noreferrer" to this <a> tag');
       }
     }

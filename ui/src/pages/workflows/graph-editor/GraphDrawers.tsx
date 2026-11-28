@@ -56,7 +56,7 @@ export function WorkflowGraphExecutionEvidenceDrawer({
               <div key={product.id} style={workflowGraphTestDrawerModeStyle(product.isPrimary ? "success" : "neutral")}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "6px", minWidth: 0 }}>
                   {product.url ? (
-                    <a href={product.url} target="_blank" rel="noreferrer" style={{ color: "var(--link, #60a5fa)", fontSize: "12px", fontWeight: 700, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <a href={product.url} target="_blank" rel="noopener noreferrer" style={{ color: "var(--link, #60a5fa)", fontSize: "12px", fontWeight: 700, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {product.title}
                     </a>
                   ) : (

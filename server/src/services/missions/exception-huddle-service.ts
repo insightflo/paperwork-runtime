@@ -14,12 +14,8 @@ import {
 } from "@paperclipai/shared/validators/exception-huddle";
 import { HttpError, notFound } from "../../errors.js";
 import { classifyExceptionHuddleEligibility } from "./exception-huddle-classifier.js";
-import {
-  createInitialExceptionHuddleState,
-  evaluateHuddleDecision,
-  evaluateHuddleTurn,
-  type ExceptionHuddleState,
-} from "./exception-huddle-state.js";
+import { createInitialExceptionHuddleState, evaluateHuddleDecision, evaluateHuddleTurn, type ExceptionHuddleState } from "./exception-huddle-state.js";
+import { recordExceptionHuddleExecutionPlan } from "./exception-huddle-decision-audit.js";
 
 const roundTurnsSchema = z.object({
   "1": z.array(exceptionHuddleRoleSchema),
@@ -278,10 +274,14 @@ export async function decideExceptionHuddle(
       },
     });
     await tx.update(collabThreads).set({ status: "resolved", updatedAt: now }).where(eq(collabThreads.id, record.thread.id));
+    const audit = await recordExceptionHuddleExecutionPlan(txDb, {
+      companyId: input.companyId, threadId: record.thread.id, huddle: result.state, now,
+    });
     return {
       threadId: record.thread.id,
       huddle: { ...result.state, failureSummary },
       nextAction: result.state.decision!.kind,
+      executionPlan: audit.recorded ? audit.plan : null,
     };
   });
 }
