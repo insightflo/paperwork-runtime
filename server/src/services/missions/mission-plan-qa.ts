@@ -122,9 +122,18 @@ export function reviewPlanAgainstIntent(input: {
   // [Rust opt-in] PAPERCLIP_MISSION_CORE_BIN 설정 시 9D 서브커맨드를 우선 실행한다. 단 critiqueHook
   //   이 등록돼 있으면 Rust 를 우회하고 TS 를 직접 실행한다(LLM 확장점 활성 시 검증된 TS 경로 유지).
   //   null(게이트 폐쇄/스폰 실패/non-zero 종료/shape 불량)이면 아래 TS 본문이 실행된다.
-  const viaRust = getMissionPlanQaCritiqueHook() === null ? reviewPlanAgainstIntentViaRust(input) : null;
-  if (viaRust !== null) return viaRust;
   const { intent, selectedExecutionUnits, tools = [] } = input;
+  const viaRust = getMissionPlanQaCritiqueHook() === null ? reviewPlanAgainstIntentViaRust(input) : null;
+  if (viaRust !== null) {
+    // Always enforce the Stage 40 publication QA receipt topology gate even when the Rust
+    // mission-core binary returns early (Rust 9D may lag TS topology rules).
+    const qaReceiptDiagnostics = Array.isArray(tools)
+      ? reviewPublicationQaReceiptTopology(selectedExecutionUnits, tools)
+      : [];
+    if (qaReceiptDiagnostics.length === 0) return viaRust;
+    const existingCodes = new Set(viaRust.map((diagnostic) => diagnostic.code));
+    return [...viaRust, ...qaReceiptDiagnostics.filter((diagnostic) => !existingCodes.has(diagnostic.code))];
+  }
   const diagnostics: PlanQaDiagnostic[] = [
     ...reviewArtifactWorkProductMarkers(selectedExecutionUnits, tools),
     ...reviewDeliveryToolPreflightMarkers(selectedExecutionUnits),

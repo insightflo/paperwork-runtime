@@ -341,7 +341,7 @@ function buildCard(input: MissionOwnerHumanInputCardSpec, format: { failureCause
     : definition.options;
   const recommendedDefinition = { ...definition, options };
   // [사람 카드 축소 Stage 1] 고정 축소 형식 — 증상 2줄(symptom), 해석 1문장. 상세 원문은 링크로만 참조.
-  const symptom = formatSymptom(input.reason);
+  const symptom = formatSymptom(present(input.reason)) ?? formatSymptom(present(input.nextAction));
   // [사람 카드 해석 C4a + 원인 해석 2026-11-17 — 운영자 방침: "패턴이 한두가지가 아니다"]
   //   쉬운 해석은 원인 해석 우선·진행 안내 후속이다 — reason/evidence 의 기계 문장을
   //   failure-interpretation 레지스트리로 해석해 원인 문장을 첫 문장에 두고, 선택지 파생
@@ -416,6 +416,11 @@ function buildCard(input: MissionOwnerHumanInputCardSpec, format: { failureCause
 /** concrete 한국어 증상이 있는 요청인지 판정한다(시스템 일반 폴백 문구·영문만 있는 사유 제외). */
 export function hasConcreteKoreanHumanReason(reason: string | null | undefined): boolean {
   const formatted = formatSymptom(present(reason));
+  return Boolean(formatted && !formatted.startsWith(SYMPTOM_STATUS_FALLBACK));
+}
+
+export function hasConcreteHumanCardReason(spec: { reason?: string; nextAction?: string }): boolean {
+  const formatted = formatSymptom(present(spec.reason)) ?? formatSymptom(present(spec.nextAction));
   return Boolean(formatted && !formatted.startsWith(SYMPTOM_STATUS_FALLBACK));
 }
 

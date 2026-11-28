@@ -10,7 +10,7 @@
 //   - sanitize: human comment + workflowTransitionEvents payload 모두 한 줄 bounded. control char/JSON-fragment/raw stderr·error body 제거.
 //   - terminal failure status: approved failed/timed_out 만(cancelled 제외).
 import { createHash } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, ne, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { type SystemLanguage } from "./system-language.js";
 import { activityLog, issueComments, issues, missions, operatorDecisions, workflowRuns, workflowTransitionEvents, companies } from "@paperclipai/db";
@@ -379,6 +379,31 @@ async function recordTerminalHumanInputCardSuppression(
     "terminal-mission human input decision card suppressed by source admission");
 }
 
+export async function isWorkflowRunSupersededByNewerActiveRun(
+  db: Db,
+  input: { companyId: string; missionId: string; workflowRunId: string },
+): Promise<boolean> {
+  const [targetRun] = await db.select({ createdAt: workflowRuns.createdAt }).from(workflowRuns)
+    .where(and(
+      eq(workflowRuns.id, input.workflowRunId),
+      eq(workflowRuns.companyId, input.companyId),
+      eq(workflowRuns.missionId, input.missionId),
+    ))
+    .limit(1);
+  if (!targetRun) return false;
+
+  const newerActiveRuns = await db.select({ id: workflowRuns.id }).from(workflowRuns)
+    .where(and(
+      ne(workflowRuns.id, input.workflowRunId),
+      eq(workflowRuns.companyId, input.companyId),
+      eq(workflowRuns.missionId, input.missionId),
+      inArray(workflowRuns.status, ["running", "queued"]),
+      gte(workflowRuns.createdAt, targetRun.createdAt),
+    ))
+    .limit(1);
+  return newerActiveRuns.length > 0;
+}
+
 // [시스템 경로 카드 보증] 결정 이벤트 1건 = 카드 1건(moi1:{decisionEventId} 멱등). 기존 카드가
 //   있으면 재사용하고, 없으면 기존 카드 빌더(mission-owner-human-input-card)로 생성한다.
 //   실패는 throw 하지 않고 activity 에 기록한다 — 발신(이슈·인박스·알림)은 이미 커밋된 상태다.
@@ -422,6 +447,14 @@ export async function ensureTerminalHumanInputDecisionCard(
     }
   }
   try {
+    if (context.workflowRunId && context.missionId) {
+      const superseded = await isWorkflowRunSupersededByNewerActiveRun(db, {
+        companyId: context.companyId,
+        missionId: context.missionId,
+        workflowRunId: context.workflowRunId,
+      });
+      if (superseded) return { ensured: false, reason: "superseded_workflow_run" };
+    }
     await createMissionOwnerHumanInputDecisionCard(db, {
       companyId: context.companyId,
       missionId: context.missionId,

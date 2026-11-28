@@ -146,7 +146,7 @@ describe("owner recovery submission identity before checkout writes", () => {
     await expect(postDecision(s, { decision, recoveryTarget: { kind: "issue", issueId: s.sourceId } })).rejects.toMatchObject({ status: 409 });
     expect(await db.select().from(issues).where(eq(issues.id, s.issueId))).toEqual(before);
     expect(await db.select().from(workflowTransitionEvents).where(eq(workflowTransitionEvents.companyId, s.companyId))).toEqual([]);
-    expect((await postDecision(s, { decision })).eventId).toBeTruthy();
+    expect((await postDecision(s, { decision, reason: "Human oversight decision needed" })).eventId).toBeTruthy();
   });
 
   it("does not require targets from legacy description text or one failed tool step", async () => {

@@ -10,6 +10,18 @@ import { issueProducerRebind } from "../workflow/producer-rebind-issuance.js";
 import { loadAppliedPayload, projectOwnerActionResult } from "./mission-owner-execution-state.js";
 import { dispatchOwnerExactRetry, OwnerActionRefusalError, type OwnerExecutionContext } from "./mission-owner-execute.js";
 
+type AdoptProducerEditsInvocation = {
+  dispatchError?: unknown;
+  producerRebindDiagnostic?: { conflictReason?: unknown } | undefined;
+};
+
+export function isAdoptProducerEditsEligible(invocation: AdoptProducerEditsInvocation | null | undefined): boolean {
+  const conflictReason = invocation?.producerRebindDiagnostic?.conflictReason;
+  return invocation?.dispatchError === "workproduct_selector_rebind_bytes_mismatch"
+    || (invocation?.dispatchError === "workproduct_selector_stale_producer"
+      && (conflictReason === "producer_rebind_bytes_changed" || conflictReason === "producer_rebind_iteration_mismatch"));
+}
+
 /** [owner adopt producer edits] 오너가 생산자 산출물 바이트를 직접 수정한 뒤(bytes-changed 펜스,
  *   producer_rebind_bytes_changed) 그 수정을 증명과 함께 공식 채택하는 여덟 번째 오너 작업.
  *   하나의 트랜잭션에서 (1) 서버가 디스크 바이트를 직접 측정해 오너 attestation 과 대조·재바인딩
@@ -46,11 +58,8 @@ export async function executeOwnerAdoptProducerEdits(context: OwnerExecutionCont
     const invocation = consumer.metadata?.toolInvocation as {
       dispatchError?: unknown; producerRebindDiagnostic?: { conflictReason?: unknown } | undefined;
     } | undefined;
-    // Accept both changed-byte shapes. Older valid rebind markers fail directly at consumption;
-    // generation-only recovery records the same condition through the issuance diagnostic.
-    const changedBytes = invocation?.dispatchError === "workproduct_selector_rebind_bytes_mismatch"
-      || (invocation?.dispatchError === "workproduct_selector_stale_producer"
-        && invocation.producerRebindDiagnostic?.conflictReason === "producer_rebind_bytes_changed");
+    // Accept both changed-byte shapes and QA rework iteration-mismatch diagnostics.
+    const changedBytes = isAdoptProducerEditsEligible(invocation);
     if (!changedBytes) deny("adopt_edits_not_recovery");
     // Lock intent issue before its last currentness check, serializing a newer owner request with application.
     await tx.select({ id: issues.id }).from(issues).where(and(eq(issues.id, request.ownerActionIssueId),

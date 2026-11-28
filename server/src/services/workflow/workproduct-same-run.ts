@@ -6,8 +6,9 @@ import { heartbeatRuns, issueWorkProducts, workflowRuns, workflowStepRuns, type 
 import { workProductProducerPromotionMarkerSchema, workProductProducerRebindMarkerSchema, workProductProducerSchema, type WorkProductSelectors } from "@paperclipai/shared/validators/workflow-artifact";
 import { resolveWorkProductLocalFilePath } from "../work-products.js";
 import { producerAttempt } from "../work-products/producer-attempt.js";
+import { conflict } from "../../errors.js";
 import { workProductProducerMismatches } from "./workproduct-producer-comparison.js";
-import { ProducerRebindRequired, withAutomaticProducerRebind } from "./automatic-producer-rebind.js";
+import { ProducerRebindIssuanceFailed, ProducerRebindRequired, withAutomaticProducerRebind } from "./automatic-producer-rebind.js";
 import { readQaCorrectionSelectedProduct, type CorrectionSelectedProduct } from "./control-flow/qa-correction-selection.js";
 
 /**
@@ -129,6 +130,24 @@ async function readSameRunWorkProduct(db: Db, scope: SameRunScope): Promise<Corr
     if (!promotion && !rebind && mismatches.every(field => ["executionGeneration", "sourceExecutionGeneration"].includes(field) || repairedByDerivation.has(field))) {
       throw new ProducerRebindRequired({ companyId: scope.companyId, workflowRunId: scope.workflowRunId,
         producerStepId: scope.stepId, productId: product.id, selector: scope.selector, pinnedId: scope.pinnedId });
+    }
+    if (!promotion && !rebind && mismatches.includes("iterationIndex")
+      && mismatches.every(field => ["executionGeneration", "sourceExecutionGeneration", "iterationIndex", "retryCount"].includes(field) || repairedByDerivation.has(field))) {
+      let bytesChanged = false;
+      const file = resolveWorkProductLocalFilePath(product);
+      if (file && p.sha256 !== undefined && p.byteSize !== undefined) {
+        try {
+          const bytes = await readFile(file);
+          const sha256 = createHash("sha256").update(bytes).digest("hex");
+          bytesChanged = sha256 !== p.sha256 || bytes.byteLength !== p.byteSize;
+        } catch {
+          bytesChanged = false;
+        }
+      }
+      const conflictReason = bytesChanged ? "producer_rebind_bytes_changed" : "producer_rebind_iteration_mismatch";
+      throw new ProducerRebindIssuanceFailed({ companyId: scope.companyId, workflowRunId: scope.workflowRunId,
+        producerStepId: scope.stepId, productId: product.id, selector: scope.selector, pinnedId: scope.pinnedId },
+        conflict(conflictReason));
     }
     throw new Error("workproduct_selector_stale_producer");
   }
