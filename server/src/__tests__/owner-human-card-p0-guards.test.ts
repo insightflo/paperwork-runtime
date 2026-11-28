@@ -24,10 +24,10 @@ function makeSelectDb(responses: unknown[][]) {
 }
 
 describe("owner-human-card-admission-guards", () => {
-  it("rejects blank or ultra-short reason/nextAction and accepts concrete text", () => {
+  it("rejects blank reason/nextAction and accepts non-empty text", () => {
     expect(hasConcreteHumanCardContent({})).toBe(false);
     expect(hasConcreteHumanCardContent({ reason: "   ", nextAction: "" })).toBe(false);
-    expect(hasConcreteHumanCardContent({ reason: "ok" })).toBe(false);
+    expect(hasConcreteHumanCardContent({ reason: "A" })).toBe(true);
     expect(hasConcreteHumanCardContent({ reason: "API 키 승인이 필요합니다" })).toBe(true);
     expect(hasConcreteHumanCardContent({ nextAction: "외부 계정 권한 확인" })).toBe(true);
   });

@@ -3,7 +3,7 @@ import { workflowRuns, workflowStepRuns, type Db } from "@paperclipai/db";
 
 type SelectDb = Pick<Db, "select">;
 
-const MIN_HUMAN_CARD_TEXT_LENGTH = 3;
+const MIN_HUMAN_CARD_TEXT_LENGTH = 1;
 
 export function hasConcreteHumanCardContent(input: {
   reason?: string | null;

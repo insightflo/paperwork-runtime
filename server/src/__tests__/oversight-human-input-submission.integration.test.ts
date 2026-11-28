@@ -140,7 +140,7 @@ describeEP("oversight structured human-input submissions", () => {
       const value = Reflect.get(target, property, target); return typeof value === "function" ? value.bind(target) : value;
     } }) as typeof db;
     const before = await snapshot(s.issueId);
-    await expect(submitMissionOwnerDecision({ db: injectedDb, issueId: s.issueId, actor: actor(s), data: { decision: "request_input" } })).rejects.toThrow("injected activity insert failure");
+    await expect(submitMissionOwnerDecision({ db: injectedDb, issueId: s.issueId, actor: actor(s), data: { decision: "request_input", reason: "Need operator input" } })).rejects.toThrow("injected activity insert failure");
     expect(await snapshot(s.issueId)).toEqual(before);
     expect((await db.select().from(workflowTransitionEvents).where(eq(workflowTransitionEvents.issueId, s.issueId)))).toHaveLength(0);
     expect(publishLiveEvent).not.toHaveBeenCalled();
