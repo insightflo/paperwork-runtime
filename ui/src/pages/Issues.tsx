@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useCallback, useRef, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "@/lib/router";
+import { Link, useLocation, useNavigate, useSearchParams } from "@/lib/router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import type { HeartbeatRunAttentionItem } from "@paperclipai/shared";
 import { ACTIVE_ISSUE_STATUS_FILTER, issuesApi } from "../api/issues";
 import { agentsApi } from "../api/agents";
 import { projectsApi } from "../api/projects";
@@ -9,6 +10,7 @@ import { useCompany } from "../context/CompanyContext";
 import { useBreadcrumbs } from "../context/BreadcrumbContext";
 import { queryKeys } from "../lib/queryKeys";
 import { createIssueDetailLocationState } from "../lib/issueDetailBreadcrumb";
+import { isFailedRunAttentionItem } from "../hooks/useInboxHeartbeatData";
 import { EmptyState } from "../components/EmptyState";
 import { IssuesList } from "../components/IssuesList";
 import {
@@ -22,7 +24,7 @@ import {
   prefetchIssuePage,
   useIssuePaging,
 } from "../components/IssuesListChrome";
-import { CircleDot, Lock } from "lucide-react";
+import { AlertTriangle, CircleDot, Lock } from "lucide-react";
 
 /* ── Cockpit telemetry strip ──
  * One row, four columns. Each cell is both a count and a status-group filter
@@ -84,6 +86,46 @@ function stepSelection(paths: string[], current: string | null, delta: 1 | -1): 
   const index = current ? paths.indexOf(current) : -1;
   if (index === -1) return delta === 1 ? paths[0] : paths[paths.length - 1];
   return paths[Math.min(paths.length - 1, Math.max(0, index + delta))] ?? null;
+}
+
+export const WORK_FAILED_RUN_PREVIEW_LIMIT = 3;
+
+export interface WorkFailedRunLink {
+  id: string;
+  agentId: string;
+  href: string;
+  status: HeartbeatRunAttentionItem["status"];
+  statusLabel: string;
+  createdAtMs: number;
+  detail: string;
+}
+
+function attentionCreatedAtMs(createdAt: HeartbeatRunAttentionItem["createdAt"]): number {
+  const value = createdAt as unknown as string | Date;
+  const ms = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+export function selectWorkFailedRuns(
+  items: HeartbeatRunAttentionItem[] | null | undefined,
+  limit?: number,
+): WorkFailedRunLink[] {
+  const selected = (items ?? [])
+    .filter(isFailedRunAttentionItem)
+    .map((item) => {
+      const firstLine = (item.error ?? item.errorCode ?? "").trim().split(/\r?\n/, 1)[0]?.trim() ?? "";
+      return {
+        id: item.runId,
+        agentId: item.agentId,
+        href: `/agents/${item.agentId}/runs/${item.runId}`,
+        status: item.status,
+        statusLabel: item.status === "timed_out" ? "시간 초과" : "실패",
+        createdAtMs: attentionCreatedAtMs(item.createdAt),
+        detail: firstLine || (item.status === "timed_out" ? "실행 시간이 초과되었습니다." : "실패 원인이 기록되지 않았습니다."),
+      };
+    })
+    .sort((a, b) => b.createdAtMs - a.createdAtMs);
+  return limit == null ? selected : selected.slice(0, limit);
 }
 
 export function Issues() {
@@ -148,6 +190,21 @@ export function Issues() {
     enabled: !!selectedCompanyId,
     refetchInterval: 5000,
   });
+
+  const { data: runAttention } = useQuery({
+    queryKey: queryKeys.heartbeatAttention(selectedCompanyId!),
+    queryFn: () => heartbeatsApi.attention(selectedCompanyId!, { limit: 50 }),
+    enabled: Boolean(selectedCompanyId),
+  });
+
+  const failedRuns = useMemo(
+    () => selectWorkFailedRuns(runAttention?.items),
+    [runAttention?.items],
+  );
+  const failedRunPreviews = useMemo(
+    () => selectWorkFailedRuns(runAttention?.items, WORK_FAILED_RUN_PREVIEW_LIMIT),
+    [runAttention?.items],
+  );
 
   const liveIssueIds = useMemo(() => {
     const ids = new Set<string>();
@@ -367,6 +424,37 @@ export function Issues() {
           <Lock className="h-3.5 w-3.5 shrink-0" />
           <span>
             Read-only{currentRole ? ` (${currentRole})` : ""} · Member, admin, or owner role required to create or update work items
+          </span>
+        </div>
+      )}
+
+      {failedRuns.length > 0 && (
+        <div
+          role="alert"
+          data-testid="work-failed-runs-strip"
+          className="tactile-card flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-[12px] border-rose-500/30 bg-rose-500/[0.06] px-3 py-2 text-xs dark:border-[#f87171]/35 dark:bg-[#f87171]/10"
+        >
+          <span className="inline-flex shrink-0 items-center gap-1.5 font-semibold text-rose-700 dark:text-[#fca5a5]">
+            <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+            실패한 실행 {failedRuns.length}건
+          </span>
+          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            {failedRunPreviews.map((run) => {
+              const agentName = agents?.find((agent) => agent.id === run.agentId)?.name ?? run.agentId;
+              return (
+                <Link
+                  key={run.id}
+                  to={run.href}
+                  title={run.detail}
+                  className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-rose-500/25 bg-white/80 px-2 py-1 font-medium text-rose-800 no-underline transition-colors hover:bg-rose-50 dark:border-[#f87171]/30 dark:bg-[#090c12] dark:text-[#fca5a5] dark:hover:bg-[#f87171]/15"
+                >
+                  <span className="max-w-[8rem] truncate">{agentName}</span>
+                  <span className="shrink-0 rounded-full bg-rose-500/10 px-1.5 py-px text-[10px] font-semibold uppercase tracking-[0.08em]">
+                    {run.statusLabel}
+                  </span>
+                </Link>
+              );
+            })}
           </span>
         </div>
       )}

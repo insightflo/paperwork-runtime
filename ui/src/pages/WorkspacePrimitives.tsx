@@ -7,6 +7,9 @@ import { useCompany } from "../context/CompanyContext";
 
 const waitsKey = (companyId: string) => ["workspace-primitives", companyId, "open-waits"] as const;
 const tablesKey = (companyId: string) => ["workspace-primitives", companyId, "shared-tables"] as const;
+const PANEL_CLASS = "tactile-card rounded-[12px] border-slate-200/90 bg-white/95 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]";
+const ALERT_CLASS = "tactile-card rounded-[12px] border-rose-500/30 bg-rose-500/[0.06] px-3 py-2 text-sm text-rose-700 dark:border-[#f87171]/35 dark:bg-[#f87171]/10 dark:text-[#fca5a5]";
+const CHILD_PANEL_RESET = "[&>section]:rounded-none [&>section]:border-0 [&>section]:bg-transparent [&>section]:shadow-none";
 
 function isoDate(timestamp: number): string {
   const date = new Date(timestamp);
@@ -84,30 +87,32 @@ export function WorkspacePrimitives() {
 
   return (
     <main className="space-y-5 p-4 md:p-6">
-      <header className="space-y-1">
+      <header className={`${PANEL_CLASS} space-y-1 px-4 py-3`}>
         <h1 className="text-2xl font-semibold">작업 공간 · 공유 표 &amp; 대기 요청</h1>
         <p className="text-sm text-muted-foreground">요청 상태와 에이전트가 함께 쓰는 표를 확인합니다.</p>
       </header>
       {!companyId ? (
-        <p role="status" aria-live="polite" className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+        <p role="status" aria-live="polite" className={`${PANEL_CLASS} border-dashed p-6 text-center text-sm text-muted-foreground`}>
           회사를 선택하면 작업 공간을 볼 수 있습니다.
         </p>
       ) : (
         <>
-          {waitsQuery.isError && <p role="alert" className="text-sm text-destructive">대기 요청을 불러오지 못했습니다. 다시 시도해 주세요.</p>}
-          {tablesQuery.isError && <p role="alert" className="text-sm text-destructive">공유 표를 불러오지 못했습니다. 다시 시도해 주세요.</p>}
+          {waitsQuery.isError && <p role="alert" className={ALERT_CLASS}>대기 요청을 불러오지 못했습니다. 다시 시도해 주세요.</p>}
+          {tablesQuery.isError && <p role="alert" className={ALERT_CLASS}>공유 표를 불러오지 못했습니다. 다시 시도해 주세요.</p>}
           {resolveMutation.isError && resolveMutation.variables?.companyId === companyId && (
-            <p role="alert" className="text-sm text-destructive">대기 요청을 해결하지 못했습니다. 다시 시도해 주세요.</p>
+            <p role="alert" className={ALERT_CLASS}>대기 요청을 해결하지 못했습니다. 다시 시도해 주세요.</p>
           )}
           {loading ? (
-            <div role="status" aria-live="polite" aria-label="작업 공간 불러오는 중" className="space-y-4">
+            <div role="status" aria-live="polite" aria-label="작업 공간 불러오는 중" className={`${PANEL_CLASS} space-y-4 p-4`}>
               <Skeleton className="h-24 w-full" /><Skeleton className="h-56 w-full" />
             </div>
           ) : (
             <section aria-label="공유 작업 정보" className="space-y-4">
               <h2 className="sr-only">공유 작업 정보</h2>
-              <div aria-live="polite"><AgentOpenWaitsBanner waits={waits} onResolve={resolveWait} resolvingId={resolvingId} /></div>
-              <AgentSharedTablesPanel tables={tables} onCreateTable={createTable} creating={createMutation.isPending} />
+              <div aria-live="polite"><AgentOpenWaitsBanner waits={waits} onResolve={resolveWait} resolvingId={resolvingId} className="tactile-card" /></div>
+              <div className={`${PANEL_CLASS} overflow-hidden ${CHILD_PANEL_RESET}`}>
+                <AgentSharedTablesPanel tables={tables} onCreateTable={createTable} creating={createMutation.isPending} />
+              </div>
             </section>
           )}
         </>
