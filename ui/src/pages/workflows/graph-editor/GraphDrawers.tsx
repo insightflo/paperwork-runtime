@@ -27,7 +27,7 @@ export function WorkflowGraphExecutionEvidenceDrawer({
             Execution evidence
           </span>
           <strong style={{ fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summary.title}</strong>
-          <span style={{ ...mutedTextStyle, fontSize: "11px", lineHeight: 1.35, overflowWrap: "anywhere" }}>{summary.summary}</span>
+          <span role="status" aria-live="polite" aria-atomic="true" style={{ ...mutedTextStyle, fontSize: "11px", lineHeight: 1.35, overflowWrap: "anywhere" }}>{summary.summary}</span>
         </div>
         <button type="button" style={{ ...buttonStyle, padding: "4px 8px", fontSize: "11px" }} onClick={onClose}>
           Close

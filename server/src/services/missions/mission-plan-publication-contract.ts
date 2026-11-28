@@ -40,3 +40,18 @@ export function reviewPublicationVerificationTopology(units: ReadonlyArray<Recor
   return valid ? [] : [{ code: "missing_publication_verify_tool", severity: "invalid",
     message: "Each publication unit requires a downstream publication-verify tool whose declared artifactContract.consumerParams.receipt argument binds {$steps.<publication-unit-id>.workProductPath}. Use the registered result, not a guessed destination." }];
 }
+
+/** Receipt consumers need mechanical QA ancestry; an LLM QA unit cannot issue a tool receipt. */
+export function reviewPublicationQaReceiptTopology(units: ReadonlyArray<Record<string, unknown>>, tools: readonly PlanningArtifactTool[] = []):
+  Array<{ code: "missing_publication_qa_receipt_tool"; severity: "invalid"; message: string }> {
+  // Preserve catalogs without mechanical QA capability (including synthetic fixtures).
+  const companyHasQaTool = tools.some(tool => hasPlanArtifactRole({ toolName: tool.name }, [tool], "qa"));
+  if (!companyHasQaTool) return [];
+  const dependencies = buildDependencyIndex(units);
+  const valid = units.every((publisher, publisherIndex) => !selectedArtifactContracts(publisher, tools)
+    .some(contract => contract.role === "publication" && Boolean(contract.consumerParams?.receipt))
+    || units.some((qaUnit, qaIndex) => unitDependsOn(dependencies, publisherIndex, qaIndex)
+      && hasPlanArtifactRole(qaUnit, tools, "qa")));
+  return valid ? [] : [{ code: "missing_publication_qa_receipt_tool", severity: "invalid",
+    message: "Each publication tool declaring artifactContract.consumerParams.receipt requires an upstream mechanical QA tool (artifactContract.role === \"qa\") producing toolArtifactReceipt. Add that tool to the publication unit's dependencies; an LLM QA step alone cannot produce the required receipt." }];
+}

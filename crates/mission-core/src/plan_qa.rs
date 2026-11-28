@@ -5,7 +5,9 @@
 //! byte-parity with the TS returns.
 #[path = "plan_qa_helpers.rs"]
 mod helpers;
-use crate::js::{js_to_string, js_trim, js_truthy};
+#[path = "plan_qa_publication.rs"]
+mod publication;
+use publication::{review_publication_qa_receipt_topology, review_publication_verification_topology};
 use helpers::*;
 use serde_json::{json, Map, Value};
 
@@ -36,71 +38,6 @@ fn review_artifact_work_product_markers(
         }
     }
     Ok(out)
-}
-
-/// `consumesPublicationResult` — the consumer's declared receipt arg must bind
-/// `{$steps.<publisher-id>.workProductPath}`.
-fn consumes_publication_result(
-    unit: Option<&Value>,
-    publisher: Option<&Value>,
-    tools: Option<&Value>,
-) -> Result<bool, String> {
-    let Some(pid) = prop(publisher, "id")?.and_then(Value::as_str) else {
-        return Ok(false);
-    };
-    let trimmed = js_trim(pid);
-    if trimmed.is_empty() {
-        return Ok(false);
-    }
-    let Some(args) = prop(unit, "toolArgs")?.and_then(Value::as_object) else {
-        return Ok(false);
-    };
-    let reference = format!("{{$steps.{trimmed}.workProductPath}}");
-    for c in selected_artifact_contracts(unit, tools)? {
-        if c.get("role").and_then(Value::as_str) != Some("publication-verify") {
-            continue;
-        }
-        let receipt = c.get("consumerParams").and_then(|cp| cp.get("receipt"));
-        if !receipt.is_some_and(js_truthy) {
-            continue;
-        }
-        if args
-            .get(js_to_string(receipt).as_str())
-            .and_then(Value::as_str)
-            == Some(reference.as_str())
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
-
-/// `reviewPublicationVerificationTopology` — every publication unit needs a
-/// downstream publication-verify consumer with the bound receipt argument.
-fn review_publication_verification_topology(
-    units: &[Value],
-    tools: Option<&Value>,
-) -> Result<Vec<Value>, String> {
-    let deps = build_dependency_index(units)?;
-    for (pi, publisher) in units.iter().enumerate() {
-        if !has_plan_artifact_role(Some(publisher), tools, "publication")? {
-            continue;
-        }
-        let mut ok = false;
-        for (ci, consumer) in units.iter().enumerate() {
-            if unit_depends_on(&deps, ci, pi)
-                && consumes_publication_result(Some(consumer), Some(publisher), tools)?
-            {
-                ok = true;
-                break;
-            }
-        }
-        if !ok {
-            return Ok(vec![diag("missing_publication_verify_tool", "invalid",
-                "Each publication unit requires a downstream publication-verify tool whose declared artifactContract.consumerParams.receipt argument binds {$steps.<publication-unit-id>.workProductPath}. Use the registered result, not a guessed destination.".into())]);
-        }
-    }
-    Ok(vec![])
 }
 
 /// `reviewArtifactQaDeliveryOrder` — producer → artifact-QA → delivery order.
@@ -174,6 +111,7 @@ fn review_plan_against_intent(input: &Value) -> Result<Value, String> {
     };
     let mut diagnostics = review_artifact_work_product_markers(units, tools)?;
     diagnostics.extend(review_publication_verification_topology(units, tools)?);
+    diagnostics.extend(review_publication_qa_receipt_topology(units, tools)?);
     if falsy(prop(intent, "publish")?)
         && falsy(prop(intent, "audienceSplit")?)
         && falsy(prop(intent, "scenario")?)

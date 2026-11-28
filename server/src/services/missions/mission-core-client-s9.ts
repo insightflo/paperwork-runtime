@@ -107,6 +107,7 @@ const PLAN_QA_CODES: ReadonlySet<string> = new Set([
   "missing_publish_unit",
   "missing_publish_readback_qa",
   "missing_publication_verify_tool",
+  "missing_publication_qa_receipt_tool",
   "missing_artifact_qa_before_delivery",
   "invalid_artifact_qa_delivery_order",
   "invalid_artifact_workproduct_marker",

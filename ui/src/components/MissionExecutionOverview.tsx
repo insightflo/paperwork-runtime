@@ -219,7 +219,7 @@ export function MissionExecutionOverview({ missionId, mission }: MissionExecutio
 
   if (hasPrimaryError) {
     return (
-      <p className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive">
         {hasPrimaryError instanceof Error ? hasPrimaryError.message : "Failed to load mission execution overview."}
       </p>
     );
@@ -315,7 +315,7 @@ export function MissionExecutionOverview({ missionId, mission }: MissionExecutio
             <h3 className="text-sm font-medium">Mission Continuity</h3>
           </div>
           {runtimeStateError ? (
-            <p className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {runtimeStateError instanceof Error ? runtimeStateError.message : "Failed to load agent runtime state."}
             </p>
           ) : null}
@@ -465,7 +465,7 @@ export function MissionExecutionOverview({ missionId, mission }: MissionExecutio
                                       <p className="text-xs font-medium text-foreground break-words">{product.title}</p>
                                     )}
                                     {openedWorkProductId === product.id ? (
-                                      <p className="text-[11px] text-emerald-400">Opened</p>
+                                      <p aria-live="polite" className="text-[11px] text-emerald-400">Opened</p>
                                     ) : null}
                                   </div>
                                   <div className="flex shrink-0 items-center gap-1.5">
@@ -497,7 +497,7 @@ export function MissionExecutionOverview({ missionId, mission }: MissionExecutio
                               </div>
                             ))}
                             {workProductOpenError ? (
-                              <p className="text-[11px] text-destructive break-words">{workProductOpenError}</p>
+                              <p role="alert" className="text-[11px] text-destructive break-words">{workProductOpenError}</p>
                             ) : null}
                           </div>
                         ) : null}

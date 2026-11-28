@@ -57,7 +57,11 @@ export function AgentOpenWaitsBanner({
       className={`${CARD_CLASS} p-3${className ? ` ${className}` : ""}`}
     >
       <div className="flex items-center gap-2">
-        <span className="inline-flex items-center rounded-full border border-amber-300/80 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 tabular-nums dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300">
+        <span
+          role="status"
+          aria-live="polite"
+          className="inline-flex items-center rounded-full border border-amber-300/80 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 tabular-nums dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300"
+        >
           대기 중인 요청 {waits.length}건
         </span>
       </div>

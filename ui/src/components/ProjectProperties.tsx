@@ -51,7 +51,7 @@ export type ProjectConfigFieldKey =
 function SaveIndicator({ state }: { state: ProjectFieldSaveState }) {
   if (state === "saving") {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+      <span aria-live="polite" className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
         <Loader2 className="h-3 w-3 animate-spin" />
         Saving
       </span>
@@ -59,7 +59,7 @@ function SaveIndicator({ state }: { state: ProjectFieldSaveState }) {
   }
   if (state === "saved") {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400">
+      <span aria-live="polite" className="inline-flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400">
         <Check className="h-3 w-3" />
         Saved
       </span>
@@ -67,7 +67,7 @@ function SaveIndicator({ state }: { state: ProjectFieldSaveState }) {
   }
   if (state === "error") {
     return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-destructive">
+      <span role="alert" className="inline-flex items-center gap-1 text-[11px] text-destructive">
         <AlertCircle className="h-3 w-3" />
         Failed
       </span>
@@ -119,7 +119,7 @@ function ProjectStatusPicker({ status, onChange }: { status: string; onChange: (
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <button type="button"
           className={cn(
             "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap shrink-0 cursor-pointer hover:opacity-80 transition-opacity",
             colorClass,
@@ -130,7 +130,7 @@ function ProjectStatusPicker({ status, onChange }: { status: string; onChange: (
       </PopoverTrigger>
       <PopoverContent className="w-40 p-1" align="start">
         {PROJECT_STATUSES.map((s) => (
-          <Button
+          <Button type="button"
             key={s.value}
             variant="ghost"
             size="sm"
@@ -169,7 +169,7 @@ function ArchiveDangerZone({
           : "Unarchive this work context to restore it in the sidebar and context selectors."}
       </p>
       {archivePending ? (
-        <Button size="sm" variant="destructive" disabled>
+        <Button type="button" size="sm" variant="destructive" disabled aria-live="polite">
           <Loader2 className="h-3 w-3 animate-spin mr-1" />
           {isArchive ? "Archiving..." : "Unarchiving..."}
         </Button>
@@ -178,7 +178,7 @@ function ArchiveDangerZone({
           <span className="text-sm text-destructive font-medium">
             {action} &ldquo;{project.name}&rdquo;?
           </span>
-          <Button
+          <Button type="button"
             size="sm"
             variant="destructive"
             onClick={() => {
@@ -188,7 +188,7 @@ function ArchiveDangerZone({
           >
             Confirm
           </Button>
-          <Button
+          <Button type="button"
             size="sm"
             variant="outline"
             onClick={() => setConfirming(false)}
@@ -197,7 +197,7 @@ function ArchiveDangerZone({
           </Button>
         </div>
       ) : (
-        <Button
+        <Button type="button"
           size="sm"
           variant="destructive"
           onClick={() => setConfirming(true)}
@@ -459,7 +459,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
         <PropertyRow label={<FieldLabel label="Name" state={fieldState("name")} />}>
           {onUpdate || onFieldUpdate ? (
             <DraftInput
-              value={project.name}
+              aria-label="Work context name" value={project.name}
               onCommit={(name) => commitField("name", { name })}
               immediate
               className="w-full rounded border border-border bg-transparent px-2 py-1 text-sm outline-none"
@@ -589,7 +589,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                     </div>
                   )}
                   <div className="flex items-center gap-1">
-                    <Button
+                    <Button type="button"
                       variant="outline"
                       size="xs"
                       className="h-6 px-2"
@@ -601,7 +601,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                     >
                       Change repo
                     </Button>
-                    <Button
+                    <Button type="button"
                       variant="ghost"
                       size="icon-xs"
                       onClick={clearRepoWorkspace}
@@ -614,7 +614,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
               ) : (
                 <div className="flex items-center justify-between gap-2">
                   <div className="text-xs text-muted-foreground">Not set.</div>
-                  <Button
+                  <Button type="button"
                     variant="outline"
                     size="xs"
                     className="h-6 px-2"
@@ -642,7 +642,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                   )}
                 </div>
                 <div className="flex items-center gap-1">
-                  <Button
+                  <Button type="button"
                     variant="outline"
                     size="xs"
                     className="h-6 px-2"
@@ -655,7 +655,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                     {codebase.localFolder ? "Change local folder" : "Set local folder"}
                   </Button>
                   {codebase.localFolder ? (
-                    <Button
+                    <Button type="button"
                       variant="ghost"
                       size="icon-xs"
                       onClick={clearLocalWorkspace}
@@ -684,7 +684,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                     <div className="min-w-0 space-y-0.5">
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] font-medium">{service.serviceName}</span>
-                        <span
+                        <span aria-live="polite"
                           className={cn(
                             "rounded-full px-1.5 py-0.5 text-[10px] uppercase tracking-wide",
                             service.status === "running"
@@ -725,14 +725,14 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
               <div className="flex items-center gap-2">
                 <input
                   className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs font-mono outline-none"
-                  value={workspaceCwd}
+                  aria-label="Local folder" value={workspaceCwd}
                   onChange={(e) => setWorkspaceCwd(e.target.value)}
                   placeholder="/absolute/path/to/execution-context"
                 />
                 <ChoosePathButton />
               </div>
               <div className="flex items-center gap-2">
-                <Button
+                <Button type="button"
                   variant="outline"
                   size="xs"
                   className="h-6 px-2"
@@ -741,7 +741,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                 >
                   Save
                 </Button>
-                <Button
+                <Button type="button"
                   variant="ghost"
                   size="xs"
                   className="h-6 px-2"
@@ -760,12 +760,12 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
             <div className="space-y-1.5 rounded-md border border-border p-2">
               <input
                 className="w-full rounded border border-border bg-transparent px-2 py-1 text-xs outline-none"
-                value={workspaceRepoUrl}
+                aria-label="Repo URL" value={workspaceRepoUrl}
                 onChange={(e) => setWorkspaceRepoUrl(e.target.value)}
                 placeholder="https://github.com/org/repo"
               />
               <div className="flex items-center gap-2">
-                <Button
+                <Button type="button"
                   variant="outline"
                   size="xs"
                   className="h-6 px-2"
@@ -774,7 +774,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                 >
                   Save
                 </Button>
-                <Button
+                <Button type="button"
                   variant="ghost"
                   size="xs"
                   className="h-6 px-2"
@@ -790,16 +790,16 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
             </div>
           )}
           {workspaceError && (
-            <p className="text-xs text-destructive">{workspaceError}</p>
+            <p role="alert" className="text-xs text-destructive">{workspaceError}</p>
           )}
           {createWorkspace.isError && (
-            <p className="text-xs text-destructive">Failed to save execution context.</p>
+            <p role="alert" className="text-xs text-destructive">Failed to save execution context.</p>
           )}
           {removeWorkspace.isError && (
-            <p className="text-xs text-destructive">Failed to delete execution context.</p>
+            <p role="alert" className="text-xs text-destructive">Failed to delete execution context.</p>
           )}
           {updateWorkspace.isError && (
-            <p className="text-xs text-destructive">Failed to update execution context.</p>
+            <p role="alert" className="text-xs text-destructive">Failed to update execution context.</p>
           )}
         </div>
 
@@ -837,7 +837,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                     </div>
                   </div>
                   {onUpdate || onFieldUpdate ? (
-                    <button
+                    <button aria-label="Enable isolated work-item checkouts" aria-pressed={executionWorkspacesEnabled}
                       className={cn(
                         "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
                         executionWorkspacesEnabled ? "bg-green-600" : "bg-muted",
@@ -875,7 +875,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                           If disabled, new work items stay on the primary checkout unless someone opts in.
                         </div>
                       </div>
-                      <button
+                      <button aria-label="New work items default to isolated checkout" aria-pressed={executionWorkspaceDefaultMode === "isolated_workspace"}
                         className={cn(
                           "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
                           executionWorkspaceDefaultMode === "isolated_workspace" ? "bg-green-600" : "bg-muted",
@@ -907,7 +907,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                       <button
                         type="button"
                         className="flex w-full items-center gap-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-                        onClick={() => setExecutionWorkspaceAdvancedOpen((open) => !open)}
+                        aria-expanded={executionWorkspaceAdvancedOpen} onClick={() => setExecutionWorkspaceAdvancedOpen((open) => !open)}
                       >
                         {executionWorkspaceAdvancedOpen
                           ? "Hide advanced checkout settings"
@@ -928,7 +928,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                             </label>
                           </div>
                           <DraftInput
-                            value={executionWorkspaceStrategy.baseRef ?? ""}
+                            aria-label="Base ref" value={executionWorkspaceStrategy.baseRef ?? ""}
                             onCommit={(value) =>
                               commitField("execution_workspace_base_ref", {
                                 ...updateExecutionWorkspacePolicy({
@@ -952,7 +952,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                             </label>
                           </div>
                           <DraftInput
-                            value={executionWorkspaceStrategy.branchTemplate ?? ""}
+                            aria-label="Branch template" value={executionWorkspaceStrategy.branchTemplate ?? ""}
                             onCommit={(value) =>
                               commitField("execution_workspace_branch_template", {
                                 ...updateExecutionWorkspacePolicy({
@@ -976,7 +976,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                             </label>
                           </div>
                           <DraftInput
-                            value={executionWorkspaceStrategy.worktreeParentDir ?? ""}
+                            aria-label="Execution context parent dir" value={executionWorkspaceStrategy.worktreeParentDir ?? ""}
                             onCommit={(value) =>
                               commitField("execution_workspace_worktree_parent_dir", {
                                 ...updateExecutionWorkspacePolicy({
@@ -1000,7 +1000,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                             </label>
                           </div>
                           <DraftInput
-                            value={executionWorkspaceStrategy.provisionCommand ?? ""}
+                            aria-label="Provision command" value={executionWorkspaceStrategy.provisionCommand ?? ""}
                             onCommit={(value) =>
                               commitField("execution_workspace_provision_command", {
                                 ...updateExecutionWorkspacePolicy({
@@ -1024,7 +1024,7 @@ export function ProjectProperties({ project, onUpdate, onFieldUpdate, getFieldSa
                             </label>
                           </div>
                           <DraftInput
-                            value={executionWorkspaceStrategy.teardownCommand ?? ""}
+                            aria-label="Teardown command" value={executionWorkspaceStrategy.teardownCommand ?? ""}
                             onCommit={(value) =>
                               commitField("execution_workspace_teardown_command", {
                                 ...updateExecutionWorkspacePolicy({

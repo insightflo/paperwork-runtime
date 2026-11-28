@@ -26,7 +26,7 @@ export function GraphInspectorPolicyRuntime({
               <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "var(--muted-foreground, #94a3b8)" }}>
                 <input
                   type="checkbox"
-                  checked={selectedStep.graphApprovalRequired}
+                  aria-label="Suspend until approved" checked={selectedStep.graphApprovalRequired}
                   onChange={(event) => updateSelectedApproval({ graphApprovalRequired: event.target.checked })}
                 />
                 Suspend until approved
@@ -36,7 +36,7 @@ export function GraphInspectorPolicyRuntime({
                 <FieldLabel help="Message shown to approvers so they know what they are approving.">Approval prompt</FieldLabel>
                 <textarea
                   style={{ ...textareaStyle, minHeight: "58px" }}
-                  value={selectedStep.graphApprovalPrompt}
+                  aria-label="Approval prompt" value={selectedStep.graphApprovalPrompt}
                   placeholder="Approval prompt"
                   onChange={(event) => updateSelectedApproval({ graphApprovalPrompt: event.target.value })}
                 />
@@ -45,7 +45,7 @@ export function GraphInspectorPolicyRuntime({
                 <FieldLabel help="Comma-separated approver identifiers or groups allowed to approve this gate.">Approvers</FieldLabel>
                 <input
                   style={inputStyle}
-                  value={selectedStep.graphApprovalRecipients}
+                  aria-label="Approvers" value={selectedStep.graphApprovalRecipients}
                   placeholder="Approvers, comma-separated"
                   onChange={(event) => updateSelectedApproval({ graphApprovalRecipients: event.target.value })}
                 />
@@ -58,7 +58,7 @@ export function GraphInspectorPolicyRuntime({
                     type="number"
                     min={1}
                     step={1}
-                    value={selectedStep.graphApprovalTimeoutSeconds}
+                    aria-label="Approval timeout seconds" value={selectedStep.graphApprovalTimeoutSeconds}
                     placeholder="timeout seconds"
                     onChange={(event) => updateSelectedApproval({ graphApprovalTimeoutSeconds: event.target.value })}
                   />
@@ -67,7 +67,7 @@ export function GraphInspectorPolicyRuntime({
                   <FieldLabel help="What the workflow should do if approval does not arrive in time.">Approval timeout action</FieldLabel>
                   <select
                     style={selectStyle}
-                    value={selectedStep.graphApprovalTimeoutAction}
+                    aria-label="Approval timeout action" value={selectedStep.graphApprovalTimeoutAction}
                     onChange={(event) => updateSelectedApproval({ graphApprovalTimeoutAction: event.target.value })}
                   >
                     <option value="">No timeout action</option>
@@ -84,7 +84,7 @@ export function GraphInspectorPolicyRuntime({
                   <FieldLabel help="Shared key used to group steps that should not run too many copies at once.">Concurrency key</FieldLabel>
                   <input
                     style={inputStyle}
-                    value={selectedStep.graphConcurrencyKey}
+                    aria-label="Concurrency key" value={selectedStep.graphConcurrencyKey}
                     placeholder="concurrency key"
                     onChange={(event) => updateSelectedExecution({ graphConcurrencyKey: event.target.value })}
                   />
@@ -96,7 +96,7 @@ export function GraphInspectorPolicyRuntime({
                     type="number"
                     min={1}
                     step={1}
-                    value={selectedStep.graphConcurrencyLimit}
+                    aria-label="Concurrency limit" value={selectedStep.graphConcurrencyLimit}
                     placeholder="concurrency limit"
                     onChange={(event) => updateSelectedExecution({ graphConcurrencyLimit: event.target.value })}
                   />
@@ -106,7 +106,7 @@ export function GraphInspectorPolicyRuntime({
                 <FieldLabel help="Relative scheduling priority for this step.">Priority</FieldLabel>
                 <select
                   style={selectStyle}
-                  value={selectedStep.graphPriority}
+                  aria-label="Priority" value={selectedStep.graphPriority}
                   onChange={(event) => updateSelectedExecution({ graphPriority: event.target.value })}
                 >
                   <option value="">Default priority</option>
@@ -119,7 +119,7 @@ export function GraphInspectorPolicyRuntime({
               <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "var(--muted-foreground, #94a3b8)" }}>
                 <input
                   type="checkbox"
-                  checked={selectedStep.graphCacheEnabled}
+                  aria-label="Cache step result" checked={selectedStep.graphCacheEnabled}
                   onChange={(event) => updateSelectedExecution({ graphCacheEnabled: event.target.checked })}
                 />
                 Cache step result
@@ -132,7 +132,7 @@ export function GraphInspectorPolicyRuntime({
                   type="number"
                   min={1}
                   step={1}
-                  value={selectedStep.graphCacheTtlSeconds}
+                  aria-label="Cache TTL seconds" value={selectedStep.graphCacheTtlSeconds}
                   placeholder="cache ttl seconds"
                   onChange={(event) => updateSelectedExecution({ graphCacheTtlSeconds: event.target.value })}
                 />
@@ -140,7 +140,7 @@ export function GraphInspectorPolicyRuntime({
               <label style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "var(--muted-foreground, #94a3b8)" }}>
                 <input
                   type="checkbox"
-                  checked={selectedStep.graphDeleteAfterUse}
+                  aria-label="Delete logs and results after use" checked={selectedStep.graphDeleteAfterUse}
                   onChange={(event) => updateSelectedExecution({ graphDeleteAfterUse: event.target.checked })}
                 />
                 Delete logs and results after use

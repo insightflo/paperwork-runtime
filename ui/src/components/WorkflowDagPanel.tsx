@@ -93,7 +93,7 @@ export function WorkflowDagPanel({ missionId, defaultMode = "graph" }: WorkflowD
 
   if (workflowRunsError) {
     return (
-      <p className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white px-3 py-2 text-sm text-destructive dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-red-300">Failed to load workflow runs.</p>
+      <p role="alert" className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white px-3 py-2 text-sm text-destructive dark:border-white/10 dark:bg-[#0e131d] dark:bg-none dark:text-red-300">Failed to load workflow runs.</p>
     );
   }
 
@@ -276,8 +276,8 @@ function WorkProductCard({
             ) : null}
           </div>
           {product.summary ? <p className="text-[11px] text-muted-foreground">{product.summary}</p> : null}
-          {openedProductId === product.id ? <p className="text-[11px] text-emerald-600 dark:text-[#a3e635]">Opened</p> : null}
-          {openErrorProductId === product.id ? <p className="text-[11px] text-destructive">Open failed</p> : null}
+          {openedProductId === product.id ? <p aria-live="polite" className="text-[11px] text-emerald-600 dark:text-[#a3e635]">Opened</p> : null}
+          {openErrorProductId === product.id ? <p role="alert" className="text-[11px] text-destructive">Open failed</p> : null}
         </div>
         <Button
           type="button"
@@ -435,10 +435,10 @@ function WorkflowStepRow({
             </div>
           ) : null}
           {boostState === "done" ? (
-            <p className="text-[11px] text-emerald-600 dark:text-emerald-400">Cap boost granted. The next workflow sync will allow more rework.</p>
+            <p aria-live="polite" className="text-[11px] text-emerald-600 dark:text-emerald-400">Cap boost granted. The next workflow sync will allow more rework.</p>
           ) : null}
           {boostState === "error" ? (
-            <p className="text-[11px] text-destructive">{boostError}</p>
+            <p role="alert" className="text-[11px] text-destructive">{boostError}</p>
           ) : null}
           {step.toolNames.length > 0 ? (
             <div className="flex flex-wrap gap-1">

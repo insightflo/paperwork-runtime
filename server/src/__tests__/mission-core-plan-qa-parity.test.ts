@@ -2,7 +2,9 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { reviewPlanAgainstIntentViaRust } from "../services/missions/mission-core-client-s9.js";
+import { publicationContract } from "./helpers/mission-publication-fixture.js";
 import {
   buildClarificationRequest,
   extractUnitRoles,
@@ -121,6 +123,37 @@ const R = "review-plan-against-intent";
 const happy = { intent: PUB_INTENT, tools,
   selectedExecutionUnits: [prodU, { ...qaU, dependsOn: ["prod"] },
     { ...pubU, dependsOn: ["qa"] }, { ...verU(), dependsOn: ["pub"], id: "ver" }] };
+const validPublisher = { ...PUB, adapterConfig: { artifactContract: publicationContract("publication") } };
+const receiptPublisher = { ...validPublisher, adapterConfig: {
+  artifactContract: { ...validPublisher.adapterConfig.artifactContract, consumerParams: { receipt: "qaReceipt" } },
+} };
+const receiptTools = [receiptPublisher, VER, QAT];
+const receiptPlan = (units: Record<string, unknown>[], catalog = receiptTools) => ({
+  intent: intent(), tools: catalog, selectedExecutionUnits: [...units, verU()],
+});
+const receiptCases = [
+  { name: "LLM QA cannot issue a mechanical receipt", payload: receiptPlan([
+    { id: "qa", type: "qa" }, { ...pubU, dependsOn: ["qa"] }]) },
+  { name: "upstream mechanical QA supplies the receipt", payload: receiptPlan([
+    { id: "qa", toolName: "qatool" }, { ...pubU, dependsOn: ["qa"] }]) },
+  { name: "transitive QA ancestry works in reversed array order", payload: receiptPlan([
+    { ...pubU, dependsOn: ["bridge"] }, { id: "bridge", dependsOn: ["qa"] }, { id: "qa", tools: ["qatool"] }]) },
+  { name: "disconnected mechanical QA does not supply receipt", payload: receiptPlan([
+    { id: "qa", toolName: "qatool" }, pubU]) },
+  { name: "downstream mechanical QA does not supply receipt", payload: receiptPlan([
+    pubU, { id: "qa", toolName: "qatool", dependsOn: ["pub"] }]) },
+  { name: "publication without receipt needs no mechanical QA", payload: receiptPlan([pubU], [validPublisher, VER, QAT]) },
+  { name: "catalog without QA capability preserves synthetic behavior", payload: receiptPlan([pubU], [receiptPublisher, VER]) },
+  { name: "disabled catalog QA does not trigger receipt topology", payload: receiptPlan([pubU], [receiptPublisher, VER, { ...QAT, enabled: false }]) },
+  { name: "invalid QA contract does not trigger receipt topology", payload: receiptPlan([pubU], [receiptPublisher, VER,
+    { ...QAT, adapterConfig: { artifactContract: { ...QA_CONTRACT, role: "bogus" } } }]) },
+  { name: "disabled selected QA cannot supply receipt", payload: receiptPlan([
+    { id: "qa", toolName: "qatool" }, { ...pubU, dependsOn: ["qa"] }],
+    [receiptPublisher, VER, { ...QAT, enabled: false }, { ...QAT, name: "other-qa" }]) },
+  { name: "each publisher requires its own QA ancestry", payload: receiptPlan([
+    { id: "qa", toolName: "qatool" }, { ...pubU, dependsOn: ["qa"] }, { ...pubU, id: "pub2" },
+    { ...verU("{$steps.pub2.workProductPath}"), id: "ver2", dependsOn: ["pub2"] }]) },
+];
 const reviewCases: Array<{ sub: Sub; name: string; payload: unknown; exact?: boolean }> = [
   { sub: R, name: "empty units and no intent yields no diagnostics", payload: { intent: intent(), selectedExecutionUnits: [] } },
   { sub: R, name: "full happy path producer→qa→publish→verify", payload: happy },
@@ -187,4 +220,23 @@ describe("mission-plan-qa: TS vs paperclip-mission-core", () => {
   for (const c of [...cases, ...reviewCases, ...buildCases]) {
     it(`parity ${c.sub}: ${c.name}`, () => parity(c.sub, c.payload, c.exact));
   }
+  for (const c of receiptCases) {
+    it(`receipt topology parity: ${c.name}`, () => parity(R, c.payload));
+  }
+  it("accepts the new diagnostic through the real Rust bridge without fallback", () => {
+    const payload = receiptCases[0]!.payload;
+    vi.stubEnv("PAPERCLIP_MISSION_CORE_BIN", "");
+    const expected = reviewPlanAgainstIntent(payload);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(expected).toMatchObject([{ code: "missing_publication_qa_receipt_tool", severity: "invalid" }]);
+      vi.stubEnv("PAPERCLIP_MISSION_CORE_BIN", rustBin);
+      expect(reviewPlanAgainstIntentViaRust(payload)).toEqual(expected);
+      expect(reviewPlanAgainstIntent(payload)).toEqual(expected);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      warn.mockRestore();
+    }
+  });
 });
