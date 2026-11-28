@@ -26,11 +26,12 @@ const brandItems = [
   { title: "Controlled bot terminals", body: "Operate worker terminals through centrally governed execution controls.", accent: "border-[#b8863b]/50 bg-[#b8863b]/20 text-[#dcb67a]" },
 ];
 
-function Field({ id, label, hint, ...props }: InputHTMLAttributes<HTMLInputElement> & { id: string; label: string; hint?: string }) {
+function Field({ id, label, hint, invalid, ...props }: InputHTMLAttributes<HTMLInputElement> & { id: string; label: string; hint?: string; invalid?: boolean }) {
   return (
     <div>
       <label htmlFor={id} className="mb-1.5 block text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#6b6257] dark:text-[#a89f93]">{label}</label>
-      <input id={id} className={inputClass} aria-describedby={hint ? `${id}-hint` : undefined} {...props} />
+      <input id={id} name={id} className={inputClass} aria-invalid={invalid || undefined}
+        aria-describedby={[hint ? `${id}-hint` : null, invalid ? "auth-error" : null].filter(Boolean).join(" ") || undefined} {...props} />
       {hint && <p id={`${id}-hint`} className="mt-1.5 text-xs text-[#6b6257] dark:text-[#a89f93]">{hint}</p>}
     </div>
   );
@@ -66,6 +67,7 @@ export function AuthPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [invalidFields, setInvalidFields] = useState<string[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const nextPath = useMemo(() => resolveAuthRedirectPath(searchParams.get("next")), [searchParams]);
   const { data: session, isLoading: isSessionLoading } = useQuery({
@@ -119,26 +121,29 @@ export function AuthPage() {
   const socialMutation = useMutation({
     mutationFn: (provider: string) => signInSocial({ provider, callbackURL: nextPath }),
     onSuccess: ({ url }) => window.location.assign(url),
-    onError: (err) => setError(authErrorMessage(err, "Could not start social sign-in")),
+    onError: (err) => { setInvalidFields([]); setError(authErrorMessage(err, "Could not start social sign-in")); },
   });
 
-  const hasRequiredFields =
-    mode === "sign_in" ? email.trim().length > 0 && password.length > 0
-      : mode === "sign_up" ? name.trim().length > 0 && email.trim().length > 0 && password.length > 0
-        : mode === "forgot_password" ? email.trim().length > 0
-          : password.length > 0 && confirmPassword.length > 0;
+  const missingFields = Object.entries({
+    "auth-name": mode !== "sign_up" || name.trim().length > 0,
+    "auth-email": mode === "reset_password" || email.trim().length > 0,
+    "auth-password": mode === "forgot_password" || password.length > 0,
+    "auth-confirm-password": mode !== "reset_password" || confirmPassword.length > 0,
+  }).filter(([, valid]) => !valid).map(([id]) => id);
+  const hasRequiredFields = missingFields.length === 0;
   const validate = () => {
-    if (!hasRequiredFields) return "Please fill in all required fields.";
-    if (mode === "sign_up" && password.length < PASSWORD_MIN_LENGTH) return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+    if (!hasRequiredFields) return { message: "Please fill in all required fields.", fields: missingFields };
+    if (mode === "sign_up" && password.length < PASSWORD_MIN_LENGTH) return { message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`, fields: ["auth-password"] };
     if (mode === "reset_password") {
-      if (!resetToken) return "This reset link is missing a token.";
-      if (password.length < PASSWORD_MIN_LENGTH) return RESET_PASSWORD_LENGTH_ERROR;
-      if (password !== confirmPassword) return "Passwords do not match.";
+      if (!resetToken) return { message: "This reset link is missing a token.", fields: [] };
+      if (password.length < PASSWORD_MIN_LENGTH) return { message: RESET_PASSWORD_LENGTH_ERROR, fields: ["auth-password"] };
+      if (password !== confirmPassword) return { message: "Passwords do not match.", fields: ["auth-confirm-password"] };
     }
     return null;
   };
   const switchMode = (nextMode: AuthMode) => {
     setError(null);
+    setInvalidFields([]);
     setNotice(null);
     setMode(nextMode);
   };
@@ -182,14 +187,16 @@ export function AuthPage() {
                 const validationError = validate();
                 if (validationError) {
                   setNotice(null);
-                  setError(validationError);
+                  setError(validationError.message);
+                  setInvalidFields(validationError.fields);
                   return;
                 }
+                setInvalidFields([]);
                 mutation.mutate(mode);
               }}
             >
-              {mode === "sign_up" && <Field id="auth-name" label="Name" value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />}
-              {mode !== "reset_password" && <Field id="auth-email" label="Email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />}
+              {mode === "sign_up" && <Field id="auth-name" label="Name" value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" invalid={invalidFields.includes("auth-name")} />}
+              {mode !== "reset_password" && <Field id="auth-email" label="Email" type="email" inputMode="email" spellCheck={false} value={email} onChange={(event) => setEmail(event.target.value)} autoComplete={mode === "sign_in" ? "username" : "email"} invalid={invalidFields.includes("auth-email")} />}
               {mode !== "forgot_password" && (
                 <Field
                   id="auth-password"
@@ -200,18 +207,19 @@ export function AuthPage() {
                   autoComplete={mode === "sign_in" ? "current-password" : "new-password"}
                   minLength={isNewPasswordMode ? PASSWORD_MIN_LENGTH : undefined}
                   hint={isNewPasswordMode ? PASSWORD_HINT : undefined}
+                  invalid={invalidFields.includes("auth-password")}
                 />
               )}
               {mode === "reset_password" && (
-                <Field id="auth-confirm-password" label="Confirm Password" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} />
+                <Field id="auth-confirm-password" label="Confirm Password" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} invalid={invalidFields.includes("auth-confirm-password")} />
               )}
               {mode === "sign_in" && (
                 <div className="text-right">
                   <button type="button" className="text-xs font-medium text-[#6b6257] underline underline-offset-2 transition-colors hover:text-[#9a3b2e] dark:text-[#a89f93] dark:hover:text-[#e29a8a]" onClick={() => switchMode("forgot_password")}>Forgot password?</button>
                 </div>
               )}
-              {error && <p role="alert" className="rounded-lg border border-[#9a3b2e]/35 bg-[#9a3b2e]/10 px-3 py-2 text-xs text-[#8a3327] dark:border-[#c85a48]/40 dark:bg-[#c85a48]/12 dark:text-[#e8a090]">{error}</p>}
-              {notice && <p role="status" className="rounded-lg border border-[#4f7d5a]/35 bg-[#4f7d5a]/12 px-3 py-2 text-xs text-[#3f6a4c] dark:border-[#7fae8a]/35 dark:bg-[#7fae8a]/12 dark:text-[#a9d2b3]">{notice}</p>}
+              {error && <p id="auth-error" role="alert" className="rounded-lg border border-[#9a3b2e]/35 bg-[#9a3b2e]/10 px-3 py-2 text-xs text-[#8a3327] dark:border-[#c85a48]/40 dark:bg-[#c85a48]/12 dark:text-[#e8a090]">{error}</p>}
+              {notice && <p role="status" aria-live="polite" className="rounded-lg border border-[#4f7d5a]/35 bg-[#4f7d5a]/12 px-3 py-2 text-xs text-[#3f6a4c] dark:border-[#7fae8a]/35 dark:bg-[#7fae8a]/12 dark:text-[#a9d2b3]">{notice}</p>}
               <Button
                 type="submit"
                 disabled={mutation.isPending}
