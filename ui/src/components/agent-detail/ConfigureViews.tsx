@@ -274,7 +274,7 @@ function ConfigurationTab({
               </p>
             </div>
             <button
-              type="button"
+              type="button" aria-label="Can create new agents"
               role="switch"
               aria-checked={canCreateAgents}
               className={cn(
@@ -305,7 +305,7 @@ function ConfigurationTab({
               </p>
             </div>
             <button
-              type="button"
+              type="button" aria-label="Can assign work"
               role="switch"
               aria-checked={canAssignTasks}
               className={cn(
