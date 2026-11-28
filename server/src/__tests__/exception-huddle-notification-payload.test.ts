@@ -76,7 +76,10 @@ describe("buildExceptionHuddleNotificationPayload", () => {
     expect(payload).toMatchObject({
       event,
       severity,
-      deepLinkPath: "/channels?channelId=channel-1&threadId=thread-1",
+      deepLinkPath:
+        event === "timed_out"
+          ? "/channels?channelId=channel-1&threadId=thread-1&focus=huddle-decision"
+          : "/channels?channelId=channel-1&threadId=thread-1",
     });
     expect(payload.title).toBe(`${titlePrefix}: Mission Alpha`);
     expect(payload.body).toContain("Mission mission-1; step step-qa; round 1 of 2.");
