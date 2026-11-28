@@ -22,7 +22,7 @@ import {
   DEFAULT_CODEX_LOCAL_MODEL,
 } from "@paperclipai/adapter-codex-local";
 
-const SUPPORTED_ADVANCED_ADAPTER_TYPES = new Set<CreateConfigValues["adapterType"]>(["claude_local", "codex_local", "commandcode_local", "pi_local"]);
+const SUPPORTED_ADVANCED_ADAPTER_TYPES = new Set<CreateConfigValues["adapterType"]>(["claude_local", "codex_local", "commandcode_local", "pi_local", "devin_local"]);
 
 // Cockpit palette: panel #111622, card #151b28, hairline #242d3f, ink #e6edf7, muted #8b97ad.
 /** Hairline card: #151b28 body inside a 1px #242d3f border. */

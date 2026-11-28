@@ -322,12 +322,14 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     adapterType === "claude_local" ||
     adapterType === "codex_local" ||
     adapterType === "commandcode_local" ||
-    adapterType === "pi_local";
+    adapterType === "pi_local" ||
+    adapterType === "devin_local";
   const supportsAdapterFallback =
     adapterType === "claude_local" ||
     adapterType === "codex_local" ||
     adapterType === "commandcode_local" ||
-    adapterType === "pi_local";
+    adapterType === "pi_local" ||
+    adapterType === "devin_local";
   // [stage28-w2] 라이브 쿼터 제한/쿨다운 스냅샷 — 폴백 체인 각 행에 게이트 배지로 표시.
   // 조회 실패 시 배지 없이 조용히 폴백(데이터 null)하므로 편집 흐름을 막지 않는다.
   const usageLimitGateQuery = useQuery({
@@ -894,7 +896,9 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                         ? "cmd"
                         : adapterType === "pi_local"
                           ? "pi"
-                          : "claude"
+                          : adapterType === "devin_local"
+                            ? "devin"
+                            : "claude"
                   }
                 />
               </Field>
