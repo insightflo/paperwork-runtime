@@ -211,7 +211,7 @@ export function Sidebar({ onToggleCompact }: SidebarProps = {}) {
             </div>
           )}
           <nav aria-label="워크스페이스" className="flex flex-col gap-0.5">
-            <SidebarNavItem to="/channels" label="Channels" icon={MessageSquare} />
+            <SidebarNavItem to="/channels" label="Threads" icon={MessageSquare} />
             <SidebarNavItem
               to="/missions"
               label="Missions"
