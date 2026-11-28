@@ -35,51 +35,92 @@ export const issueStatusText: Record<string, string> = {
 
 export const issueStatusTextDefault = "text-muted-foreground";
 
+export const statusLabel: Record<string, string> = {
+  active: "활성",
+  running: "실행 중",
+  paused: "일시정지",
+  idle: "대기",
+  archived: "보관됨",
+  planned: "계획됨",
+  planning: "계획 중",
+  achieved: "달성",
+  completed: "완료",
+  succeeded: "성공",
+  failed: "실패",
+  timed_out: "시간 초과",
+  error: "오류",
+  terminated: "종료됨",
+  pending: "대기 중",
+  queued: "실행 대기",
+  pending_approval: "승인 대기",
+  revision_requested: "수정 요청",
+  approved: "승인됨",
+  rejected: "반려됨",
+  backlog: "대기열",
+  todo: "예정",
+  in_progress: "진행 중",
+  in_review: "검토 중",
+  blocked: "차단됨",
+  done: "완료",
+  cancelled: "취소됨",
+  open: "열림",
+  decided: "결정됨",
+};
+
+export function formatStatusLabel(status: string): string {
+  return statusLabel[status] ?? status.replace(/_/g, " ");
+}
+
 // ---------------------------------------------------------------------------
 // Badge colors — used by StatusBadge for all entity types
 // ---------------------------------------------------------------------------
 
 export const statusBadge: Record<string, string> = {
   // Agent statuses
-  active: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
-  running: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-300",
-  paused: "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300",
-  idle: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300",
-  archived: "bg-muted text-muted-foreground",
+  active: "border-green-500/20 bg-green-500/10 text-green-700 dark:border-green-400/25 dark:bg-green-400/15 dark:text-green-300",
+  running: "border-cyan-500/20 bg-cyan-500/10 text-cyan-700 dark:border-cyan-400/25 dark:bg-cyan-400/15 dark:text-cyan-300",
+  paused: "border-orange-500/20 bg-orange-500/10 text-orange-700 dark:border-orange-400/25 dark:bg-orange-400/15 dark:text-orange-300",
+  idle: "border-yellow-500/20 bg-yellow-500/10 text-yellow-700 dark:border-yellow-400/25 dark:bg-yellow-400/15 dark:text-yellow-300",
+  archived: "border-border bg-muted text-muted-foreground",
 
   // Goal statuses
-  planned: "bg-muted text-muted-foreground",
-  achieved: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
-  completed: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
+  planned: "border-border bg-muted text-muted-foreground",
+  achieved: "border-green-500/20 bg-green-500/10 text-green-700 dark:border-green-400/25 dark:bg-green-400/15 dark:text-green-300",
+  completed: "border-green-500/20 bg-green-500/10 text-green-700 dark:border-green-400/25 dark:bg-green-400/15 dark:text-green-300",
 
   // Run statuses
-  failed: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
-  timed_out: "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300",
-  succeeded: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
-  error: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
-  terminated: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
-  pending: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300",
+  failed: "border-red-500/20 bg-red-500/10 text-red-700 dark:border-red-400/25 dark:bg-red-400/15 dark:text-red-300",
+  timed_out: "border-orange-500/20 bg-orange-500/10 text-orange-700 dark:border-orange-400/25 dark:bg-orange-400/15 dark:text-orange-300",
+  succeeded: "border-green-500/20 bg-green-500/10 text-green-700 dark:border-green-400/25 dark:bg-green-400/15 dark:text-green-300",
+  error: "border-red-500/20 bg-red-500/10 text-red-700 dark:border-red-400/25 dark:bg-red-400/15 dark:text-red-300",
+  terminated: "border-red-500/20 bg-red-500/10 text-red-700 dark:border-red-400/25 dark:bg-red-400/15 dark:text-red-300",
+  pending: "border-yellow-500/20 bg-yellow-500/10 text-yellow-700 dark:border-yellow-400/25 dark:bg-yellow-400/15 dark:text-yellow-300",
+  queued: "border-yellow-500/20 bg-yellow-500/10 text-yellow-700 dark:border-yellow-400/25 dark:bg-yellow-400/15 dark:text-yellow-300",
 
   // Approval statuses
-  pending_approval: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
-  revision_requested: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
-  approved: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
-  rejected: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
+  pending_approval: "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/15 dark:text-amber-300",
+  revision_requested: "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:border-amber-400/25 dark:bg-amber-400/15 dark:text-amber-300",
+  approved: "border-green-500/20 bg-green-500/10 text-green-700 dark:border-green-400/25 dark:bg-green-400/15 dark:text-green-300",
+  rejected: "border-red-500/20 bg-red-500/10 text-red-700 dark:border-red-400/25 dark:bg-red-400/15 dark:text-red-300",
 
   // Issue statuses — consistent hues with issueStatusIcon above
-  backlog: "bg-muted text-muted-foreground",
-  todo: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
-  in_progress: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300",
-  in_review: "bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300",
-  blocked: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
-  done: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
-  cancelled: "bg-muted text-muted-foreground",
+  backlog: "border-border bg-muted text-muted-foreground",
+  todo: "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:border-blue-400/25 dark:bg-blue-400/15 dark:text-blue-300",
+  in_progress: "border-yellow-500/20 bg-yellow-500/10 text-yellow-700 dark:border-yellow-400/25 dark:bg-yellow-400/15 dark:text-yellow-300",
+  in_review: "border-violet-500/20 bg-violet-500/10 text-violet-700 dark:border-violet-400/25 dark:bg-violet-400/15 dark:text-violet-300",
+  blocked: "border-red-500/20 bg-red-500/10 text-red-700 dark:border-red-400/25 dark:bg-red-400/15 dark:text-red-300",
+  done: "border-green-500/20 bg-green-500/10 text-green-700 dark:border-green-400/25 dark:bg-green-400/15 dark:text-green-300",
+  cancelled: "border-border bg-muted text-muted-foreground",
 
   // Mission statuses
-  planning: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
+  planning: "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:border-blue-400/25 dark:bg-blue-400/15 dark:text-blue-300",
+
+  // Huddle statuses
+  open: "border-cyan-500/20 bg-cyan-500/10 text-cyan-700 dark:border-cyan-400/25 dark:bg-cyan-400/15 dark:text-cyan-300",
+  decided: "border-green-500/20 bg-green-500/10 text-green-700 dark:border-green-400/25 dark:bg-green-400/15 dark:text-green-300",
 };
 
-export const statusBadgeDefault = "bg-muted text-muted-foreground";
+export const statusBadgeDefault = "border-border bg-muted text-muted-foreground";
 
 // ---------------------------------------------------------------------------
 // Agent status dot — solid background for small indicator dots
