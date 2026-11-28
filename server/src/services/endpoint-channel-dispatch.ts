@@ -1,4 +1,13 @@
-import type { EndpointBotPairingService, LocalTaskKind } from "./endpoint-bot-pairing.js";
+import type { Db } from "@paperclipai/db";
+import { ensurePersonalEndpointTables, listEndpointsDb, enqueueLocalTaskDb } from "./endpoint-bot-db-store.js";
+import type { EndpointBotPairingService, LocalTask, LocalTaskKind } from "./endpoint-bot-pairing.js";
+
+type EndpointStore = Pick<EndpointBotPairingService, "listEndpoints" | "enqueueLocalTask">;
+type AsyncTaskStore = Omit<EndpointStore, "enqueueLocalTask"> & {
+  enqueueLocalTask(input: Parameters<EndpointStore["enqueueLocalTask"]>[0]): Promise<LocalTask>;
+};
+type DispatchInput<Store> = { companyId: string; messageText: string; store: Store; nowMs?: number };
+const endpointTablesReady = new WeakMap<Db, Promise<void>>();
 
 type ReadKind = Extract<LocalTaskKind, "list_dir" | "read_file">;
 export type EndpointMentionCommand = { botName: string; targetPath: string } & (
@@ -29,12 +38,11 @@ export function parseEndpointMentionCommand(messageText: string): EndpointMentio
 }
 
 /** Callers must authorize the channel sender before invoking this pure routing bridge. */
-export function dispatchChannelMessageToEndpoint(input: {
-  companyId: string;
-  messageText: string;
-  store: Pick<EndpointBotPairingService, "listEndpoints" | "enqueueLocalTask">;
-  nowMs?: number;
-}): EndpointChannelDispatchResult {
+export function dispatchChannelMessageToEndpoint(input: DispatchInput<EndpointStore>): EndpointChannelDispatchResult;
+export function dispatchChannelMessageToEndpoint(input: DispatchInput<AsyncTaskStore>):
+  EndpointChannelDispatchResult | Promise<EndpointChannelDispatchResult>;
+export function dispatchChannelMessageToEndpoint(input: DispatchInput<EndpointStore | AsyncTaskStore>):
+  EndpointChannelDispatchResult | Promise<EndpointChannelDispatchResult> {
   const parsed = parseEndpointMentionCommand(input.messageText);
   if (!parsed) return { matched: false };
   const nowMs = input.nowMs ?? Date.now();
@@ -48,15 +56,40 @@ export function dispatchChannelMessageToEndpoint(input: {
     return { matched: true, ok: false, reason: "endpoint_offline",
       replyText: `@${endpoint.botName} is offline. Reconnect the device and try again.` };
   }
+  const queued = (task: LocalTask): EndpointChannelDispatchResult => ({
+    matched: true, ok: true, deviceId: endpoint.deviceId, taskId: task.taskId,
+    replyText: `Queued task ${task.taskId} for @${endpoint.botName}.`,
+  });
+  const denied = (): EndpointChannelDispatchResult => ({
+    matched: true, ok: false, reason: "policy_denied",
+    replyText: `@${endpoint.botName} could not accept this task. Check the allowed path and folder permissions.`,
+  });
   try {
     const task = input.store.enqueueLocalTask({
       companyId: input.companyId, deviceId: endpoint.deviceId, kind: parsed.kind, targetPath: parsed.targetPath,
       ...(parsed.kind === "shell_exec" ? { command: parsed.command } : {}), nowMs,
     });
-    return { matched: true, ok: true, deviceId: endpoint.deviceId, taskId: task.taskId,
-      replyText: `Queued task ${task.taskId} for @${endpoint.botName}.` };
+    return task instanceof Promise ? task.then(queued, denied) : queued(task);
   } catch {
-    return { matched: true, ok: false, reason: "policy_denied",
-      replyText: `@${endpoint.botName} could not accept this task. Check the allowed path and folder permissions.` };
+    return denied();
   }
+}
+
+/** Live dispatch uses durable endpoints/tasks while sharing the synchronous routing guards and replies. */
+export async function dispatchChannelMessageToEndpointDb(
+  db: Db, input: Omit<DispatchInput<EndpointStore>, "store">,
+): Promise<EndpointChannelDispatchResult> {
+  if (!parseEndpointMentionCommand(input.messageText)) return { matched: false };
+  let ready = endpointTablesReady.get(db);
+  if (!ready) {
+    ready = ensurePersonalEndpointTables(db);
+    endpointTablesReady.set(db, ready);
+  }
+  await ready;
+  const nowMs = input.nowMs ?? Date.now();
+  const endpoints = await listEndpointsDb(db, input.companyId, nowMs);
+  return dispatchChannelMessageToEndpoint({
+    ...input, nowMs,
+    store: { listEndpoints: () => endpoints, enqueueLocalTask: (task) => enqueueLocalTaskDb(db, task) },
+  });
 }

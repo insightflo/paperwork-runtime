@@ -1134,7 +1134,7 @@ export function Inbox() {
         {tab === "all" && (
           <div className="flex shrink-0 items-center gap-1.5">
             <Select value={allCategoryFilter} onValueChange={(value) => setAllCategoryFilter(value as InboxCategoryFilter)}>
-              <SelectTrigger className="h-7 w-[160px] text-xs">
+              <SelectTrigger className="h-7 w-[160px] text-xs" aria-label="인박스 카테고리 필터">
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
@@ -1148,7 +1148,7 @@ export function Inbox() {
             </Select>
             {showApprovalsCategory && (
               <Select value={allApprovalFilter} onValueChange={(value) => setAllApprovalFilter(value as InboxApprovalFilter)}>
-                <SelectTrigger className="h-7 w-[160px] text-xs">
+                <SelectTrigger className="h-7 w-[160px] text-xs" aria-label="승인 상태 필터">
                   <SelectValue placeholder="Approval status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1162,8 +1162,8 @@ export function Inbox() {
         )}
       </div>
 
-      {approvalsError && <p className="text-sm text-destructive">{approvalsError.message}</p>}
-      {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+      {approvalsError && <p className="text-sm text-destructive" role="alert">{approvalsError.message}</p>}
+      {actionError && <p className="text-sm text-destructive" role="alert">{actionError}</p>}
 
       {!allLoaded && visibleSections.length === 0 && (
         <PageSkeleton variant="inbox" />
@@ -1337,7 +1337,7 @@ export function Inbox() {
             <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]">
               Alerts
             </h3>
-            <div className={cn(TACTILE_SURFACE, "divide-y divide-slate-200/75 overflow-hidden dark:divide-white/[0.06]")}>
+            <div className={cn(TACTILE_SURFACE, "divide-y divide-slate-200/75 overflow-hidden dark:divide-white/[0.06]")} aria-live="polite">
               {showAggregateAgentError && (
                 <div className="group/alert relative flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50 dark:hover:bg-[#141b29]">
                   <Link
