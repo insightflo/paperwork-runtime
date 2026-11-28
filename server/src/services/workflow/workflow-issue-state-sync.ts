@@ -15,6 +15,7 @@ import { applyWorkProductDependencyGate, collectUniqueStepRunIssueIds, loadWorkP
 import { shouldPreservePendingRetryFromIssueState, stripRetryTrackingOnSuccess } from "./retry-launch-dispatch.js";
 import type { WorkflowStep, WorkflowExecutionContext } from "./dag-engine.js";
 import { readWorkflowToolCorrection } from "./workflow-tool-correction.js";
+import { hasActiveWorkflowRetryRecoveryExecution } from "./retry-execution-state.js";
 
 export async function syncStepRunsFromIssueState(
   db: Db,
@@ -103,7 +104,11 @@ export async function syncStepRunsFromIssueState(
     if (stepRun.status === "completed" && matchesCurrentCapAcceptedProducer(stepRun, stepRuns)) continue;
     const isValidationCheck = validationCandidateIssueIdSet.has(issue.id);
     const latestValidationVerdict = latestValidationVerdictByIssueId.get(issue.id);
-    const ungatedStatus = isValidationCheck
+    // Review is not completion authority. Once its execution and accepted wake are
+    // gone, fail closed through the existing retry/terminal path instead of wedging running.
+    const inactiveReview = issue.status === "in_review"
+      && !await hasActiveWorkflowRetryRecoveryExecution(db, { companyId: issue.companyId, issueId: issue.id });
+    const ungatedStatus = inactiveReview ? "failed" : isValidationCheck
       ? desiredValidationCheckStepStatus({ issueStatus: issue.status, latestVerdict: latestValidationVerdict })
       : desiredStepRunStatusFromIssueStatus(issue.status);
     const desiredStatus = applyWorkProductDependencyGate({
