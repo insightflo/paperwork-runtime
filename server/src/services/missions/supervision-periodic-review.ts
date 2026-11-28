@@ -14,6 +14,7 @@ import {
 } from "./supervision-support.js";
 
 export const MISSION_OWNER_PERIODIC_REVIEW_INTERVAL_MS = 30 * 60 * 1000;
+export const MAX_PERIODIC_OVERSIGHT_RUNS = 5;
 // 실행 단위 status 는 normalizeMissionExecutionStatus 가 blocked 를 unknown 으로 접지만,
 //   플러그인 단위가 blocked 문자열을 그대로 싣는 경로를 대비해 failed 와 함께 문제 단위로 둔다.
 const PROBLEM_UNIT_STATUSES_FOR_REVIEW = new Set<string>(["failed", "blocked"]);
@@ -38,11 +39,13 @@ export async function maybeDispatchMissionOwnerPeriodicReview(input: {
   missionIssues: MissionSupervisionIssue[];
   executionSnapshot: MissionExecutionSourceSnapshot;
   missionHasActiveHeartbeat: boolean;
+  oversightRunCount?: number;
   now: Date;
   findings: string[];
 }): Promise<void> {
   const { db, deps, mission, oversightIssueId, missionIssues, executionSnapshot, now, findings } = input;
   if (mission.status !== "active" || !deps.onMissionOwnerPeriodicReviewWakeRequested) return;
+  if ((input.oversightRunCount ?? 0) >= MAX_PERIODIC_OVERSIGHT_RUNS) return;
 
   const missionCreatedMs = mission.createdAt instanceof Date ? mission.createdAt.getTime() : new Date(mission.createdAt).getTime();
   const missionAgeMs = Math.max(0, now.getTime() - (Number.isFinite(missionCreatedMs) ? missionCreatedMs : 0));
@@ -54,7 +57,8 @@ export async function maybeDispatchMissionOwnerPeriodicReview(input: {
       && (row.status === "todo" || row.status === "in_progress" || row.status === "blocked"))
     .map((row) => row.id);
   const hasProblemUnit = executionSnapshot.units.some((unit) => PROBLEM_UNIT_STATUSES_FOR_REVIEW.has(unit.status));
-  if (openOwnerActionIds.length === 0 && !hasProblemUnit && input.missionHasActiveHeartbeat) return;
+  const hasInFlightUnit = executionSnapshot.units.some((unit) => ACTIVE_SUPERVISION_EXECUTION_STATUSES_FOR_REVIEW.has(unit.status));
+  if (openOwnerActionIds.length === 0 && !hasProblemUnit && (input.missionHasActiveHeartbeat || hasInFlightUnit)) return;
 
   const reviewBucket = Math.floor(missionAgeMs / MISSION_OWNER_PERIODIC_REVIEW_INTERVAL_MS);
   const reviewKey = `mission-owner-periodic-review:${mission.id}:${reviewBucket}`;
