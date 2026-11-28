@@ -18,6 +18,10 @@ import { RunSessionAndIssues } from "./RunSessionAndIssues";
 import { runMetrics } from "../../pages/agent-detail-view-helpers";
 import { asNonEmptyString, asRecord, redactRunOutputText } from "../../pages/agent-detail-redaction";
 
+const RUN_DETAIL_PANEL_CLASS =
+  "tactile-card overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_-18px_rgba(0,0,0,0.85)]";
+const EYEBROW_CLASS = "text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-muted-foreground";
+
 export function RunsTab(props: {
   initialRuns: HeartbeatRunSummary[];
   nextCursor: HeartbeatRunCursor | null;
@@ -153,45 +157,49 @@ function RunDetail({
   const hasNonZeroExit = run.exitCode !== null && run.exitCode !== 0;
 
   return (
-    <div className="space-y-4 min-w-0">
-      <div className="border border-border rounded-lg overflow-hidden">
+    <div className="space-y-4 min-w-0 tabular-nums">
+      <div className={RUN_DETAIL_PANEL_CLASS}>
         <div className="flex flex-col sm:flex-row">
           <div className="flex-1 p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <StatusBadge status={run.status} />
-              {(run.status === "running" || run.status === "queued") && (
-                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive text-xs h-6 px-2" onClick={() => cancelRun.mutate()} disabled={cancelRun.isPending}>
-                  {cancelRun.isPending ? "Cancelling…" : "Cancel"}
-                </Button>
-              )}
-              {canResumeLostRun && (
-                <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => resumeRun.mutate()} disabled={resumeRun.isPending}>
-                  <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                  {resumeRun.isPending ? "Resuming…" : "Resume"}
-                </Button>
-              )}
-              {canRetryRun && !canResumeLostRun && (
-                <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => retryRun.mutate()} disabled={retryRun.isPending}>
-                  <RotateCcw className="h-3.5 w-3.5 mr-1" />
-                  {retryRun.isPending ? "Retrying…" : "Retry"}
-                </Button>
-              )}
+            <div className="space-y-2">
+              <div className={EYEBROW_CLASS}>실행 / Execution</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusBadge status={run.status} />
+                {(run.status === "running" || run.status === "queued") && (
+                  <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive text-xs h-6 px-2" onClick={() => cancelRun.mutate()} disabled={cancelRun.isPending}>
+                    {cancelRun.isPending ? "Cancelling…" : "Cancel"}
+                  </Button>
+                )}
+                {canResumeLostRun && (
+                  <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => resumeRun.mutate()} disabled={resumeRun.isPending}>
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                    {resumeRun.isPending ? "Resuming…" : "Resume"}
+                  </Button>
+                )}
+                {canRetryRun && !canResumeLostRun && (
+                  <Button variant="ghost" size="sm" className="text-xs h-6 px-2" onClick={() => retryRun.mutate()} disabled={retryRun.isPending}>
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                    {retryRun.isPending ? "Retrying…" : "Retry"}
+                  </Button>
+                )}
+              </div>
             </div>
             {resumeRun.isError && <ErrorReferenceChip error={resumeRun.error} fallback="Failed to resume run" />}
             {retryRun.isError && <ErrorReferenceChip error={retryRun.error} fallback="Failed to retry run" />}
             {startTime && (
-              <div className="space-y-0.5">
-                <div className="text-sm font-mono">
+              <div className="space-y-1.5">
+                <div className={EYEBROW_CLASS}>실행 시간 / Timing</div>
+                <div className="text-sm font-mono text-slate-800 dark:text-foreground/90">
                   {startTime}
-                  {endTime && <span className="text-muted-foreground"> &rarr; </span>}
+                  {endTime && <span className="text-slate-400 dark:text-muted-foreground/80"> &rarr; </span>}
                   {endTime}
                 </div>
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-[11px] text-slate-500 dark:text-muted-foreground">
                   {relativeTime(run.startedAt!)}
                   {run.finishedAt && <> &rarr; {relativeTime(run.finishedAt)}</>}
                 </div>
                 {displayDurationSec !== null && (
-                  <div className="text-xs text-muted-foreground">
+                  <div className="text-xs text-slate-500 dark:text-muted-foreground">
                     Duration: {displayDurationSec >= 60 ? `${Math.floor(displayDurationSec / 60)}m ${displayDurationSec % 60}s` : `${displayDurationSec}s`}
                   </div>
                 )}
@@ -207,22 +215,25 @@ function RunDetail({
           </div>
 
           {hasMetrics && (
-            <div className="border-t sm:border-t-0 sm:border-l border-border p-4 grid grid-cols-2 gap-x-4 sm:gap-x-8 gap-y-3 content-center tabular-nums">
-              <div>
-                <div className="text-xs text-muted-foreground">Input</div>
-                <div className="text-sm font-medium font-mono">{formatTokens(metrics.input)}</div>
+            <div className="border-t sm:border-t-0 sm:border-l border-slate-200/80 dark:border-white/[0.07] p-4 grid grid-cols-2 gap-x-4 sm:gap-x-8 gap-y-3 content-center tabular-nums">
+              <div className="col-span-2">
+                <div className={EYEBROW_CLASS}>실행 사용량 / Usage</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground">Output</div>
-                <div className="text-sm font-medium font-mono">{formatTokens(metrics.output)}</div>
+                <div className="text-xs text-slate-500 dark:text-muted-foreground">Input</div>
+                <div className="text-sm font-medium font-mono text-slate-900 dark:text-foreground">{formatTokens(metrics.input)}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground">Cached</div>
-                <div className="text-sm font-medium font-mono">{formatTokens(metrics.cached)}</div>
+                <div className="text-xs text-slate-500 dark:text-muted-foreground">Output</div>
+                <div className="text-sm font-medium font-mono text-slate-900 dark:text-foreground">{formatTokens(metrics.output)}</div>
               </div>
               <div>
-                <div className="text-xs text-muted-foreground">Cost</div>
-                <div className="text-sm font-medium font-mono">{metrics.cost > 0 ? `$${metrics.cost.toFixed(4)}` : "-"}</div>
+                <div className="text-xs text-slate-500 dark:text-muted-foreground">Cached</div>
+                <div className="text-sm font-medium font-mono text-slate-900 dark:text-foreground">{formatTokens(metrics.cached)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 dark:text-muted-foreground">Cost</div>
+                <div className="text-sm font-medium font-mono text-slate-900 dark:text-foreground">{metrics.cost > 0 ? `$${metrics.cost.toFixed(4)}` : "-"}</div>
               </div>
             </div>
           )}
@@ -232,18 +243,18 @@ function RunDetail({
       </div>
 
       {run.stderrExcerpt && (
-        <div className="space-y-1">
-          <span className="text-xs font-medium text-red-600 dark:text-red-400">stderr</span>
-          <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-3 text-xs font-mono text-red-700 dark:text-red-300 overflow-x-auto whitespace-pre-wrap">
+        <div className="tactile-card rounded-xl border border-red-200/80 bg-red-50/70 p-3 space-y-2 dark:border-red-400/20 dark:bg-red-500/[0.07]">
+          <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-red-700 dark:text-red-300">stderr</span>
+          <pre className="rounded-lg border border-red-200/80 bg-white/70 p-3 text-xs font-mono text-red-700 dark:border-red-400/20 dark:bg-muted/30 dark:text-red-300 overflow-x-auto whitespace-pre-wrap">
             {redactRunOutputText(run.stderrExcerpt, true)}
           </pre>
         </div>
       )}
 
       {run.stdoutExcerpt && !run.logRef && (
-        <div className="space-y-1">
-          <span className="text-xs font-medium text-muted-foreground">stdout</span>
-          <pre className="bg-neutral-100 dark:bg-neutral-950 rounded-md p-3 text-xs font-mono text-foreground overflow-x-auto whitespace-pre-wrap">
+        <div className="tactile-card rounded-xl border border-slate-200/90 bg-white p-3 space-y-2 dark:border-white/[0.08] dark:bg-card">
+          <span className={EYEBROW_CLASS}>stdout</span>
+          <pre className="rounded-lg border border-slate-200/80 bg-slate-50/80 p-3 text-xs font-mono text-foreground dark:border-white/[0.07] dark:bg-muted/30 dark:text-foreground/90 overflow-x-auto whitespace-pre-wrap">
             {redactRunOutputText(run.stdoutExcerpt, true)}
           </pre>
         </div>

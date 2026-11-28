@@ -69,17 +69,17 @@ describe("StatusBadge", () => {
     await render(<StatusBadge status="in_progress" />);
 
     const badge = host.querySelector("span") as HTMLSpanElement;
-    expect(badge.textContent).toBe("in progress");
+    expect(badge.textContent).toBe("진행 중");
     expect(badge.className).toContain("rounded-sm");
-    expect(badge.className).toContain("border-current/15");
+    expect(badge.className).toContain("border-yellow-500/20");
     expect(badge.className).toContain("px-2");
     expect(badge.className).toContain("py-0.5");
     expect(badge.className).toContain("text-[11px]");
     expect(badge.className).toContain("uppercase");
     expect(badge.className).toContain("tabular-nums");
-    expect(badge.className).toContain("bg-yellow-100");
+    expect(badge.className).toContain("bg-yellow-500/10");
     expect(badge.className).toContain("text-yellow-700");
-    expect(badge.className).toContain("dark:bg-yellow-900/50");
+    expect(badge.className).toContain("dark:bg-yellow-400/15");
     expect(badge.className).toContain("dark:text-yellow-300");
   });
 });

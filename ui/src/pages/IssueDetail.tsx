@@ -77,8 +77,8 @@ const ACTION_LABELS: Record<string, string> = {
   "agent.paused": "paused the agent",
   "agent.resumed": "resumed the agent",
   "agent.terminated": "terminated the agent",
-  "heartbeat.invoked": "invoked a heartbeat",
-  "heartbeat.cancelled": "cancelled a heartbeat",
+  "heartbeat.invoked": "실행을 시작했습니다",
+  "heartbeat.cancelled": "실행을 취소했습니다",
   "approval.created": "requested approval",
   "approval.approved": "approved",
   "approval.rejected": "rejected",
@@ -87,6 +87,22 @@ const ACTION_LABELS: Record<string, string> = {
 function humanizeValue(value: unknown): string {
   if (typeof value !== "string") return String(value ?? "none");
   return value.replace(/_/g, " ");
+}
+
+const ISSUE_STATUS_LABELS: Record<string, string> = {
+  backlog: "대기열",
+  todo: "대기",
+  in_progress: "진행 중",
+  in_review: "검증 중",
+  blocked: "차단됨",
+  done: "완료",
+  cancelled: "취소됨",
+  canceled: "취소됨",
+};
+
+function formatIssueStatusLabel(value: unknown): string {
+  if (typeof value !== "string") return humanizeValue(value);
+  return ISSUE_STATUS_LABELS[value] ?? humanizeValue(value);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -147,8 +163,8 @@ function formatAction(action: string, details?: Record<string, unknown> | null):
       const from = previous.status;
       parts.push(
         from
-          ? `changed the status from ${humanizeValue(from)} to ${humanizeValue(details.status)}`
-          : `changed the status to ${humanizeValue(details.status)}`
+          ? `상태 변경: ${formatIssueStatusLabel(from)} → ${formatIssueStatusLabel(details.status)}`
+          : `상태 변경: ${formatIssueStatusLabel(details.status)}`
       );
     }
     if (details.priority !== undefined) {
@@ -191,22 +207,6 @@ function ActorIdentity({ evt, agentMap }: { evt: ActivityEvent; agentMap: Map<st
   if (evt.actorType === "system") return <Identity name="System" size="sm" />;
   if (evt.actorType === "user") return <Identity name="Board" size="sm" />;
   return <Identity name={id || "Unknown"} size="sm" />;
-}
-
-// Cockpit status pill tones: active=lime pulse, running/in-progress=cobalt, attention=amber, blocked/failed=crimson.
-const PILL_TONE: Record<string, string> = {
-  active: "text-lime-700 dark:text-[#a3e635]", running: "text-blue-600 dark:text-[#60a5fa]", in_progress: "text-blue-600 dark:text-[#60a5fa]", in_review: "text-blue-600 dark:text-[#60a5fa]", todo: "text-blue-600 dark:text-[#60a5fa]",
-  planning: "text-amber-600 dark:text-[#f59e0b]", paused: "text-amber-600 dark:text-[#f59e0b]", pending_approval: "text-amber-600 dark:text-[#f59e0b]",
-  failed: "text-rose-600 dark:text-[#fb7185]", blocked: "text-rose-600 dark:text-[#fb7185]", cancelled: "text-rose-600 dark:text-[#fb7185]", canceled: "text-rose-600 dark:text-[#fb7185]", terminated: "text-rose-600 dark:text-[#fb7185]",
-};
-
-function StatusPill({ status }: { status: string }) {
-  return (
-    <span className={`inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-slate-200/90 bg-white px-2 text-[10.5px] font-semibold capitalize shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ${PILL_TONE[status.toLowerCase()] ?? "text-slate-500 dark:text-[#8f9db3]"}`}>
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
-      {status.replace(/_/g, " ")}
-    </span>
-  );
 }
 
 export function IssueDetail() {
@@ -713,14 +713,11 @@ export function IssueDetail() {
             )}
           </div>
         </div>
-        <StatusPill status={issue.status} />
+        <StatusBadge status={issue.status} />
         {hasLiveRuns && (
           <span aria-live="polite" className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-lime-500/30 dark:border-[#a3e635]/30 bg-lime-500/10 dark:bg-[#a3e635]/10 px-2 py-0.5 text-[10px] font-semibold text-lime-700 dark:text-[#a3e635]">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-pulse absolute inline-flex h-full w-full rounded-full bg-lime-500 opacity-75 dark:bg-[#a3e635]" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-lime-500 dark:bg-[#a3e635]" />
-            </span>
-            Live
+            <span className="pw-live-dot" aria-hidden="true" />
+            실행 중
           </span>
         )}
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -780,7 +777,7 @@ export function IssueDetail() {
       )}
 
       {/* 1-row key-metric summary strip (secondary cells fold below sm; the row never wraps or widens the page). */}
-      <div className="cockpit-strip w-full gap-0 overflow-hidden border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]" role="group" aria-label="Work item summary">
+      <div className="cockpit-strip tactile-card w-full gap-0 overflow-hidden rounded-xl border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]" role="group" aria-label="Work item summary">
         {issue.projectId ? (
           <Link to={`/projects/${issue.projectId}`} className="cockpit-cell min-w-0 hover:text-slate-950 dark:hover:text-[#eef2f8]">
             <Hexagon className="h-3 w-3 shrink-0" /><span className={metricLabel}>Project</span><b className="truncate" title={projectName}>{projectName}</b>
@@ -794,9 +791,9 @@ export function IssueDetail() {
           </span>
         ))}
         {(issue.labels ?? []).length > 4 && <span className="cockpit-cell hidden sm:inline-flex">+{(issue.labels ?? []).length - 4}</span>}
-        <span className="cockpit-cell"><span className={metricLabel}>Runs</span><b>{(linkedRuns ?? []).length}</b></span>
-        <span className="cockpit-cell"><span className={metricLabel}>Cost</span><b>{issueCostSummary.hasCost ? `$${issueCostSummary.cost.toFixed(4)}` : "—"}</b></span>
-        <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Tokens</span><b>{issueCostSummary.hasTokens ? formatTokens(issueCostSummary.totalTokens) : "—"}</b></span>
+        <span className="cockpit-cell"><span className={metricLabel}>실행</span><b>{(linkedRuns ?? []).length}</b></span>
+        <span className="cockpit-cell"><span className={metricLabel}>비용</span><b>{issueCostSummary.hasCost ? `$${issueCostSummary.cost.toFixed(4)}` : "—"}</b></span>
+        <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>토큰</span><b>{issueCostSummary.hasTokens ? formatTokens(issueCostSummary.totalTokens) : "—"}</b></span>
         <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Comments</span><b>{(comments ?? []).length}</b></span>
         <span className="cockpit-cell hidden sm:inline-flex"><span className={metricLabel}>Sub-items</span><b>{childIssues.length}</b></span>
         <span className="cockpit-cell"><span className={metricLabel}>Updated</span><b>{relativeTime(issue.updatedAt)}</b></span>
@@ -840,15 +837,14 @@ export function IssueDetail() {
       <Collapsible
         open={showDataGraphContext}
         onOpenChange={setShowDataGraphContext}
-        className="tactile-card"
-        style={{ borderColor: "var(--pw-token-border)", backgroundColor: "var(--pw-token-bg-surface)" }}
+        className="tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]"
       >
         <CollapsibleTrigger className="flex w-full items-center justify-between px-3 py-2 text-left">
           <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">연결 맥락 (Data Graph · 2-hop)</span>
           <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", showDataGraphContext && "rotate-180")} />
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <div className="border-t px-3 py-2" style={{ borderColor: "var(--pw-token-border)" }}>
+          <div className="border-t border-slate-200/90 px-3 py-2 dark:border-white/[0.08]">
             <DataGraphContextPanel
               companyId={issue.companyId}
               seedKind="issue"
@@ -890,7 +886,7 @@ export function IssueDetail() {
 
         <div className="space-y-2">
           {attachmentList.map((attachment) => (
-            <div key={attachment.id} className="rounded-md border border-slate-200/90 dark:border-white/[0.08] bg-slate-50 dark:bg-[#090c12] p-2">
+            <div key={attachment.id} className="rounded-[10px] border border-slate-200/80 bg-slate-50/85 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/[0.07] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
               <div className="flex items-center justify-between gap-2">
                 <a
                   href={attachment.contentPath}
@@ -932,7 +928,7 @@ export function IssueDetail() {
 
       <Tabs value={detailTab} onValueChange={setDetailTab} className="space-y-3">
         {/* 32px cockpit toolbar with hairline tabs. */}
-        <div className="cockpit-toolbar h-auto min-h-8 flex-wrap py-1">
+        <div className="cockpit-toolbar tactile-card h-auto min-h-8 flex-wrap rounded-xl border-slate-200/90 bg-white px-1.5 py-1 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d]">
         <TabsList variant="line" className="h-7 shrink-0">
           <TabsTrigger value="comments" className="gap-1.5 text-xs">
             <MessageSquare className="h-3.5 w-3.5" />
@@ -1021,9 +1017,9 @@ export function IssueDetail() {
         <TabsContent value="activity">
           {linkedRuns && linkedRuns.length > 0 && (
             <div className="mb-3 tactile-card border-slate-200/90 bg-white dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] px-3 py-2">
-              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Cost Summary</div>
+              <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">실행 비용</div>
               {!issueCostSummary.hasCost && !issueCostSummary.hasTokens ? (
-                <div className="text-xs text-muted-foreground">No cost data yet.</div>
+                <div className="text-xs text-muted-foreground">아직 실행 비용 데이터가 없습니다.</div>
               ) : (
                 <div className="flex flex-wrap gap-3 text-xs text-muted-foreground tabular-nums">
                   {issueCostSummary.hasCost && (
@@ -1033,10 +1029,10 @@ export function IssueDetail() {
                   )}
                   {issueCostSummary.hasTokens && (
                     <span>
-                      Tokens {formatTokens(issueCostSummary.totalTokens)}
+                      토큰 {formatTokens(issueCostSummary.totalTokens)}
                       {issueCostSummary.cached > 0
-                        ? ` (in ${formatTokens(issueCostSummary.input)}, out ${formatTokens(issueCostSummary.output)}, cached ${formatTokens(issueCostSummary.cached)})`
-                        : ` (in ${formatTokens(issueCostSummary.input)}, out ${formatTokens(issueCostSummary.output)})`}
+                        ? ` (입력 ${formatTokens(issueCostSummary.input)}, 출력 ${formatTokens(issueCostSummary.output)}, 캐시 ${formatTokens(issueCostSummary.cached)})`
+                        : ` (입력 ${formatTokens(issueCostSummary.input)}, 출력 ${formatTokens(issueCostSummary.output)})`}
                     </span>
                   )}
                 </div>
@@ -1046,9 +1042,9 @@ export function IssueDetail() {
           {!activity || activity.length === 0 ? (
             <p aria-live="polite" className="text-xs text-muted-foreground">No activity yet.</p>
           ) : (
-            <div className="space-y-1.5">
+            <div className="tactile-card overflow-hidden rounded-xl border-slate-200/90 bg-white divide-y divide-slate-200/80 dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:divide-white/[0.07]">
               {activity.slice(0, 20).map((evt) => (
-                <div key={evt.id} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <div key={evt.id} className="flex items-center gap-1.5 px-3 py-2 text-xs text-muted-foreground">
                   <ActorIdentity evt={evt} agentMap={agentMap} />
                   <span>{formatAction(evt.action, evt.details)}</span>
                   <span className="ml-auto shrink-0 tabular-nums">{relativeTime(evt.createdAt)}</span>

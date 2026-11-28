@@ -7,6 +7,7 @@ const ENABLED_ADAPTER_TYPES = new Set([
   "commandcode_local",
   "cursor",
   "pi_local",
+  "devin_local",
 ]);
 
 export function isAdapterTypeEnabled(type: string): boolean {

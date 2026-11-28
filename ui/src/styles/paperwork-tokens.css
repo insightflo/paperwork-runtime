@@ -40,6 +40,7 @@
   --pw-token-provider-claude: #d97757;
   --pw-token-provider-antigravity: #8e75b2;
   --pw-token-provider-pi: #10b981;
+  --pw-token-provider-devin: #2dd4bf;
   --pw-token-provider-hermes: #06b6d4;
   --pw-token-provider-gemini: #4285f4;
   --pw-token-provider-opencode: #a3a3a3;
@@ -113,6 +114,7 @@
   --pw-token-span-error: #b91c1c;
   --pw-token-span-lifecycle: #6b6358;
   --pw-token-provider-codex: #27272a;
+  --pw-token-provider-devin: #0f766e;
   --pw-token-provider-cursor: #18181b;
   --pw-token-provider-opencode: #3f3f46;
 
@@ -257,6 +259,9 @@
 }
 [data-provider="pi"], [data-provider="pi_local"] {
   --openbot-provider-current: var(--pw-token-provider-pi);
+}
+[data-provider="devin"], [data-provider="devin_local"] {
+  --openbot-provider-current: var(--pw-token-provider-devin);
 }
 [data-provider="hermes"], [data-provider="hermes_local"] {
   --openbot-provider-current: var(--pw-token-provider-hermes);

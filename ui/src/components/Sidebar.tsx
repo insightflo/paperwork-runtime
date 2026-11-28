@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Inbox, CircleDot, LayoutDashboard, DollarSign, History, Network, BookOpen, BookOpenCheck,
+  CircleDot, LayoutDashboard, DollarSign, History, Network, BookOpen, BookOpenCheck,
   Brain, Boxes, Settings, Rocket, CalendarClock, MessageSquare, ShieldCheck, GitPullRequest,
   Workflow, ListChecks, UserRoundCheck, PanelLeftOpen, ChevronRight, FolderKanban, Bot,
   Laptop, Table2,
@@ -18,14 +18,13 @@ import { operatorDecisionsApi } from "../api/operator-decisions";
 import { queryKeys } from "../lib/queryKeys";
 import { cn } from "../lib/utils";
 import { applyCompanyPrefix, extractCompanyPrefixFromPath } from "../lib/company-routes";
-import { useInboxBadge } from "../hooks/useInboxBadge";
 import { useAfterInitialPaint } from "../hooks/useAfterInitialPaint";
 import { selectHumanOperatorSurface } from "../lib/human-operator-surface";
 import { useSidebarDensity } from "../lib/sidebar-slide-physics";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
-// [Stage 31B W2] OpenBot-style progressive disclosure: 5 primary items stay visible; every
+// [Stage 31B W2] OpenBot-style progressive disclosure: 4 primary items stay visible; every
 // remaining nav item lives behind the default-collapsed "운영 · 관리 도구" accordion.
 const TOOLS_OPEN_STORAGE_KEY = "paperwork:sidebar-tools-open";
 
@@ -76,7 +75,6 @@ export function Sidebar({ onToggleCompact }: SidebarProps = {}) {
   const { selectedCompanyId, selectedCompany } = useCompany();
   const sidebarDataReady = useAfterInitialPaint(900);
   const deferredCompanyId = sidebarDataReady ? selectedCompanyId : null;
-  const inboxBadge = useInboxBadge(deferredCompanyId);
 
   const { data: liveRuns } = useQuery({
     queryKey: queryKeys.liveRuns(selectedCompanyId!),
@@ -196,7 +194,7 @@ export function Sidebar({ onToggleCompact }: SidebarProps = {}) {
         </div>
       )}
 
-      {/* Main body: Primary Workspace nav (5) + flex-growing Agents + bottom collapsible ops tools */}
+      {/* Main body: Primary Workspace nav (4) + flex-growing Agents + bottom collapsible ops tools */}
       <div
         className={cn(
           "cockpit-sidebar-nav flex min-h-0 flex-1 flex-col",
@@ -219,14 +217,6 @@ export function Sidebar({ onToggleCompact }: SidebarProps = {}) {
               textBadge={missionCount > 0 ? String(missionCount) : undefined}
             />
             <SidebarNavItem to="/agents" label="Agents" icon={Bot} />
-            <SidebarNavItem
-              to="/inbox"
-              label="Inbox"
-              icon={Inbox}
-              badge={inboxBadge.inbox}
-              badgeTone={inboxBadge.failedRuns > 0 ? "danger" : "default"}
-              alert={inboxBadge.failedRuns > 0}
-            />
             <SidebarNavItem to="/company/settings" label="Settings" icon={Settings} />
           </nav>
         </div>

@@ -8,18 +8,20 @@ import { operatorApprovalWaitService } from "./operator-approval-wait.js";
 
 type Run = typeof heartbeatRuns.$inferSelect;
 type Agent = typeof agents.$inferSelect;
+
+export const FRESH_PROMOTION_HANDOFF_GRACE_MS = 30_000;
+
+export function latestQueueActivityMs(createdAt: Date | null, updatedAt: Date | null): number | null {
+  const createdMs = createdAt?.getTime() ?? null;
+  const updatedMs = updatedAt?.getTime() ?? null;
+  if (createdMs === null || updatedMs === null) return createdMs ?? updatedMs;
+  return Math.max(createdMs, updatedMs);
+}
+
 type QueueEvent = {
-  companyId: string;
-  issueId?: string | null;
-  wakeupRequestId?: string | null;
-  heartbeatRunId?: string | null;
-  eventType: string;
-  layer: string;
-  decision?: string | null;
-  reason?: string | null;
-  reasonCode?: string | null;
-  idempotencyKey: string;
-  payload?: Record<string, unknown>;
+  companyId: string; issueId?: string | null; wakeupRequestId?: string | null; heartbeatRunId?: string | null;
+  eventType: string; layer: string; decision?: string | null; reason?: string | null; reasonCode?: string | null;
+  idempotencyKey: string; payload?: Record<string, unknown>;
 };
 
 export type HeartbeatQueuedStaleRecoveryDeps = {
@@ -43,36 +45,39 @@ export type HeartbeatQueuedStaleRecoveryDeps = {
   recordQueueTransitionEvent(input: QueueEvent): Promise<unknown>;
 };
 
-function sameTime(left: Date | null, right: Date | null) {
-  return left?.getTime() === right?.getTime();
-}
+function sameTime(left: Date | null, right: Date | null) { return left?.getTime() === right?.getTime(); }
 
 function olderThan(createdAt: Date | null, updatedAt: Date | null, thresholdMs: number) {
-  const reference = createdAt ?? updatedAt;
-  return Boolean(reference && Date.now() - reference.getTime() >= thresholdMs);
+  const referenceMs = latestQueueActivityMs(createdAt, updatedAt);
+  return referenceMs !== null && Date.now() - referenceMs >= thresholdMs;
 }
 
-function isPreStart(run: Run) {
-  return run.startedAt === null && run.processPid === null && run.processStartedAt === null && run.externalRunId === null;
+function isWithinFreshPromotionHandoff(run: Run, observedAt: Date) {
+  const reference = run.status === "running" ? run.startedAt ?? run.updatedAt : null;
+  return reference !== null && run.createdAt.getTime() < reference.getTime()
+    && Math.abs(observedAt.getTime() - reference.getTime()) <= FRESH_PROMOTION_HANDOFF_GRACE_MS;
 }
+function isPreStart(run: Run) { return run.startedAt === null && run.processPid === null && run.processStartedAt === null && run.externalRunId === null; }
 
 export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRecoveryDeps) {
   async function liveOccupiedSlots(conn: Db, companyId: string, agentId: string) {
     const activeClause = await lifecycleActiveClause(conn);
     const runs = await conn.select().from(heartbeatRuns).where(and(
-      eq(heartbeatRuns.companyId, companyId),
-      eq(heartbeatRuns.agentId, agentId),
-      activeClause,
+      eq(heartbeatRuns.companyId, companyId), eq(heartbeatRuns.agentId, agentId), activeClause,
     ));
     const liveIds = new Set<string>();
+    const observedAt = new Date();
     for (const run of runs) {
       if (deps.hasLiveTrackedChild(run.id)) {
         liveIds.add(run.id);
         continue;
       }
+      if (isWithinFreshPromotionHandoff(run, observedAt)) {
+        liveIds.add(run.id);
+        continue;
+      }
       if (!deps.hasActiveExecution(run.id)) continue;
       const timeoutMs = await deps.resolveActiveExecutionTimeoutMs(run, deps.activeExecutionTimeoutMs);
-      const observedAt = new Date();
       if (timeoutMs > 0 && observedAt.getTime() - run.updatedAt.getTime() <= timeoutMs) liveIds.add(run.id);
     }
     return liveIds.size;
@@ -99,9 +104,7 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
     const failed = new Set(alreadyFailed);
     for (const request of candidates) {
       if (attempted.has(request.agentId)) continue;
-      const [agent] = await deps.db.select().from(agents).where(and(
-        eq(agents.id, request.agentId), eq(agents.companyId, request.companyId),
-      )).limit(1);
+      const [agent] = await deps.db.select().from(agents).where(and(eq(agents.id, request.agentId), eq(agents.companyId, request.companyId))).limit(1);
       if (!agent || ["paused", "terminated", "pending_approval"].includes(agent.status)) continue;
       const slots = deps.maxConcurrentRuns(agent) - await deps.countActiveRunsForAgent(agent.id);
       if (slots <= 0) continue;
@@ -122,10 +125,8 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
     const winner = await deps.withAgentStartLock(snapshot.agentId, () => withTxTimeout(deps.db, async (tx) => {
       const conn = tx as unknown as Db;
       const [current] = await tx.select().from(heartbeatRuns).where(and(
-        eq(heartbeatRuns.id, snapshot.id),
-        eq(heartbeatRuns.companyId, snapshot.companyId),
-        eq(heartbeatRuns.agentId, snapshot.agentId),
-        eq(heartbeatRuns.status, "queued"),
+        eq(heartbeatRuns.id, snapshot.id), eq(heartbeatRuns.companyId, snapshot.companyId),
+        eq(heartbeatRuns.agentId, snapshot.agentId), eq(heartbeatRuns.status, "queued"),
       )).for("update").limit(1);
       if (!current || !sameTime(current.createdAt, snapshot.createdAt) || !sameTime(current.updatedAt, snapshot.updatedAt)
         || current.issueId !== snapshot.issueId || current.wakeupRequestId !== snapshot.wakeupRequestId
@@ -133,10 +134,9 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
         || await hasCurrentExecution(current)) return null;
 
       if (current.issueId && (await operatorApprovalWaitService(conn).markerForIssue(current.issueId)).waiting) return null;
-      const [agent] = await tx.select().from(agents).where(and(
-        eq(agents.id, current.agentId), eq(agents.companyId, current.companyId),
-      )).limit(1);
-      if (!agent || await capacityIsPositivelyFull(conn, current.companyId, agent)) return null;
+      const [agent] = await tx.select().from(agents).where(and(eq(agents.id, current.agentId), eq(agents.companyId, current.companyId))).limit(1);
+      if (!agent) return null;
+      if (await capacityIsPositivelyFull(conn, current.companyId, agent)) return null;
 
       const now = new Date();
       const message = `Queued heartbeat run exceeded ${Math.round(thresholdMs / 1000)}s without starting`;
@@ -152,19 +152,15 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
     return deps.withAgentStartLock(snapshot.agentId, () => withTxTimeout(deps.db, async (tx) => {
       const conn = tx as unknown as Db;
       const [current] = await tx.select().from(agentWakeupRequests).where(and(
-        eq(agentWakeupRequests.id, snapshot.id),
-        eq(agentWakeupRequests.companyId, snapshot.companyId),
-        eq(agentWakeupRequests.agentId, snapshot.agentId),
-        eq(agentWakeupRequests.status, "queued"),
-        isNull(agentWakeupRequests.runId),
+        eq(agentWakeupRequests.id, snapshot.id), eq(agentWakeupRequests.companyId, snapshot.companyId),
+        eq(agentWakeupRequests.agentId, snapshot.agentId), eq(agentWakeupRequests.status, "queued"), isNull(agentWakeupRequests.runId),
       )).for("update").limit(1);
       if (!current || !sameTime(current.createdAt, snapshot.createdAt) || !sameTime(current.updatedAt, snapshot.updatedAt)
         || !olderThan(current.createdAt, current.updatedAt, thresholdMs)) return null;
       if (current.issueId && (await operatorApprovalWaitService(conn).markerForIssue(current.issueId)).waiting) return null;
-      const [agent] = await tx.select().from(agents).where(and(
-        eq(agents.id, current.agentId), eq(agents.companyId, current.companyId),
-      )).limit(1);
-      if (!agent || await capacityIsPositivelyFull(conn, current.companyId, agent)) return null;
+      const [agent] = await tx.select().from(agents).where(and(eq(agents.id, current.agentId), eq(agents.companyId, current.companyId))).limit(1);
+      if (!agent) return null;
+      if (await capacityIsPositivelyFull(conn, current.companyId, agent)) return null;
 
       const cutoff = new Date(Date.now() - thresholdMs);
       const message = `stale_queued: queued wakeup exceeded ${Math.round(thresholdMs / 1000)}s without a heartbeat run (mission dedup without heartbeatRuns)`;
@@ -178,12 +174,12 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
         isNull(agentWakeupRequests.runId),
         eq(agentWakeupRequests.updatedAt, snapshot.updatedAt),
         lt(agentWakeupRequests.createdAt, cutoff),
+        lt(agentWakeupRequests.updatedAt, cutoff),
         sql`NOT EXISTS (SELECT 1 FROM heartbeat_runs linked WHERE linked.company_id = ${current.companyId} AND linked.agent_id = ${current.agentId} AND linked.wakeup_request_id = ${current.id})`,
       )).returning({ id: agentWakeupRequests.id }).then((rows) => rows[0] ?? null);
       return failed ? { current, message } : null;
     }));
   }
-
   return {
     /** stale queued run/orphan 실패 전환 스윕. 결과는 재ap된 heartbeatRunId 목록. */
     recover: async function recoverQueuedStaleWork(thresholdMs: number) {
@@ -200,9 +196,11 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
     });
     if (thresholdMs <= 0) return { reapedRunIds };
     const queuedSnapshots = await deps.db.select().from(heartbeatRuns).where(eq(heartbeatRuns.status, "queued"));
+    const orphanCutoff = new Date(Date.now() - thresholdMs);
     const orphanSnapshots = await deps.db.select().from(agentWakeupRequests).where(and(
       eq(agentWakeupRequests.status, "queued"), isNull(agentWakeupRequests.runId),
-      lt(agentWakeupRequests.createdAt, new Date(Date.now() - thresholdMs)),
+      lt(agentWakeupRequests.createdAt, orphanCutoff),
+      lt(agentWakeupRequests.updatedAt, orphanCutoff),
     ));
     const staleRuns = queuedSnapshots.filter((run) => olderThan(run.createdAt, run.updatedAt, thresholdMs));
     const staleOrphans = orphanSnapshots.filter((wake) => olderThan(wake.createdAt, wake.updatedAt, thresholdMs));
@@ -272,7 +270,6 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
         logger.warn({ error, runId: snapshot.id }, "failed stale queued heartbeat recovery; continuing sweep");
       }
     }
-
     const promotion = await promoteOrphanCandidates(staleOrphans, queueStartAttempted, queueStartFailed);
     for (const snapshot of staleOrphans) {
       if (promotion.failed.has(snapshot.agentId)) continue;

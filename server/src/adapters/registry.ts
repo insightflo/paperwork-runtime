@@ -43,6 +43,7 @@ import {
 import { agentConfigurationDoc as commandCodeAgentConfigurationDoc } from "@paperclipai/adapter-commandcode-local";
 import { processAdapter } from "./process/index.js";
 import { httpAdapter } from "./http/index.js";
+import { devinLocalAdapter } from "./devin-local/index.js";
 
 const claudeLocalAdapter: ServerAdapterModule = {
   type: "claude_local",
@@ -111,6 +112,7 @@ const adaptersByType = new Map<string, ServerAdapterModule>(
     codexLocalAdapter,
     piLocalAdapter,
     commandCodeLocalAdapter,
+    devinLocalAdapter,
     hermesRetiredAdapter,
     processAdapter,
     httpAdapter,

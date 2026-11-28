@@ -4,10 +4,20 @@ import { issueStatusIcon, issueStatusIconDefault } from "../lib/status-colors";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 
-const allStatuses = ["backlog", "todo", "in_progress", "in_review", "done", "cancelled", "blocked"];
+export const PAPERWORK_SELECTABLE_WORK_STATUSES = ["todo", "in_progress", "blocked", "done", "cancelled"] as const;
+
+export const WORK_STATUS_LABELS: Record<string, string> = {
+  todo: "대기",
+  in_progress: "진행 중",
+  blocked: "차단됨",
+  done: "완료",
+  cancelled: "취소됨",
+  backlog: "대기열",
+  in_review: "검증 중",
+};
 
 function statusLabel(status: string): string {
-  return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return WORK_STATUS_LABELS[status] ?? status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 interface StatusIconProps {
@@ -50,7 +60,7 @@ export function StatusIcon({ status, onChange, className, showLabel }: StatusIco
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent className="w-40 p-1" align="start">
-        {allStatuses.map((s) => (
+        {PAPERWORK_SELECTABLE_WORK_STATUSES.map((s) => (
           <Button
             key={s}
             variant="ghost"
@@ -62,7 +72,7 @@ export function StatusIcon({ status, onChange, className, showLabel }: StatusIco
             }}
           >
             <StatusIcon status={s} />
-            {statusLabel(s)}
+            {WORK_STATUS_LABELS[s] ?? s}
           </Button>
         ))}
       </PopoverContent>

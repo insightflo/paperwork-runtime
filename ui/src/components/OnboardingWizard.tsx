@@ -45,7 +45,10 @@ type AdapterType =
   | "claude_local"
   | "codex_local"
   | "pi_local"
+  | "devin_local"
   | "commandcode_local";
+
+const DEFAULT_DEVIN_LOCAL_MODEL = "swe-2-flash-medium";
 
 const DEFAULT_TASK_DESCRIPTION = `You are the CEO. You set the direction for the company.
 
@@ -174,6 +177,7 @@ export function OnboardingWizard() {
     adapterType === "claude_local" ||
     adapterType === "codex_local" ||
     adapterType === "pi_local" ||
+    adapterType === "devin_local" ||
     adapterType === "commandcode_local";
   const effectiveAdapterCommand =
     command.trim() ||
@@ -181,9 +185,11 @@ export function OnboardingWizard() {
       ? "codex"
       : adapterType === "pi_local"
         ? "pi"
-        : adapterType === "commandcode_local"
-          ? "cmd"
-          : "claude");
+        : adapterType === "devin_local"
+          ? "devin"
+          : adapterType === "commandcode_local"
+            ? "cmd"
+            : "claude");
 
   useEffect(() => {
     if (step !== 2) return;
@@ -253,7 +259,9 @@ export function OnboardingWizard() {
       model:
         adapterType === "codex_local"
           ? model || DEFAULT_CODEX_LOCAL_MODEL
-          : model,
+          : adapterType === "devin_local"
+            ? model || DEFAULT_DEVIN_LOCAL_MODEL
+            : model,
       command,
       args,
       dangerouslySkipPermissions: adapterType === "claude_local",
@@ -690,6 +698,12 @@ export function OnboardingWizard() {
                             desc: "Local Pi agent"
                           },
                           {
+                            value: "devin_local" as const,
+                            label: "Devin (local)",
+                            icon: Bot,
+                            desc: "SWE-2 Flash / 2.1 local CLI"
+                          },
+                          {
                             value: "commandcode_local" as const,
                             label: "Command Code",
                             icon: Code,
@@ -709,7 +723,11 @@ export function OnboardingWizard() {
                             onClick={() => {
                               const nextType = opt.value as AdapterType;
                               setAdapterType(nextType);
-                              setModel("");
+                              if (nextType === "devin_local") {
+                                setModel(DEFAULT_DEVIN_LOCAL_MODEL);
+                              } else {
+                                setModel("");
+                              }
                             }}
                           >
                             <opt.icon className="h-4 w-4" />
@@ -891,9 +909,11 @@ export function OnboardingWizard() {
                               ? `${effectiveAdapterCommand} exec --json -`
                               : adapterType === "pi_local"
                                 ? `${effectiveAdapterCommand} -p "Respond with hello." --mode json`
-                                : adapterType === "commandcode_local"
-                                  ? `${effectiveAdapterCommand} -p "Respond with hello." --output-format json`
-                                  : `${effectiveAdapterCommand} --print - --output-format stream-json --verbose`}
+                                : adapterType === "devin_local"
+                                  ? `${effectiveAdapterCommand} -p "Respond with hello."`
+                                  : adapterType === "commandcode_local"
+                                    ? `${effectiveAdapterCommand} -p "Respond with hello." --output-format json`
+                                    : `${effectiveAdapterCommand} --print - --output-format stream-json --verbose`}
                           </p>
                           <p className="text-muted-foreground">
                             Prompt:{" "}
@@ -913,6 +933,13 @@ export function OnboardingWizard() {
                                 pi --list-models
                               </span>{" "}
                               and verify provider authentication.
+                            </p>
+                          ) : adapterType === "devin_local" ? (
+                            <p className="text-muted-foreground">
+                              If login is required, run{" "}
+                              <span className="font-mono">devin auth login</span>{" "}
+                              and verify the local CLI with{" "}
+                              <span className="font-mono">devin doctor</span>.
                             </p>
                           ) : adapterType === "commandcode_local" ? (
                             <p className="text-muted-foreground">

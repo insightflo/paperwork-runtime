@@ -28,7 +28,7 @@ import {
   countActiveFilters,
   defaultViewState,
   getViewState,
-  priorityOrder,
+  paperworkIssueStatusLabel, priorityOrder,
   quickFilterPresets,
   saveViewState,
   sortIssues,
@@ -334,7 +334,7 @@ export function IssuesList({
                             onCheckedChange={() => updateView({ statuses: toggleInArray(viewState.statuses, s) })}
                           />
                           <StatusIcon status={s} />
-                          <span className="text-sm">{statusLabel(s)}</span>
+                          <span className="text-sm">{paperworkIssueStatusLabel(s)}</span>
                         </label>
                       ))}
                     </div>
@@ -532,8 +532,8 @@ export function IssuesList({
         />
       ) : (
         groupedContent.map((group) => (
-          <Collapsible
-            key={group.key}
+          <Collapsible key={group.key}
+            className={cn("tabular-nums", group.items.length > 0 && "overflow-hidden rounded-[12px] border border-slate-200/80 bg-white/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#0e131d]/85 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]")}
             open={!viewState.collapsedGroups.includes(group.key)}
             onOpenChange={(open) => {
               updateView({
@@ -544,11 +544,11 @@ export function IssuesList({
             }}
           >
             {group.label && (
-              <div className="flex items-center py-1.5 pl-1 pr-3 text-slate-500 dark:text-[#8f9db3]">
+              <div className="flex items-center border-b border-slate-200/70 py-1.5 pl-1 pr-3 text-slate-500 tabular-nums dark:border-white/[0.08] dark:text-[#8f9db3]">
                 <CollapsibleTrigger className="flex items-center gap-1.5">
                   <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform [[data-state=open]>&]:rotate-90" />
                   <span className="text-sm font-semibold uppercase tracking-wide">
-                    {group.label}
+                    {viewState.groupBy === "status" ? paperworkIssueStatusLabel(group.key) : group.label}
                   </span>
                 </CollapsibleTrigger>
                 <Button type="button" aria-label={`New Work Item in ${group.label}`}
@@ -567,7 +567,7 @@ export function IssuesList({
                   key={issue.id} issue={issue}
                   issueLinkState={issueLinkState}
                   desktopLeadingSpacer
-                  className="border-slate-200/80 text-slate-800 hover:bg-slate-50 dark:border-white/[0.06] dark:text-[#eef2f8] dark:hover:bg-[#111826]"
+                  className="border-slate-200/80 text-slate-800 tabular-nums hover:bg-slate-50 dark:border-white/[0.08] dark:text-[#eef2f8] dark:hover:bg-[#111826]"
                   mobileLeading={(
                     <span
                       onClick={(e) => {

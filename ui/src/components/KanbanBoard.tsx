@@ -20,6 +20,7 @@ import {
 import { StatusIcon } from "./StatusIcon";
 import { PriorityIcon } from "./PriorityIcon";
 import { Identity } from "./Identity";
+import { paperworkIssueStatusLabel } from "./issuesListView";
 import { cn } from "@/lib/utils";
 import type { Issue } from "@paperclipai/shared";
 
@@ -33,8 +34,8 @@ const boardStatuses = [
   "cancelled",
 ];
 
-function statusLabel(status: string): string {
-  return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+function isLegacyHeartbeatStatus(status: string): boolean {
+  return status === "backlog" || status === "in_review";
 }
 
 interface Agent {
@@ -66,10 +67,10 @@ function KanbanColumn({
 
   return (
     <div className="flex w-[260px] min-w-[260px] shrink-0 flex-col">
-      <div className="mb-1 flex items-center gap-2 px-1.5 py-2">
+      <div className="mb-1 flex items-center gap-2 px-1.5 py-2 tabular-nums">
         <StatusIcon status={status} />
         <span className="text-[10.5px] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-[#8b97ad]">
-          {statusLabel(status)}
+          {paperworkIssueStatusLabel(status)}
         </span>
         <span className="ml-auto inline-flex min-w-6 items-center justify-center rounded-md border border-slate-200/90 bg-white px-1.5 py-0.5 font-mono text-[11px] font-semibold tabular-nums text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:text-[#aab6c9] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
           {issues.length}
@@ -81,7 +82,7 @@ function KanbanColumn({
           "min-h-[120px] flex-1 space-y-1.5 rounded-xl border p-1.5 transition-[background-color,border-color,box-shadow] duration-150",
           isOver
             ? "border-blue-400/60 bg-blue-500/10 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.18),0_0_18px_rgba(59,130,246,0.12)] dark:border-[#60a5fa]/55 dark:bg-[#60a5fa]/10 dark:shadow-[inset_0_0_0_1px_rgba(96,165,250,0.2),0_0_22px_rgba(96,165,250,0.16)]"
-            : "border-slate-200/80 bg-slate-100/65 shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] dark:border-white/[0.065] dark:bg-[#090d14]/85 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]",
+            : "border-slate-200/80 bg-slate-100/65 shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#090d14]/85 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]",
         )}
       >
         <SortableContext
@@ -215,6 +216,10 @@ export function KanbanBoard({
     return grouped;
   }, [issues]);
 
+  const visibleBoardStatuses = boardStatuses.filter(
+    (status) => !isLegacyHeartbeatStatus(status) || (columnIssues[status]?.length ?? 0) > 0,
+  );
+
   const activeIssue = useMemo(
     () => (activeId ? issues.find((i) => i.id === activeId) : null),
     [activeId, issues]
@@ -264,7 +269,7 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
     >
       <div className="-mx-2 flex gap-3 overflow-x-auto px-2 pb-4 tabular-nums">
-        {boardStatuses.map((status) => (
+        {visibleBoardStatuses.map((status) => (
           <KanbanColumn
             key={status}
             status={status}

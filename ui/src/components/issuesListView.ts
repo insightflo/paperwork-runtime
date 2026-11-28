@@ -1,4 +1,4 @@
-import type { Issue } from "@paperclipai/shared";
+import type { Issue, IssueStatus } from "@paperclipai/shared";
 
 /* ── IssuesList view state ──
  * Pure helpers for the list's client-side filters, sort and persisted view state.
@@ -9,6 +9,20 @@ export const priorityOrder = ["critical", "high", "medium", "low"];
 
 export function statusLabel(status: string): string {
   return status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export const PAPERWORK_ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
+  backlog: "대기열",
+  todo: "대기",
+  in_progress: "진행 중",
+  in_review: "검증 중",
+  blocked: "차단됨",
+  done: "완료",
+  cancelled: "취소됨",
+};
+
+export function paperworkIssueStatusLabel(status: string): string {
+  return PAPERWORK_ISSUE_STATUS_LABELS[status as IssueStatus] ?? statusLabel(status);
 }
 
 export type IssueViewState = {
@@ -40,8 +54,8 @@ export const defaultViewState: IssueViewState = {
 export const quickFilterPresets = [
   { label: "All", statuses: [] as string[] },
   { label: "Active", statuses: ["todo", "in_progress", "in_review", "blocked"] },
-  { label: "Backlog", statuses: ["backlog"] },
-  { label: "Done", statuses: ["done", "cancelled"] },
+  { label: PAPERWORK_ISSUE_STATUS_LABELS.backlog, statuses: ["backlog"] },
+  { label: PAPERWORK_ISSUE_STATUS_LABELS.done, statuses: ["done", "cancelled"] },
 ];
 
 export function getViewState(key: string): IssueViewState {

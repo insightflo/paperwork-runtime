@@ -284,7 +284,7 @@ describe("OnboardingWizard a11y", () => {
     click(more);
     await flush();
     expect(more?.getAttribute("aria-expanded")).toBe("true");
-    expect(document.getElementById("onboarding-more-adapters")?.querySelectorAll("button[aria-pressed]").length).toBe(2);
+    expect(document.getElementById("onboarding-more-adapters")?.querySelectorAll("button[aria-pressed]").length).toBe(3);
 
     const modelTrigger = [...document.querySelectorAll("button")].find((button) =>
       button.textContent?.includes("Default"),

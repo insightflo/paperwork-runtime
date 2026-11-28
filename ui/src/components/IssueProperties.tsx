@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Link } from "@/lib/router";
-import type { Issue } from "@paperclipai/shared";
+import type { Issue, IssueStatus } from "@paperclipai/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentsApi } from "../api/agents";
 import { authApi } from "../api/auth";
@@ -28,6 +28,29 @@ const EXECUTION_WORKSPACE_OPTIONS = [
   { value: "isolated_workspace", label: "New isolated execution context" },
   { value: "reuse_existing", label: "Reuse existing execution context" },
 ] as const;
+
+export const PAPERWORK_ISSUE_STATUS_LABELS: Record<IssueStatus, string> = {
+  backlog: "대기열",
+  todo: "대기",
+  in_progress: "진행 중",
+  in_review: "검증 중",
+  done: "완료",
+  blocked: "차단됨",
+  cancelled: "취소됨",
+};
+
+export const SELECTABLE_ISSUE_STATUS_OPTIONS = (["todo", "in_progress", "blocked", "done", "cancelled"] as const).map(
+  (value) => ({ value, label: PAPERWORK_ISSUE_STATUS_LABELS[value] }),
+);
+
+export function paperworkIssueStatusLabel(status: string): string {
+  return PAPERWORK_ISSUE_STATUS_LABELS[status as IssueStatus] ?? status;
+}
+
+const PROPERTY_SECTION_CARD_CLASS =
+  "tactile-card space-y-1 rounded-xl border-slate-200/90 bg-white px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)]";
+const PROPERTY_POPOVER_CARD_CLASS =
+  "tactile-card rounded-xl border-slate-200/90 bg-white p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/[0.08] dark:bg-none dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)]";
 
 function defaultProjectWorkspaceIdForProject(project: {
   workspaces?: Array<{ id: string; isPrimary: boolean }>;
@@ -107,7 +130,7 @@ function PropertyPicker({
           {extra}
         </PropertyRow>
         {open && (
-          <div className={cn("tactile-card dark:bg-[#0e131d] p-1 mb-2", popoverClassName)}>
+          <div className={cn(PROPERTY_POPOVER_CARD_CLASS, "mb-2", popoverClassName)}>
             {children}
           </div>
         )}
@@ -121,7 +144,7 @@ function PropertyPicker({
         <PopoverTrigger asChild>
           <button type="button" aria-expanded={open} className={btnCn}>{triggerContent}</button>
         </PopoverTrigger>
-        <PopoverContent className={cn("tactile-card dark:bg-[#0e131d] p-1", popoverClassName)} align={popoverAlign} collisionPadding={16}>
+        <PopoverContent className={cn(PROPERTY_POPOVER_CARD_CLASS, popoverClassName)} align={popoverAlign} collisionPadding={16}>
           {children}
         </PopoverContent>
       </Popover>
@@ -177,6 +200,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
   const { selectedCompanyId } = useCompany();
   const queryClient = useQueryClient();
   const companyId = issue.companyId ?? selectedCompanyId;
+  const [statusOpen, setStatusOpen] = useState(false);
   const [assigneeOpen, setAssigneeOpen] = useState(false);
   const [assigneeSearch, setAssigneeSearch] = useState("");
   const [projectOpen, setProjectOpen] = useState(false);
@@ -588,14 +612,39 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
 
   return (
     <div className="space-y-3 tabular-nums">
-      <section className="tactile-card space-y-1 px-3 py-1.5 dark:bg-[#0e131d]">
-        <PropertyRow label="Status">
-          <StatusIcon
-            status={issue.status}
-            onChange={(status) => onUpdate({ status })}
-            showLabel
-          />
-        </PropertyRow>
+      <section className={PROPERTY_SECTION_CARD_CLASS}>
+        <PropertyPicker
+          inline={inline}
+          label="Status"
+          open={statusOpen}
+          onOpenChange={setStatusOpen}
+          triggerContent={
+            <>
+              <StatusIcon status={issue.status} />
+              <span className="text-sm">{paperworkIssueStatusLabel(issue.status)}</span>
+            </>
+          }
+          popoverClassName="w-40"
+          popoverAlign="start"
+        >
+          {SELECTABLE_ISSUE_STATUS_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={cn(
+                "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent/60 dark:hover:bg-white/[0.06]",
+                option.value === issue.status && "bg-blue-500/10 text-blue-700 dark:bg-[#60a5fa]/12 dark:text-[#60a5fa]",
+              )}
+              onClick={() => {
+                onUpdate({ status: option.value });
+                setStatusOpen(false);
+              }}
+            >
+              <StatusIcon status={option.value} />
+              <span>{option.label}</span>
+            </button>
+          ))}
+        </PropertyPicker>
 
         <PropertyRow label="Priority">
           <PriorityIcon
@@ -763,7 +812,7 @@ export function IssueProperties({ issue, onUpdate, inline }: IssuePropertiesProp
 
       <Separator className="dark:bg-white/[0.07]" />
 
-      <section className="tactile-card space-y-1 px-3 py-1.5 dark:bg-[#0e131d]">
+      <section className={PROPERTY_SECTION_CARD_CLASS}>
         {(issue.createdByAgentId || issue.createdByUserId) && (
           <PropertyRow label="Created by">
             {issue.createdByAgentId ? (

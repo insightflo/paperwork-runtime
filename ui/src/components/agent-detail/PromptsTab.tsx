@@ -103,6 +103,7 @@ export function PromptsTab({
     agent.adapterType === "antigravity_local" ||
     agent.adapterType === "opencode_local" ||
     agent.adapterType === "pi_local" ||
+    agent.adapterType === "devin_local" ||
     agent.adapterType === "commandcode_local" ||
     agent.adapterType === "cursor";
 
