@@ -12,6 +12,8 @@ import {
   type ChannelRoutingMember,
   type ChannelThreadStatus,
 } from "./collab-channel-state.js";
+import { dispatchChannelMessageToEndpoint } from "./endpoint-channel-dispatch.js";
+import { globalEndpointBotPairingStore, type EndpointBotPairingService } from "./endpoint-bot-pairing.js";
 
 export type CollabThreadAuthorType = Exclude<ChannelAuthorType, "system">;
 
@@ -68,7 +70,11 @@ function requestedByActorType(authorType: ChannelAuthorType): "user" | "agent" {
   return authorType === "user" ? "user" : "agent";
 }
 
-export function collabChannelsService(db: Db) {
+/** endpointStore 주입은 테스트 격리용이며, 기본값은 endpointBotRoutes() 와 같은 전역 페어링 상태를 공유한다. */
+export function collabChannelsService(
+  db: Db,
+  endpointStore: Pick<EndpointBotPairingService, "listEndpoints" | "enqueueLocalTask"> = globalEndpointBotPairingStore,
+) {
   async function loadChannel(companyId: string, channelId: string) {
     const [channel] = await db.select().from(collabChannels).where(and(
       eq(collabChannels.id, channelId), eq(collabChannels.companyId, companyId), isNull(collabChannels.archivedAt),
@@ -214,6 +220,20 @@ export function collabChannelsService(db: Db) {
           });
         }
       }
+    }
+
+    // [endpoint 브리지] 발화가 `@<botName> list|read|run` 단일행 명령이면 페어링된 개인 엔드포인트 봇에
+    //   폴더 스코프 로컬 작업을 큐잉하고, 결과 설명을 같은 스레드의 시스템 답글로 남긴다.
+    //   matched:false 는 기존 동작과 100% 동일하며, 에이전트 @mention wakeup 흐름을 건드리지 않는다.
+    //   시스템 답글은 직접 insert 되므로 상태머신 카운터나 재디스패치를 유발하지 않는다.
+    const endpointDispatch = dispatchChannelMessageToEndpoint({
+      companyId, messageText: input.body, store: endpointStore,
+    });
+    if (endpointDispatch.matched) {
+      await db.insert(collabMessages).values({
+        companyId, channelId, threadId: thread.id, authorType: "system",
+        actionKind: "message", body: endpointDispatch.replyText, expectsReply: false,
+      });
     }
     return message;
   }
