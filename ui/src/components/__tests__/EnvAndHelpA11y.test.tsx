@@ -116,8 +116,8 @@ describe("environment and help accessibility", () => {
     for (const label of ["Work context name", "GitHub repo", "Local folder", "Target date"]) {
       expect(named<HTMLInputElement>(label).tagName).toBe("INPUT");
     }
-    expect(named<HTMLButtonElement>("Expand dialog").type).toBe("button");
-    expect(named<HTMLButtonElement>("Close dialog").type).toBe("button");
+    expect(named<HTMLButtonElement>("Expand work context dialog").type).toBe("button");
+    expect(named<HTMLButtonElement>("Close work context dialog").type).toBe("button");
   });
 
   it.each([false, true])("announces work context errors (request failure: %s)", async (requestFailure) => {
