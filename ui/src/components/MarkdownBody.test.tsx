@@ -13,7 +13,7 @@ describe("MarkdownBody", () => {
       </ThemeProvider>,
     );
 
-    expect(html).toContain('<img src="/api/attachments/test/content" alt=""/>');
+    expect(html).toContain('<img src="/api/attachments/test/content" alt="" decoding="async"/>');
   });
 
   it("resolves relative image paths when a resolver is provided", () => {
