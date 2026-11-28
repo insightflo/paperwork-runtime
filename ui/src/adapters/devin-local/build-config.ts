@@ -64,13 +64,13 @@ export function buildDevinLocalConfig(v: CreateConfigValues): Record<string, unk
   if (v.promptTemplate) ac.promptTemplate = v.promptTemplate;
   if (v.bootstrapPrompt) ac.bootstrapPromptTemplate = v.bootstrapPrompt;
 
-  ac.model = typeof v.model === "string" && v.model.trim().length > 0
-    ? v.model
-    : DEVIN_LOCAL_DEFAULT_MODEL;
+  const model = typeof v.model === "string" ? v.model.trim() : "";
+  ac.model = model.length > 0 ? model : DEVIN_LOCAL_DEFAULT_MODEL;
 
   const permissionMode = (v as DevinLocalCreateConfigValues).permissionMode;
-  ac.permissionMode = typeof permissionMode === "string" && permissionMode.trim().length > 0
-    ? permissionMode.trim()
+  const normalizedPermissionMode = typeof permissionMode === "string" ? permissionMode.trim() : "";
+  ac.permissionMode = normalizedPermissionMode.length > 0
+    ? normalizedPermissionMode
     : DEVIN_LOCAL_DEFAULT_PERMISSION_MODE;
 
   ac.timeoutSec = 0;

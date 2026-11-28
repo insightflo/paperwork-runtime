@@ -75,6 +75,36 @@ function addUsage(target: UsageSummary, rawUsage: unknown): void {
     asNumber(usage.cachedInputTokens ?? usage.cached_input_tokens ?? usage.cacheReadTokens ?? usage.cacheRead ?? usage.cache_read, 0);
 }
 
+const DEVIN_LOCAL_RESERVED_VALUE_FLAGS = new Set([
+  "--respect-workspace-trust",
+  "--process-model",
+  "-p",
+  "--prompt",
+  "-r",
+  "--resume",
+  "--model",
+  "--permission-mode",
+]);
+const DEVIN_LOCAL_RESERVED_BOOL_FLAGS = new Set(["--"]);
+
+export function sanitizeDevinLocalExtraArgs(extraArgs: readonly string[]): string[] {
+  const sanitized: string[] = [];
+  for (let i = 0; i < extraArgs.length; i += 1) {
+    const token = extraArgs[i]!;
+    if (token.trim().length === 0 || token.includes("\0")) continue;
+
+    const equalIndex = token.indexOf("=");
+    const flag = equalIndex > 0 ? token.slice(0, equalIndex) : token;
+    if (DEVIN_LOCAL_RESERVED_BOOL_FLAGS.has(flag)) continue;
+    if (DEVIN_LOCAL_RESERVED_VALUE_FLAGS.has(flag)) {
+      if (equalIndex < 0 && i + 1 < extraArgs.length && !extraArgs[i + 1]!.startsWith("-")) i += 1;
+      continue;
+    }
+    sanitized.push(token);
+  }
+  return sanitized;
+}
+
 export function buildDevinLocalArgs(opts: {
   model: string;
   permissionMode: string;
@@ -92,7 +122,7 @@ export function buildDevinLocalArgs(opts: {
     "--respect-workspace-trust",
     "false",
     ...(opts.sessionId ? ["-r", opts.sessionId] : []),
-    ...(opts.extraArgs ?? []),
+    ...sanitizeDevinLocalExtraArgs(opts.extraArgs ?? []),
     "-p",
     opts.prompt,
   ];
