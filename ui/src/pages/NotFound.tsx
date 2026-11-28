@@ -45,7 +45,7 @@ export function NotFoundPage({ scope = "global", requestedPrefix }: NotFoundPage
           ko: `접두사 "${normalizedPrefix ?? "unknown"}"와(과) 일치하는 회사가 없습니다.`,
         })
       : t({
-          en: "This page does not exist or may have been moved. Check the address, or return to your workspace home.",
+          en: "This route does not exist. Check the address, or return to your workspace home.",
           ko: "요청하신 페이지가 존재하지 않거나 이동되었을 수 있습니다. 주소를 확인하거나 워크스페이스 홈으로 돌아가세요.",
         });
   const openDashboardLabel = t({ en: "Open dashboard", ko: "대시보드 열기" });
