@@ -213,10 +213,10 @@ describe("structural gate late completion is generation-fenced", () => {
       observedExecutionGeneration: gate!.generation,
       patch: { startedAt: new Date(), completedAt: new Date(), metadata: {}, fallbackFailureSummary: null },
     });
-    // [봇 bug·medium 재발 방지] 상태·requestId 는 그대로여도 세대가 올랐으면 낡은 완료다.
+    // [봇 bug·medium 재발 방지] 종결 시 running 스텝은 failed 로 정산되며, 낡은 세대 완료는 CAS 패배한다.
     expect(result.casWon).toBe(false);
     expect((await db.select({ id: workflowTransitionEvents.id }).from(workflowTransitionEvents)).length).toBe(beforeEvents);
     const [row] = await db.select().from(workflowStepRuns).where(eq(workflowStepRuns.id, gate!.id));
-    expect(row?.status).toBe("running");
+    expect(row?.status).toBe("failed");
   });
 });

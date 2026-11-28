@@ -3,7 +3,7 @@ import type { WorkflowStep } from "./dag-engine.js";
 import type { PersistedWorkflowStep } from "./execution-steps.js";
 import { isQaLikeStep } from "../missions/supervision-helpers.js";
 import { deriveIfControlOutcome } from "./dag-step-observation.js";
-import { classifyStepActivation, deriveMechanicalQaRejection, resolveFailureRecoveryChannel, type PredFacts, type PredStatus } from "./control-flow/edge-condition.js";
+import { classifyStepActivation, deriveMechanicalQaRejection, resolveEdges, resolveFailureRecoveryChannel, type PredFacts, type PredStatus } from "./control-flow/edge-condition.js";
 import { isControlNodeGraceWaitBlockingDispatch } from "./control-flow/gate-work-product-grace.js";
 import { isRetryDelayBlockingDispatch } from "./retry-launch-dispatch.js";
 
@@ -91,6 +91,56 @@ export function buildPredFactsMap(
   return facts;
 }
 
+/** [bug#8] 종말로 간주하는 step run 상태 집합 — cancelled/canceled 포함(영구 대기 deadlock 방지). */
+const QA_CLOSURE_TERMINAL_STEP_STATUSES = new Set(["completed", "failed", "skipped", "cancelled", "canceled"]);
+const QA_CLOSURE_TERMINAL_PRED_STATUSES = new Set<PredStatus>(["completed", "failed", "skipped"]);
+
+/**
+ * [bug#8 fail-closed readiness] step 별로 “그 step 이 자신의 forward edge 로 첨부한 QA/validator
+ * step 중 비종말이 하나라도 있는가”를 판정한다(producer → QA 역방향 인덱스). back-edge 는 첨부로
+ * 세지 않는다 — loop 재작업 back-edge 가 producer 발화를 막으면 producer→QA deadlock 이 된다.
+ * 실행 스코프에 materialize 되지 않은 QA step run 은 근거로 세지 않는다(동적 발화 스코프 밖 —
+ * materialize 되면 다음 sync 평가가 하류를 유예한다).
+ */
+function buildUpstreamQaOpenMap(
+  steps: WorkflowStep[],
+  stepRunMap: Map<string, typeof workflowStepRuns.$inferSelect>,
+): Map<string, boolean> {
+  const openByPredStepId = new Map<string, boolean>();
+  for (const step of steps) {
+    if (!isValidationGateCandidate({ step })) continue;
+    for (const edge of resolveEdges(step)) {
+      if (edge?.isBackEdge === true) continue;
+      const qaRun = stepRunMap.get(step.id);
+      const open = qaRun !== undefined && !QA_CLOSURE_TERMINAL_STEP_STATUSES.has(qaRun.status);
+      if (open) openByPredStepId.set(edge.stepId, true);
+    }
+  }
+  return openByPredStepId;
+}
+
+/**
+ * [bug#8] 하류 step 이 선행 producer 의 첨부 QA 미완료로 유예 대상인지 판정한다. producer 가
+ * terminal(completed)이어도 첨부 QA 가 pending/queued/running 이면 하류 dispatch 는 금지된다.
+ * QA 역할 step 자신에게는 적용하지 않는다 — 같은 producer 를 공유하는 QA 형제가 서로를 기다리면
+ * producer→QA 가 영구 대기(deadlock)가 되기 때문이다(QA 는 기존 edge 계약만 따른다).
+ */
+function upstreamQaClosureBlocksDispatch(
+  step: WorkflowStep,
+  openByPredStepId: Map<string, boolean>,
+  predsByStepId: ReadonlyMap<string, PredFacts>,
+): boolean {
+  if (isQaLikeStep(step)) return false;
+  for (const edge of resolveEdges(step)) {
+    if (edge?.isBackEdge === true) continue;
+    const pred = predsByStepId.get(edge.stepId);
+    if (pred && QA_CLOSURE_TERMINAL_PRED_STATUSES.has(pred.status) && openByPredStepId.get(edge.stepId) === true) {
+      return true;
+    }
+  }
+  return false;
+}
+
 
 export function findRunnableSteps(
   steps: WorkflowStep[],
@@ -106,6 +156,9 @@ export function findRunnableSteps(
   // 기존 `dependencies.every(completed)` 와 byte-identical 이므로 legacy 회귀가 없고, conditional edge 가
   // 있는 step 만 when 평가(failure/always 발화 또는 waiting)로 분기된다.
   const predsByStepId = buildPredFactsMap(steps, stepRunMap, options.validationVerdictsByIssueId, options.v1EnforcementEnabled, options.issueStatusByIssueId);
+  // [bug#8 fail-closed readiness] producer 첨부 QA 미완료 → 하류 유예. 관측 결함(f05dde93):
+  //   상류 QA 가 running/pending 인데 하류 ACTION issue 가 발화했던 gap 을 launch 게이트에서 차단한다.
+  const upstreamQaOpenByPredStepId = buildUpstreamQaOpenMap(steps, stepRunMap);
   return steps.filter((step) => {
     if (options.launchedStepIds && !options.launchedStepIds.has(step.id)) return false;
     if (step.triggerOn === "escalation") return false;
@@ -118,6 +171,7 @@ export function findRunnableSteps(
     if (stepRun.issueId == null && step.type === "if"
       && isControlNodeGraceWaitBlockingDispatch(stepRun.metadata, new Date())) return false;
     if (isRetryDelayBlockingDispatch(stepRun.metadata, new Date())) return false;
-    return classifyStepActivation(step, predsByStepId).runnable;
+    if (!classifyStepActivation(step, predsByStepId).runnable) return false;
+    return !upstreamQaClosureBlocksDispatch(step, upstreamQaOpenByPredStepId, predsByStepId);
   });
 }

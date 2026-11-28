@@ -4,220 +4,142 @@ import os from "node:os";
 import path from "node:path";
 import { execute } from "@paperclipai/adapter-pi-local/server";
 
-type FakeMode = "settle" | "no-settled" | "noop";
+type FakeMode = "settle" | "late-settle" | "no-settled" | "reject" | "noop";
+type Capture = { argv: string[]; stdin: string; prompt: { type: string; id?: string; message?: string };
+  promptCount: number; eof: boolean; events: string[]; stdinEndedWhenSettled?: boolean };
 
-async function writeFakePiCommand(commandPath: string, mode: FakeMode = "settle"): Promise<void> {
-  // Mirrors real pi --mode rpc semantics (verified against pi 0.84.1):
-  // - "settle": prompt arrives on stdin, the model turn emits events
-  //   asynchronously (turn_end -> agent_end willRetry=false -> agent_settled),
-  //   and pi exits at stdin EOF. If EOF arrives before the turn ran, pi exits 0
-  //   without any turn events — the no-op run bug.
-  // - "no-settled": same, but omits agent_settled (older pi builds) so the
-  //   adapter must fall back to closing stdin after the final agent_end.
-  // - "noop": exits 0 without emitting any events (no model turn ran at all).
-  const emitBlock =
-    mode === "noop"
-      ? `// noop mode: exit 0 without emitting any events (no model turn ran).
-setTimeout(() => {
-  writeCapture({ emittedBeforeEof: false });
-  process.exit(0);
-}, 100);`
-      : `setTimeout(() => {
-  if (stdinEnded) {
-    // EOF already arrived before the model turn started — real pi exits here
-    // without a turn (the bug this regression test guards against).
-    writeCapture({ emittedBeforeEof: false });
-    return;
-  }
-  emitted = true;
-  console.log(JSON.stringify({ type: 'session', version: 3, id: 'session-1', timestamp: new Date().toISOString(), cwd: process.cwd() }));
-  console.log(JSON.stringify({ type: 'agent_start' }));
-  console.log(JSON.stringify({ type: 'turn_start' }));
-  console.log(JSON.stringify({
-    type: 'turn_end',
-    message: {
-      role: 'assistant',
-      content: [{ type: 'text', text: 'hello' }],
-      usage: { input: 1, output: 1, cacheRead: 0, cost: { total: 0 } }
-    },
-    toolResults: []
-  }));
-  console.log(JSON.stringify({ type: 'agent_end', willRetry: false }));${
-    mode === "settle" ? `\n  console.log(JSON.stringify({ type: 'agent_settled' }));` : ""
-  }
-}, 30);`;
-
+async function writeFakePiCommand(commandPath: string, mode: FakeMode): Promise<void> {
   const script = `#!/usr/bin/env node
 const fs = require('node:fs');
-
-if (process.argv.includes('--list-models')) {
-  console.log('provider  model');
-  console.log('openai    gpt-4.1-mini');
-  process.exit(0);
-}
-
-let stdin = '';
-let stdinEnded = false;
-let emitted = false;
-let wroteCapture = false;
+if (process.argv.includes('--list-models')) { console.log('provider  model'); console.log('openai    gpt-4.1-mini'); process.exit(0); }
+let input = '', started = false, eof = false, events = [];
 const capturePath = process.env.ADAPTER_TEST_CAPTURE_PATH;
-const writeCapture = (extra) => {
-  if (wroteCapture || !capturePath) return;
-  wroteCapture = true;
-  fs.writeFileSync(capturePath, JSON.stringify({ argv: process.argv.slice(2), stdin, ...extra }, null, 2), 'utf8');
-};
+const launchPath = process.env.ADAPTER_TEST_LAUNCH_PATH;
+function capture(extra = {}) {
+  if (capturePath && !fs.existsSync(capturePath)) {
+    const lines = input.split('\\n').filter(Boolean), prompt = JSON.parse(lines[0]);
+    fs.writeFileSync(capturePath, JSON.stringify({ argv: process.argv.slice(2), stdin: input, prompt,
+      promptCount: lines.filter(line => JSON.parse(line).type === 'prompt').length, eof, events, ...extra }));
+  }
+}
+function startAfterCompletePrompt() {
+  const newline = input.indexOf('\\n');
+  if (started || newline < 0) return;
+  started = true;
+  const prompt = JSON.parse(input.slice(0, newline));
+  if (launchPath) fs.writeFileSync(launchPath, String(Number(fs.existsSync(launchPath) ? fs.readFileSync(launchPath, 'utf8') : '0') + 1));
+  if (${JSON.stringify(mode)} === 'noop') { capture({ eof: false }); process.exit(0); }
+  process.stdout.write(JSON.stringify({ type: 'response', id: prompt.id, command: 'prompt', success: ${mode === "reject" ? "false" : "true"}, error: { message: 'prompt rejected by fixture' } }) + '\\n');
+  if (${JSON.stringify(mode)} === 'reject') return;
+  setTimeout(() => {
+    events.push('turn_end', 'agent_end');
+    for (const event of events.slice(-2)) process.stdout.write(JSON.stringify({ type: event, willRetry: false,
+      ...(event === 'turn_end' ? { message: { role: 'assistant', content: 'hello', usage: { output: 1 } } } : {}) }) + '\\n');
+    if (${JSON.stringify(mode)} === 'settle') settle();
+    if (${JSON.stringify(mode)} === 'late-settle') setTimeout(() => { events.push('continuation'); settle(); }, 1750);
+    if (${JSON.stringify(mode)} === 'no-settled') setTimeout(() => capture({ eof: false }), 80);
+  }, 30);
+  function settle() {
+    if (events.includes('agent_settled')) return;
+    const stillOpen = !eof;
+    events.push('agent_settled');
+    process.stdout.write(JSON.stringify({ type: 'agent_settled' }) + '\\n');
+    capture({ stdinEndedWhenSettled: !stillOpen });
+  }
+}
 process.stdin.setEncoding('utf8');
-process.stdin.on('data', (chunk) => { stdin += chunk; });
-process.stdin.on('end', () => {
-  stdinEnded = true;
-  writeCapture({ emittedBeforeEof: emitted });
-});
-${emitBlock}
+process.stdin.on('data', chunk => { input += chunk; startAfterCompletePrompt(); });
+process.stdin.on('end', () => { eof = true; capture({ eof: true }); process.exit(0); });
 `;
   await fs.writeFile(commandPath, script, "utf8");
   await fs.chmod(commandPath, 0o755);
 }
 
-type CapturePayload = {
-  argv: string[];
-  stdin: string;
-  emittedBeforeEof?: boolean;
-};
-
 type ExecuteCtx = Parameters<typeof execute>[0];
-
-function buildCtx(opts: {
-  command: string;
-  cwd: string;
-  capturePath: string;
-  onMeta?: ExecuteCtx["onMeta"];
-}): ExecuteCtx {
+function buildCtx(opts: { command: string; cwd: string; capturePath: string; launchPath: string; timeoutSec?: number;
+  onMeta?: ExecuteCtx["onMeta"] }): ExecuteCtx {
   return {
-    runId: "run-1",
-    agent: {
-      id: "agent-1",
-      companyId: "company-1",
-      name: "Pi Coder",
-      adapterType: "pi_local",
-      adapterConfig: {},
-    },
-    runtime: {
-      sessionId: null,
-      sessionParams: null,
-      sessionDisplayId: null,
-      taskKey: null,
-    },
-    config: {
-      command: opts.command,
-      cwd: opts.cwd,
-      env: {
-        ADAPTER_TEST_CAPTURE_PATH: opts.capturePath,
-      },
-      promptTemplate: "Follow the paperclip heartbeat.",
-      provider: "openai",
-      model: "openai/gpt-4.1-mini",
-    },
+    runId: "run-1", agent: { id: "agent-1", companyId: "company-1", name: "Pi Coder", adapterType: "pi_local", adapterConfig: {} },
+    runtime: { sessionId: null, sessionParams: null, sessionDisplayId: null, taskKey: null },
+    config: { command: opts.command, cwd: opts.cwd, env: { ADAPTER_TEST_CAPTURE_PATH: opts.capturePath, ADAPTER_TEST_LAUNCH_PATH: opts.launchPath },
+      promptTemplate: "Follow the paperclip heartbeat.", provider: "openai", model: "openai/gpt-4.1-mini",
+      ...(opts.timeoutSec === undefined ? {} : { timeoutSec: opts.timeoutSec }) },
     context: {
-      paperclipStepInputManifest: {
-        version: 1,
-        taskKey: "issue:123",
-        issueId: "issue-1",
-        projectId: null,
-        allowedContextKeys: ["issueId", "paperclipSessionHandoff"],
-        guardrails: { broadScanAllowed: false },
-        inputs: {
-          workspace: { available: true, source: "project_primary", workspaceId: "ws-1", projectId: null },
-          workspaceHints: { available: false, count: 0 },
-          runtimeServiceIntents: { available: false, count: 0 },
-          runtimeServices: { available: false, count: 0 },
-          primaryUrl: null,
-          sessionHandoff: { available: true, previousSessionId: "sess-1", rotationReason: "budget" },
-        },
-      },
-      paperclipSessionHandoff: {
-        version: 1,
-        previousSessionId: "sess-1",
-        previousRunId: "run-prev",
-        issueId: "issue-1",
-        rotationReason: "budget",
-        lastRunSummaryText: "Last run summarized the issue state",
-      },
+      paperclipStepInputManifest: { version: 1, taskKey: "issue:123", issueId: "issue-1", projectId: null,
+        allowedContextKeys: ["issueId", "paperclipSessionHandoff"], guardrails: { broadScanAllowed: false },
+        inputs: { workspace: { available: true, source: "project_primary", workspaceId: "ws-1", projectId: null },
+          workspaceHints: { available: false, count: 0 }, runtimeServiceIntents: { available: false, count: 0 },
+          runtimeServices: { available: false, count: 0 }, primaryUrl: null,
+          sessionHandoff: { available: true, previousSessionId: "sess-1", rotationReason: "budget" } } },
+      paperclipSessionHandoff: { version: 1, previousSessionId: "sess-1", previousRunId: "run-prev", issueId: "issue-1",
+        rotationReason: "budget", lastRunSummaryText: "Last run summarized the issue state" },
       paperclipSessionHandoffMarkdown: "# raw handoff markdown should not appear",
     },
-    authToken: undefined,
-    onLog: async () => {},
-    onMeta: opts.onMeta ?? (async () => {}),
+    authToken: undefined, onLog: async () => {}, onMeta: opts.onMeta ?? (async () => {}),
   };
 }
 
-async function prepare(mode: FakeMode): Promise<{
-  root: string;
-  ctx: ExecuteCtx;
-  capturePath: string;
-}> {
+async function prepare(mode: FakeMode, timeoutSec?: number) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-pi-execute-"));
-  const workspace = path.join(root, "workspace");
-  const commandPath = path.join(root, "pi");
-  const capturePath = path.join(root, "capture.json");
-  await fs.mkdir(workspace, { recursive: true });
-  await writeFakePiCommand(commandPath, mode);
-  const ctx = buildCtx({ command: commandPath, cwd: workspace, capturePath });
-  return { root, ctx, capturePath };
+  const cwd = path.join(root, "workspace"), command = path.join(root, "pi"), capturePath = path.join(root, "capture.json");
+  const launchPath = path.join(root, "launch-count");
+  await fs.mkdir(cwd, { recursive: true }); await writeFakePiCommand(command, mode);
+  return { root, capturePath, launchPath, ctx: buildCtx({ command, cwd, capturePath, launchPath, timeoutSec }) };
 }
 
 describe("pi execute", () => {
-  it("injects the shared runtime brief instead of raw handoff markdown", async () => {
+  it("delivers one framed prompt matching onMeta and waits for authoritative settle", async () => {
     let invocationPrompt = "";
     const { root, ctx, capturePath } = await prepare("settle");
-    ctx.onMeta = async (meta) => {
-      invocationPrompt = meta.prompt ?? "";
-    };
+    ctx.onMeta = async meta => { invocationPrompt = meta.prompt ?? ""; };
     try {
-      const result = await execute(ctx);
-
-      expect(result.exitCode).toBe(0);
-      const capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as CapturePayload;
-      // Regression: stdin must stay open until the model turn emitted its
-      // events (agent_settled) — an immediate stdin close makes the fake (like
-      // real pi) exit before the turn, leaving emittedBeforeEof false.
-      expect(capture.emittedBeforeEof).toBe(true);
-      expect(capture.stdin).toContain("Paperclip runtime brief:");
-      expect(capture.stdin).toContain("Previous session: sess-1");
-      expect(capture.stdin).not.toContain("# raw handoff markdown should not appear");
-      expect(invocationPrompt).toContain("Paperclip runtime brief:");
-      expect(invocationPrompt).not.toContain("# raw handoff markdown should not appear");
-    } finally {
-      await fs.rm(root, { recursive: true, force: true });
-    }
+      const result = await execute(ctx), capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as Capture;
+      expect(result.exitCode).toBe(0); expect(capture.prompt).toMatchObject({ type: "prompt", id: expect.any(String), message: invocationPrompt });
+      expect(capture.stdin.endsWith("\n")).toBe(true); expect(capture.promptCount).toBe(1);
+      expect(capture.argv).not.toContain(invocationPrompt); expect(capture.stdinEndedWhenSettled).toBe(false);
+      expect(capture.events).toContain("agent_settled");
+      expect(capture.prompt.message).toContain("Paperclip runtime brief:");
+      expect(capture.prompt.message).toContain("Previous session: sess-1");
+      expect(capture.prompt.message).not.toContain("# raw handoff markdown should not appear");
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
   });
 
-  it("falls back to closing stdin after the final agent_end when agent_settled is absent", async () => {
-    const { root, ctx, capturePath } = await prepare("no-settled");
+  it("keeps stdin open through continuation after agent_end for more than 1.5 seconds", async () => {
+    const { root, ctx, capturePath } = await prepare("late-settle");
     try {
-      const result = await execute(ctx);
-
-      // The fake only exits at stdin EOF: this asserts the adapter closed
-      // stdin (fallback timer after final agent_end) and that it happened
-      // after the turn events were emitted.
-      expect(result.exitCode).toBe(0);
-      const capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as CapturePayload;
-      expect(capture.emittedBeforeEof).toBe(true);
-    } finally {
-      await fs.rm(root, { recursive: true, force: true });
-    }
+      const result = await execute(ctx), capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as Capture;
+      expect(result.exitCode).toBe(0); expect(capture.events).toContain("continuation");
+      expect(capture.events).toContain("agent_settled"); expect(capture.stdinEndedWhenSettled).toBe(false);
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
   });
 
-  it("treats an exit-0 run with zero assistant output as failure (no-op guard)", async () => {
-    const { root, ctx } = await prepare("noop");
+  it("times out without EOF when an older Pi omits agent_settled", async () => {
+    const { root, ctx, capturePath } = await prepare("no-settled", 2);
+    try {
+      const result = await execute(ctx), capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as Capture;
+      // Deliberately fail boundedly: agent_end alone does not prove the RPC session is done.
+      expect(result.timedOut).toBe(true); expect(capture.eof).toBe(false);
+      expect(capture.events).toContain("agent_end"); expect(capture.events).not.toContain("agent_settled");
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+  });
+
+  it("surfaces a matching structured prompt rejection instead of waiting for EOF", async () => {
+    const { root, ctx } = await prepare("reject", 2);
     try {
       const result = await execute(ctx);
+      expect(result.exitCode).toBe(1); expect(result.errorMessage).toContain("prompt rejected by fixture");
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+  });
 
-      // Regression: exit 0 with no model turn must never be reported as
-      // success — that masking hid every pi run since the adapter cutover.
-      expect(result.exitCode).toBe(1);
+  it("marks an output-free exit as pi_noop_stdin_eof without replaying or losing raw/session data", async () => {
+    const { root, ctx, capturePath, launchPath } = await prepare("noop");
+    try {
+      const result = await execute(ctx), capture = JSON.parse(await fs.readFile(capturePath, "utf8")) as Capture;
+      expect(result.exitCode).toBe(1); expect(result.errorCode).toBe("pi_noop_stdin_eof");
       expect(result.errorMessage).toContain("without any assistant output");
-    } finally {
-      await fs.rm(root, { recursive: true, force: true });
-    }
+      expect(result.resultJson).toMatchObject({ stdout: "", stderr: "" });
+      expect(result.sessionId).toEqual(expect.any(String)); expect(capture.promptCount).toBe(1);
+      expect(await fs.readFile(launchPath, "utf8")).toBe("1");
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
   });
 });

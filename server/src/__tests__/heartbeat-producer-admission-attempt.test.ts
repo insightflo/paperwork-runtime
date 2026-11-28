@@ -11,7 +11,7 @@ it("the admission writer rejects a foreign-company agent before inserting an ori
   await flag(false); const f = await fixture(), other = await fixture(), db = database();
   await expect(insertWorkflowWakeRequest(db, { companyId: f.companyId, agentId: other.agentId, issueId: f.issueId,
     workflowRunId: f.workflowRunId, workflowStepRunId: f.stepRunId, workflowExecutionGeneration: 7,
-    source: "automation", status: "queued" })).rejects.toThrow(/heartbeat_workflow/);
+    source: "automation", status: "queued" })).rejects.toThrow(/heartbeat_(?:workflow|agent_not_invokable)/);
   expect((await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, other.agentId))).length).toBe(0);
 });
 

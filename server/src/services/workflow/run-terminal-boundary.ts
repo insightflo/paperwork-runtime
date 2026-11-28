@@ -33,6 +33,7 @@ import {
 import { evaluateRecoveryChannels, uniqueIssueIds } from "./run-terminal-recovery-gate.js";
 import { buildEffectIntentValues, captureStopTargets } from "./run-terminal-boundary-storage.js";
 import { deferRunForQaCorrection } from "./control-flow/qa-correction-liveness.js";
+import { settleRunningStepRunsForTerminalRun } from "./workflow-sync-source.js";
 
 // 지정된 공개 API 표면 — 내부 분할과 무관하게 본 모듈이 단일 진입점이다.
 export type {
@@ -175,6 +176,12 @@ export async function finalizeRunTerminal(db: TerminalBoundaryDb, input: Finaliz
       .update(workflowStepRuns)
       .set({ executionGeneration: sql`${workflowStepRuns.executionGeneration} + 1` })
       .where(eq(workflowStepRuns.workflowRunId, input.runId));
+
+    // [bug#2] 같은 트랜잭션에서 남은 running/queued 스텝을 failed 정산(completed 무시) — 종말 불일치 영속 차단.
+    await settleRunningStepRunsForTerminalRun(tx, {
+      companyId: input.companyId, runId: input.runId, missionId: locked.missionId,
+      decision: input.decision, now: input.now, discovery: input.cause.discovery,
+    });
 
     const stepIssueIds = uniqueIssueIds(input.stepRuns);
     const capturedStopTargets = await captureStopTargets(tx, input, locked, stepIssueIds, staleUnblockIssueIds);

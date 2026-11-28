@@ -53,7 +53,9 @@ export async function resolveWorkflowStepKnowledgeContext(input: {
 
   const { workflowService } = await import("./workflow/engine.js");
   const contract = await workflowService.getStepExecutionContractForIssue(input.db, input.issueId);
-  if (!contract || contract.knowledgeBaseIds.length === 0) return null;
+  if (!contract) return null;
+  const knowledgeBaseIds = [...new Set(contract.knowledgeBaseIds.map(id => id.trim()).filter(Boolean))];
+  if (knowledgeBaseIds.length === 0) return null;
 
   const accessibleKnowledgeBases = await knowledgeService.listAccessible(
     input.db,
@@ -61,15 +63,29 @@ export async function resolveWorkflowStepKnowledgeContext(input: {
     input.companyId,
   );
   const knowledgeBaseById = new Map(accessibleKnowledgeBases.map((knowledgeBase) => [knowledgeBase.id, knowledgeBase]));
-  const missingKnowledgeBaseIds = contract.knowledgeBaseIds.filter((knowledgeBaseId) => !knowledgeBaseById.has(knowledgeBaseId));
+  const unresolvedIds = knowledgeBaseIds.filter((id) => !knowledgeBaseById.has(id));
 
-  if (missingKnowledgeBaseIds.length > 0) {
+  if (unresolvedIds.length > 0) {
+    const diagnostics = await Promise.all(unresolvedIds.map(async id => {
+      const kb = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+        ? await knowledgeService.getById(input.db, id) : null;
+      return { id, reason: !kb ? "missing" : kb.companyId !== input.companyId ? "wrong_company" : "access_denied" };
+    }));
+    const idsFor = (reason: string) => diagnostics.filter(d => d.reason === reason).map(d => d.id);
     throw Object.assign(
       new Error(
-        `Workflow step "${contract.stepName}" has an invalid knowledge contract (missing or inaccessible KBs: ${missingKnowledgeBaseIds.join(", ")})`,
+        `Workflow step "${contract.stepName}" (${contract.stepId}) has an invalid knowledge contract (missing or inaccessible KBs: ${unresolvedIds.join(", ")})`,
       ),
       {
         code: "workflow_step_kb_contract_invalid",
+        details: {
+          workflowRunId: contract.workflowRunId, stepId: contract.stepId, knowledgeBaseIds,
+          missingKnowledgeBaseIds: idsFor("missing"), inaccessibleKnowledgeBaseIds: idsFor("access_denied"),
+          wrongCompanyKnowledgeBaseIds: idsFor("wrong_company"),
+          // knowledge_bases has no archive lifecycle column. Do not invent an archive diagnosis.
+          archiveStatusSupported: false,
+          availableActiveKnowledgeBases: accessibleKnowledgeBases.slice(0, 5).map(kb => ({ id: kb.id, name: kb.name })),
+        },
       },
     );
   }
@@ -83,7 +99,7 @@ export async function resolveWorkflowStepKnowledgeContext(input: {
   });
 
   const entries = await Promise.all(
-    contract.knowledgeBaseIds.map(async (knowledgeBaseId) => {
+    knowledgeBaseIds.map(async (knowledgeBaseId) => {
       const knowledgeBase = knowledgeBaseById.get(knowledgeBaseId)!;
       const retrieval = await knowledgeService.retrieve(input.db, {
         kbId: knowledgeBaseId,
@@ -109,7 +125,7 @@ export async function resolveWorkflowStepKnowledgeContext(input: {
     workflowId: contract.workflowId,
     stepId: contract.stepId,
     stepName: contract.stepName,
-    knowledgeBaseIds: contract.knowledgeBaseIds,
+    knowledgeBaseIds,
     entries,
   };
 }

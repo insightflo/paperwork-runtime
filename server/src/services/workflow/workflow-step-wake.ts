@@ -103,6 +103,7 @@ async function wakeExistingWorkflowStepIssueUnlocked(input: WakeExistingInput): 
   if (!isRunnableIssue) return false;
 
   let wakeIssue = issue;
+  if (wakeIssue.assigneeAgentId && !(await runnableWorkflowAssigneeId(input.db, input.run.companyId, { id: wakeIssue.assigneeAgentId }))) return false;
   if (!wakeIssue.assigneeAgentId) {
     const assigneeAgentId = await resolveWorkflowStepAssigneeAgentId(input.db, input.run.companyId, effectiveInput.step);
     if (!assigneeAgentId) return false;
@@ -246,6 +247,9 @@ async function wakeExistingWorkflowStepIssueUnlocked(input: WakeExistingInput): 
       ...(input.forceFreshSession ? { forceFreshSession: true } : {}),
       ...(structuralReadiness.coverage.length > 0 ? { structuralGateCoverage: structuralReadiness.coverage } : {}),
       ...reworkContext,
+      // [validation recheck — #10] 런 컨텍스트(contextSnapshot)에서만 brief가 만들어지므로
+      //   직전 REQUEST_CHANGES findings를 payload와 동일하게 여기에도 실어야 한다.
+      ...priorFindingsContext,
       ...capAcceptancePayload,
       ...qaCapAcceptancePayload,
     },
@@ -263,7 +267,7 @@ export async function resolveWorkflowStepAssigneeAgentId(
   step: WorkflowStep,
 ): Promise<string | undefined> {
   if (typeof step.agentId === "string" && step.agentId.trim()) {
-    return step.agentId.trim();
+    return runnableWorkflowAssigneeId(db, companyId, { id: step.agentId.trim() });
   }
 
   const rawAgentName = (step as PersistedWorkflowStep).agentName;
@@ -272,14 +276,23 @@ export async function resolveWorkflowStepAssigneeAgentId(
     : "";
   if (!agentName) return undefined;
 
+  return runnableWorkflowAssigneeId(db, companyId, { name: agentName });
+}
+
+async function runnableWorkflowAssigneeId(
+  db: Db,
+  companyId: string,
+  selector: { id?: string; name?: string },
+): Promise<string | undefined> {
   const [agent] = await db
     .select({ id: agents.id })
     .from(agents)
     .where(and(
       eq(agents.companyId, companyId),
-      eq(agents.name, agentName),
+      selector.id ? eq(agents.id, selector.id) : eq(agents.name, selector.name!),
       ne(agents.status, "terminated"),
-      ne(agents.status, "pending_approval"),
+      ne(agents.status, "archived"),
+      ...(selector.id ? [] : [ne(agents.status, "pending_approval")]),
     ))
     .orderBy(asc(agents.createdAt))
     .limit(1);

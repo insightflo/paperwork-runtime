@@ -226,7 +226,7 @@ describe("pi_local execute contract", () => {
       expect(captured.argv[captured.argv.indexOf("--session") + 1]).toContain(
         path.join(home, ".pi", "paperclips"),
       );
-      expect(JSON.parse(captured.input)).toEqual({
+      expect(JSON.parse(captured.input)).toMatchObject({
         type: "prompt",
         message: expect.any(String),
       });
@@ -461,7 +461,7 @@ describe("pi_local execute contract", () => {
       const captured = JSON.parse(await fs.readFile(capture, "utf8")) as { input: string };
       const lines = captured.input.trim().split("\n");
       expect(lines).toHaveLength(2);
-      expect(JSON.parse(lines[0])).toEqual({ type: "prompt", message: expect.any(String) });
+      expect(JSON.parse(lines[0])).toMatchObject({ type: "prompt", message: expect.any(String) });
       const interrupt = JSON.parse(lines[1]) as { type: string; message: string };
       expect(interrupt.type).toBe("prompt");
       expect(interrupt.message).toContain("[OPERATOR INTERRUPT — highest priority, act on this now]");

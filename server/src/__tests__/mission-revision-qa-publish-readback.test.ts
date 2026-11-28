@@ -367,7 +367,7 @@ it("[RED] 이전 검수 PASS 를 새 실행 통과로 복사하는 경로가 없
   const refused = await executeCoreWorkflowTool({ db, companyId: f.companyId, toolName: "revision-publish",
     workflowRunId: target.id, stepRunId: steal.id, stepId: "steal-publish", requestId: "steal-1",
     parameters: { review: f.sourceReceiptPath, source: f.content, entry: "article", day: "2026-10-01" } });
-  expect(refused.status).toBe(500);
+  expect(refused.status).toBe(409);
   expect(refused.body.error).toContain("qa_artifact_consumer_receipt_required");
   expect(refused.artifactPath).toBeUndefined();
   // 3) 회수 경로: 현재 실행 검수 단계에는 읽을 수 있는 영수증이 없고 게시 단계는 대기 중이다
@@ -561,7 +561,7 @@ it.each(["after-qa", "after-publish", "completed"] as const)
   const refusedPublish = await executeCoreWorkflowTool({ db, companyId: f.companyId, toolName: "revision-publish",
     workflowRunId: target.id, stepRunId: stealPublish.id, stepId: "q1-steal-publish", requestId: "q1-steal-pub-1",
     parameters: { review: f.sourceReceiptPath, source: f.content, entry: "article", day: "2026-10-01" } });
-  expect(refusedPublish.status).toBe(500);
+  expect(refusedPublish.status).toBe(409);
   expect(refusedPublish.body.error).toContain("qa_artifact_consumer_receipt_required");
   expect(refusedPublish.artifactPath).toBeUndefined();
   // 2b) 소비 경로(게시 후/완료 상태): 확인자는 원본 실행의 게시 결과 경로를 받지 않는다
@@ -572,7 +572,7 @@ it.each(["after-qa", "after-publish", "completed"] as const)
     const refusedReadback = await executeCoreWorkflowTool({ db, companyId: f.companyId, toolName: "revision-readback",
       workflowRunId: target.id, stepRunId: stealReadback.id, stepId: "q1-steal-readback", requestId: "q1-steal-rb-1",
       parameters: { publishResultPath: f.sourcePublishArtifact! } });
-    expect(refusedReadback.status).toBe(500);
+    expect(refusedReadback.status).toBe(409);
     expect(refusedReadback.body.error).toContain("qa_artifact_consumer_receipt_required");
     expect(refusedReadback.artifactPath).toBeUndefined();
   }

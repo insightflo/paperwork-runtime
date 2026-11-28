@@ -14,6 +14,7 @@ import {
   type CascadeTx, type FailureCascadeRun, type FailureCascadeStep, type DeadlockCascadeStep,
 } from "./failure-cascade-writes.js";
 import { logger } from "../../middleware/logger.js";
+import { settleRunningStepRunsForTerminalRun } from "./workflow-sync-source.js";
 import { maybeAutoRestartMechanicalFailure } from "./mechanical-failure-auto-restart.js";
 
 type Finalized = Extract<TerminalFinalizeResult, { kind: "finalized" }>;
@@ -148,6 +149,11 @@ export async function settleStuckFailureCascade(
       }
       await tx.update(workflowRuns).set({ status: "failed", completedAt: new Date() })
         .where(eq(workflowRuns.id, run.id));
+      // [bug#2 step-settlement] legacy 종결 쓰기와 같은 트랜잭션에서 running/queued 스텝을 정산한다.
+      await settleRunningStepRunsForTerminalRun(tx, {
+        companyId: run.companyId, runId: run.id, missionId: run.missionId,
+        decision: "failed", now: new Date(), discovery: "stuck_diagnostic",
+      });
       return null;
     });
     const effectNote = boundary ? await terminalEffectNote(db, boundary.decisionId) : "";
@@ -209,6 +215,12 @@ export async function settleDeadlockFailureCascade(
       }
       await tx.update(workflowRuns).set({ status: "failed", completedAt: now })
         .where(eq(workflowRuns.id, run.id));
+      // [bug#2 step-settlement] legacy deadlock 종결 쓰기와 같은 트랜잭션에서 running/queued 스텝을 정산한다 —
+      //   lifecycle 사망 스테일 running 스텝이 종결 후에도 running 으로 남는 관측 결함(96672582)을 차단한다.
+      await settleRunningStepRunsForTerminalRun(tx, {
+        companyId: run.companyId, runId: run.id, missionId: run.missionId,
+        decision: "failed", now, discovery: "deadlock_detection",
+      });
       return null;
     });
     if (!mayFinalize) return null;

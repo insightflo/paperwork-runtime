@@ -6,7 +6,8 @@ import { encodeQaInput } from "./qa-byte-transport.js";
 import { randomUUID } from "node:crypto";
 import { createArtifactDirectory } from "./artifact-writer.js";
 import { captureQaDispatch, type QaDispatchScope } from "./qa-dispatch-guard.js";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
+import { conflict } from "../../errors.js";
 import { workflowRuns, workflowStepRuns, workflowStepOutputBindings, type Db } from "@paperclipai/db";
 import { toolArtifactReceiptSchema } from "@paperclipai/shared/validators/workflow-artifact";
 import { captureArtifactRoot, digest, readArtifactBytes } from "./artifact-files.js";
@@ -29,31 +30,63 @@ export async function prepareQaConsumer(input: QaDispatchScope & { parameters: u
   if (!frozen || frozen.contract.role === "qa") return { parameters: input.parameters, inputBytes: undefined, resultRoot: undefined };
   if (frozen.contract.role === 'publication-verify') return preparePublicationVerifyConsumer({ ...input, artifactExecution: frozen });
   const contract = frozen.contract, names = contract.consumerParams;
-  if (!names || typeof args[names.receipt] !== "string") throw new Error("qa_artifact_consumer_receipt_required");
+  if (!names || typeof args[names.receipt] !== "string") throw conflict("qa_artifact_consumer_receipt_required");
   if (!input.workflowRunId) throw new Error("qa_artifact_request_stale");
   const dispatch = input.dispatch ?? await captureQaDispatch(input);
   const rows = await input.db.select({ step: workflowStepRuns, run: workflowRuns }).from(workflowStepRuns)
     .innerJoin(workflowRuns, eq(workflowRuns.id, workflowStepRuns.workflowRunId)).where(and(
       eq(workflowRuns.id, input.workflowRunId), eq(workflowRuns.companyId, input.companyId)));
-  const matches = rows.filter(({ step }) => {
+  let matches = rows.filter(({ step }) => {
     const r = toolArtifactReceiptSchema.safeParse(step.metadata.toolArtifactReceipt);
     return r.success && path.join(r.data.outputRoot, r.data.relativePath) === args[names.receipt];
   });
-  if (matches.length !== 1) throw new Error("qa_artifact_consumer_receipt_required");
+  const reused = matches.length === 0;
+  if (reused) {
+    const receiptPath = args[names.receipt] as string;
+    if (!path.isAbsolute(receiptPath)) throw conflict("qa_artifact_consumer_receipt_required");
+    matches = await input.db.select({ step: workflowStepRuns, run: workflowRuns }).from(workflowStepRuns)
+      .innerJoin(workflowRuns, eq(workflowRuns.id, workflowStepRuns.workflowRunId)).where(and(
+        eq(workflowRuns.companyId, input.companyId),
+        sql`(${workflowStepRuns.metadata}->'toolArtifactReceipt'->>'outputRoot') || '/' ||
+          (${workflowStepRuns.metadata}->'toolArtifactReceipt'->>'relativePath') = ${receiptPath}`));
+  }
+  if (matches.length !== 1) throw conflict("qa_artifact_consumer_receipt_required");
   const { step, run } = matches[0];
-  const { receipt, bytes: qaBytes } = await readQaReceiptBytes(input.db, { companyId: input.companyId, workflowRunId: run.id, stepId: step.stepId });
-  if (receipt.missionId !== run.missionId) throw new Error("qa_artifact_consumer_mission_mismatch");
-  const bindings = await input.db.select().from(workflowStepOutputBindings).where(and(
-    eq(workflowStepOutputBindings.consumerStepRunId, step.id),
-    eq(workflowStepOutputBindings.workProductId, receipt.input.workProductId)));
-  if (bindings.length !== 1) throw new Error("qa_artifact_consumer_binding_required");
-  const producer = await selectOfficialWorkProduct(input.db, { companyId: input.companyId, workflowRunId: run.id,
-    stepId: bindings[0].referencedStepId, selector: { type: "document", title: path.basename(receipt.input.path) }, pinnedId: receipt.input.workProductId });
-  if (producer.file !== receipt.input.path) throw new Error("qa_artifact_consumer_producer_changed");
+  const verified = await (async () => {
+    const result = await readQaReceiptBytes(input.db, { companyId: input.companyId, workflowRunId: run.id, stepId: step.stepId });
+    const { receipt } = result;
+    if (receipt.missionId !== run.missionId) throw new Error("qa_artifact_consumer_mission_mismatch");
+    const bindings = await input.db.select().from(workflowStepOutputBindings).where(and(
+      eq(workflowStepOutputBindings.companyId, input.companyId), eq(workflowStepOutputBindings.workflowRunId, run.id),
+      eq(workflowStepOutputBindings.consumerStepRunId, step.id),
+      eq(workflowStepOutputBindings.workProductId, receipt.input.workProductId)));
+    if (bindings.length !== 1) throw new Error("qa_artifact_consumer_binding_required");
+    const producer = await selectOfficialWorkProduct(input.db, { companyId: input.companyId, workflowRunId: run.id,
+      stepId: bindings[0].referencedStepId, selector: { type: "document", title: path.basename(receipt.input.path) }, pinnedId: receipt.input.workProductId });
+    if (producer.file !== receipt.input.path) throw new Error("qa_artifact_consumer_producer_changed");
+    if (reused) {
+      // A path from another run is not authority. The current consumer must pin the
+      // exact product through the existing approval/seed reader, which rechecks bytes.
+      const pins = await input.db.select().from(workflowStepOutputBindings).where(and(
+        eq(workflowStepOutputBindings.companyId, input.companyId),
+        eq(workflowStepOutputBindings.workflowRunId, input.workflowRunId!),
+        eq(workflowStepOutputBindings.consumerStepRunId, input.stepRunId!),
+        eq(workflowStepOutputBindings.workProductId, result.receipt.input.workProductId)));
+      if (pins.length !== 1) throw conflict("qa_artifact_consumer_receipt_required");
+      const selected = await selectOfficialWorkProduct(input.db, { companyId: input.companyId,
+        workflowRunId: input.workflowRunId!, stepId: pins[0].referencedStepId,
+        selector: { type: "document", title: path.basename(result.receipt.input.path) },
+        pinnedId: result.receipt.input.workProductId });
+      if (selected.file !== result.receipt.input.path || selected.product.metadata?.sha256 !== result.receipt.input.sha256)
+        throw conflict("qa_artifact_consumer_receipt_required");
+    }
+    return result;
+  })().catch(error => { if (reused) throw conflict("qa_artifact_consumer_receipt_required"); throw error; });
+  const { receipt, bytes: qaBytes } = verified;
   const sourceKey = receipt.input.mode === "html" ? names.html : names.content;
   if (!sourceKey || args[sourceKey] !== receipt.input.path
     || (names.content && names.html && typeof args[names.content] === "string" && typeof args[names.html] === "string")) {
-    throw new Error("qa_artifact_consumer_input_mismatch");
+    throw reused ? conflict("qa_artifact_consumer_receipt_required") : new Error("qa_artifact_consumer_input_mismatch");
   }
   const request = step.metadata.toolArtifactRequest as NonNullable<QaRequest>["snapshot"];
   const root = await captureArtifactRoot(request.root.path);
@@ -73,12 +106,12 @@ export async function prepareQaConsumer(input: QaDispatchScope & { parameters: u
     ancillary.push({ ...a, bytes });
   }
   // All validation precedes creation and tool dispatch; no external writes on rejection.
+  const current = rows.find(({ step: s }) => s.id === input.stepRunId), consumer = current?.step;
+  if (!consumer || !input.stepId || !input.requestId || !current.run.missionId) throw new Error("qa_artifact_request_stale");
   await dispatch.assertCurrent();
   const resultRoot = await createArtifactDirectory(root, `publication-${randomUUID()}`, [], []);
-  const consumer = rows.find(({ step: s }) => s.id === input.stepRunId)?.step;
-  if (!consumer || !input.stepId || !input.requestId || !run.missionId) throw new Error("qa_artifact_request_stale");
-  const publicationScope: PublicationScope = { companyId: input.companyId, missionId: run.missionId,
-    workflowRunId: run.id, stepRunId: consumer.id, stepId: input.stepId, requestId: input.requestId,
+  const publicationScope: PublicationScope = { companyId: input.companyId, missionId: current.run.missionId,
+    workflowRunId: current.run.id, stepRunId: consumer.id, stepId: input.stepId, requestId: input.requestId,
     executionGeneration: consumer.executionGeneration, retryCount: consumer.retryCount, iterationIndex: consumer.iterationIndex };
   return { parameters: args, inputBytes: encodeQaInput(source, assets, qaBytes,
     receipt.input.mode === "html" ? { ancillary } : undefined, contract.inputEnvelopeVersion), resultRoot, publicationScope, contract, dispatch };

@@ -2,8 +2,8 @@
 // Submission normalization is supplied by the API; this module does not write decisions.
 import type { Db } from "@paperclipai/db";
 import type { MissionOwnerDecisionSubmit } from "@paperclipai/shared";
-import { heartbeatRuns, issues, missions } from "@paperclipai/db";
-import { and, eq } from "drizzle-orm";
+import { agents, heartbeatRuns, issues, missions } from "@paperclipai/db";
+import { and, eq, inArray } from "drizzle-orm";
 import { conflict, forbidden, unauthorized } from "../../errors.js";
 import { issueService } from "../issues.js";
 import { readOwnerToolIdentity } from "./owner-human-request-authority.js";
@@ -14,6 +14,7 @@ import { ownerRecoveryActorFailure, ownerRecoveryIssueFailure, ownerRecoveryOwne
 import type { OwnerRecoveryApiActor } from "./mission-owner-recovery-agent-api.js";
 import type { MissionOwnerDecisionSubmission } from "./mission-owner-recovery-ledger.js";
 import { consumeOwnerHumanResponse } from "./owner-human-response.js";
+import { qaCapSupervisionScope } from "./mission-owner-decision-read.js";
 
 type OwnerRecoveryApiAuthDependencies = {
   readonly toSubmission: (data: MissionOwnerDecisionSubmit, oversight?: boolean) => MissionOwnerDecisionSubmission;
@@ -114,9 +115,27 @@ export async function authorizeOwnerRecoveryApi(db: Db, issueId: string, actor: 
   const [currentIssue] = await db.select().from(issues)
     .where(eq(issues.id, issue.id)).limit(1).for("update");
   if (!ownerRecoveryIdentityMatches({ heartbeat, issue, currentIssue, agentId: actor.agentId })) {
-    throw conflict("Owner-recovery submission requires the same company, agent and owner-action heartbeat", {
-      reason: "owner_recovery_submission_identity_mismatch",
+    // A live owner may check out a cap action from its supervision run. Require
+    // the exact existing checkout, plus the runtime claim; never adopt a lock here.
+    const sameAnchor = ownerRecoveryIdentityMatches({
+      heartbeat: heartbeat ? { ...heartbeat, issueId: issue.id } : undefined,
+      issue, currentIssue, agentId: actor.agentId,
     });
+    const [capScope] = sameAnchor && actor.actorId === actor.agentId
+      && mission.status === "active" && heartbeat?.status === "running"
+      && !sourceHidden && !currentIssue?.hiddenAt && currentIssue?.status === "in_progress"
+      && currentIssue.assigneeAgentId === actor.agentId && currentIssue.checkoutRunId === actor.runId
+      ? await db.select({ id: issues.id }).from(issues)
+        .innerJoin(agents, and(eq(agents.id, actor.agentId), eq(agents.companyId, issue.companyId)))
+        .where(and(eq(issues.id, issue.id), inArray(agents.status, ["active", "idle", "running"]),
+          qaCapSupervisionScope({ companyId: issue.companyId, missionId: issue.missionId,
+            ownerIssueId: issue.id, supervisionIssueId: heartbeat.issueId }))).limit(1)
+      : [];
+    if (!capScope) {
+      throw conflict("Owner-recovery submission requires the same company, agent and owner-action heartbeat", {
+        reason: "owner_recovery_submission_identity_mismatch",
+      });
+    }
   }
   if (isOversight && !ownerRecoveryOversightRunIsActive(heartbeat)) {
     throw conflict("Oversight submissions require the current running heartbeat");
