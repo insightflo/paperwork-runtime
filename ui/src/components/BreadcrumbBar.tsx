@@ -54,6 +54,7 @@ export function BreadcrumbBar() {
 
   const menuButton = (
     <Button
+      type="button"
       variant="ghost"
       size="icon-sm"
       className="-ml-1 shrink-0 text-slate-500 hover:bg-slate-100 hover:text-[var(--pw-cobalt)] dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-[var(--pw-cobalt)]"
@@ -147,6 +148,7 @@ export function BreadcrumbBar() {
         {crumbs}
         {breadcrumbs.length > 0 && (
           <span
+            role="status"
             aria-label="Live telemetry status"
             className="hidden shrink-0 items-center gap-1.5 rounded-full border border-emerald-700/25 bg-emerald-700/10 px-2 py-0.5 font-mono text-[10px] font-medium text-emerald-700 lg:inline-flex dark:border-emerald-300/25 dark:bg-emerald-300/10 dark:text-emerald-300"
           >
