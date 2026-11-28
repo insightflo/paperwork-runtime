@@ -24,7 +24,7 @@ import {
   reviewArtifactWorkProductMarkers,
 } from "./mission-plan-artifact-contract.js";
 import { buildDependencyIndex, unitDependsOn } from "./mission-plan-unit-dependencies.js";
-import { reviewPublicationQaReceiptTopology, reviewPublicationVerificationTopology, type PlanningArtifactTool } from "./mission-plan-publication-contract.js";
+import { reviewPublicationQaReceiptTopology, reviewPublicationVerificationTopology, reviewQaToolInputContract, type PlanningArtifactTool } from "./mission-plan-publication-contract.js";
 import { extractUnitRoles, hasPostDeliveryReadbackQa, type PlanQaUnitRole } from "./mission-plan-unit-roles.js";
 import { reviewPlanAgainstIntentViaRust } from "./mission-core-client-s9.js";
 
@@ -36,6 +36,7 @@ export type PlanQaDiagnosticCode =
   | "missing_publish_readback_qa"
   | "missing_publication_verify_tool"
   | "missing_publication_qa_receipt_tool"
+  | "invalid_qa_tool_input_contract"
   | "missing_artifact_qa_before_delivery"
   | "invalid_artifact_qa_delivery_order"
   | "invalid_artifact_workproduct_marker"
@@ -125,20 +126,24 @@ export function reviewPlanAgainstIntent(input: {
   const { intent, selectedExecutionUnits, tools = [] } = input;
   const viaRust = getMissionPlanQaCritiqueHook() === null ? reviewPlanAgainstIntentViaRust(input) : null;
   if (viaRust !== null) {
-    // Always enforce the Stage 40 publication QA receipt topology gate even when the Rust
+    // Always enforce Stage 40+ publication/QA input contract gates even when the Rust
     // mission-core binary returns early (Rust 9D may lag TS topology rules).
-    const qaReceiptDiagnostics = Array.isArray(tools)
-      ? reviewPublicationQaReceiptTopology(selectedExecutionUnits, tools)
+    const supplementalDiagnostics: PlanQaDiagnostic[] = Array.isArray(tools)
+      ? [
+          ...reviewPublicationQaReceiptTopology(selectedExecutionUnits, tools),
+          ...reviewQaToolInputContract(selectedExecutionUnits, tools),
+        ]
       : [];
-    if (qaReceiptDiagnostics.length === 0) return viaRust;
+    if (supplementalDiagnostics.length === 0) return viaRust;
     const existingCodes = new Set(viaRust.map((diagnostic) => diagnostic.code));
-    return [...viaRust, ...qaReceiptDiagnostics.filter((diagnostic) => !existingCodes.has(diagnostic.code))];
+    return [...viaRust, ...supplementalDiagnostics.filter((diagnostic) => !existingCodes.has(diagnostic.code))];
   }
   const diagnostics: PlanQaDiagnostic[] = [
     ...reviewArtifactWorkProductMarkers(selectedExecutionUnits, tools),
     ...reviewDeliveryToolPreflightMarkers(selectedExecutionUnits),
     ...reviewPublicationVerificationTopology(selectedExecutionUnits, tools),
     ...reviewPublicationQaReceiptTopology(selectedExecutionUnits, tools),
+    ...reviewQaToolInputContract(selectedExecutionUnits, tools),
   ];
   if (!intent.publish && !intent.audienceSplit && !intent.scenario) {
     return diagnostics;

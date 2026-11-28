@@ -108,3 +108,58 @@ pub(super) fn review_publication_qa_receipt_topology(
     }
     Ok(vec![])
 }
+
+fn non_empty_string_arg(args: &serde_json::Map<String, Value>, key: Option<&str>) -> bool {
+    let Some(k) = key.filter(|s| !s.is_empty()) else {
+        return false;
+    };
+    args.get(k)
+        .and_then(Value::as_str)
+        .is_some_and(|v| !js_trim(v).is_empty())
+}
+
+/// `reviewQaToolInputContract` — mechanical QA tool units must bind valid
+/// `inputParams` (`content` + `assetsDir` or `html` + declared `bundleManifest`).
+pub(super) fn review_qa_tool_input_contract(
+    units: &[Value],
+    tools: Option<&Value>,
+) -> Result<Vec<Value>, String> {
+    for unit in units {
+        let Some(args) = prop(Some(unit), "toolArgs")?.and_then(Value::as_object) else {
+            continue;
+        };
+        for c in selected_artifact_contracts(Some(unit), tools)? {
+            if c.get("role").and_then(Value::as_str) != Some("qa") {
+                continue;
+            }
+            let Some(names) = c.get("inputParams").and_then(Value::as_object) else {
+                continue;
+            };
+            let content_key = names.get("content").and_then(Value::as_str);
+            let html_key = names.get("html").and_then(Value::as_str);
+            let manifest_key = names.get("manifest").and_then(Value::as_str);
+            let assets_dir_key = names.get("assetsDir").and_then(Value::as_str);
+            let has_content = non_empty_string_arg(args, content_key);
+            let has_html = non_empty_string_arg(args, html_key);
+            if has_content && has_html {
+                return Ok(vec![diag("invalid_qa_tool_input_contract", "invalid",
+                    "QA tool unit cannot pass both html and content inputs; pass content (content.json) + assetsDir (preferred) or html + declared bundleManifest.".into())]);
+            }
+            if has_html {
+                let has_manifest = c.get("bundleManifest").is_some_and(js_truthy)
+                    && non_empty_string_arg(args, manifest_key);
+                if !has_manifest {
+                    return Ok(vec![diag("invalid_qa_tool_input_contract", "invalid",
+                        "QA tool unit passed html input without its declared bundleManifest argument; pass content (content.json) + assetsDir (preferred) or bind both html and the declared manifest argument.".into())]);
+                }
+            } else if has_content
+                && assets_dir_key.is_some_and(|k| !k.is_empty())
+                && !non_empty_string_arg(args, assets_dir_key)
+            {
+                return Ok(vec![diag("invalid_qa_tool_input_contract", "invalid",
+                    "QA tool unit passed content input without its required assetsDir argument.".into())]);
+            }
+        }
+    }
+    Ok(vec![])
+}

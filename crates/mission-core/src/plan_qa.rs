@@ -7,7 +7,10 @@
 mod helpers;
 #[path = "plan_qa_publication.rs"]
 mod publication;
-use publication::{review_publication_qa_receipt_topology, review_publication_verification_topology};
+use publication::{
+    review_publication_qa_receipt_topology, review_publication_verification_topology,
+    review_qa_tool_input_contract,
+};
 use helpers::*;
 use serde_json::{json, Map, Value};
 
@@ -112,6 +115,7 @@ fn review_plan_against_intent(input: &Value) -> Result<Value, String> {
     let mut diagnostics = review_artifact_work_product_markers(units, tools)?;
     diagnostics.extend(review_publication_verification_topology(units, tools)?);
     diagnostics.extend(review_publication_qa_receipt_topology(units, tools)?);
+    diagnostics.extend(review_qa_tool_input_contract(units, tools)?);
     if falsy(prop(intent, "publish")?)
         && falsy(prop(intent, "audienceSplit")?)
         && falsy(prop(intent, "scenario")?)

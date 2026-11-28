@@ -55,3 +55,37 @@ export function reviewPublicationQaReceiptTopology(units: ReadonlyArray<Record<s
   return valid ? [] : [{ code: "missing_publication_qa_receipt_tool", severity: "invalid",
     message: "Each publication tool declaring artifactContract.consumerParams.receipt requires an upstream mechanical QA tool (artifactContract.role === \"qa\") producing toolArtifactReceipt. Add that tool to the publication unit's dependencies; an LLM QA step alone cannot produce the required receipt." }];
 }
+
+function nonEmptyStringArg(args: Record<string, unknown>, key: string | undefined): boolean {
+  return typeof key === "string" && key.length > 0 && typeof args[key] === "string" && (args[key] as string).trim().length > 0;
+}
+
+/** Mechanical QA tool units must bind valid inputParams (content+assetsDir or html+bundleManifest). */
+export function reviewQaToolInputContract(units: ReadonlyArray<Record<string, unknown>>, tools: readonly PlanningArtifactTool[] = []):
+  Array<{ code: "invalid_qa_tool_input_contract"; severity: "invalid"; message: string }> {
+  for (const unit of units) {
+    if (!unit.toolArgs || typeof unit.toolArgs !== "object" || Array.isArray(unit.toolArgs)) continue;
+    const args = unit.toolArgs as Record<string, unknown>;
+    for (const contract of selectedArtifactContracts(unit, tools)) {
+      if (contract.role !== "qa") continue;
+      const names = contract.inputParams;
+      const hasContent = nonEmptyStringArg(args, names.content);
+      const hasHtml = nonEmptyStringArg(args, names.html);
+      if (hasContent && hasHtml) {
+        return [{ code: "invalid_qa_tool_input_contract", severity: "invalid",
+          message: "QA tool unit cannot pass both html and content inputs; pass content (content.json) + assetsDir (preferred) or html + declared bundleManifest." }];
+      }
+      if (hasHtml) {
+        const hasManifest = Boolean(contract.bundleManifest) && nonEmptyStringArg(args, names.manifest);
+        if (!hasManifest) {
+          return [{ code: "invalid_qa_tool_input_contract", severity: "invalid",
+            message: "QA tool unit passed html input without its declared bundleManifest argument; pass content (content.json) + assetsDir (preferred) or bind both html and the declared manifest argument." }];
+        }
+      } else if (hasContent && names.assetsDir && !nonEmptyStringArg(args, names.assetsDir)) {
+        return [{ code: "invalid_qa_tool_input_contract", severity: "invalid",
+          message: "QA tool unit passed content input without its required assetsDir argument." }];
+      }
+    }
+  }
+  return [];
+}
