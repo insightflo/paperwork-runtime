@@ -77,7 +77,7 @@ export function ExecutionWorkspaceDetail() {
 
   if (isLoading) {
     return (
-      <div className={cn(TACTILE_CARD, "inline-flex items-center gap-2 px-4 py-3 font-mono text-xs text-slate-500 dark:text-[#8b97ad]")}>
+      <div aria-live="polite" className={cn(TACTILE_CARD, "inline-flex items-center gap-2 px-4 py-3 font-mono text-xs text-slate-500 dark:text-[#8b97ad]")}>
         <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-blue-500 dark:bg-[#60a5fa]" />
         Loading...
       </div>
@@ -85,7 +85,7 @@ export function ExecutionWorkspaceDetail() {
   }
   if (error) {
     return (
-      <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3.5 py-2.5 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300">
+      <p role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3.5 py-2.5 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300">
         {error instanceof Error ? error.message : "Failed to load execution context"}
       </p>
     );

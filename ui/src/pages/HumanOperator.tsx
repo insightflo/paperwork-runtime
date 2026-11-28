@@ -93,7 +93,7 @@ function RequestDecisionState({ state }: { state: HumanOperatorRequestStateV1 })
   const result = decision.result;
   const continuation = state.continuation;
   return (
-    <section data-human-operator-request-state={decision.status} className="mt-2 space-y-1.5 border-t border-slate-200/80 dark:border-white/[0.08] pt-2 text-xs">
+    <section aria-live="polite" data-human-operator-request-state={decision.status} className="mt-2 space-y-1.5 border-t border-slate-200/80 dark:border-white/[0.08] pt-2 text-xs">
       <dl className="grid gap-x-3 gap-y-0.5 sm:grid-cols-[max-content_1fr]">
         <dt className="text-slate-500 dark:text-[#8b97ad]">{L(lang, { en: "Owner action issue", ko: "조치 소유 이슈" })}</dt>
         <dd data-owner-action-issue-id className={EVIDENCE_TEXT}>{state.ownerActionIssueId}</dd>
@@ -391,10 +391,10 @@ export function HumanOperator() {
           ))}
         </div>
         <div className="ml-2 flex min-w-0 flex-1 items-center gap-2 text-[11px]">
-          <p className="shrink-0 font-semibold text-slate-950 dark:text-[#edf2fb]">{displayedLabel}</p>
+          <p aria-live="polite" className="shrink-0 font-semibold text-slate-950 dark:text-[#edf2fb]">{displayedLabel}</p>
           <p data-human-operator-recent-window className="min-w-0 truncate text-slate-500 dark:text-[#8b97ad]" title={recentWindowNotice}>{recentWindowNotice}</p>
         </div>
-        <Button variant="outline" size="sm" className="ml-2 h-7 shrink-0 border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] px-2.5 text-xs text-slate-950 dark:text-[#edf2fb] hover:bg-slate-100 dark:hover:bg-[#141b29]" onClick={() => void refreshAll()} disabled={isFetching}>
+        <Button type="button" variant="outline" size="sm" className="ml-2 h-7 shrink-0 border-slate-200/80 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] px-2.5 text-xs text-slate-950 dark:text-[#edf2fb] hover:bg-slate-100 dark:hover:bg-[#141b29]" onClick={() => void refreshAll()} disabled={isFetching}>
           <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isFetching ? "animate-spin" : ""}`} />
           {isFetching ? "Refreshing" : "Refresh"}
         </Button>
@@ -404,7 +404,7 @@ export function HumanOperator() {
         <AlertTriangle className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate">{error instanceof Error ? error.message : "Failed to load Human Operator work."}</span>
       </div>}
 
-      {missionStatusNotice && <p className="truncate text-xs text-slate-500 dark:text-[#8b97ad]" role={missionsQuery.isError ? "alert" : "status"}>{missionStatusNotice}</p>}
+      {missionStatusNotice && <p className="truncate text-xs text-slate-500 dark:text-[#8b97ad]" aria-live={missionsQuery.isError ? undefined : "polite"} role={missionsQuery.isError ? "alert" : "status"}>{missionStatusNotice}</p>}
 
       {visibleSections.map(({ lifecycle, title, note, data }) => {
         const count = sectionCount(data);

@@ -110,9 +110,9 @@ function CreateScheduleForm({ companyId, canWrite, onCreated, onCancel }: Create
 
       {/* Agent */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Agent</label>
+        <label htmlFor="scheduler-agent" className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Agent</label>
         <Select value={agentId} onValueChange={setAgentId} disabled={!canWrite}>
-          <SelectTrigger className="h-8 text-sm">
+          <SelectTrigger id="scheduler-agent" className="h-8 text-sm">
             <SelectValue placeholder="Select agent..." />
           </SelectTrigger>
           <SelectContent>
@@ -125,9 +125,9 @@ function CreateScheduleForm({ companyId, canWrite, onCreated, onCancel }: Create
 
       {/* Cron preset */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Preset</label>
+        <label htmlFor="scheduler-preset" className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Preset</label>
         <Select onValueChange={handlePreset} defaultValue="__custom__" disabled={!canWrite}>
-          <SelectTrigger className="h-8 text-sm tabular-nums">
+          <SelectTrigger id="scheduler-preset" className="h-8 text-sm tabular-nums">
             <SelectValue placeholder="Choose preset..." />
           </SelectTrigger>
           <SelectContent>
@@ -141,8 +141,8 @@ function CreateScheduleForm({ companyId, canWrite, onCreated, onCancel }: Create
 
       {/* Cron expression */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Cron expression</label>
-        <Input
+        <label htmlFor="scheduler-cron" className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Cron expression</label>
+        <Input id="scheduler-cron"
           className={`h-8 text-sm font-mono tabular-nums ${FIELD}`}
           value={cronExpression}
           onChange={(e) => setCronExpression(e.target.value)}
@@ -156,8 +156,8 @@ function CreateScheduleForm({ companyId, canWrite, onCreated, onCancel }: Create
 
       {/* Timezone */}
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Timezone</label>
-        <Input
+        <label htmlFor="scheduler-timezone" className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">Timezone</label>
+        <Input id="scheduler-timezone"
           className={`h-8 text-sm ${FIELD}`}
           value={timezone}
           onChange={(e) => setTimezone(e.target.value)}
@@ -167,7 +167,7 @@ function CreateScheduleForm({ companyId, canWrite, onCreated, onCancel }: Create
       </div>
 
       {formError && (
-        <p className="text-xs text-destructive xl:col-span-4">{formError}</p>
+        <p role="alert" className="text-xs text-destructive xl:col-span-4">{formError}</p>
       )}
 
       <div className="flex items-center gap-2 pt-1 xl:col-span-4">
@@ -243,9 +243,9 @@ function ScheduleRow({ schedule, agentName, companyId, canWrite }: ScheduleRowPr
       </div>
 
       {/* Toggle */}
-      <Button
+      <Button type="button"
         variant="ghost"
-        size="icon-xs"
+        size="icon-xs" aria-label={schedule.enabled ? `Disable schedule for ${agentName}` : `Enable schedule for ${agentName}`}
         className={cn("h-7 w-7 justify-self-center", schedule.enabled ? "text-lime-700 dark:text-[#a3e635] hover:text-lime-700 dark:hover:text-[#a3e635]" : "text-slate-500 dark:text-[#8b97ad] hover:text-slate-900 dark:hover:text-[#eef2f8]")}
         onClick={() => {
           if (!canWrite) return;
@@ -260,9 +260,9 @@ function ScheduleRow({ schedule, agentName, companyId, canWrite }: ScheduleRowPr
       </Button>
 
       {/* Delete */}
-      <Button
+      <Button type="button"
         variant="ghost"
-        size="icon-xs"
+        size="icon-xs" aria-label={`Delete schedule for ${agentName}`}
         className="h-7 w-7 justify-self-center text-slate-500 dark:text-[#8b97ad] hover:text-destructive"
         onClick={() => {
           if (!canWrite) return;
@@ -327,13 +327,13 @@ export function SchedulerConfig() {
   return (
     <div className="space-y-2 tabular-nums">
       {error && (
-        <p className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error instanceof Error ? error.message : String(error)}
         </p>
       )}
 
       {/* 1-row 4-column cockpit strip */}
-      <div className="cockpit-strip h-10 w-full gap-0 overflow-hidden rounded-xl border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)]" role="group" aria-label="Scheduler summary">
+      <div className="cockpit-strip h-10 w-full gap-0 overflow-hidden rounded-xl border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_4px_20px_-8px_rgba(0,0,0,0.65)]" role="group" aria-live="polite" aria-label="Scheduler summary">
         {strip.map((cell) => (
           <div key={cell.label} className="cockpit-cell min-w-0 flex-1 justify-center">
             <span aria-hidden className={`h-1.5 w-1.5 shrink-0 rounded-full ${cell.dot}`} />
