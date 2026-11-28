@@ -21,6 +21,11 @@ import {
   isGenericFallbackMissionHumanCard,
 } from "./mission-owner-human-input-card.js";
 import { admitHumanCardForSource } from "./human-card-admission.js";
+import {
+  findActiveMissionReworkStep,
+  findNewerActiveWorkflowRun,
+  hasConcreteHumanCardContent,
+} from "./owner-human-card-admission-guards.js";
 import { isExactOwnerHumanReplay } from "./owner-human-request-submit.js";
 import { readOwnerHumanCurrent } from "./owner-human-request-state.js";
 import { readMissionScheduleHorizon } from "./mission-schedule-horizon.js";
@@ -104,6 +109,55 @@ export async function submitMissionOwnerDecision(input: {
     const needsHumanAlert = ownerDecisionRequestsHuman(effectiveSubmission.decision);
     if (needsHumanAlert && !humanAuthority) {
       throw conflict("Owner-recovery human submission scope changed; resubmit");
+    }
+    if (needsHumanAlert && humanAuthority && !(await isExactOwnerHumanReplay(humanAuthority, effectiveSubmission))) {
+      if (!hasConcreteHumanCardContent(effectiveSubmission)) {
+        throw unprocessable(
+          "사람 결정 카드(request_input/escalate)에는 구체적인 사유(reason) 또는 요청 행동(nextAction)이 필수입니다.",
+          {
+            code: "human_card_reason_required",
+            missionId: humanAuthority.scope.missionId,
+            decision: effectiveSubmission.decision,
+          },
+        );
+      }
+      if (isOversight) {
+        const activeStep = await findActiveMissionReworkStep(tx, issue.companyId, humanAuthority.scope.missionId);
+        if (activeStep) {
+          throw unprocessable(
+            "미션의 재작업/실행 스텝이 현재 진행 중입니다 — 진행 중인 재작업 완료 또는 Exception Huddle 처리 후에도 해결되지 않으면 사람 카드를 요청하세요.",
+            {
+              code: "mission_rework_in_progress",
+              missionId: humanAuthority.scope.missionId,
+              activeStep,
+              decision: effectiveSubmission.decision,
+            },
+          );
+        }
+      }
+      const candidateWorkflowRunId = humanAuthority.scope.target.kind === "tool_step"
+        ? humanAuthority.scope.target.workflowRunId
+        : (auth.sourceIssueOriginRunId ?? null);
+      if (candidateWorkflowRunId) {
+        const newerRun = await findNewerActiveWorkflowRun(
+          tx,
+          issue.companyId,
+          humanAuthority.scope.missionId,
+          candidateWorkflowRunId,
+        );
+        if (newerRun) {
+          throw unprocessable(
+            "이미 최신 활성 워크플로 런이 실행 중이므로 대체된 구 런에서는 새 사람 결정 카드를 생성하지 않습니다.",
+            {
+              code: "superseded_workflow_run",
+              missionId: humanAuthority.scope.missionId,
+              workflowRunId: candidateWorkflowRunId,
+              newerWorkflowRunId: newerRun.newerWorkflowRunId,
+              decision: effectiveSubmission.decision,
+            },
+          );
+        }
+      }
     }
     // [R1 2026-11-08] Auto-recoverable causes never justify a human decision card. If the
     // source's latest terminal run failed with a retryable/settlement-owned error code
