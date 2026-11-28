@@ -191,7 +191,7 @@ export function NewProjectDialog() {
           <div className="flex items-center gap-1">
             <Button type="button" aria-label={expanded ? "Collapse work context dialog" : "Expand work context dialog"}
               variant="ghost"
-              size="icon-xs"
+              type="button" aria-label={expanded ? "Collapse dialog" : "Expand dialog"} size="icon-xs"
               className="text-slate-500 hover:text-[#2563eb] dark:text-slate-400 dark:hover:text-[#60a5fa]"
               onClick={() => setExpanded(!expanded)}
             >
@@ -199,7 +199,7 @@ export function NewProjectDialog() {
             </Button>
             <Button type="button" aria-label="Close work context dialog"
               variant="ghost"
-              size="icon-xs"
+              type="button" aria-label="Close dialog" size="icon-xs"
               className="text-slate-500 hover:text-[#2563eb] dark:text-slate-400 dark:hover:text-[#60a5fa]"
               onClick={() => { reset(); closeNewProject(); }}
             >
@@ -212,7 +212,7 @@ export function NewProjectDialog() {
         <div className="px-4 pt-4 pb-2 shrink-0">
           <input aria-label="Work context name"
             className="w-full text-lg font-semibold bg-transparent text-slate-950 caret-[#65a30d] outline-none placeholder:text-slate-400 dark:text-slate-50 dark:caret-[#a3e635] dark:placeholder:text-slate-500"
-            placeholder="Work context name"
+            placeholder="Work context name" aria-label="Work context name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
@@ -248,7 +248,7 @@ export function NewProjectDialog() {
               <span className="text-xs font-medium text-[#b45309] dark:text-[#f59e0b]">optional</span>
               <Tooltip delayDuration={300}>
                 <TooltipTrigger asChild>
-                  <HelpCircle className="h-3 w-3 text-muted-foreground/50 cursor-help" />
+                  <button type="button" aria-label="GitHub repo help" className="inline-flex h-3 w-3 text-muted-foreground/50 cursor-help"><HelpCircle className="h-3 w-3" /></button>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-[240px] text-xs">
                   Link a GitHub repository so agents can clone, read, and push code for this work context.
@@ -257,7 +257,7 @@ export function NewProjectDialog() {
             </div>
             <input id="new-project-repo-url"
               className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
-              value={workspaceRepoUrl}
+              value={workspaceRepoUrl} aria-label="GitHub repo"
               onChange={(e) => { setWorkspaceRepoUrl(e.target.value); setWorkspaceError(null); }}
               placeholder="https://github.com/org/repo"
             />
@@ -269,7 +269,7 @@ export function NewProjectDialog() {
               <span className="text-xs font-medium text-[#b45309] dark:text-[#f59e0b]">optional</span>
               <Tooltip delayDuration={300}>
                 <TooltipTrigger asChild>
-                  <HelpCircle className="h-3 w-3 text-muted-foreground/50 cursor-help" />
+                  <button type="button" aria-label="Local folder help" className="inline-flex h-3 w-3 text-muted-foreground/50 cursor-help"><HelpCircle className="h-3 w-3" /></button>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-[240px] text-xs">
                   Set an absolute path on this machine where local agents will read and write files for this work context.
@@ -279,7 +279,7 @@ export function NewProjectDialog() {
             <div className="flex items-center gap-2">
               <input id="new-project-local-folder"
                 className="w-full rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-xs text-slate-700 outline-none transition-colors placeholder:text-slate-400 focus:border-[#2563eb] focus:ring-2 focus:ring-[#2563eb]/15 tabular-nums dark:border-white/10 dark:bg-[#07090d] dark:text-slate-200 dark:placeholder:text-slate-500 dark:focus:border-[#60a5fa] dark:focus:ring-[#60a5fa]/20"
-                value={workspaceLocalPath}
+                value={workspaceLocalPath} aria-label="Local folder"
                 onChange={(e) => { setWorkspaceLocalPath(e.target.value); setWorkspaceError(null); }}
                 placeholder="/absolute/path/to/execution-context"
               />
