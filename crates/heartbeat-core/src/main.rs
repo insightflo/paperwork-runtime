@@ -13,6 +13,7 @@ use std::io::{self, Read};
 use std::process;
 
 mod classify;
+#[allow(dead_code)] mod fairness;
 mod stability;
 
 /// JS-semantics shims — same conventions as paperclip-mission-core/js and

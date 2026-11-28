@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
+pub mod admission;
+
 mod queries;
 
 pub use queries::*;

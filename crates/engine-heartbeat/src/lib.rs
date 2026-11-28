@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
 
+pub mod deadlock;
+
 #[cfg(unix)]
 pub mod runner;
 
