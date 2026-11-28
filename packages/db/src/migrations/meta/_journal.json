@@ -981,6 +981,20 @@
       "when": 1795399200000,
       "tag": "0140_collab_channels",
       "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1795406400000,
+      "tag": "0141_personal_endpoint_bots",
+      "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1795413600000,
+      "tag": "0142_workspace_primitives",
+      "breakpoints": true
     }
   ]
 }
