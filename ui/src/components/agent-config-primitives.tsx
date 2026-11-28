@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useId, isValidElement, cloneElement } from "react";
 import {
   Tooltip,
   TooltipTrigger,
@@ -92,13 +92,30 @@ export function HintIcon({ text }: { text: string }) {
 }
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  const generatedId = useId();
+  // [a11y] Associate the visible <label> with the control it wraps: reuse a caller-provided
+  // control id, otherwise inject a generated id into a single child element. Multi-child or
+  // non-element children keep the previous rendering (association is best-effort).
+  const singleChild: React.ReactNode =
+    Array.isArray(children) && children.length === 1 ? children[0] : children;
+  let controlId: string | undefined;
+  let content: React.ReactNode = children;
+  if (isValidElement(singleChild)) {
+    const element = singleChild as React.ReactElement<{ id?: string }>;
+    if (typeof element.props.id === "string" && element.props.id.length > 0) {
+      controlId = element.props.id;
+    } else {
+      controlId = generatedId;
+      content = cloneElement(element, { id: controlId });
+    }
+  }
   return (
     <div>
       <div className="flex items-center gap-1.5 mb-1">
-        <label className="text-xs text-muted-foreground">{label}</label>
+        <label className="text-xs text-muted-foreground" htmlFor={controlId}>{label}</label>
         {hint && <HintIcon text={hint} />}
       </div>
-      {children}
+      {content}
     </div>
   );
 }
@@ -121,6 +138,10 @@ export function ToggleField({
         {hint && <HintIcon text={hint} />}
       </div>
       <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
         className={cn(
           "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
           checked ? "bg-green-600" : "bg-muted"
