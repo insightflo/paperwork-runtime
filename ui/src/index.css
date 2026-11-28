@@ -59,6 +59,8 @@
   h1, h2, h3 { text-wrap: balance; }
   /* Prevent double-tap-to-zoom on interactive elements for mobile */
   a, button, [role="button"], input, select, textarea, label { touch-action: manipulation; }
+  /* Front-End-Checklist: keyboard focus stays visible on elements components don't style. */
+  :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
 }
 @media (pointer: coarse) {
   button, [role="button"], input, select, textarea, [data-slot="select-trigger"] { min-height: 44px; }
@@ -217,6 +219,20 @@
 .wf-connector-motion-settled { animation: pw-connector-settle 480ms cubic-bezier(0.16, 1, 0.3, 1) 1; }
 @media (prefers-reduced-motion: reduce) {
   .pw-live-dot, .activity-row-enter, .pw-connector-flow, .pw-connector-pulse, .pw-connector-blocked, .wf-connector-motion-flow, .wf-connector-motion-flow-true, .wf-connector-motion-flow-false, .wf-connector-motion-loopback, .wf-connector-motion-pulse, .wf-connector-motion-settled { animation: none; }
+  /* Front-End-Checklist: global motion guard — kill remaining animations, transitions and smooth scrolling. */
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+/* Front-End-Checklist: print stylesheet — hide chrome, force crisp dark-on-white, keep cards/tables whole. */
+@media print {
+  nav, aside, [data-print-hide] { display: none !important; }
+  body { color: #000 !important; background: #fff !important; }
+  body *, body *::before, body *::after { color: #000 !important; background-color: transparent !important; box-shadow: none !important; text-shadow: none !important; }
+  .tactile-card, .pw-sheet, table, tr { break-inside: avoid; }
 }
 /* MDXEditor theme integration */
 .paperclip-mdxeditor-scope, .paperclip-mdxeditor {
