@@ -137,7 +137,7 @@ export function MyIssues() {
           />
         </div>
 
-        <span aria-live="polite" aria-atomic="true" className="ml-auto shrink-0 text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-[#8b97ad]">
+        <span role="status" aria-live="polite" aria-atomic="true" className="ml-auto shrink-0 text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-[#8b97ad]">
           {visibleIssues.length}
           {normalizedSearch || activeGroup !== "active" ? ` of ${myIssues.length}` : ""} shown
         </span>

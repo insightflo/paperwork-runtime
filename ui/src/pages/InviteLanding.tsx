@@ -133,7 +133,7 @@ export function InviteLandingPage() {
           <span className={`${pillBase} border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300`}>
             Invite access
           </span>
-          <p className="mt-3 text-sm text-rose-700 dark:text-rose-300">Invalid invite token.</p>
+          <p role="alert" className="mt-3 text-sm text-rose-700 dark:text-rose-300">Invalid invite token.</p>
         </div>
       </div>
     );
@@ -142,7 +142,7 @@ export function InviteLandingPage() {
   if (inviteQuery.isLoading || healthQuery.isLoading || sessionQuery.isLoading) {
     return (
       <div className="mx-auto max-w-xl px-4 py-10 tabular-nums">
-        <div className={`${cardClass} flex items-center gap-2.5 text-sm text-slate-600 dark:text-[#8b97ad]`}>
+        <div role="status" aria-live="polite" className={`${cardClass} flex items-center gap-2.5 text-sm text-slate-600 dark:text-[#8b97ad]`}>
           <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-blue-500 dark:bg-[#60a5fa]" />
           Loading invite...
         </div>
@@ -153,7 +153,7 @@ export function InviteLandingPage() {
   if (inviteQuery.error || !invite) {
     return (
       <div className="mx-auto max-w-xl px-4 py-10 tabular-nums">
-        <div className={cardClass}>
+        <div role="alert" className={cardClass}>
           <span className={`${pillBase} border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300`}>
             Invite access
           </span>
@@ -175,7 +175,7 @@ export function InviteLandingPage() {
             Bootstrap access
           </span>
           <h1 className="mt-3 text-lg font-semibold tracking-tight text-slate-950 dark:text-[#edf2fb]">Bootstrap complete</h1>
-          <p className="mt-2 text-sm text-slate-600 dark:text-[#8b97ad]">
+          <p role="status" aria-live="polite" className="mt-2 text-sm text-slate-600 dark:text-[#8b97ad]">
             The first instance admin is now configured. You can continue to the board.
           </p>
           <Button
@@ -217,7 +217,7 @@ export function InviteLandingPage() {
             Join approval
           </span>
           <h1 className="mt-3 text-lg font-semibold tracking-tight text-slate-950 dark:text-[#edf2fb]">Join request submitted</h1>
-          <p className="mt-2 text-sm text-slate-600 dark:text-[#8b97ad]">
+          <p role="status" aria-live="polite" className="mt-2 text-sm text-slate-600 dark:text-[#8b97ad]">
             Your request is pending admin approval. You will not have access until approved.
           </p>
           <div className={`mt-4 ${insetPanelClass}`}>
@@ -283,7 +283,7 @@ export function InviteLandingPage() {
             {availableJoinTypes.map((type) => (
               <button
                 key={type}
-                type="button"
+                type="button" aria-pressed={joinType === type}
                 onClick={() => setJoinType(type)}
                 className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
                   joinType === type
@@ -299,18 +299,18 @@ export function InviteLandingPage() {
 
         {joinType === "agent" && invite.inviteType !== "bootstrap_ceo" && (
           <div className={`mt-4 space-y-3 ${insetPanelClass}`}>
-            <label className="block text-sm">
+            <label htmlFor="invite-agent-name" className="block text-sm">
               <span className={fieldLabelClass}>Agent name</span>
               <input
-                className={inputClass}
+                id="invite-agent-name" className={inputClass}
                 value={agentName}
                 onChange={(event) => setAgentName(event.target.value)}
               />
             </label>
-            <label className="block text-sm">
+            <label htmlFor="invite-adapter-type" className="block text-sm">
               <span className={fieldLabelClass}>Adapter type</span>
               <select
-                className={inputClass}
+                id="invite-adapter-type" className={inputClass}
                 value={adapterType}
                 onChange={(event) => setAdapterType(event.target.value as AgentAdapterType)}
               >
@@ -321,10 +321,10 @@ export function InviteLandingPage() {
                 ))}
               </select>
             </label>
-            <label className="block text-sm">
+            <label htmlFor="invite-capabilities" className="block text-sm">
               <span className={fieldLabelClass}>Capabilities (optional)</span>
               <textarea
-                className={inputClass}
+                id="invite-capabilities" className={inputClass}
                 rows={4}
                 value={capabilities}
                 onChange={(event) => setCapabilities(event.target.value)}
@@ -334,7 +334,7 @@ export function InviteLandingPage() {
         )}
 
         {requiresAuthForHuman && (
-          <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/8 p-3.5 text-sm text-amber-900 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#fde68a]">
+          <div aria-live="polite" className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/8 p-3.5 text-sm text-amber-900 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#fde68a]">
             Sign in or create an account before submitting a human join request.
             <div className="mt-2.5">
               <Button
@@ -350,12 +350,12 @@ export function InviteLandingPage() {
         )}
 
         {error && (
-          <p className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300">
+          <p role="alert" className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300">
             {error}
           </p>
         )}
 
-        <Button
+        <Button type="button" aria-live="polite"
           className="mt-5 rounded-lg bg-blue-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:bg-blue-700 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]"
           disabled={
             acceptMutation.isPending ||
