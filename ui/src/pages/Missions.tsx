@@ -11,6 +11,7 @@ import {
 } from "../api/missions";
 import { agentsApi } from "../api/agents";
 import { api } from "../api/client";
+import { heartbeatsApi } from "../api/heartbeats";
 import { operatorDecisionsApi } from "../api/operator-decisions";
 import { useCompany } from "../context/CompanyContext";
 import { useDialog } from "../context/DialogContext";
@@ -31,6 +32,7 @@ import {
   type RadarStatusBucket,
 } from "../components/missions/MissionFleetRadar";
 import { sortMissions } from "../lib/mission-sort";
+import { FAILED_RUN_STATUSES } from "../lib/inbox";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/StatusBadge";
 import { normalizeQueueItems, queueItemLabel } from "../components/QueuePanel";
@@ -148,6 +150,23 @@ function stepSelection(ids: string[], current: string | null, delta: 1 | -1): st
 function isTypingTarget(target: EventTarget | null): boolean {
   const element = target as HTMLElement | null;
   return Boolean(element && (element.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(element.tagName)));
+}
+
+export interface MissionFailedRunAlertRun {
+  id: string;
+  agentId: string;
+  status: string;
+  createdAt: Date | string;
+}
+
+/** Newest-first failed/timed-out heartbeat runs for the compact missions alert strip. */
+export function selectMissionFailedRunAlerts<T extends MissionFailedRunAlertRun>(
+  runs: readonly T[] | null | undefined,
+): { runs: T[]; totalCount: number } {
+  const failedRuns = (runs ?? [])
+    .filter((run) => FAILED_RUN_STATUSES.has(run.status))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return { runs: failedRuns.slice(0, 3), totalCount: failedRuns.length };
 }
 
 function ToolbarField({ label, children }: { label: string; children: ReactNode }) {
@@ -315,6 +334,13 @@ export function Missions() {
     refetchInterval: 15_000,
     retry: false,
   });
+  const { data: recentRuns } = useQuery({
+    queryKey: [...queryKeys.heartbeats(selectedCompanyId!), "missions-failed-runs"] as const,
+    queryFn: () => heartbeatsApi.list(selectedCompanyId!, undefined, 100),
+    enabled: Boolean(selectedCompanyId),
+    refetchInterval: 30_000,
+    retry: false,
+  });
 
   const agentMap = useMemo(
     () => (agents ? Object.fromEntries(agents.map((a) => [a.id, a.name])) : {}),
@@ -322,6 +348,7 @@ export function Missions() {
   );
   const queueItems = useMemo(() => normalizeQueueItems(queueRaw), [queueRaw]);
   const pendingCards = useMemo(() => pending?.data ?? [], [pending]);
+  const failedRunAlerts = useMemo(() => selectMissionFailedRunAlerts(recentRuns), [recentRuns]);
 
   // Identify missions that need immediate operator attention from pending decisions.
   const { attentionMissionIds, attentionReasons } = useMemo(() => {
@@ -589,6 +616,37 @@ export function Missions() {
         <p role="alert" className="text-sm text-destructive">
           {error instanceof Error ? error.message : String(error)}
         </p>
+      )}
+
+      {failedRunAlerts.totalCount > 0 && (
+        <div
+          role="alert"
+          data-testid="missions-failed-runs-strip"
+          className="tactile-card flex h-8 items-center gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap rounded-[10px] border border-rose-500/35 bg-rose-500/[0.07] px-3 text-xs text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-rose-400/30 dark:bg-card dark:bg-none dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+        >
+          <span className="flex shrink-0 items-center gap-1.5 font-semibold text-rose-800 dark:text-rose-300">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {`실패한 실행 ${failedRunAlerts.totalCount}건`}
+          </span>
+          {failedRunAlerts.runs.map((run) => (
+            <Link
+              key={run.id}
+              to={`/agents/${run.agentId}/runs/${run.id}`}
+              title={`${agentMap[run.agentId] ?? run.agentId} · ${formatCompactTime(run.createdAt)}`}
+              className="max-w-56 shrink-0 truncate rounded border border-rose-500/30 bg-card px-2 py-0.5 text-[11px] text-inherit no-underline transition-colors hover:border-rose-500/60 dark:border-rose-400/25 dark:bg-background dark:hover:border-rose-400/60"
+            >
+              <span className="font-semibold text-rose-700 dark:text-rose-300">
+                {agentMap[run.agentId] ?? "Unknown agent"}
+              </span>{" "}
+              {formatCompactTime(run.createdAt)}
+            </Link>
+          ))}
+          {failedRunAlerts.totalCount > failedRunAlerts.runs.length && (
+            <span className="shrink-0 text-[11px] text-rose-800 dark:text-rose-300">
+              +{failedRunAlerts.totalCount - failedRunAlerts.runs.length} more
+            </span>
+          )}
+        </div>
       )}
 
       {/* Compact escalation ticker (only shown when human decisions or queued items await action) */}
