@@ -2,7 +2,14 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Paperwork — AI agent operations workspace for teams, workflows, and personal endpoint bots." />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Paperwork" />
+    <meta property="og:description" content="Paperwork — AI agent operations workspace for teams, workflows, and personal endpoint bots." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Paperwork" />
+    <meta name="twitter:description" content="Paperwork — AI agent operations workspace for teams, workflows, and personal endpoint bots." />
     <meta name="theme-color" content="#171412" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -20,11 +27,12 @@
     <link rel="manifest" href="/site.webmanifest" />
     <script>
       (() => {
-        const key = "paperclip.theme";
+        const key = "paperwork.theme";
+        const legacyKey = "paperclip.theme";
         const darkThemeColor = "#171412";
         const lightThemeColor = "#f3eee4";
         try {
-          const stored = window.localStorage.getItem(key);
+          const stored = window.localStorage.getItem(key) ?? window.localStorage.getItem(legacyKey);
           const theme = stored === "light" || stored === "dark" ? stored : "dark";
           const isDark = theme === "dark";
           document.documentElement.classList.toggle("dark", isDark);
@@ -41,6 +49,9 @@
     </script>
   </head>
   <body>
+    <noscript>
+      <p>Paperwork requires JavaScript to run. Please enable JavaScript in your browser settings and reload this page.</p>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

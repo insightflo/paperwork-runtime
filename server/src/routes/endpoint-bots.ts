@@ -1,6 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
+import type { Db } from "@paperclipai/db";
 import { badRequest, forbidden, HttpError, notFound, unauthorized } from "../errors.js";
 import { assertCompanyAccess } from "./authz.js";
 import {
@@ -10,6 +11,20 @@ import {
 import {
   createEndpointAuditStore, type EndpointAuditOutcome, type EndpointAuditStore,
 } from "../services/endpoint-task-audit.js";
+import {
+  ensurePersonalEndpointTables, listEndpointsDb, issuePairingCodeDb, completePairingByCodeDb,
+  verifyDeviceTokenDb, recordHeartbeatDb, enqueueLocalTaskDb, pollPendingTasksDb, ackTaskResultDb,
+} from "../services/endpoint-bot-db-store.js";
+
+const endpointTablesReady = new WeakMap<Db, Promise<void>>();
+
+function ensureEndpointTables(db: Db): Promise<void> {
+  const existing = endpointTablesReady.get(db);
+  if (existing) return existing;
+  const initialized = ensurePersonalEndpointTables(db);
+  endpointTablesReady.set(db, initialized);
+  return initialized;
+}
 
 const folder = z.object({ path: z.string().min(1), mode: z.enum(["ro", "rw"]) }).strict();
 const cli = z.union([
@@ -42,10 +57,11 @@ function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.infer<T> {
   return result.data;
 }
 
-function run(fn: (req: Request, res: Response) => void) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    try { fn(req, res); } catch (error) {
-      if (error instanceof HttpError && error.status < 500) { next(error); return; }
+function run(fn: (req: Request, res: Response) => void | Promise<void>) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try { await fn(req, res); } catch (error) {
+      const mapped = error instanceof HttpError ? error : serviceError(error);
+      if (mapped && mapped.status < 500) { next(mapped); return; }
       // Do not attach request bodies or service exception text to a 500 response/log context.
       res.status(500).json({ error: "Internal server error" });
     }
@@ -64,8 +80,8 @@ function serviceError(error: unknown): HttpError | undefined {
   return undefined;
 }
 
-function serviceCall<T>(fn: () => T): T {
-  try { return fn(); } catch (error) {
+async function serviceCall<T>(fn: () => T | Promise<T>): Promise<T> {
+  try { return await fn(); } catch (error) {
     const mapped = serviceError(error);
     if (mapped) throw mapped;
     throw new Error("Endpoint service failure");
@@ -89,7 +105,8 @@ function bodyCompanyId(req: Request): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
 }
 
-function requireDevice(req: Request, service: EndpointBotPairingService, deviceId: string): string {
+async function requireDevice(req: Request, service: EndpointBotPairingService | ReturnType<typeof dbService>,
+  deviceId: string): Promise<string> {
   const headerCompany = req.get("x-company-id");
   const payloadCompany = bodyCompanyId(req);
   const companyId = headerCompany || payloadCompany;
@@ -97,7 +114,7 @@ function requireDevice(req: Request, service: EndpointBotPairingService, deviceI
   if (!companyId?.trim() || (headerCompany && payloadCompany && headerCompany !== payloadCompany) || !match) {
     throw unauthorized("Invalid device credentials");
   }
-  if (!serviceCall(() => service.verifyDeviceToken({ companyId, deviceId, token: match[1] }))) {
+  if (!await serviceCall(() => service.verifyDeviceToken({ companyId, deviceId, token: match[1] }))) {
     throw unauthorized("Invalid device credentials");
   }
   return companyId;
@@ -122,14 +139,30 @@ function publicEndpoint(endpoint: EndpointView) {
   };
 }
 
-export function endpointBotRoutes(store?: EndpointBotPairingStore, auditStore?: EndpointAuditStore) {
-  const service = store ? createEndpointBotPairingService(store) : globalEndpointBotPairingStore;
+function dbService(db: Db) {
+  const bind = <Args extends unknown[], Result>(fn: (db: Db, ...args: Args) => Promise<Result>) =>
+    (...args: Args) => ensureEndpointTables(db).then(() => fn(db, ...args));
+  const completePairing = bind(completePairingByCodeDb);
+  return {
+    listEndpoints: bind(listEndpointsDb), issuePairingCode: bind(issuePairingCodeDb),
+    completePairing: async (input: Parameters<typeof completePairing>[0]) => {
+      const paired = await completePairing(input);
+      return { ...paired, tokenPreview: `sha256:${createHash("sha256").update(paired.deviceToken).digest("hex").slice(0, 8)}` };
+    },
+    verifyDeviceToken: bind(verifyDeviceTokenDb),
+    recordHeartbeat: bind(recordHeartbeatDb), enqueueLocalTask: bind(enqueueLocalTaskDb),
+    pollPendingTasks: bind(pollPendingTasksDb), ackTaskResult: bind(ackTaskResultDb),
+  };
+}
+
+export function endpointBotRoutes(store?: EndpointBotPairingStore, auditStore?: EndpointAuditStore, db?: Db) {
+  const service = store ? createEndpointBotPairingService(store) : db ? dbService(db) : globalEndpointBotPairingStore;
   const audit = auditStore ?? createEndpointAuditStore();
 
   // 감사 이벤트를 마스킹 스토어에 기록한다. botName은 페어링 레코드에서 표시용으로만 조회한다.
-  function auditTask(companyId: string, deviceId: string, outcome: EndpointAuditOutcome,
+  async function auditTask(companyId: string, deviceId: string, outcome: EndpointAuditOutcome,
     task: { taskId?: string; kind?: string; targetPath?: string }, summary: string, actorId?: string) {
-    const bot = serviceCall(() => service.listEndpoints(companyId)).find((e) => e.deviceId === deviceId)?.botName;
+    const bot = (await serviceCall(() => service.listEndpoints(companyId))).find((e) => e.deviceId === deviceId)?.botName;
     audit.record({
       id: randomUUID(), companyId, deviceId, botName: bot ?? "unknown",
       taskId: task.taskId ?? "", kind: task.kind ?? "unknown", targetPath: task.targetPath ?? "",
@@ -139,75 +172,75 @@ export function endpointBotRoutes(store?: EndpointBotPairingStore, auditStore?: 
 
   const router = Router();
 
-  router.get("/companies/:companyId/endpoints", run((req, res) => {
+  router.get("/companies/:companyId/endpoints", run(async (req, res) => {
     const companyId = param(req, "companyId");
     requireCompanyActor(req, companyId);
-    res.json(serviceCall(() => service.listEndpoints(companyId)).map(publicEndpoint));
+    res.json((await serviceCall(() => service.listEndpoints(companyId))).map(publicEndpoint));
   }));
 
-  router.post("/companies/:companyId/endpoints/pairing-codes", run((req, res) => {
+  router.post("/companies/:companyId/endpoints/pairing-codes", run(async (req, res) => {
     const companyId = param(req, "companyId");
     requireCompanyActor(req, companyId);
     const body = parse(pairingInput, req.body);
-    res.status(201).json(serviceCall(() => service.issuePairingCode({
+    res.status(201).json(await serviceCall(() => service.issuePairingCode({
       companyId, botName: body.botName, requestedFolders: body.requestedFolders,
     })));
   }));
 
-  router.post("/companies/:companyId/endpoints/:deviceId/tasks", run((req, res) => {
+  router.post("/companies/:companyId/endpoints/:deviceId/tasks", run(async (req, res) => {
     const companyId = param(req, "companyId"), deviceId = param(req, "deviceId");
     requireCompanyActor(req, companyId);
     const body = parse(taskInput, req.body);
     try {
-      const task = serviceCall(() => service.enqueueLocalTask({
+      const task = await serviceCall(() => service.enqueueLocalTask({
         companyId, deviceId, kind: body.kind, targetPath: body.targetPath, command: body.command, args: body.args,
       }));
-      auditTask(companyId, deviceId, "enqueued", task,
+      await auditTask(companyId, deviceId, "enqueued", task,
         `enqueued ${body.kind} ${body.targetPath}${body.command ? ` via ${body.command}` : ""}`, auditActorId(req));
       res.status(201).json(task);
     } catch (error) {
       if (error instanceof HttpError && error.status === 403) {
-        auditTask(companyId, deviceId, "denied", body,
+        await auditTask(companyId, deviceId, "denied", body,
           `denied ${body.kind} ${body.targetPath} (folder policy)`, auditActorId(req));
       }
       throw error;
     }
   }));
 
-  router.post("/endpoints/pair", run((req, res) => {
+  router.post("/endpoints/pair", run(async (req, res) => {
     const body = parse(pairInput, req.body);
-    res.status(201).json(serviceCall(() => service.completePairing({
+    res.status(201).json(await serviceCall(() => service.completePairing({
       code: body.code, os: body.os, arch: body.arch, detectedClis: body.detectedClis,
     })));
   }));
 
-  router.post("/endpoints/:deviceId/heartbeat", run((req, res) => {
-    const deviceId = param(req, "deviceId"), companyId = requireDevice(req, service, deviceId);
+  router.post("/endpoints/:deviceId/heartbeat", run(async (req, res) => {
+    const deviceId = param(req, "deviceId"), companyId = await requireDevice(req, service, deviceId);
     const body = parse(heartbeatInput, req.body);
-    res.json(publicEndpoint(serviceCall(() => service.recordHeartbeat({
+    res.json(publicEndpoint(await serviceCall(() => service.recordHeartbeat({
       companyId, deviceId, detectedClis: body.detectedClis, pendingOutboxCount: body.pendingOutboxCount,
     }))));
   }));
 
-  router.post("/endpoints/:deviceId/tasks/poll", run((req, res) => {
-    const deviceId = param(req, "deviceId"), companyId = requireDevice(req, service, deviceId);
+  router.post("/endpoints/:deviceId/tasks/poll", run(async (req, res) => {
+    const deviceId = param(req, "deviceId"), companyId = await requireDevice(req, service, deviceId);
     const body = parse(pollInput, req.body === undefined ? {} : req.body);
-    res.json(serviceCall(() => service.pollPendingTasks({ companyId, deviceId, limit: body.limit })));
+    res.json(await serviceCall(() => service.pollPendingTasks({ companyId, deviceId, limit: body.limit })));
   }));
 
-  router.post("/endpoints/:deviceId/tasks/:taskId/ack", run((req, res) => {
+  router.post("/endpoints/:deviceId/tasks/:taskId/ack", run(async (req, res) => {
     const deviceId = param(req, "deviceId"), taskId = param(req, "taskId");
-    const companyId = requireDevice(req, service, deviceId), body = parse(ackInput, req.body);
-    const result = serviceCall(() => service.ackTaskResult({
+    const companyId = await requireDevice(req, service, deviceId), body = parse(ackInput, req.body);
+    const result = await serviceCall(() => service.ackTaskResult({
       companyId, deviceId, taskId, ok: body.ok, output: body.output, error: body.error,
     }));
-    auditTask(companyId, deviceId, body.ok ? "completed" : "failed", result,
+    await auditTask(companyId, deviceId, body.ok ? "completed" : "failed", result,
       `${body.ok ? "completed" : "failed"} ${result.kind} ${result.targetPath}`
         + (body.output ? ` output: ${body.output}` : "") + (body.error ? ` error: ${body.error}` : ""));
     res.json(result);
   }));
 
-  router.get("/companies/:companyId/endpoints/audit", run((req, res) => {
+  router.get("/companies/:companyId/endpoints/audit", run(async (req, res) => {
     const companyId = param(req, "companyId");
     requireCompanyActor(req, companyId);
     const query = parse(auditQuery, {

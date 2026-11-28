@@ -699,8 +699,8 @@ export async function createApp(
   api.use(qualityEvaluationRoutes(db));
   api.use(harnessRsiRoutes(db));
   api.use(agentGovernanceLearningRoutes());
-  api.use(agentWorkspacePrimitivesRoutes());
-  api.use(endpointBotRoutes());
+  api.use(agentWorkspacePrimitivesRoutes(db));
+  api.use(endpointBotRoutes(undefined, undefined, db));
   api.use(sidebarBadgeRoutes(db));
   api.use(
     "/enterprise-bots",
