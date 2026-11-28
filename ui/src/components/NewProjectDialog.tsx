@@ -189,17 +189,21 @@ export function NewProjectDialog() {
             <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">New work context</span>
           </div>
           <div className="flex items-center gap-1">
-            <Button type="button" aria-label={expanded ? "Collapse work context dialog" : "Expand work context dialog"}
+            <Button
+              type="button"
+              aria-label={expanded ? "Collapse work context dialog" : "Expand work context dialog"}
               variant="ghost"
-              type="button" aria-label={expanded ? "Collapse dialog" : "Expand dialog"} size="icon-xs"
+              size="icon-xs"
               className="text-slate-500 hover:text-[#2563eb] dark:text-slate-400 dark:hover:text-[#60a5fa]"
               onClick={() => setExpanded(!expanded)}
             >
               {expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </Button>
-            <Button type="button" aria-label="Close work context dialog"
+            <Button
+              type="button"
+              aria-label="Close work context dialog"
               variant="ghost"
-              type="button" aria-label="Close dialog" size="icon-xs"
+              size="icon-xs"
               className="text-slate-500 hover:text-[#2563eb] dark:text-slate-400 dark:hover:text-[#60a5fa]"
               onClick={() => { reset(); closeNewProject(); }}
             >
@@ -210,9 +214,10 @@ export function NewProjectDialog() {
 
         {/* Name */}
         <div className="px-4 pt-4 pb-2 shrink-0">
-          <input aria-label="Work context name"
+          <input
+            aria-label="Work context name"
             className="w-full text-lg font-semibold bg-transparent text-slate-950 caret-[#65a30d] outline-none placeholder:text-slate-400 dark:text-slate-50 dark:caret-[#a3e635] dark:placeholder:text-slate-500"
-            placeholder="Work context name" aria-label="Work context name"
+            placeholder="Work context name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
