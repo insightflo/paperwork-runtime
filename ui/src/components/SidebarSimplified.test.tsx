@@ -65,15 +65,15 @@ afterEach(async () => {
 });
 
 describe("SidebarSimplified (Stage 31B W2)", () => {
-  it("shows the 5 primary workspace items immediately on default render", async () => {
+  it("shows the 4 primary workspace items immediately on default render without Inbox", async () => {
     await renderSidebar();
     expect(link("/channels")).not.toBeNull();
     expect(link("/RES/missions")).not.toBeNull();
     expect(link("/RES/agents")).not.toBeNull();
-    expect(link("/RES/inbox")).not.toBeNull();
+    expect(link("/RES/inbox")).toBeNull();
     expect(link("/RES/company/settings")).not.toBeNull();
     expect(link("/RES/missions")!.textContent).toContain("Missions");
-    expect(link("/RES/inbox")!.textContent).toContain("Inbox");
+    expect(host.querySelector('nav[aria-label="워크스페이스"]')?.textContent).not.toContain("Inbox");
   });
 
   it("collapses 운영 · 관리 도구 by default and hides secondary admin items", async () => {
@@ -116,7 +116,7 @@ describe("SidebarSimplified (Stage 31B W2)", () => {
     for (const [href] of destinations) expect(link(href)).toBeNull();
     expect(link("/channels")?.textContent).toBe("Threads");
     expect(Array.from(host.querySelectorAll('nav[aria-label="워크스페이스"] a'), (item) => item.textContent))
-      .toEqual(["Threads", "Missions", "Agents", "Inbox", "Settings"]);
+      .toEqual(["Threads", "Missions", "Agents", "Settings"]);
 
     await act(async () => {
       toolsToggle().dispatchEvent(new MouseEvent("click", { bubbles: true }));
