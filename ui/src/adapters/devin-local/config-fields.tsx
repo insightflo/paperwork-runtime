@@ -112,18 +112,22 @@ export function DevinLocalConfigFields(props: AdapterConfigFieldsProps) {
         </select>
       </Field>
       {permissionMode === "dangerous" && (
-        <p className="rounded-[10px] border border-amber-600/25 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/10 dark:text-[#f59e0b]">
+        <p className="rounded-[10px] border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           Dangerous mode auto-approves all Devin tools. Use it only for trusted workspaces; choose Smart or Accept edits when the run should be more constrained.
         </p>
       )}
 
-      <div className="rounded-[10px] border border-slate-200/80 bg-slate-50 px-3 py-2 text-xs dark:border-white/[0.08] dark:bg-white/[0.03]">
-        <div className="font-medium text-slate-700 dark:text-[#eef2f8]">Devin model hints</div>
-        <div className="mt-1 font-mono text-[11px] leading-5 text-slate-600 dark:text-[#8f9db3]">
+      <div className="rounded-[10px] border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+        <div className="font-medium text-foreground">Devin model hints</div>
+        <div className="mt-1 font-mono text-[11px] leading-5 text-muted-foreground">
           {devinModelHints.join(" · ")}
         </div>
-        <p className="mt-1 text-slate-500 dark:text-[#8f9db3]">
-          SWE-2 Flash tiers are free-context automation models; SWE-2.1 tiers expose low through max reasoning levels.
+        <p className="mt-2">
+          헤드리스 실행 시 <code className="font-mono text-[11px]">--respect-workspace-trust false</code>와{" "}
+          <code className="font-mono text-[11px]">--process-model in-process</code>가 자동 적용됩니다.{" "}
+          <code className="font-mono text-[11px]">swe-2-flash-*</code> 모델은 262K Free tier이며,
+          멀티슬롯 병렬 실행에는 <code className="font-mono text-[11px]">swe-2-flash-medium/high</code>를 권장합니다.
+          더 깊은 추론이 필요하면 SWE-2.1 low–max 단계를 선택하세요.
         </p>
       </div>
 

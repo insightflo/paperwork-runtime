@@ -47,11 +47,22 @@ function resolveExtraArgs(config: Record<string, unknown>): string[] {
   return extraArgs.length > 0 ? extraArgs : asStringArray(config.args);
 }
 
+export function resolveDevinLocalBilling(model: string): {
+  billingType: "subscription" | "unknown";
+  costUsd: number | null;
+} {
+  if (model.trim().toLowerCase().startsWith("swe-2-flash")) {
+    return { billingType: "subscription", costUsd: 0 };
+  }
+  return { billingType: "unknown", costUsd: null };
+}
+
 export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExecutionResult> {
   const { runId, agent, runtime, config, context, onLog, onMeta, onSpawn, authToken } = ctx;
 
   const command = asString(config.command, "devin");
   const model = asString(config.model, DEVIN_LOCAL_DEFAULT_MODEL).trim() || DEVIN_LOCAL_DEFAULT_MODEL;
+  const billing = resolveDevinLocalBilling(model);
   const permissionMode = asString(config.permissionMode, "dangerous").trim() || "dangerous";
   const timeoutSec = asNumber(config.timeoutSec, 0);
   const graceSec = asNumber(config.graceSec, 15);
@@ -182,8 +193,8 @@ export async function execute(ctx: AdapterExecutionContext): Promise<AdapterExec
     provider: "devin",
     biller: "devin",
     model,
-    billingType: "unknown",
-    costUsd: null,
+    billingType: billing.billingType,
+    costUsd: billing.costUsd,
     resultJson: {
       stdout: proc.stdout,
       stderr: proc.stderr,
