@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -5,9 +6,19 @@ const DEFAULT_INSTANCE_ID = "default";
 const INSTANCE_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
 export function resolvePaperclipHomeDir(): string {
+  const paperworkHome = process.env.PAPERWORK_HOME?.trim();
+  if (paperworkHome) return path.resolve(expandHomePrefix(paperworkHome));
   const envHome = process.env.PAPERCLIP_HOME?.trim();
   if (envHome) return path.resolve(expandHomePrefix(envHome));
   return path.resolve(os.homedir(), ".paperclip");
+}
+
+export function resolvePaperworkHomeDir(): string {
+  const paperworkHome = process.env.PAPERWORK_HOME?.trim();
+  if (paperworkHome) return path.resolve(expandHomePrefix(paperworkHome));
+  const paperclipHome = process.env.PAPERCLIP_HOME?.trim();
+  if (paperclipHome) return path.resolve(expandHomePrefix(paperclipHome));
+  return path.resolve(os.homedir(), ".paperwork");
 }
 
 export function resolvePaperclipInstanceId(override?: string): string {
@@ -33,8 +44,28 @@ export function resolveDefaultContextPath(): string {
   return path.resolve(resolvePaperclipHomeDir(), "context.json");
 }
 
-export function resolveDefaultCliAuthPath(): string {
+export function resolveLegacyCliAuthPath(): string {
   return path.resolve(resolvePaperclipHomeDir(), "auth.json");
+}
+
+export function resolveDefaultCliAuthPath(): string {
+  const paperworkHome = process.env.PAPERWORK_HOME?.trim();
+  if (paperworkHome) {
+    return path.resolve(expandHomePrefix(paperworkHome), "auth.json");
+  }
+
+  const paperclipHome = process.env.PAPERCLIP_HOME?.trim();
+  if (paperclipHome) {
+    return path.resolve(expandHomePrefix(paperclipHome), "auth.json");
+  }
+
+  const paperworkAuthPath = path.resolve(resolvePaperworkHomeDir(), "auth.json");
+  if (fs.existsSync(paperworkAuthPath)) return paperworkAuthPath;
+
+  const legacyAuthPath = resolveLegacyCliAuthPath();
+  if (fs.existsSync(legacyAuthPath)) return legacyAuthPath;
+
+  return paperworkAuthPath;
 }
 
 export function resolveDefaultEmbeddedPostgresDir(instanceId?: string): string {

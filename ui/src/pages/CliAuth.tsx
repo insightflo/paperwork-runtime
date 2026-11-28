@@ -20,6 +20,10 @@ function displayClientName(value: string | null | undefined) {
   return /^paperclip(?:ai)?(?: cli)?$/i.test(clientName) ? "Paperwork CLI" : clientName;
 }
 
+export function displayCliCommand(value: string | null | undefined): string {
+  return value ? value.replace(/^paperclip(?:ai)?(?=\s|$)/i, "paperwork") : "";
+}
+
 export function CliAuthPage() {
   const queryClient = useQueryClient();
   const params = useParams();
@@ -123,7 +127,7 @@ export function CliAuthPage() {
           </p>
           <div className={`mt-5 ${insetPanelClass}`}>
             <div className={eyebrowClass}>Command</div>
-            <div className="font-mono text-sm text-slate-900 dark:text-[#edf2fb]">{challenge.command}</div>
+            <div className="font-mono text-sm text-slate-900 dark:text-[#edf2fb]">{displayCliCommand(challenge.command)}</div>
           </div>
         </div>
       </div>
@@ -200,7 +204,7 @@ export function CliAuthPage() {
         <div className={`mt-5 space-y-3 text-sm ${insetPanelClass}`}>
           <div>
             <div className={eyebrowClass}>Command</div>
-            <div className="break-all font-mono text-xs text-slate-900 dark:text-[#edf2fb]">{challenge.command}</div>
+            <div className="break-all font-mono text-xs text-slate-900 dark:text-[#edf2fb]">{displayCliCommand(challenge.command)}</div>
           </div>
           <div className="grid grid-cols-1 gap-3 border-t border-slate-200/80 pt-3 dark:border-white/[0.06] sm:grid-cols-2">
             <div>
@@ -225,7 +229,7 @@ export function CliAuthPage() {
         <HumanReviewPacket packet={{
           schemaVersion: "human-review-v1",
           decisionSubject: `${displayClientName(challenge.clientName)}에 ${isAdminScope ? "인스턴스 관리자" : "Board"} 접근을 허용할까요?`,
-          evidence: [{ label: "CLI 인증 요청 원본", href: currentPath, location: `요청 ${challenge.id} > 명령 ${challenge.command}`, description: `만료 시각 ${challenge.expiresAt}` }],
+          evidence: [{ label: "CLI 인증 요청 원본", href: currentPath, location: `요청 ${challenge.id} > 명령 ${displayCliCommand(challenge.command)}`, description: `만료 시각 ${challenge.expiresAt}` }],
           interpretation: `표시된 명령을 실행한 로컬 CLI가 ${challenge.requestedCompanyName ?? "이 인스턴스"}의 운영 API 인증 키를 요청합니다.`,
           impact: { ifApproved: "요청한 CLI가 표시된 범위의 운영 API를 호출할 수 있습니다.", ifRejected: "인증 키가 발급되지 않아 이 요청으로는 접근할 수 없습니다.", ifWrong: "신뢰하지 않는 프로세스가 회사 데이터와 운영 기능에 접근할 수 있습니다." },
           unresolvedFacts: [], questions: ["지금 본인이 이 명령을 실행했고, 클라이언트와 요청 권한이 예상과 일치합니까?"],
