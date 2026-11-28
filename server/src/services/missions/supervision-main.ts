@@ -45,6 +45,7 @@ import {
   isStaleSourceWakeupEnabled,
   recordStaleSourceWakeupDiagnosis,
 } from "./stale-source-wakeup-gate.js";
+import { isIneligibleUnblockSourceIssue, loadIneligibleUnblockRunIds } from "./unblock-source-eligibility.js";
 import { canRelaxSingleLaneForAutoRecoverableSource } from "./supervision-single-lane-relax.js";
 
 export function createRunMainExecutorSupervision({
@@ -216,7 +217,10 @@ export function createRunMainExecutorSupervision({
     //   미션 단위로 1회 읽어 이슈 루프의 유효 게이트 계산에 쓴다.
     const staleSourceWakeupSettingEnabled = await isStaleSourceWakeupEnabled(db, mission.id);
 
+    const ineligibleUnblockRunIds = await loadIneligibleUnblockRunIds(db, { companyId: mission.companyId, missionId: mission.id });
     for (const issue of missionIssues) {
+      const eligibleUnblockSource = !isIneligibleUnblockSourceIssue(issue)
+        && !ineligibleUnblockRunIds.has(issue.originRunId ?? "");
       if (issue.id === oversightIssue.id) continue;
       if (issue.originKind === "mission_plan_qa") continue;
       const ageMs = now.getTime() - issue.createdAt.getTime();
@@ -273,7 +277,7 @@ export function createRunMainExecutorSupervision({
             reason: `Mission source ${label} is marked in_progress without a live run or queue request; owner should recover, replan, or escalate`,
             safeToAutoApply: false,
           });
-          if (!issue.hiddenAt && !isTerminalIssueStatus(issue.status)) {
+          if (eligibleUnblockSource && !issue.hiddenAt && !isTerminalIssueStatus(issue.status)) {
             await ownerActions.ensureMainExecutorUnblockIssue(mission, issue, {
               renewAfterNoActionWaiting: true,
               governanceEvidence: [
@@ -403,10 +407,7 @@ export function createRunMainExecutorSupervision({
               : `Source issue ${label} is still in_progress after terminal heartbeat ${latestFailedRun.status}; diagnose root cause before choosing same-issue wakeup or a recovery issue`,
             safeToAutoApply: false,
           });
-          // [stale-source 앵커 보장 2026-11-13] 이 클래스에도 mission_main_executor_unblock 앵커를
-          //   보장해 오너 구조화 회복 경로(앵커→오너 결정→재시도)를 연다. 앵커 부재가 netdata 사고의
-          //   사전조건 영구 불충분 원인이었다. 형제 분기(stale_todo, dead-target)와 같은 보장 방식.
-          if (!issue.hiddenAt && !isTerminalIssueStatus(issue.status)) {
+          if (eligibleUnblockSource && !issue.hiddenAt && !isTerminalIssueStatus(issue.status)) {
             await ownerActions.ensureMainExecutorUnblockIssue(mission, issue, {
               renewAfterNoActionWaiting: true,
               governanceEvidence: [
@@ -509,7 +510,7 @@ export function createRunMainExecutorSupervision({
             reason: `Mission has stale queued work but no active execution; owner should recover, replan, or escalate`,
             safeToAutoApply: false,
           });
-          if (issue.originKind !== "mission_main_executor_unblock" && !issue.hiddenAt && !isTerminalIssueStatus(issue.status)) {
+          if (eligibleUnblockSource && !issue.hiddenAt && !isTerminalIssueStatus(issue.status)) {
             await ownerActions.ensureMainExecutorUnblockIssue(mission, issue, {
               renewAfterNoActionWaiting: true,
               governanceEvidence: [
@@ -539,7 +540,7 @@ export function createRunMainExecutorSupervision({
           reason: `Queued issue ${label} remains ${issue.status} after failed execution; owner should recover, replan, or escalate`,
           safeToAutoApply: false,
         });
-        if (issue.originKind !== "mission_main_executor_unblock" && !issue.hiddenAt && !isTerminalIssueStatus(issue.status)) {
+        if (eligibleUnblockSource && !issue.hiddenAt && !isTerminalIssueStatus(issue.status)) {
           await ownerActions.ensureMainExecutorUnblockIssue(mission, issue, {
             renewAfterNoActionWaiting: true,
             governanceEvidence: [
@@ -753,14 +754,12 @@ export function createRunMainExecutorSupervision({
       }
       if (
         issue.status === "blocked" && !issue.hiddenAt && !isTerminalMissionStatus(mission.status) &&
-        issue.originKind !== "mission_main_executor_unblock" &&
+        eligibleUnblockSource &&
         !isRejectedPlanningIssue &&
         !qaCapSourceIssueIds.has(issue.id)
       ) {
         await ownerActions.ensureMainExecutorUnblockIssue(mission, issue);
-        // Structured authority only: durable gate activity + recovery ledger. Comment keywords
-        // (artifact missing / replan / escalate prose) are display-only and never suppress or
-        // authorize recommendations.
+        // Recovery authority remains in structured gate activity and the recovery ledger.
         const recurringIssues = await ownerActions.listRecurringArtifactMissingIssueRefs({
           companyId: mission.companyId,
           assigneeAgentId: issue.assigneeAgentId,
