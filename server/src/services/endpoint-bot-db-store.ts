@@ -1,4 +1,4 @@
-import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -68,14 +68,14 @@ export async function issuePairingCodeDb(db: Db, input: Input<"issuePairingCode"
   }
   throw new Error("pairing code collision; retry issuance");
 }
-/** The device supplies its own random token (at least 32 bytes); plaintext is never stored or returned. */
-export async function completePairingDb(db: Db, input: { companyId: string; code: string; deviceToken: string;
+async function persistPairingDb(db: Db, input: { companyId?: string; code: string; deviceToken: string;
   os: string; arch: string; detectedClis: DetectedCli[]; nowMs?: number }) {
   required(input.os); required(input.arch); required(input.deviceToken);
   if (Buffer.byteLength(input.deviceToken) < 32) throw new Error("device token must contain at least 32 bytes");
   const at = timestamp(input.nowMs), tokenHash = hash(input.deviceToken), tokenPreview = `sha256:${tokenHash.slice(0, 8)}`;
   return db.transaction(async tx => {
-    const [code] = await tx.update(codes).set({ consumedAt: at }).where(and(eq(codes.companyId, input.companyId),
+    const [code] = await tx.update(codes).set({ consumedAt: at }).where(and(
+      input.companyId === undefined ? undefined : eq(codes.companyId, input.companyId),
       eq(codes.code, input.code), isNull(codes.consumedAt), gt(codes.expiresAt, at))).returning();
     if (!code) throw new Error("invalid or expired pairing code");
     const row: Bot = { companyId: code.companyId, deviceId: randomUUID(), botName: code.botName, tokenHash, tokenPreview,
@@ -86,6 +86,18 @@ export async function completePairingDb(db: Db, input: { companyId: string; code
     await tx.insert(bots).values(row);
     return { companyId: row.companyId, deviceId: row.deviceId, botName: row.botName, tokenPreview };
   });
+}
+/** The device supplies its own random token (at least 32 bytes); plaintext is never stored or returned. */
+export async function completePairingDb(db: Db, input: Parameters<typeof persistPairingDb>[1] & { companyId: string }) {
+  required(input.companyId);
+  return persistPairingDb(db, input);
+}
+/** Public code redemption: return the server-generated credential only after the transaction commits. */
+export async function completePairingByCodeDb(db: Db, input: Input<"completePairing">) {
+  const deviceToken = randomBytes(32).toString("hex");
+  const paired = await persistPairingDb(db, { code: input.code, os: input.os, arch: input.arch,
+    detectedClis: input.detectedClis, nowMs: input.nowMs, deviceToken });
+  return { companyId: paired.companyId, deviceId: paired.deviceId, botName: paired.botName, deviceToken };
 }
 export async function verifyDeviceTokenDb(db: Db, input: Scope & { token: string }): Promise<boolean> {
   const [row] = await db.select({ tokenHash: bots.tokenHash }).from(bots).where(botScope(input));
