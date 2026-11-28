@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { agents, agentWakeupRequests, heartbeatRuns, withTxTimeout } from "@paperclipai/db";
 import { logger } from "../middleware/logger.js";
@@ -179,7 +179,8 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
         eq(agentWakeupRequests.status, "queued"),
         isNull(agentWakeupRequests.runId),
         eq(agentWakeupRequests.updatedAt, snapshot.updatedAt),
-        sql`greatest(${agentWakeupRequests.createdAt}, ${agentWakeupRequests.updatedAt}) < ${cutoff}`,
+        lt(agentWakeupRequests.createdAt, cutoff),
+        lt(agentWakeupRequests.updatedAt, cutoff),
         sql`NOT EXISTS (SELECT 1 FROM heartbeat_runs linked WHERE linked.company_id = ${current.companyId} AND linked.agent_id = ${current.agentId} AND linked.wakeup_request_id = ${current.id})`,
       )).returning({ id: agentWakeupRequests.id }).then((rows) => rows[0] ?? null);
       return failed ? { current, message } : null;
@@ -201,9 +202,11 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
     });
     if (thresholdMs <= 0) return { reapedRunIds };
     const queuedSnapshots = await deps.db.select().from(heartbeatRuns).where(eq(heartbeatRuns.status, "queued"));
+    const orphanCutoff = new Date(Date.now() - thresholdMs);
     const orphanSnapshots = await deps.db.select().from(agentWakeupRequests).where(and(
       eq(agentWakeupRequests.status, "queued"), isNull(agentWakeupRequests.runId),
-      sql`greatest(${agentWakeupRequests.createdAt}, ${agentWakeupRequests.updatedAt}) < ${new Date(Date.now() - thresholdMs)}`,
+      lt(agentWakeupRequests.createdAt, orphanCutoff),
+      lt(agentWakeupRequests.updatedAt, orphanCutoff),
     ));
     const staleRuns = queuedSnapshots.filter((run) => olderThan(run.createdAt, run.updatedAt, thresholdMs));
     const staleOrphans = orphanSnapshots.filter((wake) => olderThan(wake.createdAt, wake.updatedAt, thresholdMs));
