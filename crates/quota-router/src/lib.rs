@@ -15,6 +15,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
+pub mod backoff;
+pub mod fallback_chain;
+
 /// Closed verdict vocabulary shared by `tried` entries and the top-level reason.
 pub const V_UNKNOWN: &str = "unknown_quota";
 pub const V_FUTURE: &str = "future_timestamp";
