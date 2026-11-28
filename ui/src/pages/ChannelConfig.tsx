@@ -99,7 +99,7 @@ interface TelegramSectionProps {
   onStatusChange?: (status: ConnectionStatus, botUsername?: string) => void;
 }
 
-function TelegramSection({ companyId, config, canWrite, onStatusChange }: TelegramSectionProps) {
+export function TelegramSection({ companyId, config, canWrite, onStatusChange }: TelegramSectionProps) {
   const queryClient = useQueryClient();
 
   // Form state
@@ -219,7 +219,7 @@ function TelegramSection({ companyId, config, canWrite, onStatusChange }: Telegr
     <div className="space-y-5">
       {/* Status row */}
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 truncate">
+        <div aria-live="polite" className="min-w-0 truncate">
           <StatusIndicator
             status={testStatus}
             errorMessage={testError}
@@ -248,10 +248,11 @@ function TelegramSection({ companyId, config, canWrite, onStatusChange }: Telegr
       <form onSubmit={handleSave} className="space-y-4 rounded-xl border border-slate-200/90 bg-slate-50/95 p-4 dark:border-white/[0.08] dark:bg-[#090c12]">
         {/* Bot username */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">
+          <label htmlFor="channel-bot-username" className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">
             Bot username
           </label>
           <Input
+            id="channel-bot-username"
             className={`h-8 text-sm ${FIELD}`}
             value={botUsername}
             onChange={(e) => setBotUsername(e.target.value)}
@@ -265,7 +266,7 @@ function TelegramSection({ companyId, config, canWrite, onStatusChange }: Telegr
 
         {/* Bot token */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">
+          <label htmlFor="channel-bot-token" className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">
             Bot token
             {isConfigured && (
               <span className="ml-2 font-normal text-lime-700 dark:text-[#a3e635]">
@@ -274,6 +275,7 @@ function TelegramSection({ companyId, config, canWrite, onStatusChange }: Telegr
             )}
           </label>
           <Input
+            id="channel-bot-token"
             className={`h-8 text-sm font-mono ${FIELD}`}
             type="password"
             value={botToken}
@@ -290,10 +292,11 @@ function TelegramSection({ companyId, config, canWrite, onStatusChange }: Telegr
         {/* Secret name (only shown when not yet configured) */}
         {!isConfigured && (
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">
+            <label htmlFor="channel-secret-name" className="text-xs font-medium text-slate-500 dark:text-[#8b97ad]">
               Secret name
             </label>
             <Input
+              id="channel-secret-name"
               className={`h-8 text-sm ${FIELD}`}
               value={secretName}
               onChange={(e) => setSecretName(e.target.value)}
@@ -319,11 +322,11 @@ function TelegramSection({ companyId, config, canWrite, onStatusChange }: Telegr
         )}
 
         {formError && (
-          <p className="text-xs text-destructive">{formError}</p>
+          <p role="alert" className="text-xs text-destructive">{formError}</p>
         )}
 
         {saveSuccess && (
-          <p className="flex items-center gap-1.5 text-xs text-lime-700 dark:text-[#a3e635]">
+          <p aria-live="polite" className="flex items-center gap-1.5 text-xs text-lime-700 dark:text-[#a3e635]">
             <CheckCircle2 className="h-3.5 w-3.5" />
             Configuration saved.
           </p>
@@ -390,7 +393,7 @@ export function ChannelConfig() {
   return (
     <div className="space-y-2 tabular-nums">
       {error && (
-        <p className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error instanceof Error ? error.message : String(error)}
         </p>
       )}
