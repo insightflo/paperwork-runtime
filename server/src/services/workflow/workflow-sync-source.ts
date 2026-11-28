@@ -1,7 +1,7 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { logger } from "../../middleware/logger.js";
-import { workflowStepRuns, workflowTransitionEvents } from "@paperclipai/db";
+import { issueWorkProducts, issues, workflowStepRuns, workflowTransitionEvents } from "@paperclipai/db";
 
 export const WORKFLOW_SYNC_SOURCES = [
   "workflow_sync",
@@ -138,10 +138,72 @@ export interface TerminalRunSettlementInput {
 }
 
 /**
+ * [정산 진단] 정산(running/queued → failed)로 step_run 이 실패 처리될 때 lastDispatchErrorSummary 가
+ * 비어 있으면 채워 넣는 진단 요약. 접두사는 실제 정산 source 를 따른다(관측 혼동 방지 —
+ * deadlock 정산을 workflow_reconciler 로 표기하지 않는다).
+ * [수정시 영향] 진단 문구를 바꾸면 workflow-reconciler-error-summary 테스트를 함께 고친다.
+ * 문구는 표시·진단 용도이며 실행 권한으로 읽히지 않는다.
+ */
+export function buildWorkflowSettlementErrorSummary(input: {
+  source: WorkflowSyncSource;
+  issueStatus: string | null;
+  stepMetadata: Record<string, unknown> | null;
+  activeWorkProductCount: number;
+}): string {
+  const issueDoneWithoutRequiredWorkProduct =
+    input.issueStatus === "done"
+    && input.stepMetadata?.graphWorkProductRequired === true
+    && input.activeWorkProductCount === 0;
+  return issueDoneWithoutRequiredWorkProduct
+    ? `${input.source}: issue_done_without_required_work_product`
+    : `${input.source}: step_settled_failed`;
+}
+
+/**
+ * [정산 진단 조회] 빈 요약을 채우기 위한 판단 근거를 같은 트랜잭션에서 읽는다.
+ * 이슈가 done 일 때만 활성 워크프로덕트를 세어 불필요한 조회를 줄인다.
+ * companyId 조건으로 회사 범위를 유지한다.
+ */
+async function resolveWorkflowSettlementErrorSummary(
+  db: Parameters<Parameters<Db["transaction"]>[0]>[0],
+  input: TerminalRunSettlementInput,
+  stepRun: { issueId: string | null; metadata: unknown },
+  source: WorkflowSyncSource,
+): Promise<string> {
+  let issueStatus: string | null = null;
+  let activeWorkProductCount = 0;
+  if (stepRun.issueId) {
+    const [issue] = await db.select({ status: issues.status })
+      .from(issues)
+      .where(and(eq(issues.id, stepRun.issueId), eq(issues.companyId, input.companyId)))
+      .limit(1);
+    issueStatus = issue?.status ?? null;
+    if (issueStatus === "done") {
+      const [productRow] = await db.select({ n: count() })
+        .from(issueWorkProducts)
+        .where(and(
+          eq(issueWorkProducts.issueId, stepRun.issueId),
+          eq(issueWorkProducts.companyId, input.companyId),
+          eq(issueWorkProducts.status, "active"),
+        ));
+      activeWorkProductCount = Number(productRow?.n ?? 0);
+    }
+  }
+  return buildWorkflowSettlementErrorSummary({
+    source,
+    issueStatus,
+    stepMetadata: (stepRun.metadata as Record<string, unknown> | null) ?? {},
+    activeWorkProductCount,
+  });
+}
+
+/**
  * [bug#2 step-settlement] run 이 failed/cancelled 로 종결되는 것과 같은 트랜잭션에서, 그 run 의
  * 남은 running/queued step_run 을 failed 로 정산한다(completedAt + 사유 metadata + 전이 감사).
  * run_status=failed + step_status=running 불일치가 영속하지 못하게 하는 종결 불변식이다.
  * 반드시 run 종결 쓰기와 동일 트랜잭션 안에서 호출해야 원자성이 성립한다.
+ * [정산 진단] 기존 lastDispatchErrorSummary 가 비어 있을 때만 진단 요약을 채운다 —
+ * 실제 dispatch 실패 요약을 절대 덮어쓰지 않는다.
  */
 export async function settleRunningStepRunsForTerminalRun(
   db: Parameters<Parameters<Db["transaction"]>[0]>[0],
@@ -159,6 +221,7 @@ export async function settleRunningStepRunsForTerminalRun(
       issueId: workflowStepRuns.issueId,
       status: workflowStepRuns.status,
       metadata: workflowStepRuns.metadata,
+      lastDispatchErrorSummary: workflowStepRuns.lastDispatchErrorSummary,
       statusTransitionVersion: workflowStepRuns.statusTransitionVersion,
     })
     .from(workflowStepRuns)
@@ -169,10 +232,17 @@ export async function settleRunningStepRunsForTerminalRun(
     .for("update");
   for (const stepRun of open) {
     const priorMetadata = (stepRun.metadata as Record<string, unknown> | null) ?? {};
+    // [이유] 요약이 이미 있으면 실제 dispatch 실패 기록이므로 정산 진단으로 덮어쓰지 않는다.
+    const settlementErrorSummary = (stepRun.lastDispatchErrorSummary ?? "").trim().length > 0
+      ? undefined
+      : await resolveWorkflowSettlementErrorSummary(db, input, stepRun, source);
     const [updated] = await db.update(workflowStepRuns)
       .set({
         status: "failed",
         completedAt: input.now,
+        ...(settlementErrorSummary !== undefined
+          ? { lastDispatchErrorSummary: settlementErrorSummary }
+          : {}),
         metadata: {
           ...priorMetadata,
           terminalRunSettlement: {
