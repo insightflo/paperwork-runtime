@@ -25,7 +25,7 @@ pub fn detect_wait_deadlocks(edges: &[WaitEdge]) -> Vec<DeadlockCycle> {
     let mut endpoints: BTreeMap<(String, String), WaitEdge> = BTreeMap::new();
     for edge in edges {
         let key = (edge.waiter_id.clone(), edge.target_id.clone());
-        if endpoints.get(&key).map_or(true, |old| compare_break(edge, old) == Ordering::Less) {
+        if endpoints.get(&key).is_none_or(|old| compare_break(edge, old) == Ordering::Less) {
             endpoints.insert(key, edge.clone());
         }
     }

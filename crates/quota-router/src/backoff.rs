@@ -113,7 +113,7 @@ pub fn classify_provider_failure(input: &ProviderFailureInput) -> ProviderErrorC
 
 fn exponential_delay_ms(base_ms: u64, max_ms: u64, consecutive_failures: i64) -> u64 {
     let mut delay = base_ms.min(max_ms);
-    for _ in 0..consecutive_failures.saturating_sub(1).max(0).min(64) {
+    for _ in 0..consecutive_failures.saturating_sub(1).min(64) {
         delay = delay.saturating_mul(2).min(max_ms);
     }
     delay

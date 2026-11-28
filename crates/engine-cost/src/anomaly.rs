@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn true_spike_is_flagged() {
         let result = detect_run_cost_anomaly(&input(2.5, &[0.5; 5]));
-        assert_eq!(result.is_anomaly, true);
+        assert!(result.is_anomaly);
         assert_eq!(result.baseline_median_usd, 0.5);
         assert_eq!(result.ratio_to_median, 5.0);
         assert_eq!(result.reason, "Cost exceeds baseline multiplier and minimum delta");
