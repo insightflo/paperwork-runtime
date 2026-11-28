@@ -2,6 +2,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { TooltipProvider } from "../../components/ui/tooltip";
 import type { AdapterConfigFieldsProps, CreateConfigValues } from "../types";
 import { getUIAdapter } from "../registry";
 import { devinLocalUIAdapter } from "../devin-local";
@@ -67,7 +68,9 @@ describe("devinLocalUIAdapter", () => {
 
 describe("DevinLocalConfigFields", () => {
   it("shows Korean headless and free-tier guidance while keeping config building backward-compatible", () => {
-    const markup = renderToStaticMarkup(createElement(DevinLocalConfigFields, createConfigFieldsProps()));
+    const markup = renderToStaticMarkup(
+      createElement(TooltipProvider, null, createElement(DevinLocalConfigFields, createConfigFieldsProps())),
+    );
 
     expect(markup).toContain("Devin model hints");
     expect(markup).toContain('aria-label="Devin permission mode"');

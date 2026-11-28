@@ -98,7 +98,7 @@ describe("parseDevinLocalOutput contract", () => {
     const parsed = parseDevinLocalOutput(
       [
         '{"session_id":"json-session","usage":{"inputTokens":10,"outputTokens":2,"cachedInputTokens":3}}',
-        '{"result":{"usage":{"input_tokens":4,"output_tokens":5,"cache_read_tokens":6}}}',
+        '{"result":{"usage":{"input_tokens":4,"output_tokens":5,"cached_input_tokens":6}}}',
         '{"message":{"usage":{"input":7,"output":8,"cacheRead":9}},"summary":"usage complete"}',
       ].join("\n"),
     );
