@@ -8,6 +8,10 @@ import {
   collabMessages,
   collabThreads,
   companies,
+  issues,
+  missions,
+  workflowDefinitions,
+  workflowRuns,
   type Db,
 } from "@paperclipai/db";
 import {
@@ -47,17 +51,39 @@ async function seedWorld() {
   const [owner] = await db.insert(agents).values({ companyId: company.id, name: `owner-${randomUUID()}`, status: "running" }).returning();
   const [producer] = await db.insert(agents).values({ companyId: company.id, name: `producer-${randomUUID()}`, status: "running" }).returning();
   const [validator] = await db.insert(agents).values({ companyId: company.id, name: `validator-${randomUUID()}`, status: "running" }).returning();
-  return { company, owner, producer, validator };
+  const [mission] = await db.insert(missions).values({
+    companyId: company.id,
+    ownerAgentId: owner.id,
+    title: `mission-${randomUUID()}`,
+  }).returning();
+  const [workflow] = await db.insert(workflowDefinitions).values({
+    companyId: company.id,
+    missionId: mission.id,
+    name: `workflow-${randomUUID()}`,
+  }).returning();
+  const [run] = await db.insert(workflowRuns).values({
+    companyId: company.id,
+    missionId: mission.id,
+    workflowId: workflow.id,
+    triggeredBy: "exception-huddle-lifecycle-e2e",
+  }).returning();
+  const [issue] = await db.insert(issues).values({
+    companyId: company.id,
+    missionId: mission.id,
+    assigneeAgentId: producer.id,
+    title: `issue-${randomUUID()}`,
+  }).returning();
+  return { company, owner, producer, validator, missionId: mission.id, workflowRunId: run.id, sourceIssueId: issue.id };
 }
 type World = Awaited<ReturnType<typeof seedWorld>>;
 
 function qaInput(world: World, overrides: Partial<QaFailureHuddleInput> = {}): QaFailureHuddleInput {
   return {
     companyId: world.company.id,
-    missionId: randomUUID(),
-    workflowRunId: randomUUID(),
+    missionId: world.missionId,
+    workflowRunId: world.workflowRunId,
     sourceStepId: "qa-review",
-    sourceIssueId: randomUUID(),
+    sourceIssueId: world.sourceIssueId,
     ownerAgentId: world.owner.id,
     producerAgentId: world.producer.id,
     validatorAgentId: world.validator.id,
