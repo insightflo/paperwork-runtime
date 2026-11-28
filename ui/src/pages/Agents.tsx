@@ -496,6 +496,7 @@ export function Agents() {
                   : "text-muted-foreground hover:text-foreground dark:text-[#9aa7bd] dark:hover:text-[#eef2f8]",
               )}
               aria-expanded={filtersOpen}
+              aria-label="에이전트 필터 옵션"
               onClick={() => setFiltersOpen(!filtersOpen)}
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -617,7 +618,7 @@ export function Agents() {
         </div>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error.message}</p>}
+      {error && <p className="text-sm text-destructive" role="alert">{error.message}</p>}
 
       {agents && agents.length === 0 && (
         <EmptyState
