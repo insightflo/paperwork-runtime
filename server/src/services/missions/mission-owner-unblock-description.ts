@@ -44,6 +44,7 @@ export function buildMainExecutorBrief(input: {
     "- Use the existing mission-owner decision path: retry_source_issue, reassign_source_issue, replan_mission, request_input, or escalate. Do not invent a new control-plane action.",
     "- In the decision reason or next-action text, name the next assignee/owner `reportsTo` target that should receive the blocker and the evidence they need.",
     "- request_input and escalate are the LAST resort - use them only when no safe internal recovery exists, or when genuine human/operator authority, credentials, external account/API access, or a policy decision is actually required. Do not escalate merely because the blocker is unclassified.",
+    "- Never submit `request_input` or `escalate` while another workflow/rework step in this mission is actively `running` (let active rework or Exception Huddle finish first), and always include a concrete `reason` and `nextAction` (blank requests are rejected).",
     "- When no runnable agent remains in the reporting line, or the blocker requires operator authority, choose request_input/escalate and request human/operator input. The human operator is the final receiver for unresolved mission blockers.",
     "- When escalating, you MUST attach the evidence and specify the concrete next action the operator must perform, and name the owner/audience (`reportsTo` target), so the request is actionable in the Human Operator menu rather than a bare status note.",
     "- Record the judgement, action taken, and next expected state so the mission can continue.",
