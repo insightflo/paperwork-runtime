@@ -149,7 +149,7 @@ export function createRunMainExecutorSupervision({
       oversightIssueId: oversightIssue.id,
       missionIssues,
       executionSnapshot,
-      missionHasActiveHeartbeat,
+      missionHasActiveHeartbeat, oversightRunCount: heartbeatCountByIssueId.get(oversightIssue.id) ?? 0,
       now,
       findings,
     });
