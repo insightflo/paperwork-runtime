@@ -33,11 +33,17 @@ export async function issueProducerRebind(db: Db, input: ProducerRebindInput,
     if (step.status !== "completed" || step.issueId == null) throw conflict("producer_rebind_producer_not_completed");
     if (automatic) {
       // Recheck selector cardinality under parent UPDATE locks: registrations hold SHARE on these parents.
-      const products = await tx.select().from(issueWorkProducts).where(and(
-        eq(issueWorkProducts.companyId, input.companyId), eq(issueWorkProducts.issueId, step.issueId),
-        eq(issueWorkProducts.type, automatic.selector.type), eq(issueWorkProducts.title, automatic.selector.title),
+      const issueId = step.issueId;
+      const selectProducts = (type: string) => tx.select().from(issueWorkProducts).where(and(
+        eq(issueWorkProducts.companyId, input.companyId), eq(issueWorkProducts.issueId, issueId),
+        eq(issueWorkProducts.type, type), eq(issueWorkProducts.title, automatic.selector.title),
         automatic.pinnedId ? eq(issueWorkProducts.id, automatic.pinnedId) : ne(issueWorkProducts.status, "archived"),
       )).orderBy(issueWorkProducts.id).for("update");
+      let products = await selectProducts(automatic.selector.type);
+      const fallbackType = automatic.selector.type === "document" ? "artifact"
+        : automatic.selector.type === "artifact" ? "document" : undefined;
+      // Match same-run selection, including its zero-row-only fallback, under the same locks.
+      if (products.length === 0 && fallbackType) products = await selectProducts(fallbackType);
       if (products.length !== 1 || products[0].id !== input.productId) throw conflict("producer_rebind_selection_changed");
     }
     const [product] = await tx.select().from(issueWorkProducts)
