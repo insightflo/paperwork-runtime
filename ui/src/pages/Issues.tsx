@@ -361,7 +361,7 @@ export function Issues() {
 
       {!canWrite && (
         <div
-          role="status"
+          role="status" aria-live="polite"
           className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-800 dark:border-[#f59e0b]/35 dark:bg-[#f59e0b]/12 dark:text-[#fde68a]"
         >
           <Lock className="h-3.5 w-3.5 shrink-0" />
@@ -386,7 +386,7 @@ export function Issues() {
           }
         }}
         className={`${ISSUES_TOOLBAR_CLASS} overflow-hidden rounded-xl border border-slate-200/90 bg-white/95 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] transition-opacity dark:border-white/[0.08] dark:bg-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_6px_24px_-10px_rgba(0,0,0,0.65)] ${listBusy ? "opacity-60" : ""} ${!canWrite ? "[&>div>div:first-child>div:first-child>button:first-child]:cursor-not-allowed [&>div>div:first-child>div:first-child>button:first-child]:opacity-50" : ""}`}
-        aria-busy={listBusy}
+        aria-busy={listBusy} aria-live="polite" role={error ? "alert" : undefined}
       >
         <IssuesList
           issues={visibleIssues}
