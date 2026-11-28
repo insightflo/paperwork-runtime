@@ -170,7 +170,7 @@ export function ErrorState({
   retrying: boolean;
 }): JSX.Element {
   return (
-    <div style={sectionStyle}>
+    <div role="alert" style={sectionStyle}>
       <p style={mutedTextStyle}>{message}</p>
       <div>
         <button

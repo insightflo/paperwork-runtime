@@ -137,13 +137,13 @@ export function MyIssues() {
           />
         </div>
 
-        <span className="ml-auto shrink-0 text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-[#8b97ad]">
+        <span role="status" aria-live="polite" aria-atomic="true" className="ml-auto shrink-0 text-[11px] uppercase tracking-[0.16em] text-slate-500 dark:text-[#8b97ad]">
           {visibleIssues.length}
           {normalizedSearch || activeGroup !== "active" ? ` of ${myIssues.length}` : ""} shown
         </span>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error.message}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error.message}</p>}
 
       {myIssues.length === 0 && (
         <EmptyState icon={ListTodo} message="No work items assigned to you." />

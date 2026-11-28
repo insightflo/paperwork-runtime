@@ -261,8 +261,8 @@ export function Approvals() {
         </div>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error.message}</p>}
-      {actionError && <p className="text-sm text-destructive">{actionError}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error.message}</p>}
+      {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
 
       <CompactPagination
         page={page}

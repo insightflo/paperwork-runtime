@@ -475,7 +475,7 @@ export function MissionDetail() {
   const isRefreshingMissionDetail = isMissionFetching || isMissionActivityFetching;
 
   if (!missionId) {
-    return <div className="p-4 text-sm text-muted-foreground">No mission selected.</div>;
+    return <div aria-live="polite" className="p-4 text-sm text-muted-foreground">No mission selected.</div>;
   }
 
   if (isLoading) {
@@ -485,7 +485,7 @@ export function MissionDetail() {
   if (error || !mission) {
     return (
       <div className="p-4">
-        <p className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error instanceof Error ? error.message : "Failed to load mission"}
         </p>
       </div>

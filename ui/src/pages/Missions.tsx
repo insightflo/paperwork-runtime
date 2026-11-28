@@ -586,7 +586,7 @@ export function Missions() {
   return (
     <div className="space-y-3 tabular-nums">
       {error && (
-        <p className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {error instanceof Error ? error.message : String(error)}
         </p>
       )}
@@ -752,7 +752,7 @@ export function Missions() {
           <PanelRightOpen className="h-3.5 w-3.5" />
         </button>
         <Button
-          size="sm"
+          type="button" size="sm"
           variant="outline"
           onClick={refreshCurrentTab}
           disabled={isMissionsFetching}
@@ -1116,7 +1116,7 @@ export function Missions() {
                       </Button>
                     )}
                   </div>
-                  {actionError && <p className="text-xs text-destructive">{actionError}</p>}
+                  {actionError && <p role="alert" className="text-xs text-destructive">{actionError}</p>}
 
                   {/* Step Pipeline Progress Preview */}
                   <div className="space-y-1.5">

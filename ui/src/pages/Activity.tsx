@@ -219,7 +219,7 @@ export function Activity() {
             </button>
           );
         })}
-        <div className={cn(STRIP_CELL_CLASS, "cursor-default")}>
+        <div className={cn(STRIP_CELL_CLASS, "cursor-default")} aria-live="polite" aria-atomic="true">
           <span className="truncate uppercase tracking-wide">표시</span>
           <b className="ml-1 text-blue-600 dark:text-[var(--pw-cobalt)]">{filtered.length}</b>
         </div>
@@ -239,7 +239,7 @@ export function Activity() {
         </div>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error.message}</p>}
+      {error && <p role="alert" aria-live="polite" className="text-sm text-destructive">{error.message}</p>}
 
       <CompactPagination page={page} count={filtered.length} hasMore={hasMore} loading={isFetching} onPageChange={setPage} className="rounded-[12px] border-slate-200/90 bg-slate-50/95 text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] dark:border-white/[0.08] dark:bg-background dark:text-foreground dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] [&_button]:text-slate-600 dark:[&_button]:text-secondary-foreground [&_button:hover]:bg-white dark:[&_button:hover]:bg-accent [&_span]:text-slate-600 dark:[&_span]:text-muted-foreground [&_b]:text-slate-950 dark:[&_b]:text-foreground [&_svg]:text-blue-600 dark:[&_svg]:text-[var(--pw-cobalt)]" />
 

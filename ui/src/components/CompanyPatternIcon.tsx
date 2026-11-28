@@ -188,6 +188,7 @@ export function CompanyPatternIcon({
         <img
           src={logo}
           alt={`${companyName} logo`}
+          decoding="async"
           onError={() => setImageError(true)}
           className="absolute inset-0 h-full w-full object-cover"
         />
@@ -195,6 +196,7 @@ export function CompanyPatternIcon({
         <img
           src={patternDataUrl}
           alt=""
+          decoding="async"
           aria-hidden="true"
           className="absolute inset-0 h-full w-full"
           style={{ imageRendering: "pixelated" }}

@@ -55,7 +55,7 @@ export function BoardClaimPage() {
           <span className={`${pillBase} border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300`}>
             Board claim
           </span>
-          <p className="mt-3 text-sm text-rose-700 dark:text-rose-300">Invalid board claim URL.</p>
+          <p role="alert" className="mt-3 text-sm text-rose-700 dark:text-rose-300">Invalid board claim URL.</p>
         </div>
       </div>
     );
@@ -64,7 +64,7 @@ export function BoardClaimPage() {
   if (statusQuery.isLoading || sessionQuery.isLoading) {
     return (
       <div className="mx-auto max-w-xl px-4 py-10 tabular-nums">
-        <div className={`${cardClass} flex items-center gap-2.5 text-sm text-slate-600 dark:text-[#8b97ad]`}>
+        <div role="status" aria-live="polite" className={`${cardClass} flex items-center gap-2.5 text-sm text-slate-600 dark:text-[#8b97ad]`}>
           <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-blue-500 dark:bg-[#60a5fa]" />
           Loading claim challenge...
         </div>
@@ -75,7 +75,7 @@ export function BoardClaimPage() {
   if (statusQuery.error) {
     return (
       <div className="mx-auto max-w-xl px-4 py-10 tabular-nums">
-        <div className={cardClass}>
+        <div role="alert" className={cardClass}>
           <span className={`${pillBase} border-rose-500/30 bg-rose-500/10 text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300`}>
             Board claim
           </span>
@@ -93,7 +93,7 @@ export function BoardClaimPage() {
     return (
       <div className="mx-auto max-w-xl px-4 py-10 tabular-nums">
         <div className={cardClass}>
-          <p className="text-sm text-rose-700 dark:text-rose-300">Claim challenge unavailable.</p>
+          <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">Claim challenge unavailable.</p>
         </div>
       </div>
     );
@@ -108,7 +108,7 @@ export function BoardClaimPage() {
             Ownership transfer
           </span>
           <h1 className="mt-3 text-lg font-semibold tracking-tight text-slate-950 dark:text-[#edf2fb]">Board ownership claimed</h1>
-          <p className="mt-2 text-sm text-slate-600 dark:text-[#8b97ad]">
+          <p role="status" aria-live="polite" className="mt-2 text-sm text-slate-600 dark:text-[#8b97ad]">
             This instance is now linked to your authenticated user.
           </p>
           <Button
@@ -131,7 +131,7 @@ export function BoardClaimPage() {
             Board claim
           </span>
           <h1 className="mt-3 text-lg font-semibold tracking-tight text-slate-950 dark:text-[#edf2fb]">Sign in required</h1>
-          <p className="mt-2 text-sm text-slate-600 dark:text-[#8b97ad]">
+          <p role="status" aria-live="polite" className="mt-2 text-sm text-slate-600 dark:text-[#8b97ad]">
             Sign in or create an account, then return to this page to claim Board ownership.
           </p>
           <Button
@@ -163,12 +163,12 @@ export function BoardClaimPage() {
         </div>
 
         {claimMutation.error && (
-          <p className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300">
+          <p role="alert" className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-700 dark:border-rose-400/30 dark:bg-rose-500/12 dark:text-rose-300">
             {claimMutation.error instanceof Error ? claimMutation.error.message : "Failed to claim board ownership"}
           </p>
         )}
 
-        <Button
+        <Button type="button" aria-live="polite"
           className="mt-5 rounded-lg bg-blue-600 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.2)] hover:bg-blue-700 dark:bg-[#2563eb] dark:hover:bg-[#3b82f6]"
           onClick={() => claimMutation.mutate()}
           disabled={claimMutation.isPending}

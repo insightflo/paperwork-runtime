@@ -207,7 +207,7 @@ export function CompanyDataStorageSettings({ companyId }: { companyId: string })
             <option value="s3">S3-compatible shared object storage</option>
           </select>
         </label>
-        {storageQuery.isError ? <p className="text-xs text-rose-600 dark:text-[#f43f5e]">Current shared-data settings could not be loaded.</p> : null}
+        {storageQuery.isError ? <p role="alert" className="text-xs text-rose-600 dark:text-[#f43f5e]">Current shared-data settings could not be loaded.</p> : null}
         {form.provider === "local_disk" ? (
           <p className="text-xs leading-relaxed text-slate-500 dark:text-[#8b97ad]">Data stays on Paperwork local disk under a company-scoped folder. Agents read and write it through the company data API; no object-storage credentials are exposed.</p>
         ) : (
@@ -244,41 +244,41 @@ export function CompanyDataStorageSettings({ companyId }: { companyId: string })
               <SecretSelect label="Access key secret" value={form.accessKeySecretId} onChange={(accessKeySecretId) => setForm({ ...form, accessKeySecretId })} secrets={secrets} disabled={secretSelectDisabled} />
               <SecretSelect label="Secret access key secret" value={form.secretAccessKeySecretId} onChange={(secretAccessKeySecretId) => setForm({ ...form, secretAccessKeySecretId })} secrets={secrets} disabled={secretSelectDisabled} />
             </div>
-            {secretsQuery.isError ? <p className="text-xs text-rose-600 dark:text-[#f43f5e]">Saved secrets could not be loaded.</p> : null}
+            {secretsQuery.isError ? <p role="alert" className="text-xs text-rose-600 dark:text-[#f43f5e]">Saved secrets could not be loaded.</p> : null}
             {createTarget ? (
               <div className="space-y-2.5 rounded-lg border border-slate-200/90 bg-slate-50/85 p-3 dark:border-white/[0.08] dark:bg-[#090c12]">
                 <p className="text-xs text-slate-600 dark:text-[#8b97ad]">Create a new {createTarget === "access" ? "access key" : "secret access key"} secret. Its value is masked and never shown again.</p>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <Input className={FIELD_CLASS} value={newSecretName} onChange={(event) => setNewSecretName(event.target.value)} placeholder="Secret name" />
-                  <Input className={FIELD_CLASS} type="password" value={newSecretValue} onChange={(event) => setNewSecretValue(event.target.value)} placeholder="Secret value" autoComplete="new-password" />
+                  <Input aria-label="Secret name" className={FIELD_CLASS} value={newSecretName} onChange={(event) => setNewSecretName(event.target.value)} placeholder="Secret name" />
+                  <Input aria-label="Secret value" className={FIELD_CLASS} type="password" value={newSecretValue} onChange={(event) => setNewSecretValue(event.target.value)} placeholder="Secret value" autoComplete="new-password" />
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" className={CTA_CLASS} onClick={() => createTarget && createSecret.mutate({ target: createTarget, name: newSecretName.trim(), value: newSecretValue })} disabled={createSecret.isPending || !newSecretName.trim() || !newSecretValue}>Create secret</Button>
-                  <Button size="sm" variant="ghost" className={GHOST_BTN_CLASS} onClick={() => setCreateTarget(null)} disabled={createSecret.isPending}>Cancel</Button>
+                  <Button type="button" size="sm" className={CTA_CLASS} onClick={() => createTarget && createSecret.mutate({ target: createTarget, name: newSecretName.trim(), value: newSecretValue })} disabled={createSecret.isPending || !newSecretName.trim() || !newSecretValue}>Create secret</Button>
+                  <Button type="button" size="sm" variant="ghost" className={GHOST_BTN_CLASS} onClick={() => setCreateTarget(null)} disabled={createSecret.isPending}>Cancel</Button>
                 </div>
               </div>
             ) : (
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="ghost" className={GHOST_BTN_CLASS} onClick={() => beginSecret("access")}><Plus className="h-3.5 w-3.5" />New access-key secret</Button>
-                <Button size="sm" variant="ghost" className={GHOST_BTN_CLASS} onClick={() => beginSecret("secret")}><Plus className="h-3.5 w-3.5" />New secret-access-key secret</Button>
+                <Button type="button" size="sm" variant="ghost" className={GHOST_BTN_CLASS} onClick={() => beginSecret("access")}><Plus className="h-3.5 w-3.5" />New access-key secret</Button>
+                <Button type="button" size="sm" variant="ghost" className={GHOST_BTN_CLASS} onClick={() => beginSecret("secret")}><Plus className="h-3.5 w-3.5" />New secret-access-key secret</Button>
               </div>
             )}
           </div>
         )}
         <div className="flex flex-wrap items-center gap-2 border-t border-slate-200/80 pt-3 dark:border-white/[0.07]">
-          <Button size="sm" className={CTA_CLASS} onClick={() => saveStorage.mutate()} disabled={saveStorage.isPending || (form.provider === "s3" && !s3Complete)}>
+          <Button type="button" size="sm" className={CTA_CLASS} onClick={() => saveStorage.mutate()} disabled={saveStorage.isPending || (form.provider === "s3" && !s3Complete)}>
             {saveStorage.isPending ? "Saving…" : "Save shared-data settings"}
           </Button>
           {form.provider === "s3" ? (
-            <Button size="sm" variant="outline" className={OUTLINE_BTN_CLASS} onClick={() => testConnection.mutate()} disabled={!isSaved || testConnection.isPending}>
+            <Button type="button" size="sm" variant="outline" className={OUTLINE_BTN_CLASS} onClick={() => testConnection.mutate()} disabled={!isSaved || testConnection.isPending}>
               {testConnection.isPending ? "Testing…" : "Test saved shared-data connection"}
             </Button>
           ) : null}
         </div>
         {form.provider === "s3" && !isSaved ? <p className="text-xs text-amber-700 dark:text-[#f59e0b]">Save changes before testing the shared-data connection.</p> : null}
-        {saveStorage.isError ? <p className="text-xs text-rose-600 dark:text-[#f43f5e]">{saveStorage.error instanceof Error ? saveStorage.error.message : "Shared-data settings could not be saved."}</p> : null}
+        {saveStorage.isError ? <p role="alert" className="text-xs text-rose-600 dark:text-[#f43f5e]">{saveStorage.error instanceof Error ? saveStorage.error.message : "Shared-data settings could not be saved."}</p> : null}
         {testResult ? (
-          <p
+          <p role={testResult.ok ? "status" : "alert"}
             className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs ${
               testResult.ok
                 ? "border-lime-500/30 bg-lime-500/10 text-lime-700 dark:border-[#a3e635]/30 dark:bg-[#a3e635]/10 dark:text-[#a3e635]"

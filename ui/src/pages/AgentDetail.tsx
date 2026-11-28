@@ -380,7 +380,7 @@ export function AgentDetail() {
   );
 
   if (isLoading) return <PageSkeleton variant="detail" />;
-  if (error) return <p className="text-sm text-destructive">{error.message}</p>;
+  if (error) return <p role="alert" className="text-sm text-destructive">{error.message}</p>;
   if (!agent) return null;
   if (!urlRunId && !urlTab) {
     return <Navigate to={`/agents/${canonicalAgentRef}/dashboard`} replace />;
@@ -406,7 +406,7 @@ export function AgentDetail() {
         </nav>
         {canWrite ? (
           <AgentIconPicker value={agent.icon} onChange={(icon) => updateIcon.mutate(icon)}>
-            <button type="button" title="Change agent icon" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 dark:bg-[#090c12] transition-colors hover:bg-slate-100 dark:hover:bg-white/[0.08]">
+            <button type="button" aria-label="Change agent icon" title="Change agent icon" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 dark:bg-[#090c12] transition-colors hover:bg-slate-100 dark:hover:bg-white/[0.08]">
               <AgentIcon icon={agent.icon} className="h-5 w-5" />
             </button>
           </AgentIconPicker>
@@ -457,7 +457,7 @@ export function AgentDetail() {
           {/* Overflow menu */}
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon-xs"><MoreHorizontal className="h-4 w-4" /></Button>
+              <Button type="button" variant="ghost" size="icon-xs" aria-label="More agent actions"><MoreHorizontal className="h-4 w-4" /></Button>
             </PopoverTrigger>
             <PopoverContent className="w-44 p-1" align="end">
               <button type="button" className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/50"

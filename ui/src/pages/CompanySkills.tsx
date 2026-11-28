@@ -270,25 +270,25 @@ function NewSkillForm({
     <div className="border-b border-slate-200/90 dark:border-white/[0.08] bg-white dark:bg-[#0e131d] px-4 py-4">
       <div className="space-y-3">
         <Input
-          value={name}
+          aria-label="Skill name" value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder="Skill name"
           className="h-9 rounded-none border-0 border-b border-slate-200/90 dark:border-white/[0.08] px-0 text-slate-900 dark:text-[#edf2fb] shadow-none focus-visible:ring-0"
         />
         <Input
-          value={slug}
+          aria-label="Skill shortname (optional)" value={slug}
           onChange={(event) => setSlug(event.target.value)}
           placeholder="optional-shortname"
           className="h-9 rounded-none border-0 border-b border-slate-200/90 dark:border-white/[0.08] px-0 text-slate-900 dark:text-[#edf2fb] shadow-none focus-visible:ring-0"
         />
         <Input
-          value={sourceLocator}
+          aria-label="Skill source path" value={sourceLocator}
           onChange={(event) => setSourceLocator(event.target.value)}
           placeholder="/srv/papercompany/company-skills/my-skill"
           className="h-9 rounded-none border-0 border-b border-slate-200/90 dark:border-white/[0.08] px-0 text-slate-900 dark:text-[#edf2fb] shadow-none focus-visible:ring-0"
         />
         <Textarea
-          value={description}
+          aria-label="Short description" value={description}
           onChange={(event) => setDescription(event.target.value)}
           placeholder="Short description"
           className="min-h-20 rounded-none border-0 border-b border-slate-200/90 dark:border-white/[0.08] px-0 text-slate-900 dark:text-[#edf2fb] shadow-none focus-visible:ring-0"
@@ -347,7 +347,7 @@ function SkillTree({
                 )}
               >
                 <button
-                  type="button"
+                  type="button" aria-expanded={expanded}
                   className="flex min-w-0 items-center gap-2 py-1 text-left"
                   style={{ paddingLeft: `${SKILL_TREE_BASE_INDENT + depth * SKILL_TREE_STEP_INDENT}px` }}
                   onClick={() => node.path && onToggleDir(node.path)}
@@ -358,7 +358,7 @@ function SkillTree({
                   <span className="truncate">{node.name}</span>
                 </button>
                 <button
-                  type="button"
+                  type="button" aria-label={expanded ? `Collapse ${node.name}` : `Expand ${node.name}`} aria-expanded={expanded}
                   className="flex h-9 w-9 items-center justify-center self-center rounded-sm text-muted-foreground opacity-70 transition-[background-color,color,opacity] hover:bg-accent hover:text-foreground group-hover:opacity-100"
                   onClick={() => node.path && onToggleDir(node.path)}
                 >
@@ -480,13 +480,13 @@ function SkillList({
                 type="button"
                 className="flex h-9 w-9 shrink-0 items-center justify-center self-center rounded-sm text-muted-foreground opacity-80 transition-[background-color,color,opacity] hover:bg-accent hover:text-foreground group-hover:opacity-100"
                 onClick={() => onToggleSkill(skill.id)}
-                aria-label={expanded ? `Collapse ${skill.name}` : `Expand ${skill.name}`}
+                aria-label={expanded ? `Collapse ${skill.name}` : `Expand ${skill.name}`} aria-expanded={expanded}
               >
                 {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
               </button>
             </div>
             <div
-              aria-hidden={!expanded}
+              aria-hidden={!expanded} inert={!expanded}
               className={cn(
                 "grid overflow-hidden transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
                 expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
@@ -648,10 +648,10 @@ function SkillPane({
                   </Button>
                 )}
                 {updateStatus?.supported && !updateStatus.hasUpdate && !updateStatusLoading && (
-                  <span className="text-xs text-lime-700 dark:text-[#a3e635]">Up to date</span>
+                  <span aria-live="polite" className="text-xs text-lime-700 dark:text-[#a3e635]">Up to date</span>
                 )}
                 {!updateStatus?.supported && updateStatus?.reason && (
-                  <span className="min-w-0 truncate text-xs text-slate-500 dark:text-[#8b97ad]">{updateStatus.reason}</span>
+                  <span aria-live="polite" className="min-w-0 truncate text-xs text-slate-500 dark:text-[#8b97ad]">{updateStatus.reason}</span>
                 )}
               </div>
             )}
@@ -743,7 +743,7 @@ function SkillPane({
               className="min-h-[520px]"
             />
           ) : (
-            <Textarea
+            <Textarea aria-label="Skill file contents"
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               className="min-h-[520px] rounded-none border-0 bg-transparent px-0 py-0 font-mono text-sm shadow-none focus-visible:ring-0"
@@ -1138,7 +1138,7 @@ export function CompanySkills() {
               <div className="flex shrink-0 items-center gap-1">
                 <Button
                   variant="ghost"
-                  size="icon-sm"
+                  size="icon-sm" type="button" aria-label="Scan project workspaces for skills"
                   className="text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]"
                   onClick={() => {
                     if (!canWrite) return;
@@ -1149,7 +1149,7 @@ export function CompanySkills() {
                 >
                   <RefreshCw className={cn("h-4 w-4", scanProjects.isPending && "animate-spin")} />
                 </Button>
-                <Button variant="ghost" size="icon-sm" className="text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]" onClick={() => { if (!canWrite) return; setCreateOpen((value) => !value); }} disabled={!canWrite} title={!canWrite ? "Member, admin, or owner role required to create skills" : "Create a new skill"}>
+                <Button variant="ghost" size="icon-sm" type="button" aria-label="Create a new skill" className="text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]" onClick={() => { if (!canWrite) return; setCreateOpen((value) => !value); }} disabled={!canWrite} title={!canWrite ? "Member, admin, or owner role required to create skills" : "Create a new skill"}>
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
@@ -1158,7 +1158,7 @@ export function CompanySkills() {
             <div className="mt-3 flex min-w-0 items-center gap-2 rounded-md border border-slate-200/90 bg-white px-2 pb-2 pt-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-white/[0.08] dark:bg-[#0e131d] dark:focus-within:border-[#60a5fa] dark:focus-within:ring-[#60a5fa]/25">
               <Search className="h-4 w-4 shrink-0 text-slate-500 dark:text-[#8b97ad]" />
               <input
-                value={skillFilter}
+                aria-label="Filter skills" value={skillFilter}
                 onChange={(event) => setSkillFilter(event.target.value)}
                 placeholder="Filter skills"
                 className="w-full bg-transparent text-sm text-slate-900 dark:text-[#edf2fb] outline-none placeholder:text-slate-400 dark:placeholder:text-[#8b97ad]"
@@ -1167,14 +1167,14 @@ export function CompanySkills() {
 
             <div className="mt-3 flex min-w-0 items-center gap-2 rounded-md border border-slate-200/90 bg-white px-2 pb-2 pt-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-white/[0.08] dark:bg-[#0e131d] dark:focus-within:border-[#60a5fa] dark:focus-within:ring-[#60a5fa]/25">
               <input
-                value={source}
+                aria-label="Skill source to import" value={source}
                 onChange={(event) => setSource(event.target.value)}
                 placeholder="Paste path, GitHub URL, or skills.sh command"
                 disabled={!canWrite}
                 className="w-full bg-transparent text-sm text-slate-900 dark:text-[#edf2fb] outline-none placeholder:text-slate-400 dark:placeholder:text-[#8b97ad] disabled:cursor-not-allowed disabled:opacity-60"
               />
               <Button
-                size="sm"
+                size="sm" type="button" aria-label="Add skill source"
                 variant="ghost"
                 className="shrink-0 text-slate-500 dark:text-[#8b97ad] hover:text-slate-950 dark:hover:text-[#edf2fb]"
                 onClick={handleAddSkillSource}
@@ -1185,7 +1185,7 @@ export function CompanySkills() {
               </Button>
             </div>
             {scanStatusMessage && (
-              <p className="mt-3 truncate text-xs text-slate-500 dark:text-[#8b97ad] tabular-nums">
+              <p aria-live="polite" className="mt-3 truncate text-xs text-slate-500 dark:text-[#8b97ad] tabular-nums">
                 {scanStatusMessage}
               </p>
             )}
@@ -1202,7 +1202,7 @@ export function CompanySkills() {
           {skillsQuery.isLoading ? (
             <PageSkeleton variant="list" />
           ) : skillsQuery.error ? (
-            <div className="px-4 py-6 text-sm text-destructive">{skillsQuery.error.message}</div>
+            <div role="alert" className="px-4 py-6 text-sm text-destructive">{skillsQuery.error.message}</div>
           ) : (
             <SkillList
               skills={skillsQuery.data ?? []}

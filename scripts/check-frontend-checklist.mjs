@@ -13,6 +13,8 @@
 //     carry a rel attribute containing noopener or noreferrer.
 //   Accessibility: same file set — every <img> must carry an alt attribute (alt="" is
 //     allowed for decorative images).
+//   CSS (opt-in): ui/src/index.css must include reduced-motion, print, and
+//     :focus-visible rules. Enable after integrating the stage-37 CSS additions.
 //
 // Modes
 //   (default)   run all checks. While stage-36 workers run in parallel, ui/index.html and
@@ -20,6 +22,8 @@
 //               WARNINGS. ui/src violations are always errors.
 //   --strict    every violation is an error (use in CI / post-integration).
 //   --src-only  run only the ui/src security + accessibility checks (errors).
+//   --head-only run only HTML/Head + SEO/Static checks.
+//   --with-css  also check CSS (errors); ignored by --head-only / --src-only.
 //
 // Fixture testing: set FE_CHECKLIST_UI_DIR to a directory shaped like ui/
 // (index.html, public/, src/).
@@ -30,11 +34,17 @@ import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
 if (args.includes("--help")) {
-  console.log("Usage: node scripts/check-frontend-checklist.mjs [--src-only] [--strict]");
+  console.log("Usage: node scripts/check-frontend-checklist.mjs [--src-only | --head-only] [--strict] [--with-css]");
   process.exit(0);
 }
 const srcOnly = args.includes("--src-only");
+const headOnly = args.includes("--head-only");
 const strict = args.includes("--strict");
+const withCss = args.includes("--with-css") && !srcOnly && !headOnly;
+if (srcOnly && headOnly) {
+  console.error("--src-only and --head-only cannot be combined.");
+  process.exit(1);
+}
 
 const uiDir = process.env.FE_CHECKLIST_UI_DIR
   || join(dirname(fileURLToPath(import.meta.url)), "..", "ui");
@@ -207,11 +217,32 @@ function checkStatic() {
   }
 }
 
+// --- CSS checks (opt-in until the stage-37 CSS rules are integrated) -----------
+
+function checkCss() {
+  const displayPath = "ui/src/index.css";
+  const file = join(uiDir, "src", "index.css");
+  if (!existsSync(file)) {
+    add("error", displayPath, 1, "css/file", "ui/src/index.css not found", "restore the UI stylesheet");
+    return;
+  }
+  const css = readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const [pattern, rule, required] of [
+    [/@media\s*\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)/i, "css/reduced-motion", "@media (prefers-reduced-motion: reduce)"],
+    [/@media\s+print\b/i, "css/print", "@media print"],
+    [/:focus-visible\b/i, "css/focus-visible", ":focus-visible"],
+  ]) {
+    if (!pattern.test(css)) {
+      add("error", displayPath, 1, rule, `missing ${required} rule`, `add a ${required} rule to the stylesheet`);
+    }
+  }
+}
+
 // --- Report ------------------------------------------------------------------
 
 function report() {
   findings.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
-  const mode = srcOnly ? "--src-only" : strict ? "--strict" : "default";
+  const mode = [srcOnly ? "--src-only" : headOnly ? "--head-only" : "", strict ? "--strict" : "", withCss ? "--with-css" : ""].filter(Boolean).join(" ") || "default";
   console.log(`Front-End-Checklist audit (mode: ${mode}, ui root: ${uiDir})`);
   if (findings.length === 0) {
     console.log("All checks passed.");
@@ -232,7 +263,8 @@ try {
     checkHtmlHead();
     checkStatic();
   }
-  checkSrc();
+  if (!headOnly) checkSrc();
+  if (withCss) checkCss();
   process.exit(report());
 } catch (err) {
   console.error(`check-frontend-checklist failed: ${err && err.stack ? err.stack : err}`);

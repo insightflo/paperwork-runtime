@@ -764,7 +764,7 @@ export function Costs() {
           ) : showOverviewLoading ? (
             <PageSkeleton variant="costs" />
           ) : overviewError ? (
-            <p className="text-sm text-destructive">{(overviewError as Error).message}</p>
+            <p role="alert" className="text-sm text-destructive">{(overviewError as Error).message}</p>
           ) : (
             <>
               {activeBudgetIncidents.length > 0 ? (
@@ -966,7 +966,7 @@ export function Costs() {
           {budgetLoading ? (
             <PageSkeleton variant="costs" />
           ) : budgetError ? (
-            <p className="text-sm text-destructive">{(budgetError as Error).message}</p>
+            <p role="alert" className="text-sm text-destructive">{(budgetError as Error).message}</p>
           ) : (
             <>
               <Card className={TACTILE_CARD_CLASS}>
@@ -1219,7 +1219,7 @@ export function Costs() {
           ) : financeLoading ? (
             <PageSkeleton variant="costs" />
           ) : financeError ? (
-            <p className="text-sm text-destructive">{(financeError as Error).message}</p>
+            <p role="alert" className="text-sm text-destructive">{(financeError as Error).message}</p>
           ) : (
             <>
               <FinanceSummaryCard
