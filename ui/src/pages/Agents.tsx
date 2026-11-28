@@ -62,7 +62,7 @@ const STATUS_ROUTES: Partial<Record<TelemetryStatusFilter, string>> = {
 
 /** Explicit column tracks for compact list view. */
 const ROW_TRACKS =
-  "grid grid-cols-[0.875rem_minmax(0,1fr)_max-content] items-center gap-x-3 sm:grid-cols-[0.875rem_minmax(0,1fr)_7rem_4.5rem_max-content]";
+  "grid grid-cols-[0.875rem_minmax(0,1fr)_max-content] items-center gap-x-3 sm:grid-cols-[0.875rem_minmax(0,1fr)_7rem_5.75rem_max-content]";
 
 function statusFilterFromPath(pathSegment: string): TelemetryStatusFilter {
   if (pathSegment === "active") return "running";
@@ -109,12 +109,8 @@ function FleetCell({
         <span aria-hidden className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dot)} />
         <span className="truncate">{label}</span>
       </span>
-      <span className="truncate font-mono text-xl font-bold leading-tight tabular-nums text-foreground dark:text-[#eef2f8]">
-        {value}
-      </span>
-      <span className="truncate text-[11px] tabular-nums text-muted-foreground dark:text-[#627089]">
-        {sub}
-      </span>
+      <span className="truncate font-mono text-xl font-bold leading-tight tabular-nums text-foreground dark:text-[#eef2f8]">{value}</span>
+      <span className="truncate text-[11px] tabular-nums text-muted-foreground dark:text-[#627089]">{sub}</span>
     </button>
   );
 }
@@ -227,19 +223,24 @@ export function Agents() {
 
   const liveAgentIds = useMemo(() => new Set(liveRunByAgent.keys()), [liveRunByAgent]);
 
-  // Group recent heartbeat runs per agent (newest first)
-  const recentRunsByAgent = useMemo(() => {
-    const map = new Map<string, HeartbeatRun[]>();
+  // Group recent execution runs per agent (newest first)
+  // Latest execution recency comes from run history, not heartbeat presence.
+  const { recentRunsByAgent, latestExecutionByAgent } = useMemo(() => {
+    const runsByAgent = new Map<string, HeartbeatRun[]>();
+    const latestByAgent = new Map<string, Date | string>();
     for (const run of recentRuns ?? []) {
-      const bucket = map.get(run.agentId);
-      if (bucket) {
-        bucket.push(run);
-      } else {
-        map.set(run.agentId, [run]);
+      const bucket = runsByAgent.get(run.agentId);
+      if (bucket) bucket.push(run);
+      else runsByAgent.set(run.agentId, [run]);
+      if (!latestByAgent.has(run.agentId)) {
+        latestByAgent.set(run.agentId, run.finishedAt ?? run.startedAt ?? run.createdAt);
       }
     }
-    return map;
-  }, [recentRuns]);
+    for (const [agentId, live] of liveRunByAgent) {
+      if (live.startedAt) latestByAgent.set(agentId, live.startedAt);
+    }
+    return { recentRunsByAgent: runsByAgent, latestExecutionByAgent: latestByAgent };
+  }, [recentRuns, liveRunByAgent]);
 
   // Map agentId -> 24h usage share from dashboard telemetry
   const usageShareByAgent = useMemo(() => {
@@ -375,7 +376,7 @@ export function Agents() {
           label="전체 에이전트"
           value={fleet.total}
           dot="bg-blue-500 dark:bg-primary"
-          sub={`라이브 ${fleet.live} · 일시정지 ${fleet.paused}`}
+          sub={`실행 중 ${fleet.live} · 일시정지 ${fleet.paused}`}
           active={statusFilter === "all"}
           onClick={() => handleStatusSelect("all")}
         />
@@ -386,7 +387,7 @@ export function Agents() {
             "bg-emerald-700 dark:bg-emerald-300",
             (fleet.running > 0 || fleet.live > 0) && "animate-pulse",
           )}
-          sub={`실행 ${fleet.running} · 준비 ${Math.max(0, fleet.active - fleet.running)}`}
+          sub={`실행 중 ${fleet.running} · 활성 ${Math.max(0, fleet.active - fleet.running)}`}
           active={statusFilter === "running"}
           onClick={() => handleStatusSelect("running")}
         />
@@ -408,7 +409,7 @@ export function Agents() {
                 ? "bg-amber-500 dark:bg-[#f59e0b]"
                 : "bg-slate-400 dark:bg-[#627089]"
           }
-          sub={`오류 ${fleet.errors} · 정지 ${fleet.paused} · 승인 ${fleet.approvals}`}
+          sub={`오류 ${fleet.errors} · 일시정지 ${fleet.paused} · 승인 ${fleet.approvals}`}
           active={statusFilter === "attention"}
           onClick={() => handleStatusSelect("attention")}
         />
@@ -681,7 +682,7 @@ export function Agents() {
               sub={`${roleLabels[agent.role] ?? agent.role}${agent.title ? ` - ${agent.title}` : ""}`}
               dot={agentStatusDot[agent.status] ?? agentStatusDotDefault}
               adapter={adapterLabels[agent.adapterType] ?? agent.adapterType}
-              heartbeat={agent.lastHeartbeatAt ? relativeTime(agent.lastHeartbeatAt) : "—"}
+              executionAt={latestExecutionByAgent.get(agent.id) ?? null}
               status={agent.status}
               live={liveRunByAgent.get(agent.id)}
               agentRef={agentRouteRef(agent)}
@@ -691,7 +692,7 @@ export function Agents() {
       )}
 
       {effectiveView === "list" && agents && agents.length > 0 && filtered.length === 0 && (
-        <p className="py-8 text-center text-sm text-muted-foreground">
+        <p className="tactile-card rounded-[12px] border border-dashed border-slate-300/90 bg-white/80 py-10 text-center text-sm text-slate-500 dark:border-white/[0.12] dark:bg-card dark:bg-none dark:text-[#9aa7bd]">
           선택한 필터에 해당하는 에이전트가 없습니다.
         </p>
       )}
@@ -706,19 +707,20 @@ export function Agents() {
               depth={0}
               agentMap={agentMap}
               liveRunByAgent={liveRunByAgent}
+              latestExecutionByAgent={latestExecutionByAgent}
             />
           ))}
         </div>
       )}
 
       {effectiveView === "org" && orgTree && orgTree.length > 0 && filteredOrg.length === 0 && (
-        <p className="py-8 text-center text-sm text-muted-foreground">
+        <p className="tactile-card rounded-[12px] border border-dashed border-slate-300/90 bg-white/80 py-10 text-center text-sm text-slate-500 dark:border-white/[0.12] dark:bg-card dark:bg-none dark:text-[#9aa7bd]">
           선택한 필터에 해당하는 에이전트가 없습니다.
         </p>
       )}
 
       {effectiveView === "org" && orgTree && orgTree.length === 0 && (
-        <p className="py-8 text-center text-sm text-muted-foreground">
+        <p className="tactile-card rounded-[12px] border border-dashed border-slate-300/90 bg-white/80 py-10 text-center text-sm text-slate-500 dark:border-white/[0.12] dark:bg-card dark:bg-none dark:text-[#9aa7bd]">
           정의된 조직 계층 구조가 없습니다.
         </p>
       )}
@@ -733,7 +735,7 @@ function AgentRow({
   sub,
   dot,
   adapter,
-  heartbeat,
+  executionAt,
   status,
   live,
   agentRef,
@@ -744,7 +746,7 @@ function AgentRow({
   sub: string;
   dot: string;
   adapter: string | null;
-  heartbeat: string | null;
+  executionAt: Date | string | null;
   status: string;
   live?: AgentLiveRunSummary;
   agentRef: string;
@@ -763,32 +765,24 @@ function AgentRow({
         <span className={`absolute inline-flex h-full w-full rounded-full ${dot}`} />
       </span>
       <span className="flex min-w-0 flex-col">
-        <span className="truncate text-sm font-medium text-foreground dark:text-[#eef2f8]">
-          {name}
-        </span>
+        <span className="truncate text-sm font-medium text-foreground dark:text-[#eef2f8]">{name}</span>
         <span className="truncate text-xs text-muted-foreground dark:text-[#9aa7bd]">{sub}</span>
       </span>
-      {adapter && (
-        <span
-          title={adapter}
-          className="hidden truncate font-mono text-xs text-muted-foreground sm:block dark:text-[#9aa7bd]"
-        >
-          {adapter}
-        </span>
-      )}
-      {heartbeat && (
-        <span className="hidden truncate text-right font-mono text-xs tabular-nums text-muted-foreground sm:block dark:text-[#627089]">
-          {heartbeat}
-        </span>
-      )}
+      <span
+        title={adapter ?? undefined}
+        className="hidden truncate font-mono text-xs text-muted-foreground sm:block dark:text-[#9aa7bd]"
+      >
+        {adapter ?? "—"}
+      </span>
+      <span
+        title={executionAt ? new Date(executionAt).toLocaleString() : "최근 실행 기록 없음"}
+        className="hidden min-w-0 flex-col text-right font-mono text-xs tabular-nums text-muted-foreground sm:flex dark:text-[#627089]"
+      >
+        <span className="text-[9px] font-medium uppercase tracking-[0.12em] text-muted-foreground/80 dark:text-[#627089]">최근 실행</span>
+        <span className="truncate">{executionAt ? relativeTime(executionAt) : "—"}</span>
+      </span>
       <span className="flex items-center justify-end gap-2">
-        {live && (
-          <LiveRunIndicator
-            agentRef={agentRef}
-            runId={live.runId}
-            liveCount={live.liveCount}
-          />
-        )}
+        {live && <LiveRunIndicator agentRef={agentRef} runId={live.runId} liveCount={live.liveCount} />}
         <StatusBadge status={status} />
       </span>
     </Link>
@@ -800,11 +794,13 @@ function OrgTreeNode({
   depth,
   agentMap,
   liveRunByAgent,
+  latestExecutionByAgent,
 }: {
   node: OrgNode;
   depth: number;
   agentMap: Map<string, Agent>;
   liveRunByAgent: Map<string, AgentLiveRunSummary>;
+  latestExecutionByAgent: ReadonlyMap<string, Date | string>;
 }) {
   const agent = agentMap.get(node.id);
   return (
@@ -815,7 +811,7 @@ function OrgTreeNode({
         sub={roleLabels[node.role] ?? node.role}
         dot={agentStatusDot[node.status] ?? agentStatusDotDefault}
         adapter={agent ? adapterLabels[agent.adapterType] ?? agent.adapterType : null}
-        heartbeat={agent ? (agent.lastHeartbeatAt ? relativeTime(agent.lastHeartbeatAt) : "—") : null}
+        executionAt={latestExecutionByAgent.get(node.id) ?? null}
         status={node.status}
         live={liveRunByAgent.get(node.id)}
         agentRef={agent ? agentRouteRef(agent) : node.id}
@@ -829,6 +825,7 @@ function OrgTreeNode({
               depth={depth + 1}
               agentMap={agentMap}
               liveRunByAgent={liveRunByAgent}
+              latestExecutionByAgent={latestExecutionByAgent}
             />
           ))}
         </div>
@@ -856,7 +853,7 @@ function LiveRunIndicator({
         <span className="absolute inline-flex h-full w-full animate-pulse rounded-full bg-emerald-700 opacity-75 dark:bg-emerald-300" />
         <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-700 dark:bg-emerald-300" />
       </span>
-      Live{liveCount > 1 ? ` (${liveCount})` : ""}
+      실행 중{liveCount > 1 ? ` (${liveCount})` : ""}
     </Link>
   );
 }
