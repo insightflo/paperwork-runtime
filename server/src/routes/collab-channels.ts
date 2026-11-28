@@ -6,7 +6,7 @@ import { z } from "zod";
 import { collabChannels, collabMessages, collabThreads, type Db } from "@paperclipai/db";
 import { exceptionHuddleDecisionSchema, exceptionHuddleStatusSchema } from "@paperclipai/shared/validators/exception-huddle";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
-import { forbidden } from "../errors.js";
+import { badRequest, forbidden } from "../errors.js";
 import { logActivity } from "../services/index.js";
 import { collabChannelsService } from "../services/collab-channels.js";
 import {
@@ -17,6 +17,7 @@ import {
 } from "../services/missions/exception-huddle-service.js";
 import { listMissionExceptionHuddles } from "../services/missions/exception-huddle-queries.js";
 import { getExceptionHuddleTelemetrySummary } from "../services/missions/exception-huddle-summary-service.js";
+import { listExceptionHuddleAuditEntries } from "../services/missions/exception-huddle-audit-query.js";
 
 type ChannelRow = typeof collabChannels.$inferSelect;
 type ThreadRow = typeof collabThreads.$inferSelect;
@@ -88,6 +89,18 @@ const huddleDecisionSchema = z.object({
   decision: exceptionHuddleDecisionSchema,
 }).strict();
 const serializeHuddleMessage = (row: MessageRow) => ({ ...serializeMessage(row), metadata: row.metadata ?? null });
+
+const singleTrimmedQueryParam = (value: unknown, name: string) => {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value) || typeof value !== "string") throw badRequest(`Invalid ${name}`);
+  return value.trim() || undefined;
+};
+const positiveIntegerQueryParam = (value: unknown, name: string) => {
+  if (value === undefined) return undefined;
+  const parsed = Array.isArray(value) || typeof value !== "string" ? NaN : Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) throw badRequest(`Invalid ${name}`);
+  return parsed;
+};
 
 export function collabChannelsRoutes(db: Db) {
   const router = Router();
@@ -250,6 +263,16 @@ export function collabChannelsRoutes(db: Db) {
       ...(missionId ? { missionId } : {}),
     });
     res.json({ companyId, missionId: missionId ?? null, summary });
+  });
+
+  router.get("/companies/:companyId/collab-channels/huddles/audit", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const missionId = singleTrimmedQueryParam(req.query.missionId, "missionId");
+    const threadId = singleTrimmedQueryParam(req.query.threadId, "threadId");
+    const limit = positiveIntegerQueryParam(req.query.limit, "limit");
+    const entries = await listExceptionHuddleAuditEntries(db, { companyId, missionId, threadId, limit });
+    res.json({ companyId, entries });
   });
 
   router.get("/companies/:companyId/collab-channels/huddles/:threadId", async (req, res) => {
