@@ -7,13 +7,8 @@ import request from "supertest";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
-  agents,
-  agentWakeupRequests,
-  collabChannels,
-  collabMessages,
-  collabThreads,
-  companies,
-  type Db,
+  agents, agentWakeupRequests, collabChannels, collabMessages, collabThreads, companies, issues, missions,
+  workflowDefinitions, workflowRuns, workflowTransitionEvents, type Db,
 } from "@paperclipai/db";
 import { collabChannelsRoutes } from "../routes/collab-channels.js";
 import { errorHandler } from "../middleware/index.js";
@@ -55,6 +50,22 @@ async function seedWorld() {
   return { company, owner, producer, validator, outsider };
 }
 type World = Awaited<ReturnType<typeof seedWorld>>;
+
+async function seedExecutionRefs(world: World) {
+  const [mission] = await db.insert(missions).values({
+    companyId: world.company.id, ownerAgentId: world.owner.id, title: `mission-${randomUUID()}`,
+  }).returning();
+  const [workflow] = await db.insert(workflowDefinitions).values({
+    companyId: world.company.id, missionId: mission.id, name: `workflow-${randomUUID()}`,
+  }).returning();
+  const [run] = await db.insert(workflowRuns).values({
+    companyId: world.company.id, missionId: mission.id, workflowId: workflow.id, triggeredBy: "exception-huddle-test",
+  }).returning();
+  const [issue] = await db.insert(issues).values({
+    companyId: world.company.id, missionId: mission.id, assigneeAgentId: world.producer.id, title: `issue-${randomUUID()}`,
+  }).returning();
+  return { missionId: mission.id, workflowRunId: run.id, sourceIssueId: issue.id };
+}
 
 function huddleInput(world: World, overrides: Partial<ConveneExceptionHuddleInput> = {}): ConveneExceptionHuddleInput {
   return {
@@ -162,10 +173,10 @@ describe("exception huddle service persistence", () => {
 });
 
 describe("exception huddle routes", () => {
-  async function conveneThroughRoute(world: World) {
+  async function conveneThroughRoute(world: World, overrides: Record<string, unknown> = {}) {
     const res = await request(createApp(db, boardActor(world.company.id)))
       .post(huddlesPath(world.company.id))
-      .send(huddlePayload(world));
+      .send(huddlePayload(world, overrides));
     expect(res.status).toBe(201);
     return res.body as { threadId: string; channelId: string };
   }
@@ -223,7 +234,8 @@ describe("exception huddle routes", () => {
 
   it("enforces owner-only structured decisions and persists thread resolution", async () => {
     const world = await seedWorld();
-    const created = await conveneThroughRoute(world);
+    const refs = await seedExecutionRefs(world);
+    const created = await conveneThroughRoute(world, refs);
     const decidePath = `${huddlesPath(world.company.id)}/${created.threadId}/decide`;
     const invalid = await request(createApp(db, boardActor(world.company.id)))
       .post(decidePath)
@@ -249,6 +261,20 @@ describe("exception huddle routes", () => {
       decidedByAgentId: world.owner.id,
       decision: { kind: "retry_with_guidance", guidance: decision.guidance },
     });
+    const auditKey = `huddle-exec:${refs.workflowRunId}:qa-review:retry_with_guidance`;
+    expect(decided.body.executionPlan).toStrictEqual({
+      kind: "retry_existing_step", createUnblockIssue: false, workflowRunId: refs.workflowRunId,
+      sourceStepId: "qa-review", sourceIssueId: refs.sourceIssueId, guidance: decision.guidance,
+      rationale: decision.rationale, forcedByChair: false, idempotencyKey: auditKey,
+    });
+    const auditRows = await db.select().from(workflowTransitionEvents).where(eq(workflowTransitionEvents.idempotencyKey, auditKey));
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows[0]).toMatchObject({
+      companyId: world.company.id, missionId: refs.missionId, workflowRunId: refs.workflowRunId,
+      issueId: refs.sourceIssueId, eventType: "exception_huddle_decision_planned", layer: "mission_owner_recovery",
+      reasonCode: "retry_with_guidance",
+    });
+    expect(auditRows[0]?.payload).toMatchObject({ threadId: created.threadId, plan: decided.body.executionPlan });
     const [thread] = await db.select().from(collabThreads).where(eq(collabThreads.id, created.threadId));
     expect(thread.status).toBe("resolved");
     const read = await request(createApp(db, boardActor(world.company.id)))
@@ -263,5 +289,6 @@ describe("exception huddle routes", () => {
       .send({ actorAgentId: world.owner.id, decision });
     expect(again.status).toBe(409);
     expect(again.body.error).toBe("huddle_already_closed");
+    expect(await db.select().from(workflowTransitionEvents).where(eq(workflowTransitionEvents.idempotencyKey, auditKey))).toHaveLength(1);
   });
 });
