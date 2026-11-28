@@ -59,7 +59,7 @@ import {
   syncToolRegistryToolsToCore,
 } from "../services/workflow/tool-catalog.js";
 import type { WorkflowDefinition, WorkflowRun, WorkflowStepRun } from "../services/workflow/types.js";
-import { badRequest, conflict, notFound, unauthorized, unprocessable } from "../errors.js";
+import { badRequest, conflict, HttpError, notFound, unauthorized, unprocessable } from "../errors.js";
 import { accessService } from "../services/access.js";
 import { logger } from "../middleware/logger.js";
 import { assertBoard, assertCompanyAccess, assertCompanyAdminAccess, getActorInfo } from "./authz.js";
@@ -680,11 +680,29 @@ export function workflowRoutes(db: Db) {
     }
     await assertCompanyWriteAccess(access, req, run.companyId);
 
-    const retryResult = await retryIssueLessToolWorkflowStep(db, {
-      companyId: run.companyId,
-      runId: run.id,
-      stepId: stepRun.stepId,
-    });
+    let retryResult: Awaited<ReturnType<typeof retryIssueLessToolWorkflowStep>>;
+    try {
+      retryResult = await retryIssueLessToolWorkflowStep(db, {
+        companyId: run.companyId,
+        runId: run.id,
+        stepId: stepRun.stepId,
+      });
+    } catch (err) {
+      if (
+        err instanceof Error &&
+        !(err instanceof HttpError) &&
+        (err.message.startsWith("workproduct_selector_") ||
+          err.message.startsWith("qa_artifact_") ||
+          err.message.startsWith("producer_rebind_"))
+      ) {
+        const diagnostic = (err as { diagnostic?: unknown }).diagnostic;
+        throw conflict(err.message, {
+          code: err.message,
+          ...(diagnostic ? { diagnostic } : {}),
+        });
+      }
+      throw err;
+    }
     if (!retryResult) {
       throw unprocessable("Only failed issue-less tool steps can be rerun directly from the core workflow UI");
     }
