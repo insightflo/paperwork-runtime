@@ -947,7 +947,7 @@ export function NewIssueDialog() {
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Popover open={companyOpen} onOpenChange={setCompanyOpen}>
               <PopoverTrigger asChild>
-                <button
+                <button type="button" aria-label={`Choose company: ${dialogCompany?.name ?? "No company selected"}`}
                   className={cn(
                     "px-1.5 py-0.5 rounded text-xs font-semibold cursor-pointer hover:opacity-80 transition-opacity",
                     !dialogCompany?.brandColor && "border border-slate-200 bg-slate-100 text-slate-600 dark:border-white/10 dark:bg-background dark:text-slate-300",
@@ -966,7 +966,7 @@ export function NewIssueDialog() {
               </PopoverTrigger>
               <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-card dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-48 p-1" align="start">
                 {companies.filter((c) => c.status !== "archived").map((c) => (
-                  <button
+                  <button type="button" aria-label={`Select ${c.name}`}
                     key={c.id}
                     className={cn(
                       "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5",
@@ -1002,7 +1002,7 @@ export function NewIssueDialog() {
             <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">New work item</span>
           </div>
           <div className="flex items-center gap-1">
-            <Button
+            <Button type="button" aria-label={expanded ? "Collapse work item dialog" : "Expand work item dialog"}
               variant="ghost"
               size="icon-xs"
               className="text-muted-foreground"
@@ -1011,7 +1011,7 @@ export function NewIssueDialog() {
             >
               {expanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </Button>
-            <Button
+            <Button type="button" aria-label="Close work item dialog"
               variant="ghost"
               size="icon-xs"
               className="text-muted-foreground"
@@ -1025,7 +1025,7 @@ export function NewIssueDialog() {
 
         {/* Title */}
         <div className="px-4 pt-4 pb-2 shrink-0">
-          <textarea
+          <textarea aria-label="Work item title"
             className="w-full text-lg font-semibold bg-transparent text-slate-950 caret-emerald-700 outline-none resize-none overflow-hidden placeholder:text-slate-400 dark:text-slate-50 dark:caret-emerald-300 dark:placeholder:text-slate-500"
             placeholder="Work item title"
             rows={1}
@@ -1170,7 +1170,7 @@ export function NewIssueDialog() {
               <div className="text-[11px] text-muted-foreground">
                 Control whether this work item runs in the shared execution context, a new isolated execution context, or an existing one.
               </div>
-              <select
+              <select aria-label="Execution context"
                 className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15 dark:border-white/10 dark:bg-background dark:text-slate-200 dark:focus:border-primary dark:focus:ring-primary/20"
                 value={executionWorkspaceMode}
                 onChange={(e) => {
@@ -1187,7 +1187,7 @@ export function NewIssueDialog() {
                 ))}
               </select>
               {executionWorkspaceMode === "reuse_existing" && (
-                <select
+                <select aria-label="Existing execution context"
                   className="w-full rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/15 dark:border-white/10 dark:bg-background dark:text-slate-200 dark:focus:border-primary dark:focus:ring-primary/20"
                   value={selectedExecutionWorkspaceId}
                   onChange={(e) => setSelectedExecutionWorkspaceId(e.target.value)}
@@ -1211,7 +1211,7 @@ export function NewIssueDialog() {
 
         {supportsAssigneeOverrides && (
           <div className="px-4 pb-2 shrink-0">
-            <button
+            <button type="button" aria-label={assigneeOptionsTitle} aria-expanded={assigneeOptionsOpen}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => setAssigneeOptionsOpen((open) => !open)}
             >
@@ -1237,7 +1237,7 @@ export function NewIssueDialog() {
                   <div className="text-xs text-muted-foreground">Thinking effort</div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {thinkingEffortOptions.map((option) => (
-                      <button
+                      <button type="button" aria-label={`Thinking effort: ${option.label}`}
                         key={option.value || "default"}
                         className={cn(
                           "px-2 py-1 rounded-md text-xs border border-border hover:bg-slate-100 dark:hover:bg-white/5 transition-colors",
@@ -1253,7 +1253,7 @@ export function NewIssueDialog() {
                 {assigneeAdapterType === "claude_local" && (
                   <div className="flex items-center justify-between rounded-md border border-border px-2 py-1.5">
                     <div className="text-xs text-muted-foreground">Enable Chrome (--chrome)</div>
-                    <button
+                    <button type="button" aria-label="Enable Chrome (--chrome)" aria-pressed={assigneeChrome}
                       className={cn(
                         "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
                         assigneeChrome ? "bg-emerald-700 dark:bg-emerald-300" : "bg-slate-200 dark:bg-white/10"
@@ -1324,7 +1324,7 @@ export function NewIssueDialog() {
                             <span>{formatFileSize(file.file)}</span>
                           </div>
                         </div>
-                        <Button
+                        <Button type="button" aria-label={`Remove document: ${file.file.name}`}
                           variant="ghost"
                           size="icon-xs"
                           className="shrink-0 text-muted-foreground"
@@ -1355,7 +1355,7 @@ export function NewIssueDialog() {
                             {file.file.type || "application/octet-stream"} • {formatFileSize(file.file)}
                           </div>
                         </div>
-                        <Button
+                        <Button type="button" aria-label={`Remove attachment: ${file.file.name}`}
                           variant="ghost"
                           size="icon-xs"
                           className="shrink-0 text-muted-foreground"
@@ -1379,14 +1379,14 @@ export function NewIssueDialog() {
           {/* Status chip */}
           <Popover open={statusOpen} onOpenChange={setStatusOpen}>
             <PopoverTrigger asChild>
-              <button className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
+              <button type="button" aria-label={`Status: ${currentStatus.label}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
                 <CircleDot className={cn("h-3 w-3", currentStatus.color)} />
                 {currentStatus.label}
               </button>
             </PopoverTrigger>
             <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-card dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-36 p-1" align="start">
               {statuses.map((s) => (
-                <button
+                <button type="button" aria-label={`Status: ${s.label}`}
                   key={s.value}
                   className={cn(
                     "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5",
@@ -1404,7 +1404,7 @@ export function NewIssueDialog() {
           {/* Priority chip */}
           <Popover open={priorityOpen} onOpenChange={setPriorityOpen}>
             <PopoverTrigger asChild>
-              <button className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
+              <button type="button" aria-label={`Priority: ${currentPriority?.label ?? "None"}`} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
                 {currentPriority ? (
                   <>
                     <currentPriority.icon className={cn("h-3 w-3", currentPriority.color)} />
@@ -1420,7 +1420,7 @@ export function NewIssueDialog() {
             </PopoverTrigger>
             <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-card dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-36 p-1" align="start">
               {priorities.map((p) => (
-                <button
+                <button type="button" aria-label={`Priority: ${p.label}`}
                   key={p.value}
                   className={cn(
                     "flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5",
@@ -1436,12 +1436,12 @@ export function NewIssueDialog() {
           </Popover>
 
           {/* Labels chip (placeholder) */}
-          <button className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
+          <button type="button" aria-label="Labels" className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
             <Tag className="h-3 w-3" />
             Labels
           </button>
 
-          <input
+          <input aria-label="Upload files"
             ref={stageFileInputRef}
             type="file"
             accept={STAGED_FILE_ACCEPT}
@@ -1449,7 +1449,7 @@ export function NewIssueDialog() {
             onChange={handleStageFilesPicked}
             multiple
           />
-          <button
+          <button type="button" aria-label="Upload files"
             className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/90 bg-white px-2 py-1 text-xs text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-300 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]"
             onClick={() => stageFileInputRef.current?.click()}
             disabled={createIssue.isPending}
@@ -1461,16 +1461,16 @@ export function NewIssueDialog() {
           {/* More (dates) */}
           <Popover open={moreOpen} onOpenChange={setMoreOpen}>
             <PopoverTrigger asChild>
-              <button className="inline-flex items-center justify-center rounded-md border border-slate-200/90 bg-white p-1 text-xs text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-400 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
+              <button type="button" aria-label="More work item options" className="inline-flex items-center justify-center rounded-md border border-slate-200/90 bg-white p-1 text-xs text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] transition-colors hover:border-slate-300 hover:bg-slate-50 dark:border-white/10 dark:bg-background dark:text-slate-400 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] dark:hover:border-white/20 dark:hover:bg-[#111827]">
                 <MoreHorizontal className="h-3 w-3" />
               </button>
             </PopoverTrigger>
             <PopoverContent className="tactile-card rounded-[12px] border-[var(--pw-hairline)] bg-white text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_10px_28px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-card dark:bg-none dark:text-slate-100 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_rgba(0,0,0,0.42)] w-44 p-1" align="start">
-              <button className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5 text-muted-foreground">
+              <button type="button" aria-label="Start date" className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5 text-muted-foreground">
                 <Calendar className="h-3 w-3" />
                 Start date
               </button>
-              <button className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5 text-muted-foreground">
+              <button type="button" aria-label="Due date" className="flex items-center gap-2 w-full px-2 py-1.5 text-xs rounded-md hover:bg-slate-100 dark:hover:bg-white/5 text-muted-foreground">
                 <Calendar className="h-3 w-3" />
                 Due date
               </button>
@@ -1480,7 +1480,7 @@ export function NewIssueDialog() {
 
         {/* Footer */}
         <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-200/80 bg-slate-50/50 shrink-0 dark:border-white/10 dark:bg-background">
-          <Button
+          <Button type="button" aria-label="Discard Draft"
             variant="ghost"
             size="sm"
             className="text-muted-foreground"
@@ -1497,10 +1497,10 @@ export function NewIssueDialog() {
                   Creating work item...
                 </span>
               ) : createIssue.isError ? (
-                <span className="text-xs text-destructive">{createIssueErrorMessage}</span>
+                <span role="alert" className="text-xs text-destructive">{createIssueErrorMessage}</span>
               ) : null}
             </div>
-            <Button
+            <Button type="button" aria-label="Create Work Item"
               size="sm"
               className="min-w-[8.5rem] bg-primary text-primary-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.28)] hover:bg-primary/90 tabular-nums disabled:opacity-100"
               disabled={!title.trim() || createIssue.isPending}

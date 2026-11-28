@@ -119,7 +119,7 @@ export function NewAgentDialog() {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-200/80 bg-white/70 px-4 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/[0.08] dark:bg-[#090c12]/85 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
           <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-600 dark:text-[#8f9db3]">Add a new agent</span>
-          <Button
+          <Button type="button" aria-label="Close new agent dialog"
             variant="ghost"
             size="icon-xs"
             className="text-muted-foreground transition-colors hover:bg-slate-100 hover:text-foreground dark:hover:bg-white/[0.06]"
@@ -147,7 +147,7 @@ export function NewAgentDialog() {
                 </p>
               </div>
 
-              <Button
+              <Button type="button" aria-label="Ask the CEO to create a new agent"
                 className="w-full border border-[#2563eb]/50 bg-[#2563eb] font-semibold text-white shadow-[0_10px_24px_-12px_rgba(37,99,235,0.65)] transition-colors hover:bg-[#1d4ed8] dark:border-[#60a5fa]/45 dark:bg-[#60a5fa] dark:text-[#08111f] dark:hover:bg-[#7db4fb]"
                 size="lg"
                 onClick={handleAskCeo}
@@ -158,7 +158,7 @@ export function NewAgentDialog() {
 
               {/* Advanced link */}
               <div className="text-center">
-                <button
+                <button aria-label="I want advanced configuration myself"
                   type="button"
                   className="text-xs font-medium text-slate-500 underline decoration-slate-300 underline-offset-4 transition-colors hover:text-[#2563eb] hover:decoration-[#2563eb] dark:text-[#8f9db3] dark:decoration-[#42506a] dark:hover:text-[#60a5fa] dark:hover:decoration-[#60a5fa]"
                   onClick={handleAdvancedConfig}
@@ -170,7 +170,7 @@ export function NewAgentDialog() {
           ) : (
             <>
               <div className="space-y-2">
-                <button
+                <button aria-label="Back"
                   type="button"
                   className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-[#2563eb] dark:text-[#8f9db3] dark:hover:text-[#60a5fa]"
                   onClick={() => setShowAdvancedCards(false)}
@@ -185,7 +185,7 @@ export function NewAgentDialog() {
 
               <div className="grid grid-cols-2 gap-2">
                 {ADVANCED_ADAPTER_OPTIONS.map((opt) => (
-                  <button
+                  <button aria-label={`Configure ${opt.label}: ${opt.desc}`}
                     type="button"
                     key={opt.value}
                     className={cn(
