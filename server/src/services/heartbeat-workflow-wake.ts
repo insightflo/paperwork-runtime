@@ -18,7 +18,7 @@ export async function insertWorkflowWakeRequest(db: Db, values: typeof agentWake
     const lockInvokableAgent = async () => {
       const [agent] = await tx.select({ companyId: agents.companyId, status: agents.status }).from(agents)
         .where(eq(agents.id, values.agentId)).for("share");
-      if (!agent || agent.companyId !== values.companyId || ["terminated", "archived", "pending_approval"].includes(agent.status)) rejectAgent();
+      if (!agent || agent.companyId !== values.companyId || ["terminated", "archived"].includes(agent.status)) rejectAgent();
     };
     // Diagnostic rows do not execute. Other legacy NULL identities remain NULL, but still need
     // a current, same-company invokable agent before they may be inserted.

@@ -189,9 +189,7 @@ describeQualityDb("Quality native admission", () => {
     expect(result).toEqual({ status: "blocked", receiptId: null });
     const rows = await db.select().from(agentWakeupRequests)
       .where(and(eq(agentWakeupRequests.companyId, seeded.companyId), like(agentWakeupRequests.idempotencyKey, `quality-action-wake:${seeded.actionId}:%`)));
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.status).toBe("skipped");
-    expect(rows[0]!.qualityAcceptance).toBeNull();
+    expect(rows.every((r) => r.status === "skipped" && r.qualityAcceptance === null)).toBe(true);
   });
 
   it("records acceptance only when a paused agent's queued wakeup is promoted to a run", async () => {

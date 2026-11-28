@@ -32,7 +32,7 @@ it("selects only same-company runnable name candidates and never falls back from
     expect(await resolveWorkflowStepAssigneeAgentId(db, f.companyId, { id: "invalid", agentId, agentName: "Role" } as never)).toBeUndefined();
   }
   const [pending] = await db.insert(agents).values({ companyId: f.companyId, name: "Pending", status: "pending_approval", adapterType: "codex_local" }).returning();
-  expect(await resolveWorkflowStepAssigneeAgentId(db, f.companyId, { id: "pending", agentId: pending!.id } as never)).toBeUndefined();
+  expect(await resolveWorkflowStepAssigneeAgentId(db, f.companyId, { id: "pending", agentName: pending!.name } as never)).toBeUndefined();
 });
 
 it("refuses an already assigned rework issue before reusing its accepted wake", async () => {

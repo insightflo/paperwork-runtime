@@ -292,7 +292,7 @@ async function runnableWorkflowAssigneeId(
       selector.id ? eq(agents.id, selector.id) : eq(agents.name, selector.name!),
       ne(agents.status, "terminated"),
       ne(agents.status, "archived"),
-      ne(agents.status, "pending_approval"),
+      ...(selector.id ? [] : [ne(agents.status, "pending_approval")]),
     ))
     .orderBy(asc(agents.createdAt))
     .limit(1);
