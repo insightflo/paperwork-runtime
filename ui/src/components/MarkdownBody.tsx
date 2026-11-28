@@ -139,18 +139,16 @@ export function MarkdownBody({ children, className, resolveImageSrc }: MarkdownB
         );
       }
       return (
-        <a href={href} rel="noreferrer">
+        <a href={href} rel="noopener noreferrer">
           {linkChildren}
         </a>
       );
     },
   };
-  if (resolveImageSrc) {
-    components.img = ({ node: _node, src, alt, ...imgProps }) => {
-      const resolved = src ? resolveImageSrc(src) : null;
-      return <img {...imgProps} src={resolved ?? src} alt={alt ?? ""} loading="lazy" decoding="async" />;
-    };
-  }
+  components.img = ({ node: _node, src, alt, ...imgProps }) => {
+    const resolved = src ? resolveImageSrc?.(src) : null;
+    return <img {...imgProps} src={resolved ?? src} alt={alt ?? ""} decoding="async" />;
+  };
 
   return (
     <div
