@@ -129,7 +129,7 @@ export function ExecutionWorkspaceDetail() {
           <a
             href={repoLink}
             target="_blank"
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className={cn("inline-flex shrink-0 items-center gap-1.5", CTA_PRIMARY)}
           >
             Open repo
@@ -177,7 +177,7 @@ export function ExecutionWorkspaceDetail() {
               <a
                 href={repoLink}
                 target="_blank"
-                rel="noreferrer"
+                rel="noopener noreferrer"
                 className="inline-flex min-w-0 items-center gap-1.5 text-blue-600 transition-colors hover:text-blue-700 hover:underline dark:text-[#60a5fa] dark:hover:text-[#93c5fd]"
               >
                 <span className="min-w-0 whitespace-pre-wrap break-all font-mono text-xs">{repoLink}</span>

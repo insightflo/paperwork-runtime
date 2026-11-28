@@ -582,7 +582,7 @@ export function WorkflowRunGraphPreview({
                               <a
                                 href={product.url}
                                 target="_blank"
-                                rel="noreferrer"
+                                rel="noopener noreferrer"
                                 style={{ color: "var(--link, #60a5fa)", fontSize: "12px", fontWeight: 700, textDecoration: "none", overflowWrap: "anywhere" }}
                               >
                                 {product.title}

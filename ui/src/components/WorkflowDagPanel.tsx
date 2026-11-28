@@ -260,7 +260,7 @@ function WorkProductCard({
             <a
               href={product.url}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="block truncate text-xs font-medium underline-offset-2 hover:underline"
             >
               {product.title}
