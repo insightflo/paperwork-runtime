@@ -167,3 +167,13 @@ export type { EffectIntent, NewEffectIntent } from "./effect_intents.js";
 export { harnessRsiLedger } from "./harness_rsi_ledger.js";
 export { knowledgeNodes } from "./knowledge_nodes.js";
 export type { KnowledgeNodeSourceRef } from "./knowledge_nodes.js";
+export {
+  personalEndpointPairingCodes,
+  personalEndpointBots,
+  personalEndpointTasks,
+} from "./personal_endpoint_bots.js";
+export {
+  agentSharedTables,
+  agentOpenWaits,
+  type SharedTableRowPayload,
+} from "./workspace_primitives.js";

@@ -84,15 +84,29 @@ export function selectSameRunWorkProduct(db: Db, scope: SameRunScope) {
   return withAutomaticProducerRebind(db, () => readSameRunWorkProduct(db, scope));
 }
 
+const LOCAL_FILE_TYPE_FALLBACK: Readonly<Record<string, string>> = {
+  document: "artifact",
+  artifact: "document",
+};
+
 async function readSameRunWorkProduct(db: Db, scope: SameRunScope): Promise<CorrectionSelectedProduct> {
   const [source] = await db.select({ run: workflowRuns, step: workflowStepRuns }).from(workflowRuns)
     .innerJoin(workflowStepRuns, eq(workflowStepRuns.workflowRunId, workflowRuns.id))
     .where(and(eq(workflowRuns.id, scope.workflowRunId), eq(workflowRuns.companyId, scope.companyId), eq(workflowStepRuns.stepId, scope.stepId)));
   if (!source?.step.issueId || source.step.status !== "completed") throw new Error("workproduct_selector_producer_unavailable");
-  const products = await db.select().from(issueWorkProducts).where(and(
+  const baseConds = [
     eq(issueWorkProducts.companyId, scope.companyId), eq(issueWorkProducts.issueId, source.step.issueId),
     ...(scope.pinnedId ? [eq(issueWorkProducts.id, scope.pinnedId)] : [ne(issueWorkProducts.status, "archived")]),
-    eq(issueWorkProducts.type, scope.selector.type), eq(issueWorkProducts.title, scope.selector.title)));
+    eq(issueWorkProducts.title, scope.selector.title),
+  ];
+  let products = await db.select().from(issueWorkProducts).where(and(...baseConds, eq(issueWorkProducts.type, scope.selector.type)));
+  // [2026-11-28] Producers occasionally register local file artifacts (e.g. content.json) as "artifact"
+  // when the workflow selector declares "document" (or vice versa). Fall back ONLY when exact type
+  // yields 0 rows, while keeping strict cardinality (=== 1), exact title, and all provenance checks.
+  const fallbackType = products.length === 0 ? LOCAL_FILE_TYPE_FALLBACK[scope.selector.type] : undefined;
+  if (fallbackType) {
+    products = await db.select().from(issueWorkProducts).where(and(...baseConds, eq(issueWorkProducts.type, fallbackType)));
+  }
   if (products.length !== 1) throw new Error("workproduct_selector_not_exactly_one");
   const product = products[0];
   if (Object.hasOwn(product.metadata ?? {}, "qaCorrection")) {

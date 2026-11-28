@@ -85,6 +85,20 @@ export async function resetUnlaunchedTerminalStepRuns(
   stepRuns: (typeof workflowStepRuns.$inferSelect)[],
   excludeWorkflowStepIds?: ReadonlySet<string>,
 ): Promise<(typeof workflowStepRuns.$inferSelect)[]> {
+  // A fully settled failure/cancellation must reach parent convergence. Resetting
+  // its unlaunched skips here manufactures pending work on every sync forever.
+  // Preserve the legacy recovery exception: completed prerequisites with only
+  // never-launched failed rows still need those rows reset for their first launch.
+  const recoveredLegacyFailure = stepRuns.some(s => s.status === "completed")
+    && stepRuns.every(s => s.status === "completed" || (
+      s.status === "failed" && s.issueId == null && s.startedAt == null && s.lastDispatchAttemptAt == null
+      && !(excludeWorkflowStepIds?.has(s.stepId) ?? false)
+      && normalizeRecord(s.metadata).controlFlowSkipped !== true
+      && normalizeRecord(s.metadata).failureCascadeSkipped !== true
+    ));
+  if (stepRuns.some(s => s.status === "failed" || s.status === "cancelled")
+    && stepRuns.every(s => ["completed", "failed", "skipped", "cancelled"].includes(s.status))
+    && !recoveredLegacyFailure) return stepRuns;
   // [descope D2] workflow-type S 는 리셋 대상에서 "명시적으로" 제외된다 — 자식 실패로 정산된
   //  (또는 pre-admission 거부된) 부모 스텝은 resume/retry 경로에서 재오픈되지 않는다.
   // controlFlowSkipped/failureCascadeSkipped sentinel: IF false-branch 로 skip 된 step 과 60min reconciler 가 kill 한 step(failureCascadeSkipped, 가즈아 저녁3 4f8cfacb 플랩)

@@ -19,7 +19,7 @@ import { logActivity } from "../activity-log.js";
 import { hasRunnableControlFlowSkippedStep } from "./conditional-skip-revival.js";
 import type { ValidationVerdictObservation } from "./dag-readiness-facts.js";
 
-const WORKFLOW_STEP_TERMINAL_STATUSES = new Set(["completed", "failed", "skipped"]);
+const WORKFLOW_STEP_TERMINAL_STATUSES = new Set(["completed", "failed", "skipped", "cancelled"]);
 
 interface WorkflowRunFinalizationHooks {
   normalizeRecord(value: unknown): Record<string, unknown>;
@@ -50,6 +50,7 @@ export async function finalizeWorkflowRunState(
   const hasCompletedStep = stepRuns.some((stepRun) => stepRun.status === "completed");
   const hasFailedStep = stepRuns.some((stepRun) => stepRun.status === "failed")
     || (hasCascadeKill && !hasCompletedStep);
+  const hasCancelledStep = stepRuns.some((stepRun) => stepRun.status === "cancelled");
   const hasActiveStep = stepRuns.some((stepRun) => !WORKFLOW_STEP_TERMINAL_STATUSES.has(stepRun.status));
   const dynamicLaunchStepIds = getDynamicLaunchStepIds(context);
   const executableStepRuns = dynamicLaunchStepIds
@@ -74,9 +75,11 @@ export async function finalizeWorkflowRunState(
       ? "cancelled"
       : hasFailedStep && allStepsTerminal
         ? "failed"
-        : !hasFailedStep && allStepsTerminal && !hasRunnableSkippedControlFlowStep
-          ? "completed"
-          : "running";
+        : hasCancelledStep && allStepsTerminal
+          ? "cancelled"
+          : !hasFailedStep && allStepsTerminal && !hasRunnableSkippedControlFlowStep
+            ? "completed"
+            : "running";
   const deferConvergence =
     !isTerminalRunStatus(context.run.status)
     && (candidateStatus === "failed" || candidateStatus === "completed")

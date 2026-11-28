@@ -28,10 +28,12 @@
 //!   Prints a sorted workspace snapshot as JSON, using the default watch limits unless overridden.
 //! - `endpoint-audit --log <path> [--limit <n>]`:
 //!   Prints the latest redacted audit entries as a JSON array (default 20, oldest first).
-//! - `endpoint-pair --server <url> --code <6char> [--cred <path>] [--folder <path[:ro|rw]>]`:
+//! - `endpoint-pair --server <url> --code <6char> [--cred <path>] [--token-file <path>] [--folder <path[:ro|rw]>]`:
 //!   Exchanges a pairing code for a device credential via `POST /api/endpoints/pair`, stores
 //!   the hashed credential atomically with `0600`, and prints a JSON summary. The raw device
-//!   token is never printed or persisted.
+//!   token is stored separately in an owner-only device.token file and never printed.
+//! - `endpoint-run [--config <path>] [--cred <path>] [--token-file <path>] [--audit-log <path>]`:
+//!   Runs live heartbeat/poll/execute/audit/ack; optional --poll-ms, --heartbeat-ms, --max-ticks.
 //! - `render-service --os <macos|linux|windows> --server <url> --name <endpoint> [--binary <path>] [--config <path>]`:
 //!   Renders the OS service unit (LaunchAgent plist / systemd user unit / Windows scheduled-task
 //!   script) as raw text on stdout for direct redirection into the service file.
@@ -48,13 +50,14 @@ use paperwork_bot_runtime::control_sock::{
 };
 use paperwork_bot_runtime::endpoint_audit::{redact_sensitive, AuditLogger};
 use paperwork_bot_runtime::endpoint_doctor::{run_endpoint_doctor, DoctorInput, DoctorReport};
-use paperwork_bot_runtime::endpoint_http::{parse_json_response, post_json, HttpTransportConfig};
+use paperwork_bot_runtime::endpoint_http::{post_json, HttpTransportConfig};
 use paperwork_bot_runtime::endpoint_pairing::{
-    normalize_pairing_code, write_credentials_atomic, DeviceCredential,
+    normalize_pairing_code, DeviceCredential,
 };
 use paperwork_bot_runtime::endpoint_protocol::{
     DetectedCli as WireDetectedCli, EndpointUrls, PairRequest, PairResponse,
 };
+use paperwork_bot_runtime::endpoint_runner::{endpoint_file_path, run_endpoint_loop, EndpointRunOptions};
 use paperwork_bot_runtime::endpoint_watch::{scan_workspace, WatchLimits};
 #[cfg(unix)]
 use paperwork_bot_runtime::executor::supervisor_self_test;
@@ -504,6 +507,50 @@ fn parse_folder_grant(raw: &str) -> Result<String, String> {
     }
 }
 
+/// Publish secret-bearing bytes only after private temp-file creation and fsync.
+fn write_private_atomic(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
+    let mut dirs = std::fs::DirBuilder::new();
+    dirs.recursive(true);
+    #[cfg(unix)] {
+        use std::os::unix::fs::DirBuilderExt;
+        dirs.mode(0o700);
+    }
+    dirs.create(parent).map_err(|_| "cannot create private credential directory")?;
+    let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| "system clock unavailable")?.as_nanos();
+    let temporary = parent.join(format!(".endpoint-{}-{nonce}.tmp", process::id()));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)] {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&temporary).map_err(|_| "cannot create private credential file")?;
+    let result = file.write_all(bytes).and_then(|_| file.sync_all());
+    drop(file);
+    let result = result.and_then(|_| std::fs::rename(&temporary, path));
+    if result.is_err() { let _ = std::fs::remove_file(&temporary); }
+    result.map_err(|_| "cannot publish private credential file".into())
+}
+
+fn cmd_endpoint_run(args: &[String]) -> Result<Value, String> {
+    let flags = parse_endpoint_flags(args, &["--config", "--cred", "--token-file", "--audit-log",
+        "--poll-ms", "--heartbeat-ms", "--max-ticks"]).map_err(|_| "invalid endpoint-run options")?;
+    let config_path = flags.get("--config").map(PathBuf::from).map(Ok).unwrap_or_else(default_endpoint_config_path)?;
+    let credential_path = flags.get("--cred").map(PathBuf::from).map(Ok).unwrap_or_else(default_pairing_credentials_path)?;
+    let token_file = flags.get("--token-file").map(PathBuf::from).unwrap_or_else(|| credential_path.with_file_name("device.token"));
+    let audit_log = flags.get("--audit-log").map(PathBuf::from).unwrap_or_else(|| credential_path.with_file_name("audit.jsonl"));
+    let number = |name: &str, default: u64| -> Result<u64, String> {
+        flags.get(name).map_or(Ok(default), |v| v.parse().map_err(|_| format!("invalid {name}")))
+    };
+    let summary = run_endpoint_loop(EndpointRunOptions { config_path, credential_path, token_file, audit_log,
+        poll_ms: number("--poll-ms", 2000)?, heartbeat_ms: number("--heartbeat-ms", 15000)?,
+        max_ticks: flags.get("--max-ticks").map(|_| number("--max-ticks", 0)).transpose()? })?;
+    serde_json::to_value(summary).map_err(|_| "cannot serialize endpoint summary".into())
+}
+
 fn cmd_endpoint_pair(args: &[String]) -> Result<Value, String> {
     let server = require_flag(args, "--server")?;
     // Validate the human-entered code first: invalid codes fail closed before any URL
@@ -514,6 +561,13 @@ fn cmd_endpoint_pair(args: &[String]) -> Result<Value, String> {
         Some(_) => return Err("--cred requires a path".to_string()),
         None => default_pairing_credentials_path()?,
     };
+    let token_path = match find_flag(args, "--token-file") {
+        Some(path) if !path.is_empty() && !path.starts_with("--") => PathBuf::from(path),
+        Some(_) => return Err("--token-file requires a path".into()),
+        None if args.iter().any(|a| a == "--token-file") => return Err("--token-file requires a path".into()),
+        None => cred_path.with_file_name("device.token"),
+    };
+    if endpoint_file_path(&token_path)? == endpoint_file_path(&cred_path)? { return Err("token and credential paths must differ".into()); }
     let allowed_folders = collect_flags(args, "--folder")
         .into_iter()
         .map(|raw| parse_folder_grant(&raw))
@@ -543,9 +597,10 @@ fn cmd_endpoint_pair(args: &[String]) -> Result<Value, String> {
         device_token: None,
     };
     let response = post_json(&transport, &pair_url, &body)?;
-    // PairResponse carries the raw device token: consume it only into the stored hash and
-    // the summary preview; it must never reach stdout, stderr, or error messages.
-    let pair: PairResponse = parse_json_response(&response)?;
+    // Never echo untrusted response bodies: even an error can contain the raw token.
+    if !(200..300).contains(&response.status) { return Err(format!("pairing HTTP {}", response.status)); }
+    let pair: PairResponse = serde_json::from_str(&response.body).map_err(|_| "invalid pairing response")?;
+    paperwork_bot_runtime::endpoint_protocol::build_auth_headers(&pair.device_token, &pair.company_id)?;
     let now_ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
@@ -559,15 +614,20 @@ fn cmd_endpoint_pair(args: &[String]) -> Result<Value, String> {
         expires_at_ms: now_ms + DEFAULT_CREDENTIAL_TTL_MS,
         allowed_folders,
     };
-    write_credentials_atomic(&cred_path, &credential).map_err(|e| e.to_string())?;
-    Ok(json!({
+    let mut stored = serde_json::to_value(&credential).map_err(|_| "cannot serialize credential")?;
+    stored["companyId"] = json!(pair.company_id);
+    write_private_atomic(&cred_path, stored.to_string().as_bytes())?;
+    write_private_atomic(&token_path, pair.device_token.as_bytes())?;
+    let summary = json!({
         "ok": true,
         "deviceId": pair.device_id,
         "botName": pair.bot_name,
         "companyId": pair.company_id,
         "tokenPreview": pair.token_preview,
         "credPath": cred_path.to_string_lossy().into_owned(),
-    }))
+    });
+    serde_json::from_str(&summary.to_string().replace(&pair.device_token, "[REDACTED]"))
+        .map_err(|_| "cannot serialize pairing summary".into())
 }
 
 fn cmd_endpoint_doctor(args: &[String]) -> Result<DoctorReport, String> {
@@ -659,9 +719,10 @@ fn cmd_render_service(args: &[String]) -> Result<String, String> {
         allowed_folders: Vec::new(),
     };
     Ok(match os.as_str() {
-        "macos" => render_macos_launch_agent_plist(&cfg),
-        "linux" => render_linux_systemd_user_unit(&cfg),
-        "windows" => render_windows_task_script(&cfg),
+        "macos" => render_macos_launch_agent_plist(&cfg).replacen(
+            "    <string>--config</string>", "    <string>endpoint-run</string>\n    <string>--config</string>", 1),
+        "linux" => render_linux_systemd_user_unit(&cfg).replacen(" --config ", " endpoint-run --config ", 1),
+        "windows" => render_windows_task_script(&cfg).replacen("-Argument '--config ", "-Argument 'endpoint-run --config ", 1),
         other => {
             return Err(format!(
                 "invalid --os {other:?}; expected macos|linux|windows"
@@ -671,7 +732,7 @@ fn cmd_render_service(args: &[String]) -> Result<String, String> {
 }
 
 fn usage() -> &'static str {
-    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound|ctl|doctor|init|detect-clis|render-service|endpoint-doctor|endpoint-scan|endpoint-audit|endpoint-pair> [flags]"
+    "usage: paperwork-bot <eval-policy|verify-token|heartbeat|daemon|inbound|ctl|doctor|init|detect-clis|render-service|endpoint-doctor|endpoint-scan|endpoint-audit|endpoint-pair|endpoint-run> [flags]"
 }
 
 fn run(args: &[String]) -> Result<Value, String> {
@@ -692,6 +753,7 @@ fn run(args: &[String]) -> Result<Value, String> {
         "endpoint-scan" => cmd_endpoint_scan(rest),
         "endpoint-audit" => cmd_endpoint_audit(rest),
         "endpoint-pair" => cmd_endpoint_pair(rest),
+        "endpoint-run" => cmd_endpoint_run(rest),
         "-h" | "--help" | "help" => Ok(json!({ "usage": usage() })),
         other => Err(format!("unknown subcommand {other:?}; {}", usage())),
     }

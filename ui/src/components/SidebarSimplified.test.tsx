@@ -106,6 +106,48 @@ describe("SidebarSimplified (Stage 31B W2)", () => {
     expect(link("/RES/quality")).not.toBeNull();
   });
 
+  it("keeps personal endpoints and workspace primitives inside the expanded tools section", async () => {
+    await renderSidebar();
+    const destinations = [
+      ["/personal-endpoints", "개인 단말 봇"],
+      ["/workspace-primitives", "공유 표 · 대기"],
+    ] as const;
+    for (const [href] of destinations) expect(link(href)).toBeNull();
+    expect(Array.from(host.querySelectorAll('nav[aria-label="워크스페이스"] a'), (item) => item.textContent))
+      .toEqual(["Channels", "Missions", "Agents", "Inbox", "Settings"]);
+
+    await act(async () => {
+      toolsToggle().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    const contentId = toolsToggle().getAttribute("aria-controls")!;
+    for (const [href, label] of destinations) {
+      expect(link(href)?.textContent).toBe(label);
+      expect(document.getElementById(contentId)?.contains(link(href))).toBe(true);
+    }
+  });
+
+  it.each(["/personal-endpoints", "/workspace-primitives"])(
+    "shows the active dot on %s only while tools are collapsed",
+    async (pathname) => {
+      window.history.replaceState({}, "", pathname);
+      await renderSidebar(pathname);
+      expect(toolsToggle().getAttribute("aria-expanded")).toBe("false");
+      expect(toolsToggle().querySelector("[data-tools-active]")).not.toBeNull();
+
+      await act(async () => {
+        toolsToggle().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(link(pathname)?.getAttribute("aria-current")).toBe("page");
+      expect(toolsToggle().querySelector("[data-tools-active]")).toBeNull();
+
+      await act(async () => {
+        toolsToggle().dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+      expect(link(pathname)).toBeNull();
+      expect(toolsToggle().querySelector("[data-tools-active]")).not.toBeNull();
+    },
+  );
+
   it("marks a collapsed tools toggle with an active dot only on secondary routes", async () => {
     window.history.replaceState({}, "", "/RES/quality");
     await renderSidebar("/RES/quality");
