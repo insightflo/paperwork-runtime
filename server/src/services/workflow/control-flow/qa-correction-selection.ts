@@ -78,7 +78,9 @@ export async function readQaCorrectionSelectedProduct(db: QaCorrectionDb, scope:
   // This witness proves common product/binding/quality currentness, never a consumer's permission.
   const current = witness.database.products.find(p => p.id === product.id);
   const file = current && resolveWorkProductLocalFilePath(current);
-  requireSelection(current && current.type === scope.selector.type && current.title === scope.selector.title
+  // Callers already enforce exact-first selection (including zero-row local-file fallback).
+  // The lineage witness must retain that selected row's type, not revert to the declared type.
+  requireSelection(current && current.type === product.type && current.title === scope.selector.title
     && file && ["local", "local_file"].includes(current.provider)
     && path.resolve(file) === path.resolve(revision.root, revision.mainRelativePath), "file");
   return { product: current, producer, file, correction: { issued, revision, candidates } };
@@ -124,11 +126,15 @@ export async function readSelectedQaCorrections(db: QaCorrectionDb, scope: Input
   const result = [];
   for (const [stepId, selector] of Object.entries(scope.selectors)) {
     const pin = pins.find(b => b.referencedStepId === stepId);
-    const rows = await db.select({ product: issueWorkProducts }).from(workflowStepRuns)
+    const selectProducts = (type: string) => db.select({ product: issueWorkProducts }).from(workflowStepRuns)
       .innerJoin(issueWorkProducts, eq(issueWorkProducts.issueId, workflowStepRuns.issueId))
       .where(and(eq(workflowStepRuns.workflowRunId, scope.workflowRunId), eq(workflowStepRuns.stepId, stepId),
-        eq(issueWorkProducts.companyId, scope.companyId), eq(issueWorkProducts.type, selector.type),
+        eq(issueWorkProducts.companyId, scope.companyId), eq(issueWorkProducts.type, type),
         eq(issueWorkProducts.title, selector.title), eq(issueWorkProducts.status, "active")));
+    let rows = await selectProducts(selector.type);
+    const fallbackType = selector.type === "document" ? "artifact"
+      : selector.type === "artifact" ? "document" : undefined;
+    if (rows.length === 0 && fallbackType) rows = await selectProducts(fallbackType);
     const corrections = rows.filter(({ product }) => Object.hasOwn(product.metadata ?? {}, "qaCorrection"));
     if (!corrections.length) continue;
     requireSelection(corrections.length === 1, "not_exactly_one");

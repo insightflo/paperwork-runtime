@@ -71,13 +71,17 @@ export async function restampReworkProductsOnCompletion(input: {
 
   const productIds = new Set<string>();
   for (const selector of selectors.values()) {
-    const products = await input.db.select({ id: issueWorkProducts.id }).from(issueWorkProducts).where(and(
+    const selectProducts = (type: string) => input.db.select({ id: issueWorkProducts.id }).from(issueWorkProducts).where(and(
       eq(issueWorkProducts.companyId, input.companyId),
       eq(issueWorkProducts.issueId, input.issueId),
-      eq(issueWorkProducts.type, selector.type),
+      eq(issueWorkProducts.type, type),
       eq(issueWorkProducts.title, selector.title),
       ne(issueWorkProducts.status, "archived"),
     )).orderBy(issueWorkProducts.id);
+    let products = await selectProducts(selector.type);
+    const fallbackType = selector.type === "document" ? "artifact"
+      : selector.type === "artifact" ? "document" : undefined;
+    if (products.length === 0 && fallbackType) products = await selectProducts(fallbackType);
     if (products.length !== 1) throw conflict("rework_completion_product_selection_unproven", {
       producerStepId: contract.producerStepId,
       type: selector.type,
