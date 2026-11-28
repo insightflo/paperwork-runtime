@@ -13,6 +13,7 @@ import { submitMissionOwnerDecision } from "../services/missions/mission-owner-r
 import { readOwnerHumanRequest } from "../services/missions/owner-human-request-read.js";
 import { ownerHumanCurrentKey, ownerHumanLifetimeSchema } from "../services/missions/owner-human-request-contract.js";
 import { lockOwnerHumanRequestAuthority } from "../services/missions/owner-human-request-authority.js";
+import { MAX_SOURCE_ANCHORS } from "../services/missions/unblock-source-eligibility.js";
 import { closeOwnerHumanRequest } from "../services/missions/owner-human-request-state.js";
 import { operatorDecisionWriteService } from "../services/operator-decisions-write.js";
 vi.mock("../services/live-events.js", () => ({ publishLiveEvent: vi.fn() }));
@@ -217,13 +218,13 @@ describeDb("C08 source anchor producer", () => {
       await resolveCard(w); // every card is answered, so renewal stays legitimate
       await issueService(db).update(latest, { status: "cancelled" }); // its owner run ends the anchor
       const anchor = await produce(w);
-      if (round < 4) {
-        expect(anchor.id).not.toBe(latest); latest = anchor.id; // rounds 0-3 mint anchors 2-5
+      if (round < MAX_SOURCE_ANCHORS - 1) {
+        expect(anchor.id).not.toBe(latest); latest = anchor.id; // rounds below cap mint new anchors
       } else {
-        expect(anchor.id).toBe(latest); // cap reached: reuse, do not create a 6th
+        expect(anchor.id).toBe(latest); // cap reached: reuse, do not create another
       }
     }
-    expect((await anchors(w))).toHaveLength(5);
+    expect((await anchors(w))).toHaveLength(MAX_SOURCE_ANCHORS);
   });
 
   it("keeps nonhuman blockers and legacy human input working without inventing a new submission", async () => {

@@ -116,21 +116,21 @@ describe("unblock source guards across both producers", () => {
         await db.update(issues).set({ status: round % 2 ? "done" : "cancelled" }).where(eq(issues.id, latest!));
       } else expect(action!.id).toBe(latest);
     }
-    expect(await anchors(db, w)).toHaveLength(5); expect(wake).toHaveBeenCalledTimes(5);
+    expect(await anchors(db, w)).toHaveLength(MAX_SOURCE_ANCHORS); expect(wake).toHaveBeenCalledTimes(MAX_SOURCE_ANCHORS);
   });
 
   it("does not count hidden history against the visible cap", async () => {
-    const w = await unblockWorld(db), old = await seedAnchors(db, w, 5);
+    const w = await unblockWorld(db), old = await seedAnchors(db, w, MAX_SOURCE_ANCHORS);
     await db.update(issues).set({ hiddenAt: new Date() }).where(eq(issues.id, old[0]!.id));
     expect(await request(w)).toMatchObject({ status: "todo" });
-    expect((await anchors(db, w)).filter((row) => !row.hiddenAt)).toHaveLength(5);
+    expect((await anchors(db, w)).filter((row) => !row.hiddenAt)).toHaveLength(MAX_SOURCE_ANCHORS);
   });
 
   it("serializes concurrent heartbeat and canonical producers at the shared cap", async () => {
-    const w = await unblockWorld(db); await seedAnchors(db, w, 4);
+    const w = await unblockWorld(db); await seedAnchors(db, w, MAX_SOURCE_ANCHORS - 1);
     const [a, b, c] = await Promise.all([request(w), owner(w, other), request(w, vi.fn(async () => {}), other)]);
     expect(a!.id).toBe(b.id); expect(c!.id).toBe(b.id);
-    expect(await anchors(db, w)).toHaveLength(5);
+    expect(await anchors(db, w)).toHaveLength(MAX_SOURCE_ANCHORS);
   });
 
   it("rolls back heartbeat creation and the company counter without waking on write failure", async () => {
