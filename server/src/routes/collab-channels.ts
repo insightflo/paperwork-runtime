@@ -4,7 +4,7 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
 import { collabChannels, collabMessages, collabThreads, type Db } from "@paperclipai/db";
-import { exceptionHuddleDecisionSchema } from "@paperclipai/shared/validators/exception-huddle";
+import { exceptionHuddleDecisionSchema, exceptionHuddleStatusSchema } from "@paperclipai/shared/validators/exception-huddle";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 import { forbidden } from "../errors.js";
 import { logActivity } from "../services/index.js";
@@ -15,6 +15,7 @@ import {
   getExceptionHuddle,
   postExceptionHuddleTurn,
 } from "../services/missions/exception-huddle-service.js";
+import { listMissionExceptionHuddles } from "../services/missions/exception-huddle-queries.js";
 
 type ChannelRow = typeof collabChannels.$inferSelect;
 type ThreadRow = typeof collabThreads.$inferSelect;
@@ -192,6 +193,26 @@ export function collabChannelsRoutes(db: Db) {
     const thread = await svc.resumeThread(companyId, channelId, threadId, actor.actorType === "user" ? actor.actorId : null);
     await logMutation(req, "collab.thread.resumed", "collab_thread", thread.id, { channelId });
     res.json(serializeThread(thread));
+  });
+
+  router.get("/companies/:companyId/collab-channels/missions/:missionId/huddles", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    const missionId = req.params.missionId as string;
+    const parsedStatus = req.query.status === undefined ? undefined : exceptionHuddleStatusSchema.safeParse(req.query.status);
+    if (parsedStatus && !parsedStatus.success) {
+      res.status(400).json({ error: "Invalid huddle status filter" });
+      return;
+    }
+    const rawLimit = req.query.limit;
+    const limit = typeof rawLimit === "string" && /^\d+$/.test(rawLimit) ? Number(rawLimit) : undefined;
+    if (rawLimit !== undefined && (limit === undefined || !Number.isSafeInteger(limit) || limit <= 0)) {
+      res.status(400).json({ error: "Invalid huddle limit filter" });
+      return;
+    }
+    const status = parsedStatus?.success ? parsedStatus.data : undefined;
+    const result = await listMissionExceptionHuddles(db, { companyId, missionId, status, limit });
+    res.status(200).json({ missionId, counts: result.counts, items: result.items });
   });
 
   router.post("/companies/:companyId/collab-channels/huddles", async (req, res) => {
