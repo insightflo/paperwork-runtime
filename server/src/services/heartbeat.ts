@@ -1,3 +1,4 @@
+import { createRequestChangesOwnerAction } from "./heartbeat-request-changes-owner-action.js";
 import fs from "node:fs/promises";
 import { prioritizeProjectWorkspaceCandidatesForRun } from "./heartbeat-workspace-priority.js";
 import { describeSessionResetReason, shouldResetTaskSessionForWake } from "./heartbeat-session-reset.js";
@@ -81,7 +82,7 @@ import { resolveMaintenanceGuidanceContext } from "./heartbeat-maintenance-guida
 import { classifyHeartbeatRunFailure, heartbeatRunFailureText, type HeartbeatFailureClassification } from "./heartbeat-failure-classification.js";
 import { normalizeUsageTotals, readRawUsageTotals, deriveNormalizedUsageDelta, formatCount, type UsageTotals } from "./heartbeat-usage-totals.js";
 import { MISSION_CHILD_RUN_OUTPUT_COMMENT_MAX_CHARS, runText, buildMissionChildRunOutputComment, buildSuccessfulIssueRunAutoCompletedComment, buildNoProgressAutoBlockedComment, buildMissionWorkerNoProgressOversightComment, buildFailedIssueRunAutoBlockedComment, buildMissionWorkerFailureOversightComment, buildMissionOversightRunFailureComment, buildMissionOversightRunSucceededReleaseComment } from "./heartbeat-run-presentation.js";
-import { buildRequestChangesValidationGateComment, buildMissingWorkflowValidationVerdictGateComment, buildInsufficientEvidenceWorkflowVerdictGateComment, buildRequestChangesOwnerActionDescription, type RequestChangesVerdict } from "./heartbeat-validation-presentation.js";
+import { buildRequestChangesValidationGateComment, buildMissingWorkflowValidationVerdictGateComment, buildInsufficientEvidenceWorkflowVerdictGateComment, type RequestChangesVerdict } from "./heartbeat-validation-presentation.js";
 export { classifyHeartbeatRunFailure, type HeartbeatFailureClassification } from "./heartbeat-failure-classification.js";
 import { missionSessionStore } from "./sessions/mission-session-store.js";
 import { resolveDefaultAgentWorkspaceDir } from "../home-paths.js";
@@ -177,7 +178,6 @@ import { type PlanQaWakeupHandler, type PlanningIssueWakeupHandler } from "./mis
 import { blockMissionPlanQaCompletionWithoutLedger, hasMissionPlanQaCompletionLedger } from "./missions/mission-plan-qa-completion-gate.js";
 import { buildMissionOwnerPlanningContext } from "./missions/mission-owner-planning-context.js";
 import { createPlanQaWakeupHandler, createPlanningIssueWakeupHandler } from "./missions/plan-qa-wakeup.js";
-import { buildMissionExecutionDigest } from "./missions/mission-execution-digest.js";
 import { buildMissingWorkProductRegistrationGateComment } from "./work-products/artifact-registration-instructions.js";
 import { handleDelegatedArtifactHandback } from "./delegated-artifact-handback.js";
 import {
@@ -325,7 +325,6 @@ export {
   resolveCommentArtifactPathCandidates,
 };
 
-type IssueCreateInput = Parameters<ReturnType<typeof issueService>["create"]>[1];
 
 
 const TERMINAL_MISSION_STATUSES = new Set(["completed", "cancelled"]);
@@ -520,25 +519,6 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
 
 
 
-  async function createMissionOwnerActionIssue(companyId: string, data: IssueCreateInput) {
-    if (!data.parentId) return issuesSvc.create(companyId, data);
-    try {
-      return await issuesSvc.create(companyId, data);
-    } catch (error) {
-      if (!isMissionOwnerActionParentPlacementRejected(error)) throw error;
-      const { parentId: _parentId, ...flatData } = data;
-      logger.warn({
-        err: error,
-        companyId,
-        missionId: data.missionId,
-        originKind: data.originKind,
-        originId: data.originId,
-        rejectedParentId: data.parentId,
-      }, "mission owner action parent placement rejected; creating flat owner action with origin link");
-      return issuesSvc.create(companyId, flatData);
-    }
-  }
-
   async function getAgent(agentId: string) {
     return db
       .select()
@@ -594,106 +574,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     return producedExecutionScopeKind(supplied, wake) === scope;
   }
 
-  async function ensureMissionOwnerActionForRequestChanges(input: {
-    sourceIssue: Pick<typeof issues.$inferSelect, "id" | "companyId" | "missionId" | "identifier" | "title" | "originKind" | "status" | "assigneeAgentId" | "parentId">;
-    run: typeof heartbeatRuns.$inferSelect;
-    verdict: RequestChangesVerdict;
-  }) {
-    if (!input.sourceIssue.missionId) return null;
-    if (!canCreateMissionOwnerUnblockForRequestChanges(input.sourceIssue)) return null;
-    const mission = await db
-      .select()
-      .from(missions)
-      .where(and(eq(missions.id, input.sourceIssue.missionId), eq(missions.companyId, input.sourceIssue.companyId)))
-      .then((rows) => rows[0] ?? null);
-    if (!mission?.ownerAgentId) return null;
-    let missionExecutionDigest: string[] = [];
-    try {
-      missionExecutionDigest = await buildMissionExecutionDigest(db, {
-        mission,
-        blockedIssue: input.sourceIssue,
-      });
-    } catch (err) {
-      logger.warn(
-        { err, missionId: input.sourceIssue.missionId, issueId: input.sourceIssue.id },
-        "failed to build mission execution digest for REQUEST_CHANGES owner action",
-      );
-      missionExecutionDigest = ["Mission execution digest could not be built; inspect workflow runs, step runs, work products, and source issue comments manually."];
-    }
-
-    const existing = await db
-      .select()
-      .from(issues)
-      .where(and(
-        eq(issues.companyId, input.sourceIssue.companyId),
-        eq(issues.missionId, input.sourceIssue.missionId),
-        eq(issues.originKind, "mission_main_executor_unblock"),
-        eq(issues.originId, input.sourceIssue.id),
-        sql`${issues.hiddenAt} is null`,
-        not(inArray(issues.status, ["done", "cancelled"])),
-      ))
-      .orderBy(asc(issues.createdAt), asc(issues.id))
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
-
-    const sourceLabel = input.sourceIssue.identifier ?? input.sourceIssue.id;
-    const nextDescription = buildRequestChangesOwnerActionDescription({
-      ...input,
-      mission,
-      missionExecutionDigest,
-    });
-    if (existing && !(existing.description ?? "").includes("Mission execution digest:")) {
-      await db
-        .update(issues)
-        .set({ description: nextDescription, updatedAt: new Date() })
-        .where(eq(issues.id, existing.id));
-      existing.description = nextDescription;
-    }
-    const ownerActionParentId = input.sourceIssue.parentId ? undefined : input.sourceIssue.id;
-    const ownerAction = existing ?? await createMissionOwnerActionIssue(input.sourceIssue.companyId, {
-      assigneeAgentId: mission.ownerAgentId,
-      description: nextDescription,
-      missionId: input.sourceIssue.missionId,
-      originKind: "mission_main_executor_unblock",
-      originId: input.sourceIssue.id,
-      parentId: ownerActionParentId,
-      priority: "high",
-      status: "todo",
-      title: `[Unblock] ${sourceLabel}: ${input.sourceIssue.title}`,
-    });
-
-    try {
-      await enqueueWakeup(mission.ownerAgentId, {
-        source: "automation",
-        triggerDetail: "mission_validation_request_changes",
-        reason: "mission_validation_request_changes",
-        idempotencyKey: `mission-validation-request-changes:${input.run.id}:${ownerAction.id}`,
-        requestedByActorType: "system",
-        requestedByActorId: "heartbeat",
-        payload: {
-          issueId: ownerAction.id,
-          sourceIssueId: input.sourceIssue.id,
-          sourceRunId: input.run.id,
-          verdict: "REQUEST_CHANGES",
-        },
-        contextSnapshot: {
-          taskKey: `issue:${ownerAction.id}`,
-          issueId: ownerAction.id,
-          missionId: input.sourceIssue.missionId,
-          sourceIssueId: input.sourceIssue.id,
-          sourceRunId: input.run.id,
-          wakeReason: "mission_validation_request_changes",
-        },
-      });
-    } catch (err) {
-      logger.warn(
-        { err, missionId: input.sourceIssue.missionId, issueId: ownerAction.id, sourceIssueId: input.sourceIssue.id },
-        "failed to wake mission owner after REQUEST_CHANGES validation gate",
-      );
-    }
-
-    return ownerAction;
-  }
+  const ensureMissionOwnerActionForRequestChanges = createRequestChangesOwnerAction({ db, enqueueWakeup });
 
   async function deferOperationsMissionIssueToMainExecutor(input: {
     agent: typeof agents.$inferSelect;
@@ -7645,7 +7526,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
   };
 }
 import { isPgUniqueViolation } from "./pg-error.js";
-import { isHermesOperationsLiaisonAgent, isMissionOwnerControlIssue, canCreateMissionOwnerUnblockForRequestChanges, resolveMissionOwnerTaskContext } from "./heartbeat-mission-owner-context.js";
+import { isHermesOperationsLiaisonAgent, isMissionOwnerControlIssue, resolveMissionOwnerTaskContext } from "./heartbeat-mission-owner-context.js";
 export { type MissionOwnerTaskContext } from "./heartbeat-mission-owner-context.js";
 import { canApplyMissingWorkProductRegistrationGate, resolveStepRunRequiresWorkProduct } from "./heartbeat-output-validation.js";
 import { truncateDisplayId, getAdapterSessionCodec, buildMissionSessionSecretName, isRecoverableMissionSessionSecretReadError, normalizeSessionParams, resolveMissionSessionAuthorityDecision, resolveNextSessionState, type MissionSessionAuthorityDecision } from "./heartbeat-session-state.js";
@@ -7659,7 +7540,6 @@ import { hasResumableSessionForRun } from "./heartbeat-workspace-session.js";
 import { formatRuntimeWorkspaceWarningLog } from "./heartbeat-managed-workspace.js";
 import { applyPaperclipApiContext } from "./heartbeat-api-address.js";
 import { buildCodexAuthAutoBlockedComment } from "./heartbeat-run-presentation.js";
-import { isMissionOwnerActionParentPlacementRejected } from "./heartbeat-mission-owner-context.js";
 import { parseIssueAssigneeAdapterOverrides } from "./heartbeat-assignee-adapter-overrides.js";
 import { parseSessionCompactionPolicy } from "./heartbeat-session-state.js";
 import { isSucceededHeartbeatRunStatus } from "./heartbeat-run-status.js";

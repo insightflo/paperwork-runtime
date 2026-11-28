@@ -16,16 +16,13 @@ import { readOwnerHumanCurrent } from "./owner-human-request-state.js";
 import { renewOwnerHumanRequestWithCard } from "./owner-human-request-renew.js";
 import type { IssueCreateInput, IssueRow } from "./shared-types.js";
 import { loadCompanySystemLanguage } from "./system-language.js";
+import { isIneligibleUnblockSourceIssue, loadIneligibleUnblockRunIds, MAX_SOURCE_ANCHORS } from "./unblock-source-eligibility.js";
 
 type OwnerUnblockAnchorDependencies = {
   db: Db;
   deps: Pick<MissionServiceDeps, "onOwnerActionCreated">;
   createMissionOwnerActionIssue: (tx: Db, companyId: string, data: IssueCreateInput) => Promise<IssueRow>;
 };
-// Circuit breaker for the 2026-11-07 card runaway: each legitimately answered human
-// decision round needs at most one anchor. Anything faster is an automated loop
-// re-issuing anchors/lifetimes/cards and must stop at this bound per source issue.
-const MAX_SOURCE_ANCHORS = 5;
 const fail = (): never => { throw conflict("Owner unblock anchor conflict", {
   reason: "owner_unblock_anchor_changed",
 }); };
@@ -83,6 +80,9 @@ export function createOwnerUnblockAnchor({ db, deps, createMissionOwnerActionIss
       }
       const source = locked.get(observedSource.id)!;
       if (source.hiddenAt || source.originRunId !== runId) return fail();
+      if (isIneligibleUnblockSourceIssue(source)) throw conflict("Owner unblock anchor conflict", {
+        reason: "owner_unblock_source_ineligible",
+      });
       const anchors = discovered.map((row) => locked.get(row.id)!);
       if (anchors.some((row) => row.originKind !== "mission_main_executor_unblock" || row.originId !== source.id)) return fail();
       const visible = anchors.filter((row) => !row.hiddenAt);
@@ -116,6 +116,13 @@ export function createOwnerUnblockAnchor({ db, deps, createMissionOwnerActionIss
         return { mission, source, issue: open[0]!, created: false };
       }
       const historical = current ? locked.get(current.pointer.anchorIssueId)! : visible[0];
+      if (run && (await loadIneligibleUnblockRunIds(tx as unknown as Db, {
+        companyId: mission.companyId, missionId: mission.id,
+      })).has(run.id)) {
+        const previous = visible[visible.length - 1];
+        if (previous) return { mission, source, issue: previous, created: false };
+        throw conflict("Owner unblock anchor conflict", { reason: "owner_unblock_source_run_ineligible" });
+      }
       if (isTerminalIssueStatus(source.status) || current && source.status !== "blocked") {
         if (!historical) return fail();
         return { mission, source, issue: historical, created: false };

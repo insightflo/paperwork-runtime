@@ -127,6 +127,14 @@ directly advance downstream steps after issue or agent-run events. Manual missio
 creation and plugin workflow creation are separate management surfaces that feed
 the same server-native workflow service.
 
+Owner unblock creation is bounded across supervision and heartbeat validation:
+control-origin issues and trimmed, case-insensitive `[Unblock]` or `[PLAN]` titles
+cannot become new unblock sources. Completed/cancelled native runs and failed runs
+superseded by a strictly newer non-cancelled run in the same company/mission cannot
+mint anchors; the latest failed run remains recoverable. Each source has at most
+five visible anchors, including done/cancelled history; at the cap, producers reuse
+an existing anchor. A reused terminal heartbeat anchor does not enqueue a wakeup.
+
 ### 6.4.0.1 Workflow child-step start ownership (0101)
 
 Workflow→workflow child runs acquire a start lease (60s token + expiry, immutable
