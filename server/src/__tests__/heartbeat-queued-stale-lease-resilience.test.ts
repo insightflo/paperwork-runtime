@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { agents, agentWakeupRequests, companies, heartbeatRuns } from "@paperclipai/db";
@@ -20,6 +20,13 @@ beforeAll(async () => {
   opened = await terminalDatabase();
   db = opened.db;
 }, 60_000);
+
+afterEach(async () => {
+  await db.delete(heartbeatRuns);
+  await db.delete(agentWakeupRequests);
+  await db.delete(agents);
+  await db.delete(companies);
+});
 
 afterAll(async () => {
   await opened?.close();
@@ -167,7 +174,7 @@ describe("heartbeat queued-stale lease resilience", () => {
     expect(latestQueueActivityMs(null, null)).toBeNull();
   });
 
-  it("renews a stale queued run lease instead of failing it while live capacity is full", async () => {
+  it("preserves a stale queued run untouched while live capacity is full", async () => {
     const { companyId, agentId } = await seedAgent(1);
     const oldAt = staleAt();
     const active = await insertRunningRun(companyId, agentId, { createdAt: oldAt, startedAt: oldAt });
@@ -178,7 +185,6 @@ describe("heartbeat queued-stale lease resilience", () => {
     expect(result.reapedRunIds).toEqual([]);
     const queued = await runRow(queuedRunId);
     expect(queued).toMatchObject({ status: "queued", errorCode: null, finishedAt: null });
-    expect(queued?.updatedAt.getTime()).toBeGreaterThan(oldAt.getTime());
   });
 
   it("counts a freshly promoted running row during handoff before its child PID is tracked", async () => {
@@ -195,10 +201,9 @@ describe("heartbeat queued-stale lease resilience", () => {
     expect(result.reapedRunIds).toEqual([]);
     const queued = await runRow(queuedRunId);
     expect(queued).toMatchObject({ status: "queued", errorCode: null, finishedAt: null });
-    expect(queued?.updatedAt.getTime()).toBeGreaterThan(oldAt.getTime());
   });
 
-  it("renews a stale orphan wakeup lease instead of failing it while live capacity is full", async () => {
+  it("preserves a stale orphan wakeup untouched while live capacity is full", async () => {
     const { companyId, agentId } = await seedAgent(1);
     const oldAt = staleAt();
     const active = await insertRunningRun(companyId, agentId, { createdAt: oldAt, startedAt: oldAt });
@@ -209,7 +214,6 @@ describe("heartbeat queued-stale lease resilience", () => {
     expect(result.reapedRunIds).toEqual([]);
     const wake = await wakeRow(wakeupRequestId);
     expect(wake).toMatchObject({ status: "queued", runId: null, finishedAt: null, error: null });
-    expect(wake?.updatedAt.getTime()).toBeGreaterThan(oldAt.getTime());
   });
 
   it("still fails a stale queued run when capacity is empty and promotion cannot start it", async () => {

@@ -110,7 +110,7 @@ export function PersonalEndpoints({ companyId: companyIdProp }: PersonalEndpoint
 
   const endpointCount = endpointsQuery.data?.length ?? 0;
   const onlineCount = endpointsQuery.data?.filter((record) => record.online).length ?? 0;
-  const auditCount = auditQuery.data?.stats.total ?? 0;
+  const auditCount = auditQuery.data?.stats?.total ?? 0;
 
   return (
     <div className={cn("mx-auto w-full max-w-4xl space-y-4 px-4 py-6 tabular-nums sm:px-6", ENDPOINT_CARD_OVERRIDES)}>

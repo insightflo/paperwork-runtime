@@ -136,10 +136,7 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
       if (current.issueId && (await operatorApprovalWaitService(conn).markerForIssue(current.issueId)).waiting) return null;
       const [agent] = await tx.select().from(agents).where(and(eq(agents.id, current.agentId), eq(agents.companyId, current.companyId))).limit(1);
       if (!agent) return null;
-      if (await capacityIsPositivelyFull(conn, current.companyId, agent)) {
-        await deps.setRunStatus(conn, current.id, "queued", { updatedAt: new Date() }, { expectedStatuses: ["queued"], deferLiveEvent: true });
-        return null;
-      }
+      if (await capacityIsPositivelyFull(conn, current.companyId, agent)) return null;
 
       const now = new Date();
       const message = `Queued heartbeat run exceeded ${Math.round(thresholdMs / 1000)}s without starting`;
@@ -163,10 +160,7 @@ export function createHeartbeatQueuedStaleRecovery(deps: HeartbeatQueuedStaleRec
       if (current.issueId && (await operatorApprovalWaitService(conn).markerForIssue(current.issueId)).waiting) return null;
       const [agent] = await tx.select().from(agents).where(and(eq(agents.id, current.agentId), eq(agents.companyId, current.companyId))).limit(1);
       if (!agent) return null;
-      if (await capacityIsPositivelyFull(conn, current.companyId, agent)) {
-        await conn.update(agentWakeupRequests).set({ updatedAt: new Date() }).where(eq(agentWakeupRequests.id, current.id));
-        return null;
-      }
+      if (await capacityIsPositivelyFull(conn, current.companyId, agent)) return null;
 
       const cutoff = new Date(Date.now() - thresholdMs);
       const message = `stale_queued: queued wakeup exceeded ${Math.round(thresholdMs / 1000)}s without a heartbeat run (mission dedup without heartbeatRuns)`;
