@@ -16,17 +16,17 @@ import { QueuePanel } from "../QueuePanel";
 import { AgentStepsDisclosure, SubagentDock, type AgentStep, type SubagentEntry } from "../SubagentDockAndSteps";
 
 const PANEL =
-  "tactile-card rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.05)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_14px_36px_-18px_rgba(0,0,0,0.7)]";
+  "tactile-card rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.05)] dark:border-white/[0.08] dark:bg-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_14px_36px_-18px_rgba(0,0,0,0.7)]";
 const INSET =
-  "rounded-[10px] border border-slate-200/80 bg-slate-50/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/[0.07] dark:bg-[#090c12] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
+  "rounded-[10px] border border-slate-200/80 bg-slate-50/85 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] dark:border-white/[0.07] dark:bg-muted/30 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
 const LOG_SURFACE =
-  "rounded-md border border-slate-200/80 bg-white font-mono text-xs dark:border-white/[0.07] dark:bg-[#07090d]";
+  "rounded-md border border-slate-200/80 bg-white font-mono text-xs dark:border-white/[0.07] dark:bg-background";
 const SECTION_WRAP = "border-t border-slate-200/80 px-3 py-3 dark:border-white/[0.07]";
-const EYEBROW = "text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]";
-const LABEL = "text-slate-500 dark:text-[#8b97ad]";
-const VALUE = "text-slate-900 dark:text-[#edf2fb]";
+const EYEBROW = "text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-muted-foreground";
+const LABEL = "text-slate-500 dark:text-muted-foreground";
+const VALUE = "text-slate-900 dark:text-foreground";
 const STATUS_PILL =
-  "rounded-full border border-slate-200/90 bg-slate-50 px-2 py-0.5 text-[10.5px] font-medium text-slate-600 tabular-nums dark:border-white/[0.08] dark:bg-[#090c12] dark:text-[#8b97ad]";
+  "rounded-full border border-slate-200/90 bg-slate-50 px-2 py-0.5 text-[10.5px] font-medium text-slate-600 tabular-nums dark:border-white/[0.08] dark:bg-muted/30 dark:text-muted-foreground";
 
 function extractRunSteps(run: HeartbeatRun): AgentStep[] {
   const raw = (run.contextSnapshot as { steps?: unknown[] } | null)?.steps
@@ -144,7 +144,7 @@ export function RunSessionAndIssues({ run, adapterType }: { run: HeartbeatRun; a
             {claudeLoginResult?.stdout && (
               <div className="space-y-1">
                 <span className={EYEBROW}>Execution output</span>
-                <pre className={cn(LOG_SURFACE, "overflow-x-auto whitespace-pre-wrap p-3 text-slate-800 dark:text-[#dbe4f0]")}>
+                <pre className={cn(LOG_SURFACE, "overflow-x-auto whitespace-pre-wrap p-3 text-slate-800 dark:text-foreground/90")}>
                   {claudeLoginResult.stdout}
                 </pre>
               </div>
@@ -170,7 +170,7 @@ export function RunSessionAndIssues({ run, adapterType }: { run: HeartbeatRun; a
               className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.04]"
               onClick={() => setSessionOpen((v) => !v)}
             >
-              <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform dark:text-[#627089]", sessionOpen && "rotate-90")} />
+              <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform dark:text-muted-foreground/80", sessionOpen && "rotate-90")} />
               <span className={EYEBROW}>Execution session</span>
               {sessionChanged && <span className={STATUS_PILL}>updated</span>}
             </button>
@@ -193,7 +193,7 @@ export function RunSessionAndIssues({ run, adapterType }: { run: HeartbeatRun; a
                     <span className={cn("text-[11px]", LABEL)}>{touchedIssueIds.length} linked work item{touchedIssueIds.length === 1 ? "" : "s"}</span>
                     <button
                       type="button"
-                      className="ml-auto text-[11px] font-medium text-blue-700 underline underline-offset-2 transition-colors hover:text-blue-600 disabled:opacity-60 dark:text-[#60a5fa] dark:hover:text-[#93c5fd]"
+                      className="ml-auto text-[11px] font-medium text-blue-700 underline underline-offset-2 transition-colors hover:text-blue-600 disabled:opacity-60 dark:text-blue-400 dark:hover:text-blue-300"
                       disabled={clearSessionsForTouchedIssues.isPending}
                       onClick={() => {
                         const count = touchedIssueIds.length;
@@ -219,7 +219,7 @@ export function RunSessionAndIssues({ run, adapterType }: { run: HeartbeatRun; a
         <div className={SECTION_WRAP}>
           <div className={cn(PANEL, "space-y-2.5 p-3 tabular-nums")}>
             <div className="flex items-center gap-2 border-b border-slate-200/80 pb-2 dark:border-white/[0.07]">
-              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(96,165,250,0.45)] dark:bg-[#60a5fa]" />
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-blue-500 shadow-[0_0_6px_rgba(96,165,250,0.45)] dark:bg-blue-400" />
               <span className={EYEBROW}>Execution orchestration</span>
             </div>
             {subagents.length > 0 && <SubagentDock entries={subagents} />}
@@ -235,7 +235,7 @@ export function RunSessionAndIssues({ run, adapterType }: { run: HeartbeatRun; a
         <div className={SECTION_WRAP}>
           <div className={cn(PANEL, "overflow-hidden tabular-nums")}>
             <div className="flex items-center gap-2 border-b border-slate-200/80 px-3 py-2.5 dark:border-white/[0.07]">
-              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-lime-500 shadow-[0_0_6px_rgba(163,230,53,0.45)] dark:bg-[#a3e635]" />
+              <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-lime-500 shadow-[0_0_6px_rgba(163,230,53,0.45)] dark:bg-lime-400" />
               <span className={EYEBROW}>Execution impact</span>
               <span className={cn(STATUS_PILL, "ml-auto")}>{touchedIssues.length}</span>
             </div>
@@ -244,13 +244,13 @@ export function RunSessionAndIssues({ run, adapterType }: { run: HeartbeatRun; a
                 <Link
                   key={issue.issueId}
                   to={`/issues/${issue.identifier ?? issue.issueId}`}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-xs text-slate-700 no-underline transition-colors hover:bg-slate-50 dark:text-[#dbe4f0] dark:hover:bg-white/[0.04]"
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-xs text-slate-700 no-underline transition-colors hover:bg-slate-50 dark:text-foreground/90 dark:hover:bg-white/[0.04]"
                 >
                   <div className="flex min-w-0 items-center gap-2">
                     <StatusBadge status={issue.status} />
                     <span className="truncate">{issue.title}</span>
                   </div>
-                  <span className="ml-2 shrink-0 font-mono text-[11px] text-slate-500 tabular-nums dark:text-[#8b97ad]">{issue.identifier ?? issue.issueId.slice(0, 8)}</span>
+                  <span className="ml-2 shrink-0 font-mono text-[11px] text-slate-500 tabular-nums dark:text-muted-foreground">{issue.identifier ?? issue.issueId.slice(0, 8)}</span>
                 </Link>
               ))}
             </div>

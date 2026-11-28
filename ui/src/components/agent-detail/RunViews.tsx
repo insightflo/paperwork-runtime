@@ -19,8 +19,8 @@ import { runMetrics } from "../../pages/agent-detail-view-helpers";
 import { asNonEmptyString, asRecord, redactRunOutputText } from "../../pages/agent-detail-redaction";
 
 const RUN_DETAIL_PANEL_CLASS =
-  "tactile-card overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-[#0e131d] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_-18px_rgba(0,0,0,0.85)]";
-const EYEBROW_CLASS = "text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-[#8b97ad]";
+  "tactile-card overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(15,23,42,0.04)] dark:border-white/[0.08] dark:bg-card dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_10px_28px_-18px_rgba(0,0,0,0.85)]";
+const EYEBROW_CLASS = "text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-muted-foreground";
 
 export function RunsTab(props: {
   initialRuns: HeartbeatRunSummary[];
@@ -189,17 +189,17 @@ function RunDetail({
             {startTime && (
               <div className="space-y-1.5">
                 <div className={EYEBROW_CLASS}>실행 시간 / Timing</div>
-                <div className="text-sm font-mono text-slate-800 dark:text-[#dbe4f2]">
+                <div className="text-sm font-mono text-slate-800 dark:text-foreground/90">
                   {startTime}
-                  {endTime && <span className="text-slate-400 dark:text-[#627089]"> &rarr; </span>}
+                  {endTime && <span className="text-slate-400 dark:text-muted-foreground/80"> &rarr; </span>}
                   {endTime}
                 </div>
-                <div className="text-[11px] text-slate-500 dark:text-[#8b97ad]">
+                <div className="text-[11px] text-slate-500 dark:text-muted-foreground">
                   {relativeTime(run.startedAt!)}
                   {run.finishedAt && <> &rarr; {relativeTime(run.finishedAt)}</>}
                 </div>
                 {displayDurationSec !== null && (
-                  <div className="text-xs text-slate-500 dark:text-[#8b97ad]">
+                  <div className="text-xs text-slate-500 dark:text-muted-foreground">
                     Duration: {displayDurationSec >= 60 ? `${Math.floor(displayDurationSec / 60)}m ${displayDurationSec % 60}s` : `${displayDurationSec}s`}
                   </div>
                 )}
@@ -220,20 +220,20 @@ function RunDetail({
                 <div className={EYEBROW_CLASS}>실행 사용량 / Usage</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500 dark:text-[#8b97ad]">Input</div>
-                <div className="text-sm font-medium font-mono text-slate-900 dark:text-[#edf2fb]">{formatTokens(metrics.input)}</div>
+                <div className="text-xs text-slate-500 dark:text-muted-foreground">Input</div>
+                <div className="text-sm font-medium font-mono text-slate-900 dark:text-foreground">{formatTokens(metrics.input)}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500 dark:text-[#8b97ad]">Output</div>
-                <div className="text-sm font-medium font-mono text-slate-900 dark:text-[#edf2fb]">{formatTokens(metrics.output)}</div>
+                <div className="text-xs text-slate-500 dark:text-muted-foreground">Output</div>
+                <div className="text-sm font-medium font-mono text-slate-900 dark:text-foreground">{formatTokens(metrics.output)}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500 dark:text-[#8b97ad]">Cached</div>
-                <div className="text-sm font-medium font-mono text-slate-900 dark:text-[#edf2fb]">{formatTokens(metrics.cached)}</div>
+                <div className="text-xs text-slate-500 dark:text-muted-foreground">Cached</div>
+                <div className="text-sm font-medium font-mono text-slate-900 dark:text-foreground">{formatTokens(metrics.cached)}</div>
               </div>
               <div>
-                <div className="text-xs text-slate-500 dark:text-[#8b97ad]">Cost</div>
-                <div className="text-sm font-medium font-mono text-slate-900 dark:text-[#edf2fb]">{metrics.cost > 0 ? `$${metrics.cost.toFixed(4)}` : "-"}</div>
+                <div className="text-xs text-slate-500 dark:text-muted-foreground">Cost</div>
+                <div className="text-sm font-medium font-mono text-slate-900 dark:text-foreground">{metrics.cost > 0 ? `$${metrics.cost.toFixed(4)}` : "-"}</div>
               </div>
             </div>
           )}
@@ -245,16 +245,16 @@ function RunDetail({
       {run.stderrExcerpt && (
         <div className="tactile-card rounded-xl border border-red-200/80 bg-red-50/70 p-3 space-y-2 dark:border-red-400/20 dark:bg-red-500/[0.07]">
           <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-red-700 dark:text-red-300">stderr</span>
-          <pre className="rounded-lg border border-red-200/80 bg-white/70 p-3 text-xs font-mono text-red-700 dark:border-red-400/20 dark:bg-[#090c12] dark:text-red-300 overflow-x-auto whitespace-pre-wrap">
+          <pre className="rounded-lg border border-red-200/80 bg-white/70 p-3 text-xs font-mono text-red-700 dark:border-red-400/20 dark:bg-muted/30 dark:text-red-300 overflow-x-auto whitespace-pre-wrap">
             {redactRunOutputText(run.stderrExcerpt, true)}
           </pre>
         </div>
       )}
 
       {run.stdoutExcerpt && !run.logRef && (
-        <div className="tactile-card rounded-xl border border-slate-200/90 bg-white p-3 space-y-2 dark:border-white/[0.08] dark:bg-[#0e131d]">
+        <div className="tactile-card rounded-xl border border-slate-200/90 bg-white p-3 space-y-2 dark:border-white/[0.08] dark:bg-card">
           <span className={EYEBROW_CLASS}>stdout</span>
-          <pre className="rounded-lg border border-slate-200/80 bg-slate-50/80 p-3 text-xs font-mono text-foreground dark:border-white/[0.07] dark:bg-[#090c12] dark:text-[#dbe4f2] overflow-x-auto whitespace-pre-wrap">
+          <pre className="rounded-lg border border-slate-200/80 bg-slate-50/80 p-3 text-xs font-mono text-foreground dark:border-white/[0.07] dark:bg-muted/30 dark:text-foreground/90 overflow-x-auto whitespace-pre-wrap">
             {redactRunOutputText(run.stdoutExcerpt, true)}
           </pre>
         </div>
