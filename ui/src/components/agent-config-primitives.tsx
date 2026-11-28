@@ -68,6 +68,7 @@ export const adapterLabels: Record<string, string> = {
   commandcode_local: "Command Code (local)",
   cursor: "Cursor (local)",
   pi_local: "Pi (local)",
+  devin_local: "Devin (local)",
   process: "Process",
   http: "HTTP",
 };

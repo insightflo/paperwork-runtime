@@ -111,6 +111,7 @@ const SESSIONED_LOCAL_ADAPTERS = new Set([
   "gemini_local",
   "opencode_local",
   "pi_local",
+  "devin_local",
   "commandcode_local",
   "antigravity_local",
 ]);
