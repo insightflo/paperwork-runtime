@@ -64,13 +64,16 @@ describe("maybeDispatchMissionOwnerPeriodicReview zero-LLM suppression", () => {
     expect(insert).not.toHaveBeenCalled();
   });
 
-  it("suppresses healthy in-flight execution during heartbeat handoff gaps", async () => {
-    const { input, insert, onWake } = harness([unit("running")], undefined, false);
+  it("suppresses healthy active heartbeat runs and still wakes stalled runs below the cap", async () => {
+    const healthy = harness([unit("running")], 1, true);
+    await maybeDispatchMissionOwnerPeriodicReview(healthy.input);
+    expect(healthy.onWake).not.toHaveBeenCalled();
+    expect(healthy.insert).not.toHaveBeenCalled();
 
-    await maybeDispatchMissionOwnerPeriodicReview(input);
-
-    expect(onWake).not.toHaveBeenCalled();
-    expect(insert).not.toHaveBeenCalled();
+    const stalled = harness([unit("running")], 1, false);
+    await maybeDispatchMissionOwnerPeriodicReview(stalled.input);
+    expect(stalled.onWake).toHaveBeenCalledTimes(1);
+    expect(stalled.insert).toHaveBeenCalledTimes(1);
   });
 
   it("still wakes below the cap for a failed unit and catches callback failures", async () => {

@@ -57,8 +57,7 @@ export async function maybeDispatchMissionOwnerPeriodicReview(input: {
       && (row.status === "todo" || row.status === "in_progress" || row.status === "blocked"))
     .map((row) => row.id);
   const hasProblemUnit = executionSnapshot.units.some((unit) => PROBLEM_UNIT_STATUSES_FOR_REVIEW.has(unit.status));
-  const hasInFlightUnit = executionSnapshot.units.some((unit) => ACTIVE_SUPERVISION_EXECUTION_STATUSES_FOR_REVIEW.has(unit.status));
-  if (openOwnerActionIds.length === 0 && !hasProblemUnit && (input.missionHasActiveHeartbeat || hasInFlightUnit)) return;
+  if (openOwnerActionIds.length === 0 && !hasProblemUnit && input.missionHasActiveHeartbeat) return;
 
   const reviewBucket = Math.floor(missionAgeMs / MISSION_OWNER_PERIODIC_REVIEW_INTERVAL_MS);
   const reviewKey = `mission-owner-periodic-review:${mission.id}:${reviewBucket}`;
