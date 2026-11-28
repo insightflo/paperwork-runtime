@@ -1,8 +1,12 @@
+// @vitest-environment jsdom
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { CreateConfigValues } from "../types";
+import type { AdapterConfigFieldsProps, CreateConfigValues } from "../types";
 import { getUIAdapter } from "../registry";
 import { devinLocalUIAdapter } from "../devin-local";
 import { buildDevinLocalConfig } from "../devin-local/build-config";
+import { DevinLocalConfigFields } from "../devin-local/config-fields";
 import { parseDevinStdoutLine } from "../devin-local/parse-stdout";
 
 const ts = "2026-11-28T12:00:00.000Z";
@@ -33,6 +37,24 @@ function baseValues(overrides: Partial<CreateConfigValues> = {}): CreateConfigVa
   };
 }
 
+function passthroughEff<T>(_group: "adapterConfig", _field: string, original: T): T {
+  return original;
+}
+
+function createConfigFieldsProps(): AdapterConfigFieldsProps {
+  return {
+    mode: "create",
+    isCreate: true,
+    adapterType: "devin_local",
+    values: baseValues(),
+    set: () => {},
+    config: {},
+    eff: passthroughEff,
+    mark: () => {},
+    models: [],
+  };
+}
+
 describe("devinLocalUIAdapter", () => {
   it("is registered as the devin_local UI adapter", () => {
     const adapter = getUIAdapter("devin_local");
@@ -40,6 +62,37 @@ describe("devinLocalUIAdapter", () => {
     expect(adapter).toBe(devinLocalUIAdapter);
     expect(adapter.type).toBe("devin_local");
     expect(adapter.label).toBe("Devin (local)");
+  });
+});
+
+describe("DevinLocalConfigFields", () => {
+  it("shows Korean headless and free-tier guidance while keeping config building backward-compatible", () => {
+    const markup = renderToStaticMarkup(createElement(DevinLocalConfigFields, createConfigFieldsProps()));
+
+    expect(markup).toContain("Devin model hints");
+    expect(markup).toContain('aria-label="Devin permission mode"');
+    expect(markup).toContain("--respect-workspace-trust false");
+    expect(markup).toContain("--process-model in-process");
+    expect(markup).toContain("자동 적용됩니다");
+    expect(markup).toContain("swe-2-flash-*");
+    expect(markup).toContain("262K Free tier");
+    expect(markup).toContain("swe-2-flash-medium/high");
+    expect(markup).toContain("swe-2-flash-medium");
+    expect(markup).toContain("swe-2-flash-high");
+
+    const config = buildDevinLocalConfig(baseValues({
+      instructionsFilePath: "/workspace/AGENTS.md",
+      extraArgs: "--verbosity, 2",
+    }));
+
+    expect(config).toMatchObject({
+      model: "swe-2-flash-medium",
+      permissionMode: "dangerous",
+      instructionsFilePath: "/workspace/AGENTS.md",
+      timeoutSec: 0,
+      graceSec: 20,
+    });
+    expect(config.extraArgs).toEqual(["--verbosity", "2"]);
   });
 });
 
