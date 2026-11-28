@@ -2,6 +2,7 @@ import { and, count, eq, inArray } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
 import { logger } from "../../middleware/logger.js";
 import { issueWorkProducts, issues, workflowStepRuns, workflowTransitionEvents } from "@paperclipai/db";
+import { settleToolQueueMetadata } from "./tool-queue-settle.js";
 
 export const WORKFLOW_SYNC_SOURCES = [
   "workflow_sync",
@@ -232,6 +233,7 @@ export async function settleRunningStepRunsForTerminalRun(
     .for("update");
   for (const stepRun of open) {
     const priorMetadata = (stepRun.metadata as Record<string, unknown> | null) ?? {};
+    const settledMetadata = settleToolQueueMetadata(priorMetadata, input.now.toISOString());
     // [이유] 요약이 이미 있으면 실제 dispatch 실패 기록이므로 정산 진단으로 덮어쓰지 않는다.
     const settlementErrorSummary = (stepRun.lastDispatchErrorSummary ?? "").trim().length > 0
       ? undefined
@@ -244,7 +246,7 @@ export async function settleRunningStepRunsForTerminalRun(
           ? { lastDispatchErrorSummary: settlementErrorSummary }
           : {}),
         metadata: {
-          ...priorMetadata,
+          ...settledMetadata,
           terminalRunSettlement: {
             decision: input.decision,
             source,

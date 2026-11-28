@@ -26,6 +26,7 @@ import {
 // [run-terminal-boundary v1] stuck 강제 종결의 경계 우회 + 커밋 후 부작용 즉시 실행(플래그 게이팅은 호출자 책임).
 import { settleStuckFailureCascade } from "./failure-cascade-finalization.js";
 import { isRunTerminalBoundaryV1Enabled } from "./run-terminal-boundary-flag.js";
+import { settleTerminalToolQueueClaims } from "./tool-queue-terminal-settlement.js";
 
 export { reconcileDeadlockedWorkflowRuns } from "./deadlock-reconciler.js";
 export {
@@ -268,6 +269,7 @@ export async function reconcileWorkflow(
     deadlockedRunsRecovered: number;
     stuckRunsRecovered: number;
     orphanStepsCleaned: number;
+    terminalToolQueueClaimsSettled: number;
     graceWaitingControlNodesReevaluated: number;
     workflowChildWaitsReconciled: number;
   }> {
@@ -281,6 +283,7 @@ export async function reconcileWorkflow(
   const workflowChildWaitResults = await reconcileWorkflowChildStepWaits(db);
   const stuckResults = await reconcileStuckWorkflowRuns(db, timeoutMinutes);
   const orphanStepsCleaned = await reconcileOrphanStepRuns(db);
+  const terminalToolQueueClaimsSettled = await settleTerminalToolQueueClaims(db);
   const graceWaitResults = await reconcileGraceWaitingControlNodes(db);
 
   return {
@@ -288,7 +291,7 @@ export async function reconcileWorkflow(
     runnableStepWakeupsQueued: runnableWakeupResults.filter((r) => r.action === "recovered").length,
     deadlockedRunsRecovered: deadlockedResults.filter((r) => r.action === "recovered").length,
     stuckRunsRecovered: stuckResults.filter((r) => r.action === "recovered").length,
-    orphanStepsCleaned,
+    orphanStepsCleaned, terminalToolQueueClaimsSettled,
     graceWaitingControlNodesReevaluated: graceWaitResults.filter((r) => r.action === "recovered").length,
     workflowChildWaitsReconciled: workflowChildWaitResults.filter((r) => r.action === "recovered").length,
   };
