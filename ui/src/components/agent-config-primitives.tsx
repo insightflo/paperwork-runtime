@@ -55,7 +55,7 @@ export const help: Record<string, string> = {
   graceSec: "Seconds to wait after sending interrupt before force-killing the process.",
   wakeOnDemand: "Allow this agent to be woken by assignments, API calls, UI actions, or automated systems.",
   cooldownSec: "Minimum seconds between consecutive heartbeat runs.",
-  maxConcurrentRuns: "Maximum number of heartbeat runs that can execute simultaneously for this agent.",
+  maxConcurrentRuns: "Active slots keep making progress while extra runs wait safely in the queue. Valid range: 1–10.",
   budgetMonthlyCents: "Monthly spending limit in cents. 0 means no limit.",
 };
 
@@ -237,7 +237,7 @@ export function CollapsibleSection({
   children: React.ReactNode;
 }) {
   return (
-    <div className={cn(bordered && "border-t border-border")}>
+    <div className={cn(bordered && "mx-4 mb-4 overflow-hidden rounded-[10px] border border-slate-200/80 bg-slate-50/60 dark:border-white/[0.08] dark:bg-white/[0.03]")}>
       <button
         className="flex items-center gap-2 w-full px-4 py-2 text-xs font-medium text-muted-foreground hover:bg-accent/30 transition-colors"
         onClick={onToggle}

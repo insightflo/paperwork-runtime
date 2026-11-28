@@ -46,6 +46,12 @@ import {
   sessionTokenThresholdFieldValue,
   updateSessionTokenThreshold,
 } from "../lib/session-compaction-ui";
+import {
+  MAX_CONCURRENT_RUNS_MAX,
+  MAX_CONCURRENT_RUNS_MIN,
+  clampMaxConcurrentRuns,
+  heartbeatWithClampedMaxConcurrentRuns,
+} from "../lib/agent-concurrency";
 
 /* ---- Create mode values ---- */
 
@@ -257,7 +263,13 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
     if (Object.keys(overlay.heartbeat).length > 0) {
       const existingRc = (agent.runtimeConfig ?? {}) as Record<string, unknown>;
       const existingHb = (existingRc.heartbeat ?? {}) as Record<string, unknown>;
-      patch.runtimeConfig = { ...existingRc, heartbeat: { ...existingHb, ...overlay.heartbeat } };
+      const mergedHeartbeat = { ...existingHb, ...overlay.heartbeat };
+      patch.runtimeConfig = {
+        ...existingRc,
+        heartbeat: "maxConcurrentRuns" in overlay.heartbeat
+          ? heartbeatWithClampedMaxConcurrentRuns(mergedHeartbeat, overlay.heartbeat.maxConcurrentRuns)
+          : mergedHeartbeat,
+      };
     }
     if (Object.keys(overlay.runtime).length > 0) {
       Object.assign(patch, overlay.runtime);
@@ -514,26 +526,6 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
   const codexSearchEnabled = adapterType === "codex_local"
     ? (isCreate ? Boolean(val!.search) : eff("adapterConfig", "search", Boolean(config.search)))
     : false;
-  const effectiveRuntimeConfig = useMemo(() => {
-    if (isCreate) {
-      return {
-        heartbeat: {
-          enabled: val!.heartbeatEnabled,
-          intervalSec: val!.intervalSec,
-        },
-      };
-    }
-    const mergedHeartbeat = {
-      ...(runtimeConfig.heartbeat && typeof runtimeConfig.heartbeat === "object"
-        ? runtimeConfig.heartbeat as Record<string, unknown>
-        : {}),
-      ...overlay.heartbeat,
-    };
-    return {
-      ...runtimeConfig,
-      heartbeat: mergedHeartbeat,
-    };
-  }, [isCreate, overlay.heartbeat, runtimeConfig, val]);
   return (
     <div className={cn("relative tabular-nums", cards && "space-y-6")}>
       {/* ---- Floating Save button (edit mode, when dirty) ---- */}
@@ -1133,19 +1125,20 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   aria-label="Heartbeat cooldown in seconds"
                 />
               </Field>
-              <Field label="Max concurrent runs" hint={help.maxConcurrentRuns}>
-                <DraftNumberInput
-                  value={eff(
-                    "heartbeat",
-                    "maxConcurrentRuns",
-                    Number(heartbeat.maxConcurrentRuns ?? 1),
-                  )}
-                  onCommit={(v) => mark("heartbeat", "maxConcurrentRuns", v)}
-                  immediate
-                  className={tactileInputClass}
-                  aria-label="Max concurrent heartbeat runs"
-                />
-              </Field>
+              <div className="rounded-[10px] border border-slate-200/80 bg-slate-50/70 px-3 py-2.5 dark:border-white/[0.08] dark:bg-white/[0.03]">
+                <Field label="동시 실행 슬롯 (Max Concurrent Runs)" hint={help.maxConcurrentRuns}>
+                  <DraftNumberInput
+                    value={clampMaxConcurrentRuns(eff("heartbeat", "maxConcurrentRuns", heartbeat.maxConcurrentRuns ?? 1))}
+                    onCommit={(v) => mark("heartbeat", "maxConcurrentRuns", clampMaxConcurrentRuns(v))}
+                    immediate min={MAX_CONCURRENT_RUNS_MIN} max={MAX_CONCURRENT_RUNS_MAX} step={1}
+                    className={tactileInputClass}
+                    aria-label="Max concurrent heartbeat runs"
+                  />
+                </Field>
+                <p className="mt-2 text-[11px] leading-relaxed text-slate-500 dark:text-[#8f9db3]">
+                  Active slots keep making progress while extra runs wait safely in the queue. Valid range: 1–10.
+                </p>
+              </div>
               {/* [session rotation threshold] runtime-managed adapters only — claude/codex
                   manage context natively and the runtime never rotates their sessions. */}
               {adapterType !== "claude_local" && adapterType !== "codex_local" && (
