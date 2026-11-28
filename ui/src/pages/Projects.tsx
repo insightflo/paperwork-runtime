@@ -193,7 +193,7 @@ export function Projects() {
               className={cn(CONTROL, "w-56")}
             />
           </label>
-          <span className="hidden shrink-0 text-[11px] text-slate-500 dark:text-[#8f9db3] sm:block">
+          <span aria-live="polite" className="hidden shrink-0 text-[11px] text-slate-500 dark:text-[#8f9db3] sm:block">
             <span className="font-mono text-slate-950 dark:text-[#eef2f8]">{visible.length}</span> of {projects.length}
           </span>
         </div>
@@ -203,7 +203,7 @@ export function Projects() {
         </Button>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error.message}</p>}
+      {error && <p role="alert" className="text-sm text-destructive">{error.message}</p>}
 
       {!isLoading && projects.length === 0 && (
         <EmptyState
@@ -223,7 +223,7 @@ export function Projects() {
             <span className="text-right">Status</span>
           </div>
           {visible.length === 0 && (
-            <div className="px-3 py-6 text-center text-xs text-slate-500 dark:text-[#8f9db3]">
+            <div aria-live="polite" className="px-3 py-6 text-center text-xs text-slate-500 dark:text-[#8f9db3]">
               No work contexts match this filter.
             </div>
           )}
