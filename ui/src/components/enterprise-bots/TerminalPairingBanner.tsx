@@ -86,7 +86,6 @@ export function TerminalPairingBanner({
 
   return (
     <div
-      role="status"
       data-terminal-pairing-banner
       data-pairing-status={connected ? "connected" : "waiting"}
       className={`tactile-card space-y-3 rounded-xl border bg-card p-4 text-xs tabular-nums ${
@@ -101,6 +100,8 @@ export function TerminalPairingBanner({
           </span>
           <span
             data-heartbeat-indicator
+            role="status"
+            aria-live="polite"
             title={connected ? `연결됨 · 마지막 신호 ${lastSeenAt}` : "노드의 첫 하트비트를 기다리는 중"}
             className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
               connected
@@ -141,6 +142,7 @@ export function TerminalPairingBanner({
             <button
               type="button"
               data-copy-daemon
+              aria-live="polite"
               onClick={() => void copySnippet("daemon", daemonSnippet)}
               className={PRIMARY_BTN}
             >
@@ -185,6 +187,7 @@ export function TerminalPairingBanner({
               <button
                 type="button"
                 data-copy-doctor
+                aria-live="polite"
                 onClick={() => void copySnippet("doctor", doctorSnippet)}
                 className={ACTION_BTN}
               >

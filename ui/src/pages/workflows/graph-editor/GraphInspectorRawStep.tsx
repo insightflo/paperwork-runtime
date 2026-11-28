@@ -67,7 +67,7 @@ export function GraphInspectorRawStep({
       </div>
       <FieldLabel help="Edit the selected step object as JSON. The JSON must remain an object with a unique id.">Raw step JSON</FieldLabel>
       <textarea
-        key="raw-json"
+        key="raw-json" aria-label="Raw step JSON"
         style={{
           ...textareaStyle,
           minHeight: "260px",
@@ -86,11 +86,11 @@ export function GraphInspectorRawStep({
       />
       <div key="raw-actions" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" }}>
         {rawStepJsonFeedback ? (
-          <span style={{ ...mutedTextStyle, fontSize: "11px", color: rawStepJsonFeedback.tone === "error" ? "var(--destructive, #ef4444)" : rawStepJsonFeedback.tone === "success" ? "#34d399" : "var(--muted-foreground, #94a3b8)" }}>
+          <span role={rawStepJsonFeedback.tone === "error" ? "alert" : "status"} aria-live={rawStepJsonFeedback.tone === "error" ? "assertive" : "polite"} style={{ ...mutedTextStyle, fontSize: "11px", color: rawStepJsonFeedback.tone === "error" ? "var(--destructive, #ef4444)" : rawStepJsonFeedback.tone === "success" ? "#34d399" : "var(--muted-foreground, #94a3b8)" }}>
             {rawStepJsonFeedback.message}
           </span>
         ) : (
-          <span style={{ ...mutedTextStyle, fontSize: "11px" }}>
+          <span role="status" aria-live="polite" style={{ ...mutedTextStyle, fontSize: "11px" }}>
             Edit one step object, then validate or apply it to the selected node.
           </span>
         )}

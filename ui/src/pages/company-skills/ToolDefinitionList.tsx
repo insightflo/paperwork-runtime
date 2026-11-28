@@ -36,7 +36,7 @@ export function ToolDefinitionList({
             <h1 className="text-base font-semibold">Tools</h1>
             <p className="text-xs text-muted-foreground">{tools.length} registered</p>
           </div>
-          <Button variant="ghost" size="icon-sm" onClick={onCreate} aria-label="Create tool">
+          <Button type="button" variant="ghost" size="icon-sm" onClick={onCreate} aria-label="Create tool">
             <Plus className="h-4 w-4" />
           </Button>
         </div>
@@ -54,9 +54,9 @@ export function ToolDefinitionList({
       {isLoading ? (
         <PageSkeleton variant="list" />
       ) : error ? (
-        <div className="px-4 py-6 text-sm text-destructive">{error.message}</div>
+        <div role="alert" className="px-4 py-6 text-sm text-destructive">{error.message}</div>
       ) : filteredTools.length === 0 ? (
-        <div className="px-4 py-6 text-sm text-muted-foreground">No tools match this filter.</div>
+        <div role="status" aria-live="polite" className="px-4 py-6 text-sm text-muted-foreground">No tools match this filter.</div>
       ) : (
         <div>
           {filteredTools.map((tool) => (

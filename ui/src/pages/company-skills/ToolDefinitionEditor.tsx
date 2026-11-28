@@ -83,6 +83,7 @@ export function ToolDefinitionEditor({
         <div className="flex items-center gap-2">
           {selectedTool ? (
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               onClick={() => setTestOpen(true)}
@@ -94,6 +95,7 @@ export function ToolDefinitionEditor({
           ) : null}
           {selectedTool ? (
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               onClick={onToggleEnabled}
@@ -104,12 +106,13 @@ export function ToolDefinitionEditor({
               {selectedTool.enabled ? "Disable" : "Enable"}
             </Button>
           ) : null}
-          <Button size="sm" onClick={onSave} disabled={isSaving || sourceManaged}>
+          <Button type="button" size="sm" onClick={onSave} disabled={isSaving || sourceManaged}>
             {selectedTool ? <Check className="mr-1.5 h-3.5 w-3.5" /> : <Plus className="mr-1.5 h-3.5 w-3.5" />}
             {selectedTool ? "Save" : "Create"}
           </Button>
           {selectedTool ? (
             <Button
+              type="button"
               variant="ghost"
               size="sm"
               onClick={onDelete}
@@ -184,7 +187,7 @@ export function ToolDefinitionEditor({
           </span>
           <ToolStatus enabled={form.enabled} />
         </button>
-        {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
+        {formError ? <p role="alert" className="text-sm text-destructive">{formError}</p> : null}
       </div>
 
       {selectedTool ? (

@@ -127,8 +127,15 @@ export async function settleStuckFailureCascade(
       });
       if (observation === "stale_observation") throw new CascadeCancelled(observation);
       if (observation === "current") await deferCascadeForQaCorrection(tx, run);
+      const now = new Date();
       if (observation === "current" && pendingSteps.length > 0) {
-        await writeStuckCascade(tx, run, pendingSteps, new Date());
+        // Capture causes only after active steps have a durable failed transition.
+        // A cancelled finalization rolls back settlement and skips together.
+        await settleRunningStepRunsForTerminalRun(tx, {
+          companyId: run.companyId, runId: run.id, missionId: run.missionId,
+          decision: "failed", now, discovery: "stuck_diagnostic",
+        });
+        await writeStuckCascade(tx, run, pendingSteps, now);
       }
       if (boundaryEnabled) {
         return await finalizeCascade(tx, {
@@ -143,16 +150,16 @@ export async function settleStuckFailureCascade(
             reason: "Marked stuck run as failed",
           },
           gatePolicy: "defer_on_open_recovery",
-          now: new Date(),
+          now,
           stepRuns: boundaryStepRuns,
         });
       }
-      await tx.update(workflowRuns).set({ status: "failed", completedAt: new Date() })
+      await tx.update(workflowRuns).set({ status: "failed", completedAt: now })
         .where(eq(workflowRuns.id, run.id));
       // [bug#2 step-settlement] legacy 종결 쓰기와 같은 트랜잭션에서 running/queued 스텝을 정산한다.
       await settleRunningStepRunsForTerminalRun(tx, {
         companyId: run.companyId, runId: run.id, missionId: run.missionId,
-        decision: "failed", now: new Date(), discovery: "stuck_diagnostic",
+        decision: "failed", now, discovery: "stuck_diagnostic",
       });
       return null;
     });

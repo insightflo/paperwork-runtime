@@ -539,7 +539,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
       {/* ---- Floating Save button (edit mode, when dirty) ---- */}
       {isDirty && !props.hideInlineSave && (
         <div className="sticky top-0 z-10 flex items-center justify-end border-b border-slate-200/90 bg-white/95 px-4 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-sm dark:border-white/[0.08] dark:bg-[#0e131d]/95 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3" aria-live="polite">
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-[#f59e0b]"><span aria-hidden className="h-1.5 w-1.5 rounded-full bg-amber-500 dark:bg-[#f59e0b]" />Unsaved changes</span>
             <Button
               size="sm"
@@ -605,6 +605,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 immediate
                 className={tactileInputClass}
                 placeholder="Agent name"
+                aria-label="Agent name"
               />
             </Field>
             <Field label="Title" hint={help.title}>
@@ -614,6 +615,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 immediate
                 className={tactileInputClass}
                 placeholder="e.g. VP of Engineering"
+                aria-label="Agent title"
               />
             </Field>
             <Field label="Reports to" hint={help.reportsTo}>
@@ -736,7 +738,10 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
           )}
 
           {testEnvironment.error && (
-            <div className="rounded-[10px] border border-red-600/25 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-400/35 dark:bg-red-500/10 dark:text-red-300">
+            <div
+              role="alert"
+              className="rounded-[10px] border border-red-600/25 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-400/35 dark:bg-red-500/10 dark:text-red-300"
+            >
               {testEnvironment.error instanceof Error
                 ? testEnvironment.error.message
                 : "Environment test failed"}
@@ -820,7 +825,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                 groupByProvider={false}
               />
               {fetchedModelsError && (
-                <p className="text-xs text-destructive">
+                <p className="text-xs text-destructive" role="alert">
                   {fetchedModelsError instanceof Error
                     ? fetchedModelsError.message
                     : "Failed to load adapter models."}
@@ -889,6 +894,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   }
                   immediate
                   className={tactileInputClass}
+                  aria-label="Adapter command"
                   placeholder={
                     adapterType === "codex_local"
                       ? "codex"
@@ -917,6 +923,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       }
                       immediate
                       className="w-full bg-transparent font-mono text-sm outline-none placeholder:text-slate-400 dark:placeholder:text-[#627089]"
+                      aria-label="Working directory"
                       placeholder="/path/to/project"
                     />
                     <ChoosePathButton />
@@ -969,6 +976,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   }
                   immediate
                   className={tactileInputClass}
+                  aria-label="Extra CLI arguments"
                   placeholder="e.g. --verbose, --foo=bar"
                 />
               </Field>
@@ -1005,6 +1013,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       onCommit={(v) => mark("adapterConfig", "timeoutSec", v)}
                       immediate
                       className={tactileInputClass}
+                      aria-label="Timeout in seconds"
                     />
                   </Field>
                   <Field label="Interrupt grace period (sec)" hint={help.graceSec}>
@@ -1017,6 +1026,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       onCommit={(v) => mark("adapterConfig", "graceSec", v)}
                       immediate
                       className={tactileInputClass}
+                      aria-label="Interrupt grace period in seconds"
                     />
                   </Field>
                 </>
@@ -1120,6 +1130,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   onCommit={(v) => mark("heartbeat", "cooldownSec", v)}
                   immediate
                   className={tactileInputClass}
+                  aria-label="Heartbeat cooldown in seconds"
                 />
               </Field>
               <Field label="Max concurrent runs" hint={help.maxConcurrentRuns}>
@@ -1132,6 +1143,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                   onCommit={(v) => mark("heartbeat", "maxConcurrentRuns", v)}
                   immediate
                   className={tactileInputClass}
+                  aria-label="Max concurrent heartbeat runs"
                 />
               </Field>
               {/* [session rotation threshold] runtime-managed adapters only — claude/codex
@@ -1165,6 +1177,7 @@ export function AgentConfigForm(props: AgentConfigFormProps) {
                       ),
                     )}
                     className={tactileInputClass}
+                    aria-label="Session rotation token limit"
                   />
                 </Field>
               )}

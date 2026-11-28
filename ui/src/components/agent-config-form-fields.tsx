@@ -57,7 +57,7 @@ export function AdapterEnvironmentResult({ result }: { result: AdapterEnvironmen
         : "text-red-700 dark:text-red-300 border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-500/10";
 
   return (
-    <div className={`rounded-md border px-3 py-2 text-xs ${statusClass}`}>
+    <div aria-live="polite" className={`rounded-md border px-3 py-2 text-xs ${statusClass}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium">{statusLabel}</span>
         <span className="text-[11px] opacity-80">
@@ -101,7 +101,7 @@ export function AdapterTypeDropdown({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
+        <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
           <span className="inline-flex items-center gap-1.5">
             {value === "opencode_local" ? <OpenCodeLogoIcon className="h-3.5 w-3.5" /> : null}
             <span>{adapterLabels[value] ?? value}</span>
@@ -111,7 +111,7 @@ export function AdapterTypeDropdown({
       </PopoverTrigger>
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1" align="start">
         {adapterDisplayList.map((item) => (
-          <button
+          <button type="button"
             key={item.value}
             disabled={item.comingSoon}
             className={cn(
@@ -306,13 +306,13 @@ export function EnvVarEditor({
           <div key={i} className="flex items-center gap-1.5">
             <input
               className={cn(inputClass, "flex-[2]")}
-              placeholder="KEY"
+              placeholder="KEY" aria-label={`Environment variable name, row ${i + 1}`}
               value={row.key}
               onChange={(e) => updateRow(i, { key: e.target.value })}
             />
             <select
               className={cn(inputClass, "flex-[1] bg-background")}
-              value={row.source}
+              value={row.source} aria-label={`Value source for ${row.key || `row ${i + 1}`}`}
               onChange={(e) =>
                 updateRow(i, {
                   source: e.target.value === "secret" ? "secret" : "plain",
@@ -327,7 +327,7 @@ export function EnvVarEditor({
               <>
                 <select
                   className={cn(inputClass, "flex-[3] bg-background")}
-                  value={row.secretId}
+                  value={row.secretId} aria-label={`Secret for ${row.key || `row ${i + 1}`}`}
                   onChange={(e) => updateRow(i, { secretId: e.target.value })}
                 >
                   <option value="">Select secret...</option>
@@ -351,7 +351,7 @@ export function EnvVarEditor({
               <>
                 <input
                   className={cn(inputClass, "flex-[3]")}
-                  placeholder="value"
+                  placeholder="value" aria-label={`Value for ${row.key || `row ${i + 1}`}`}
                   value={row.plainValue}
                   onChange={(e) => updateRow(i, { plainValue: e.target.value })}
                 />
@@ -370,7 +370,7 @@ export function EnvVarEditor({
               <button
                 type="button"
                 className="shrink-0 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                onClick={() => removeRow(i)}
+                aria-label={`Remove environment variable ${row.key || `row ${i + 1}`}`} onClick={() => removeRow(i)}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -380,7 +380,7 @@ export function EnvVarEditor({
           </div>
         );
       })}
-      {sealError && <p className="text-[11px] text-destructive">{sealError}</p>}
+      {sealError && <p role="alert" className="text-[11px] text-destructive">{sealError}</p>}
       <p className="text-[11px] text-muted-foreground/60">
         Paperwork runtime env vars (PAPERCLIP_*) are injected automatically.
       </p>
@@ -460,7 +460,7 @@ export function ModelDropdown({
         }}
       >
         <PopoverTrigger asChild>
-          <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
+          <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
             <span className={cn(!value && "text-muted-foreground")}>
               {selected
                 ? selected.label
@@ -472,14 +472,14 @@ export function ModelDropdown({
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1" align="start">
           <input
             className="w-full px-2 py-1.5 text-xs bg-transparent outline-none border-b border-border mb-1 placeholder:text-muted-foreground/50"
-            placeholder="Search models..."
+            placeholder="Search models..." aria-label={`Search ${label.toLowerCase()}s`}
             value={modelSearch}
             onChange={(e) => setModelSearch(e.target.value)}
             autoFocus
           />
           <div className="max-h-[240px] overflow-y-auto">
             {allowDefault && (
-              <button
+              <button type="button"
                 className={cn(
                   "flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded hover:bg-accent/50",
                   !value && "bg-accent",
@@ -493,7 +493,7 @@ export function ModelDropdown({
               </button>
             )}
             {customModelCandidate && (
-              <button
+              <button type="button"
                 className="flex items-center justify-between w-full px-2 py-1.5 text-sm rounded hover:bg-accent/50 border-b border-border/60 mb-1"
                 onClick={() => {
                   onChange(customModelCandidate);
@@ -516,7 +516,7 @@ export function ModelDropdown({
                   </div>
                 )}
                 {group.entries.map((m) => (
-                  <button
+                  <button type="button"
                     key={m.id}
                     className={cn(
                       "flex items-center w-full px-2 py-1.5 text-sm rounded hover:bg-accent/50",
@@ -535,7 +535,7 @@ export function ModelDropdown({
               </div>
             ))}
             {filteredModels.length === 0 && (
-              <p className="px-2 py-1.5 text-xs text-muted-foreground">No models found.</p>
+              <p role="status" aria-live="polite" className="px-2 py-1.5 text-xs text-muted-foreground">No models found.</p>
             )}
           </div>
         </PopoverContent>
@@ -563,14 +563,14 @@ export function ThinkingEffortDropdown({
     <Field label="Thinking effort" hint={help.thinkingEffort}>
       <Popover open={open} onOpenChange={onOpenChange}>
         <PopoverTrigger asChild>
-          <button className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
+          <button type="button" className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm hover:bg-accent/50 transition-colors w-full justify-between">
             <span className={cn(!value && "text-muted-foreground")}>{selected?.label ?? "Auto"}</span>
             <ChevronDown className="h-3 w-3 text-muted-foreground" />
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1" align="start">
           {options.map((option) => (
-            <button
+            <button type="button"
               key={option.id || "auto"}
               className={cn(
                 "flex items-center justify-between w-full px-2 py-1.5 text-sm rounded hover:bg-accent/50",

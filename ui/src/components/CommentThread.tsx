@@ -102,7 +102,7 @@ function CopyMarkdownButton({ text }: { text: string }) {
     <button
       type="button"
       className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground dark:hover:bg-white/[0.06]"
-      title="Copy as markdown"
+      title="Copy as markdown" aria-label={copied ? "Copied" : "Copy as markdown"} aria-live="polite"
       onClick={() => {
         navigator.clipboard.writeText(text).then(() => {
           setCopied(true);
@@ -361,7 +361,7 @@ export function CommentThread({
 
   return (
     <div className="space-y-4">
-      <h3 className="flex items-center gap-2 text-sm font-semibold"><span>Comments &amp; Runs</span><span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground dark:border-[#a3e635]/25 dark:bg-[#a3e635]/10 dark:text-[#a3e635]">{timeline.length}</span></h3>
+      <h3 aria-live="polite" className="flex items-center gap-2 text-sm font-semibold"><span>Comments &amp; Runs</span><span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground dark:border-[#a3e635]/25 dark:bg-[#a3e635]/10 dark:text-[#a3e635]">{timeline.length}</span></h3>
 
       <div className={cn("space-y-4", timelineClassName)}>
         <TimelineList
@@ -390,7 +390,7 @@ export function CommentThread({
             <div className="mr-auto flex items-center gap-3">
               <input
                 ref={attachInputRef}
-                type="file"
+                type="file" aria-label="Attach image"
                 accept="image/png,image/jpeg,image/webp,image/gif"
                 className="hidden"
                 onChange={handleAttachFile}
@@ -400,7 +400,7 @@ export function CommentThread({
                 size="icon-sm"
                 onClick={() => attachInputRef.current?.click()}
                 disabled={attaching}
-                title="Attach image"
+                title="Attach image" type="button" aria-label={attaching ? "Attaching image..." : "Attach image"} aria-live="polite"
               >
                 <Paperclip className="h-4 w-4" />
               </Button>
@@ -453,7 +453,7 @@ export function CommentThread({
               }}
             />
           )}
-          <Button size="sm" disabled={!canSubmit} onClick={handleSubmit}>
+          <Button type="button" aria-label={submitting ? "Posting..." : "Comment"} aria-live="polite" size="sm" disabled={!canSubmit} onClick={handleSubmit}>
             {submitting ? "Posting..." : "Comment"}
           </Button>
         </div>

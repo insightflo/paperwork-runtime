@@ -107,12 +107,12 @@ export function ToolTestDialog({ companyId, tool, open, onOpenChange }: ToolTest
             disabled={running}
           />
           {parseError ? (
-            <p className="text-sm text-destructive">Invalid JSON: {parseError}</p>
+            <p role="alert" className="text-sm text-destructive">Invalid JSON: {parseError}</p>
           ) : null}
         </div>
 
         {outcome ? (
-          <div className="space-y-2 rounded-md border border-border p-3">
+          <div role={outcome.ok ? "status" : "alert"} aria-live={outcome.ok ? "polite" : "assertive"} className="space-y-2 rounded-md border border-border p-3">
             <div className="flex items-center gap-2 text-sm">
               {StatusIcon ? (
                 <StatusIcon className={cn("h-4 w-4", STATUS_META[outcome.status].className)} />
@@ -147,10 +147,11 @@ export function ToolTestDialog({ companyId, tool, open, onOpenChange }: ToolTest
         ) : null}
 
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={running}>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={running}>
             Close
           </Button>
           <Button
+            type="button"
             onClick={handleRun}
             disabled={running || !inputValid || !canAdmin}
             title={!canAdmin ? "Admin or owner role required to run tool tests" : undefined}

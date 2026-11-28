@@ -109,6 +109,8 @@ export function TerminalTelemetryCard({
 
         <span
           data-heartbeat-badge
+          aria-live="polite"
+          aria-atomic="true"
           data-heartbeat-state={hb.state}
           title={telemetry.lastHeartbeatAt ? `마지막 하트비트: ${telemetry.lastHeartbeatAt}` : "하트비트 없음"}
           className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium ${HEARTBEAT_BADGE[hb.state]}`}

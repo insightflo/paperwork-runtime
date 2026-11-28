@@ -23,8 +23,16 @@ export function BreadcrumbProvider({ children }: { children: ReactNode }) {
     if (breadcrumbs.length === 0) {
       document.title = "Paperwork";
     } else {
-      const parts = [...breadcrumbs].reverse().map((b) => b.label);
-      document.title = `${parts.join(" · ")} · Paperwork`;
+      const lastLabel = breadcrumbs[breadcrumbs.length - 1].label;
+      const label = breadcrumbs.length > 1
+        ? `${breadcrumbs[0].label} · ${lastLabel}`
+        : lastLabel;
+      const suffix = " — Paperwork";
+      const maxLabelLength = 80 - suffix.length;
+      const conciseLabel = label.length > maxLabelLength
+        ? `${label.slice(0, maxLabelLength - 1)}…`
+        : label;
+      document.title = `${conciseLabel}${suffix}`;
     }
   }, [breadcrumbs]);
 

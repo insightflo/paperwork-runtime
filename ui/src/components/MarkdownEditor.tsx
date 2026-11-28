@@ -598,7 +598,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
           style={{ top: mentionState.top + 4, left: mentionState.left }}
         >
           {filteredMentions.map((option, i) => (
-            <button
+            <button type="button"
               key={option.id}
               className={cn(
                 "flex items-center gap-2 w-full px-3 py-1.5 text-sm text-left hover:bg-accent/50 transition-colors",
@@ -630,7 +630,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
       )}
 
       {isDragOver && canDropImage && (
-        <div
+        <div aria-live="polite"
           className={cn(
             "pointer-events-none absolute inset-1 z-40 flex items-center justify-center rounded-md border border-dashed border-primary/80 bg-primary/10 text-xs font-medium text-primary",
             !bordered && "inset-0 rounded-sm",
@@ -640,7 +640,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorRef, MarkdownEditorProps>
         </div>
       )}
       {uploadError && (
-        <p className="px-3 pb-2 text-xs text-destructive">{uploadError}</p>
+        <p role="alert" className="px-3 pb-2 text-xs text-destructive">{uploadError}</p>
       )}
     </div>
   );
